@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use agent::agent::react::{ActNode, ObserveNode, ThinkNode};
+use crate::agent::react::{ActNode, ObserveNode, ThinkNode};
 use loom_graph_core::GraphError;
 use loom_graph_core::Next;
 use loom_llm::LlmProvider;

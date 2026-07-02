@@ -101,28 +101,11 @@ impl Clone for RunOptions {
     }
 }
 
-/// Which agent pattern to run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RunCmd {
-    React,
-    Dup,
-    Tot,
-    Got,
-}
-
 /// Result of a completed agent run.
 #[derive(Debug, Clone)]
 pub enum RunCompletion {
     Finished(AgentRunResult),
     Cancelled,
-}
-
-/// Error from an agent run.
-#[derive(Debug, Clone)]
-pub enum RunError {
-    LlmError(String),
-    ToolError(String),
-    Other(String),
 }
 
 /// Result of a successfully completed agent run.

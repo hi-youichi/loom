@@ -6,8 +6,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
-use loom::agent_run::{run_agent_with_options, TypedAnyStreamEvent as FullTypedAnyStreamEvent};
-use loom::cli_run::RunCompletion;
+use agent::run::{build_react_config, run_agent_from_config, RunParams, TypedAnyStreamEvent as FullTypedAnyStreamEvent};
+use agent::run::RunCompletion;
 use loom_stream::TypedAnyStreamEvent;
 use loom_stream::StreamEvent;
 
@@ -186,8 +186,8 @@ impl LoomTool {
 #[async_trait]
 impl CodingTool for LoomTool {
     async fn execute(&self, prompt: &str, working_dir: &Path) -> Result<TurnResult, ToolError> {
-        use loom::cli_run::{RunOptions};
-        use loom::agent_run::RunCmd;
+        use agent::run::{RunOptions};
+        use agent::run::RunCmd;
         use loom_llm::message::UserContent;
 
         let tool_summaries: Arc<Mutex<Vec<ToolCallSummary>>> =
@@ -199,7 +199,7 @@ impl CodingTool for LoomTool {
                 let summaries = tool_summaries.clone();
                 Some(Box::new(move |ev: FullTypedAnyStreamEvent| {
                     // Convert full event to cli_types event for summary collection
-                    if let Some(cli_ev) = loom::agent_run::to_loom_any_stream_event(&ev) {
+                    if let Some(cli_ev) = agent::run::to_loom_any_stream_event(&ev) {
                         collect_tool_summary(&cli_ev, &summaries);
                     }
                     sender(ev);
@@ -216,7 +216,7 @@ impl CodingTool for LoomTool {
                 );
                 let summaries = tool_summaries.clone();
                 Some(Box::new(move |ev: FullTypedAnyStreamEvent| {
-                    if let Some(cli_ev) = loom::agent_run::to_loom_any_stream_event(&ev) {
+                    if let Some(cli_ev) = agent::run::to_loom_any_stream_event(&ev) {
                         collect_tool_summary(&cli_ev, &summaries);
                         original(cli_ev);
                     }
@@ -262,7 +262,15 @@ impl CodingTool for LoomTool {
             effort: None,
         };
 
-        let result = run_agent_with_options(&opts, &RunCmd::React, on_event)
+        let (config, _) = build_react_config(&opts);
+        let params = RunParams {
+            message: opts.message.clone(),
+            verbose: opts.verbose,
+            cancellation: opts.cancellation.clone(),
+            any_stream_event_sender: opts.any_stream_event_sender.clone(),
+            llm_override: None,
+        };
+        let result = run_agent_from_config(&config, &RunCmd::React, params, on_event)
             .await
             .map_err(|e| {
                 let msg = format!("loom agent error: {}", e);

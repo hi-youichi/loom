@@ -390,15 +390,15 @@ fn extract_command_string(name: &str, arguments: &serde_json::Value) -> String {
 
 /// Public entry point: convert one `AnyStreamEvent` into zero or more `CodexEvent`s.
 pub fn codex_events_from_stream_event(
-    ev: &loom::agent_run::TypedAnyStreamEvent,
+    ev: &agent::run::TypedAnyStreamEvent,
     tracker: &mut ItemTracker,
     approval: &Arc<ApprovalManager>,
 ) -> Vec<CodexEvent> {
     let kind = match ev {
-        loom::agent_run::TypedAnyStreamEvent::React(inner) => classify_stream_event(inner),
-        loom::agent_run::TypedAnyStreamEvent::Dup(inner) => classify_stream_event(inner),
-        loom::agent_run::TypedAnyStreamEvent::Tot(inner) => classify_stream_event(inner),
-        loom::agent_run::TypedAnyStreamEvent::Got(inner) => classify_stream_event(inner),
+        agent::run::TypedAnyStreamEvent::React(inner) => classify_stream_event(inner),
+        agent::run::TypedAnyStreamEvent::Dup(inner) => classify_stream_event(inner),
+        agent::run::TypedAnyStreamEvent::Tot(inner) => classify_stream_event(inner),
+        agent::run::TypedAnyStreamEvent::Got(inner) => classify_stream_event(inner),
     };
     convert_stream_event_inner(kind, tracker, approval)
 }

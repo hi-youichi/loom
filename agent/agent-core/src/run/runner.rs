@@ -1,24 +1,29 @@
+//! Runner execution: build_runner + run_agent_from_config.
+//!
+//! Extracted from the former `loom::agent_run::dispatch` module.
+//! The `run_agent` convenience wrapper that combined config building + execution
+//! \+ app-side side effects (worktree, debug_llm, curator spawn) has been removed.
+//! Consumers should call `build_react_config` then `run_agent_from_config`.
+
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use crate::cli_run::{AgentRunResult, RunCompletion, RunOptions};
-use agent::RunnerError;
-use agent::agent::react::build::{build_react_runner, BuildRunnerError};
-use agent::agent::react::ReactRunner;
-use agent::runner_common;
-use agent_extensions::dup::build::build_dup_runner;
-use agent_extensions::dup::{DupRunner, DupState};
-use agent_extensions::got::build::build_got_runner;
-use agent_extensions::got::{GotRunner, GotState};
-use agent_extensions::tot::build::build_tot_runner;
-use agent_extensions::tot::{TotRunner, TotState};
+use crate::agent::react::build::{build_react_runner, BuildRunnerError};
+use crate::agent::react::ReactRunner;
+use crate::runner_common;
+use crate::agent::dup::build::build_dup_runner;
+use crate::agent::dup::{DupRunner, DupState};
+use crate::agent::got::build::build_got_runner;
+use crate::agent::got::{GotRunner, GotState};
+use crate::agent::tot::build::build_tot_runner;
+use crate::agent::tot::{TotRunner, TotState};
 use loom_llm::LlmClient;
 use loom_llm::support::uuid6::uuid6;
-use crate::agent_run::stream_convert::{
+use stream_event::convert::{
     stream_event_to_format_a, stream_event_to_protocol_envelope, ProtocolEventEnvelope,
 };
-use stream_event::EnvelopeState;
-use agent::ReactBuildConfig;
+use stream_event::envelope::EnvelopeState;
+use crate::agent::ReactBuildConfig;
 use loom_stream::StreamEvent;
 use tool_core::active_operation::RunCancellation;
 use loom_stream::state::ReActState;
@@ -26,14 +31,14 @@ use serde_json::Value;
 use thiserror::Error;
 use tracing::Instrument;
 
-use crate::cli_run::build_react_config;
+use super::types::{AgentRunResult, RunCompletion};
 
 #[derive(Debug, Error)]
 pub enum RunError {
     #[error("build runner: {0}")]
     Build(#[from] BuildRunnerError),
     #[error("run: {0}")]
-    Run(#[from] RunnerError),
+    Run(#[from] crate::RunnerError),
     #[error("tool not found: {0}")]
     ToolNotFound(String),
     #[error("remote: {0}")]
@@ -57,6 +62,15 @@ pub enum AnyRunner {
     Got(GotRunner),
 }
 
+/// Execution parameters passed alongside the config.
+pub struct RunParams {
+    pub message: loom_llm::message::UserContent,
+    pub verbose: bool,
+    pub cancellation: Option<RunCancellation>,
+    pub any_stream_event_sender: Option<Arc<dyn Fn(loom_stream::TypedAnyStreamEvent) + Send + Sync>>,
+    pub llm_override: Option<Box<dyn LlmClient>>,
+}
+
 #[derive(Debug)]
 pub enum TypedAnyStreamEvent {
     React(StreamEvent<ReActState>),
@@ -68,10 +82,10 @@ pub enum TypedAnyStreamEvent {
 impl TypedAnyStreamEvent {
     pub fn to_format_a(&self) -> Result<Value, serde_json::Error> {
         match self {
-            TypedAnyStreamEvent::React(ev) => stream_event_to_format_a(ev),
-            TypedAnyStreamEvent::Dup(ev) => stream_event_to_format_a(ev),
-            TypedAnyStreamEvent::Tot(ev) => stream_event_to_format_a(ev),
-            TypedAnyStreamEvent::Got(ev) => stream_event_to_format_a(ev),
+            Self::React(ev) => stream_event_to_format_a(ev),
+            Self::Dup(ev) => stream_event_to_format_a(ev),
+            Self::Tot(ev) => stream_event_to_format_a(ev),
+            Self::Got(ev) => stream_event_to_format_a(ev),
         }
     }
 
@@ -80,10 +94,10 @@ impl TypedAnyStreamEvent {
         state: &mut EnvelopeState,
     ) -> Result<ProtocolEventEnvelope, serde_json::Error> {
         match self {
-            TypedAnyStreamEvent::React(ev) => stream_event_to_protocol_envelope(ev, state),
-            TypedAnyStreamEvent::Dup(ev) => stream_event_to_protocol_envelope(ev, state),
-            TypedAnyStreamEvent::Tot(ev) => stream_event_to_protocol_envelope(ev, state),
-            TypedAnyStreamEvent::Got(ev) => stream_event_to_protocol_envelope(ev, state),
+            Self::React(ev) => stream_event_to_protocol_envelope(ev, state),
+            Self::Dup(ev) => stream_event_to_protocol_envelope(ev, state),
+            Self::Tot(ev) => stream_event_to_protocol_envelope(ev, state),
+            Self::Got(ev) => stream_event_to_protocol_envelope(ev, state),
         }
     }
 
@@ -97,8 +111,8 @@ impl TypedAnyStreamEvent {
 
     pub fn from_loom(ev: loom_stream::TypedAnyStreamEvent) -> Self {
         match ev {
-            loom_stream::TypedAnyStreamEvent::React(e) => TypedAnyStreamEvent::React(e),
-            _ => TypedAnyStreamEvent::React(StreamEvent::Custom(serde_json::json!({"type": "noop"}))),
+            loom_stream::TypedAnyStreamEvent::React(e) => Self::React(e),
+            _ => Self::React(StreamEvent::Custom(serde_json::json!({"type": "noop"}))),
         }
     }
 }
@@ -111,45 +125,24 @@ pub fn to_loom_any_stream_event(ev: &TypedAnyStreamEvent) -> Option<loom_stream:
 }
 
 #[allow(clippy::type_complexity)]
-pub async fn run_agent(
-    opts: &RunOptions,
+pub async fn run_agent_from_config(
+    config: &ReactBuildConfig,
     cmd: &RunCmd,
+    mut params: RunParams,
     on_event: Option<Box<dyn FnMut(TypedAnyStreamEvent) + Send>>,
-    llm_override: Option<Box<dyn LlmClient>>,
 ) -> Result<RunCompletion, RunError> {
-    let loom_opts = opts.clone();
-    let (mut config, _resolved_agent) = build_react_config(&loom_opts);
-    if opts.debug_llm {
-        eprintln!("========== [DEBUG-LLM] System Prompt ==========");
-        if let Some(ref sp) = config.system_prompt {
-            eprintln!("{}", sp);
-        }
-        eprintln!("========== [DEBUG-LLM] User Message ==========");
-        eprintln!("{}", opts.message.as_text());
-        eprintln!("================================================");
+    let mut config = config.clone();
+
+    if let RunCmd::Got { got_adaptive } = cmd {
+        config.got_config.adaptive = *got_adaptive;
     }
 
-    if opts.worktree {
-        let current_dir = config.working_folder.as_deref().unwrap_or_else(|| std::path::Path::new("."));
-        let wt_config = worktree::WorktreeConfig::default();
-        if let Ok(manager) = worktree::WorktreeManager::from_working_dir(current_dir, wt_config) {
-            if let Ok(handle) = manager.create_for_agent("top-level", None, None).await {
-                config.working_folder = Some(handle.path.clone());
-            }
-        }
-    }
-
-    if let Some(ref executor) = opts.bash_executor { config.bash_executor = Some(executor.clone()); }
-    if let Some(ref tools) = opts.extra_tools { config.extra_tools = Some(tools.clone()); }
-    if let Some(ref sid) = opts.acp_session_id { config.acp_session_id = Some(sid.clone()); }
-
-    if let RunCmd::Got { got_adaptive } = cmd { config.got_config.adaptive = *got_adaptive; }
-
-    let runner = build_runner(&config, opts, cmd, llm_override).await?;
+    let runner = build_runner(&config, cmd, &mut params).await?;
 
     let on_event: Option<Arc<Mutex<Box<dyn FnMut(TypedAnyStreamEvent) + Send>>>> =
         on_event.map(|b| Arc::new(Mutex::new(b)));
 
+    let message = &params.message;
     let result = match &runner {
         AnyRunner::React(r) => {
             let sink = on_event.clone();
@@ -161,7 +154,7 @@ pub async fn run_agent(
                 }
             });
             let outcome = r
-                .stream_with_config(opts.message.clone(), None, on_ev)
+                .stream_with_config(message.clone(), None, on_ev)
                 .await?;
             match outcome {
                 runner_common::StreamRunOutcome::Finished(state) => {
@@ -182,7 +175,7 @@ pub async fn run_agent(
                     }
                 }
             });
-            let outcome = r.stream_with_config(opts.message.clone(), None, on_ev).await?;
+            let outcome = r.stream_with_config(message.clone(), None, on_ev).await?;
             match outcome {
                 runner_common::StreamRunOutcome::Finished(state) => {
                     RunCompletion::Finished(AgentRunResult {
@@ -202,7 +195,7 @@ pub async fn run_agent(
                     }
                 }
             });
-            let outcome = r.stream_with_config(opts.message.clone(), None, on_ev).await?;
+            let outcome = r.stream_with_config(message.clone(), None, on_ev).await?;
             match outcome {
                 runner_common::StreamRunOutcome::Finished(state) => {
                     RunCompletion::Finished(AgentRunResult {
@@ -222,7 +215,7 @@ pub async fn run_agent(
                     }
                 }
             });
-            let outcome = r.stream_with_config(opts.message.clone(), None, on_ev).await?;
+            let outcome = r.stream_with_config(message.clone(), None, on_ev).await?;
             match outcome {
                 runner_common::StreamRunOutcome::Finished(state) => {
                     RunCompletion::Finished(AgentRunResult {
@@ -235,38 +228,17 @@ pub async fn run_agent(
         }
     };
 
-    if let RunCompletion::Finished(ref _run_result) = result {
-        // CLI path: spawn external review subprocess (preserves original behavior).
-        // ACP path: skip — ACP triggers in-process background review itself.
-        if opts.acp_session_id.is_none() {
-            let session_id = opts
-                .thread_id
-                .clone()
-                .or_else(|| opts.session_id.clone())
-                .unwrap_or_else(|| uuid6().to_string());
-
-            tracing::info!(
-                session_id = %session_id,
-                "Spawning background review subprocess after agent session"
-            );
-
-            loom_curator::spawn_review_after_session(
-                session_id,
-                config.model.clone(),
-            );
-        }
-    }
-
     Ok(result)
 }
 
-pub async fn run_agent_with_options(
-    opts: &RunOptions,
+pub async fn run_agent_from_config_traced(
+    config: &ReactBuildConfig,
     cmd: &RunCmd,
+    params: RunParams,
     on_event: Option<Box<dyn FnMut(TypedAnyStreamEvent) + Send>>,
+    thread_id: Option<&str>,
 ) -> Result<RunCompletion, RunError> {
-    let thread_id = opts.thread_id.clone();
-    let root_span = match thread_id.as_deref() {
+    let root_span = match thread_id {
         Some(tid) => tracing::info_span!("agent_run", thread_id = tid),
         None => {
             let id = uuid6().to_string();
@@ -274,29 +246,19 @@ pub async fn run_agent_with_options(
         }
     };
 
-    run_agent(opts, cmd, on_event, None)
+    run_agent_from_config(config, cmd, params, on_event)
         .instrument(root_span)
         .await
 }
 
-pub async fn run_agent_with_llm_override(
-    opts: &RunOptions,
-    cmd: &RunCmd,
-    on_event: Option<Box<dyn FnMut(TypedAnyStreamEvent) + Send>>,
-    llm_override: Option<Box<dyn LlmClient>>,
-) -> Result<RunCompletion, RunError> {
-    run_agent(opts, cmd, on_event, llm_override).await
-}
-
 pub async fn build_runner(
     config: &ReactBuildConfig,
-    opts: &RunOptions,
     cmd: &RunCmd,
-    llm_override: Option<Box<dyn LlmClient>>,
+    params: &mut RunParams,
 ) -> Result<AnyRunner, RunError> {
-    let config = agent::resolve_tier_and_build_config(config).await;
-    let cancellation = opts.cancellation.as_ref().map(RunCancellation::token);
-    let llm_override_provider: Option<Arc<dyn loom_llm::LlmProvider>> = llm_override.map(|llm| {
+    let config = crate::resolve_tier_and_build_config(config).await;
+    let cancellation = params.cancellation.as_ref().map(RunCancellation::token);
+    let llm_override_provider: Option<Arc<dyn loom_llm::LlmProvider>> = params.llm_override.take().map(|llm| {
         Arc::new(loom_llm::client::FixedLlmProvider {
             client: Arc::from(llm),
             model_id: "override".to_string(),
@@ -304,23 +266,23 @@ pub async fn build_runner(
     });
     match cmd {
         RunCmd::React => {
-            let r = build_react_runner(&config, llm_override_provider, opts.verbose, None, opts.any_stream_event_sender.clone()).await?;
-            Ok(AnyRunner::React(r.with_cancellation(opts.cancellation.clone())))
+            let r = build_react_runner(&config, llm_override_provider, params.verbose, params.cancellation.clone(), params.any_stream_event_sender.clone()).await?;
+            Ok(AnyRunner::React(r))
         }
         RunCmd::Dup => {
             let llm_boxed = llm_override_provider.map(|p| p.create_client(p.default_model()).unwrap());
-            let r = build_dup_runner(&config, llm_boxed, opts.verbose).await?;
-            Ok(AnyRunner::Dup(r.with_cancellation(cancellation.clone()).with_any_stream_event_sender(opts.any_stream_event_sender.clone())))
+            let r = build_dup_runner(&config, llm_boxed, params.verbose).await?;
+            Ok(AnyRunner::Dup(r.with_cancellation(cancellation.clone()).with_any_stream_event_sender(params.any_stream_event_sender.clone())))
         }
         RunCmd::Tot => {
             let llm_boxed = llm_override_provider.as_ref().map(|p| p.create_client(p.default_model()).unwrap());
-            let r = build_tot_runner(&config, llm_boxed, opts.verbose).await?;
-            Ok(AnyRunner::Tot(r.with_cancellation(cancellation.clone()).with_any_stream_event_sender(opts.any_stream_event_sender.clone())))
+            let r = build_tot_runner(&config, llm_boxed, params.verbose).await?;
+            Ok(AnyRunner::Tot(r.with_cancellation(cancellation.clone()).with_any_stream_event_sender(params.any_stream_event_sender.clone())))
         }
         RunCmd::Got { .. } => {
             let llm_boxed = llm_override_provider.as_ref().map(|p| p.create_client(p.default_model()).unwrap());
-            let r = build_got_runner(&config, llm_boxed, opts.verbose).await?;
-            Ok(AnyRunner::Got(r.with_cancellation(cancellation).with_any_stream_event_sender(opts.any_stream_event_sender.clone())))
+            let r = build_got_runner(&config, llm_boxed, params.verbose).await?;
+            Ok(AnyRunner::Got(r.with_cancellation(cancellation).with_any_stream_event_sender(params.any_stream_event_sender.clone())))
         }
     }
 }

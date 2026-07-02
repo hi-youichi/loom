@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::profile::AgentProfile;
-use crate::ReactBuildConfig;
+use crate::agent::ReactBuildConfig;
 use tool_core::BuiltinToolFilter;
 use skill::discovery::SkillRegistry;
 

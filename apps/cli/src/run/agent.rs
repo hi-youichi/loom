@@ -2,10 +2,9 @@
 //! Uses protocol format (type + payload) and optional envelope per protocol_spec.
 
 use agent::build_react_run_context;
-use agent_extensions::{DupState, GotState, TotState};
+use agent::{DupState, GotState, TotState};
 use chrono::Local;
-use loom::agent_run::{run_agent_with_options, TypedAnyStreamEvent};
-use loom::cli_run::build_react_config;
+use agent::run::{build_react_config, run_agent_from_config, RunCmd, RunParams, TypedAnyStreamEvent};
 use agent::ResolvedAgent;
 use loom_llm::ToolCall;
 use model_spec_core::resolver::{
@@ -26,13 +25,13 @@ use super::display::{
     format_dup_state_display, format_got_state_display, format_react_state_display,
     format_tot_state_display, truncate_display,
 };
-    use loom::agent_run::RunCmd;
-    use loom::cli_run::RunOptions;
+
+
 use stream_event::EnvelopeState;
 use loom_stream::StreamEvent;
 use loom_stream_display as panel_format;
 
-use super::RunError;
+use agent::run::RunError;
 
 fn load_config_providers() -> Vec<ConfigProviderEntry> {
     let full = config::load_full_config("loom").ok();
@@ -64,15 +63,15 @@ pub enum RunStopReason {
 }
 
 fn completion_reply(
-    result: loom::cli_run::RunCompletion,
+    result: agent::run::RunCompletion,
 ) -> (String, Option<String>, RunStopReason) {
     match result {
-        loom::cli_run::RunCompletion::Finished(result) => (
+        agent::run::RunCompletion::Finished(result) => (
             result.reply,
             result.reasoning_content,
             RunStopReason::EndTurn,
         ),
-        loom::cli_run::RunCompletion::Cancelled => {
+        agent::run::RunCompletion::Cancelled => {
             (String::new(), None, RunStopReason::Cancelled)
         }
     }
@@ -193,8 +192,8 @@ pub type RunAgentResult = Result<RunAgentOutput, RunError>;
 /// When `opts.output_json` is true: if `stream_out` is Some, each event is written via it and returns (reply, None);
 /// otherwise collects all events and returns (reply, Some(events)).
 pub async fn run_agent_wrapper(
-    opts: &RunOptions,
-    cmd: &RunCmd,
+    opts: &agent::RunOptions,
+    _cmd: &RunCmd,
     stream_out: Option<StreamCallback>,
 ) -> RunAgentResult {
     // Root span carrying the business `thread_id` lives in `run_agent_with_options`
@@ -252,7 +251,18 @@ pub async fn run_agent_wrapper(
                     f(v);
                 }
             });
-            let result = run_agent_with_options(opts, cmd, Some(on_event)).await?;
+            let result = run_agent_from_config(
+                &config,
+                &RunCmd::React,
+                RunParams {
+                    message: opts.message.clone(),
+                    verbose: opts.verbose,
+                    cancellation: opts.cancellation.clone(),
+                    any_stream_event_sender: opts.any_stream_event_sender.clone(),
+                    llm_override: None,
+                },
+                Some(on_event)
+            ).await?;
             let reply_env = state.lock().map(|s| s.reply_envelope()).ok();
             let (reply, reasoning_content, stop_reason) = completion_reply(result);
             return Ok(RunAgentOutput {
@@ -289,7 +299,7 @@ pub async fn run_agent_wrapper(
                 }
             }
         });
-        let result = run_agent_with_options(opts, cmd, Some(on_event)).await?;
+        let result = run_agent_from_config(&config, &RunCmd::React, RunParams { message: opts.message.clone(), verbose: opts.verbose, cancellation: opts.cancellation.clone(), any_stream_event_sender: opts.any_stream_event_sender.clone(), llm_override: None }, Some(on_event)).await?;
         let events = events.lock().map(|v| v.clone()).unwrap_or_default();
         let reply_env = state.lock().map(|s| s.reply_envelope()).ok();
         let (reply, reasoning_content, stop_reason) = completion_reply(result);
@@ -333,12 +343,12 @@ pub async fn run_agent_wrapper(
     });
 
     let start = Instant::now();
-    let result = run_agent_with_options(opts, cmd, Some(on_event)).await?;
+    let result = run_agent_from_config(&config, &RunCmd::React, RunParams { message: opts.message.clone(), verbose: opts.verbose, cancellation: opts.cancellation.clone(), any_stream_event_sender: opts.any_stream_event_sender.clone(), llm_override: None }, Some(on_event)).await?;
     let duration = start.elapsed();
 
     let outcome = match &result {
-        loom::cli_run::RunCompletion::Finished(_) => "finished",
-        loom::cli_run::RunCompletion::Cancelled => "cancelled",
+        agent::run::RunCompletion::Finished(_) => "finished",
+        agent::run::RunCompletion::Cancelled => "cancelled",
     };
     let (prompt_tokens, completion_tokens, last_node, agent) = state
         .lock()
@@ -1015,11 +1025,11 @@ fn on_event_got(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_extensions::{
+    use agent::{
         TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension, UnderstandOutput,
     };
-use loom::agent_run::RunCmd;
-use loom::cli_run::RunOptions;
+use agent::run::RunCmd;
+use agent::run::agent::RunOptions;
     use loom_llm::{message::Message, ToolCall};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
@@ -1430,8 +1440,8 @@ use loom::cli_run::RunOptions;
         assert!(res.is_ok());
     }
 
-    fn invalid_opts(output_json: bool) -> RunOptions {
-        RunOptions {
+    fn invalid_opts(output_json: bool) -> agent::RunOptions {
+        agent::RunOptions {
             message: loom_llm::message::UserContent::text("hello".to_string()),
             // Deterministic failure path in build context (invalid file-tool root).
             working_folder: Some(PathBuf::from(

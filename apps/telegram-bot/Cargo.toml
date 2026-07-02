@@ -24,12 +24,12 @@ chrono = "0.4"
 rand = "0.8"
 rusqlite = { version = "0.31", features = ["bundled"] }
 config = { path = "../../config", features = ["tracing-init"] }
-loom = { path = "../../loom" }
+agent = { path = "../../agent/agent-core" }
 checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
 tool-core = { path = "../../agent/tool/tool-core" }
 loom-stream = { path = "../../loom-stream" }
-tool-extensions = { path = "../../agent/tool/tool-extensions" }
 loom-llm = { path = "../../foundation/llm" }
+tool-extensions = { path = "../../agent/tool/tool-extensions" }
 loom-commands = { path = "../../loom-commands" }
 axum = "0.7"
 tokio-util = "0.7"

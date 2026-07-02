@@ -24,7 +24,6 @@ loom-stream = { path = "../../loom-stream" }
 
 
 
-
 checkpoint = { path = "../../foundation/checkpoint" }
 checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
 vector-store = { path = "../../experimental/vector-store" }
@@ -52,6 +51,8 @@ worktree = { path = "../../experimental/worktree" }
 loom-stream-display = { path = "../../loom-stream-display" }
 
 loom-commands = { path = "../../loom-commands" }
+
+stream-event = { path = "../../stream-event" }
 
 lsp = { path = "../../experimental/tool/lsp" }
 
@@ -95,4 +96,3 @@ task-core = { path = "../../experimental/task/task-core" }
 [dev-dependencies]
 
 tempfile = "3"
-

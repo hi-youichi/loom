@@ -7,11 +7,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
-use agent::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
+use crate::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
 use loom_graph_core::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
 use checkpoint::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use loom_llm::message::{Message, UserContent};
-use agent::runner_common::{self, load_from_checkpoint_or_build};
+use crate::runner_common::{self, load_from_checkpoint_or_build};
 use loom_stream::StreamEvent;
 use tool_core::ToolRegistryLocked;
 use loom_llm::LlmClient;
@@ -77,7 +77,7 @@ pub async fn build_tot_initial_state(
     .await
 }
 
-pub use agent::RunnerError as TotRunError;
+pub use crate::RunnerError as TotRunError;
 
 /// ToT graph runner: encapsulates compiled graph and persistence.
 pub struct TotRunner {
@@ -351,7 +351,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             &streamed,
-            agent::runner_common::StreamRunOutcome::Finished(s) if s.last_assistant_reply().is_some()
+            crate::runner_common::StreamRunOutcome::Finished(s) if s.last_assistant_reply().is_some()
         ));
         assert!(!events.lock().unwrap().is_empty());
     }

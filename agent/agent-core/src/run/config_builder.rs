@@ -2,30 +2,32 @@
 //!
 //! This module retains orchestration functions that depend on loom internals.
 //! All types live in their own crates — consumers should import directly:
-//! - Profile types → `agent::profile::*`
-//! - `load_agents_md` → `agent::load_agents_md`
-//! - `build_config_from_profile` → `agent::build_config_from_profile`
+//! - Profile types → `crate::profile::*`
+//! - `load_agents_md` → `crate::load_agents_md`
+//! - `build_config_from_profile` → `crate::build_config_from_profile`
 
-mod profile;
-mod prompt_assembly;
-mod types;
-pub use prompt_assembly::{assemble_system_prompt, SystemPromptInputs};
-pub use types::{
+
+
+
+use crate::agent::react::config::prompt_assembly::{assemble_system_prompt, SystemPromptInputs};
+pub use super::types::{
     AgentRunResult, DEFAULT_WORKING_FOLDER, ResolvedModelConfig,
-    RunCmd, RunCompletion, RunError, RunOptions,
+    RunCompletion, RunOptions,
 };
+pub use super::runner::{RunCmd, RunError};
 
-use agent::{ResolvedAgent, ReactBuildConfig};
+use crate::ResolvedAgent;
+use crate::agent::ReactBuildConfig;
 use skill::discovery::SkillRegistry;
-use agent::{EnvContext, ProjectInfo};
+use crate::{EnvContext, ProjectInfo};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use agent::load_agents_md;
+use crate::load_agents_md;
 
 // Internal profile helper — not re-exported.
-use profile::load_profile_from_options;
-use agent::profile::AgentProfile;
+use super::profile_helper::load_profile_from_options;
+use crate::profile::AgentProfile;
 
 /// Reads memory prompt from LOOM_HOME/data/memory/.
 pub fn load_memory_prompt() -> Option<String> {

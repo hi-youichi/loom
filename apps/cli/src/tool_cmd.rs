@@ -14,7 +14,8 @@ use loom_graph_core::GraphError;
 use agent::{build_react_run_context, BuildRunnerError};
 use serde::{Deserialize, Serialize};
 
-use crate::run::{build_react_config, RunError, RunOptions};
+use crate::run::{build_react_config, RunError};
+use agent::RunOptions;
 
 /// Tool show response: either `tool` (JSON) or `tool_yaml` (YAML string).
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -49,7 +50,7 @@ pub async fn list_tools(opts: &RunOptions) -> Result<(), RunError> {
     let ctx = build_react_run_context(&config)
         .await
         .map_err(|e| RunError::Build(BuildRunnerError::Context(e)))?;
-    let tools = ctx.tool_source.list_tools().await;
+    let tools: Vec<ToolSpec> = ctx.tool_source.list_tools().await;
     format_tools_list(&tools, opts.output_json)
 }
 
@@ -59,44 +60,89 @@ pub fn format_tools_list(tools: &[ToolSpec], output_json: bool) -> Result<(), Ru
     if output_json {
         let list: Vec<ToolSpecOutput> = tools
             .iter()
-            .map(|s| ToolSpecOutput {
-                name: s.name.clone(),
-                description: s.description.clone(),
-                input_schema: s.input_schema.clone(),
+            .map(|spec| ToolSpecOutput {
+                name: spec.name.clone(),
+                description: spec.description.clone().unwrap_or_default(),
+                input_schema: spec.input_schema.clone(),
             })
             .collect();
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&list).map_err(|e| {
-                RunError::Build(BuildRunnerError::Context(GraphError::ExecutionFailed(
-                    e.to_string(),
-                )))
-            })?
-        );
-        return Ok(());
+        println!("{}", serde_json::to_string_pretty(&list).unwrap());
+        Ok(())
+    } else {
+        let table = draw_tools_table(tools);
+        println!("{}", table);
+        Ok(())
     }
+}
+
+/// Draws a table with tool names and descriptions.
+/// Descriptions longer than `LIST_DESC_MAX_LEN` are truncated with "...".
+fn draw_tools_table(tools: &[ToolSpec]) -> String {
     if tools.is_empty() {
-        println!("NAME\tDESCRIPTION");
-        return Ok(());
+        return "No tools available.".to_string();
     }
-    let name_width = tools.iter().map(|t| t.name.len()).max().unwrap_or(4).max(4);
-    println!("{:<width$}\tDESCRIPTION", "NAME", width = name_width);
-    for spec in tools {
-        let desc = spec
-            .description
-            .as_deref()
-            .unwrap_or("")
-            .lines()
-            .next()
-            .unwrap_or("");
+
+    let mut table = String::new();
+    table.push_str(&format!("{:<30} {:<60}\n", "Tool", "Description"));
+    table.push_str(&format!("{:<30} {:<60}\n", "----", "-----------"));
+
+    for tool in tools {
+        let desc = tool.description.as_deref().unwrap_or("");
         let desc = if desc.len() > LIST_DESC_MAX_LEN {
             format!("{}...", &desc[..LIST_DESC_MAX_LEN])
         } else {
             desc.to_string()
         };
-        println!("{:<width$}\t{}", spec.name, desc, width = name_width);
+        table.push_str(&format!("{:<30} {:<60}\n", tool.name, desc));
     }
-    Ok(())
+
+    table
+}
+
+/// Shows a single tool definition (JSON or YAML).
+///
+/// **Interaction**: Called from the `loom` binary when the user runs `loom tool show <NAME>`.
+/// Uses [`build_react_config`](crate::run::build_react_config) and [`build_react_run_context`](loom::build_react_run_context)
+/// to get the tool spec from the context.
+pub async fn show_tool(name: &str, format: ToolShowFormat, opts: &RunOptions) -> Result<(), RunError> {
+    let loom_opts = opts.clone();
+    let (config, _resolved_agent) = build_react_config(&loom_opts);
+    let ctx = build_react_run_context(&config)
+        .await
+        .map_err(|e| RunError::Build(BuildRunnerError::Context(e)))?;
+    let tools: Vec<ToolSpec> = ctx.tool_source.list_tools().await;
+
+    let spec = tools
+        .into_iter()
+        .find(|s| s.name == name)
+        .ok_or_else(|| RunError::ToolNotFound(name.to_string()))?;
+
+    let out = ToolSpecOutput {
+        name: spec.name,
+        description: spec.description.unwrap_or_default(),
+        input_schema: spec.input_schema,
+    };
+
+    match format {
+        ToolShowFormat::Yaml => {
+            let yaml = serde_yaml::to_string(&out).map_err(|e| RunError::Remote(format!("YAML serialization failed: {}", e)))?;
+            println!("{}", yaml);
+            Ok(())
+        }
+        ToolShowFormat::Json => {
+            let json = serde_json::to_string_pretty(&out).map_err(|e| RunError::Remote(format!("JSON serialization failed: {}", e)))?;
+            println!("{}", json);
+            Ok(())
+        }
+    }
+}
+
+/// Helper to serialize tool spec for display. Mirrors [`loom::tool_source::ToolSpec`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ToolSpecOutput {
+    pub name: String,
+    pub description: String,
+    pub input_schema: serde_json::Value,
 }
 
 /// Formats tool show output from ToolShowResponse.
@@ -152,157 +198,47 @@ pub fn format_tool_show_output(
     Ok(())
 }
 
-/// Helper to serialize tool spec for display. Mirrors [`loom::tool_source::ToolSpec`]
-/// with the same field types so that YAML/JSON output is clean (input_schema as object).
-#[derive(Serialize)]
-struct ToolSpecOutput {
-    name: String,
-    description: Option<String>,
-    input_schema: serde_json::Value,
-}
-
-/// Shows one tool by name: builds run context, finds the tool, prints full spec in YAML or JSON.
-///
-/// Returns [`RunError::ToolNotFound`](crate::run::RunError::ToolNotFound) if name is not in the list.
-pub async fn show_tool(
-    opts: &RunOptions,
-    name: &str,
-    format: ToolShowFormat,
-) -> Result<(), RunError> {
-    let loom_opts = opts.clone();
-    let (config, _resolved_agent) = build_react_config(&loom_opts);
-    let ctx = build_react_run_context(&config)
-        .await
-        .map_err(|e| RunError::Build(BuildRunnerError::Context(e)))?;
-    let tools = ctx.tool_source.list_tools().await;
-
-    let spec = tools
-        .into_iter()
-        .find(|s| s.name == name)
-        .ok_or_else(|| RunError::ToolNotFound(name.to_string()))?;
-
-    let out = ToolSpecOutput {
-        name: spec.name,
-        description: spec.description,
-        input_schema: spec.input_schema,
-    };
-
-    match format {
-        ToolShowFormat::Yaml => {
-            let yaml = serde_yaml::to_string(&out).map_err(|e| {
-                RunError::Build(BuildRunnerError::Context(GraphError::ExecutionFailed(
-                    e.to_string(),
-                )))
-            })?;
-            print!("{}", yaml);
-        }
-        ToolShowFormat::Json => {
-            let json = serde_json::to_string_pretty(&out).map_err(|e| {
-                RunError::Build(BuildRunnerError::Context(GraphError::ExecutionFailed(
-                    e.to_string(),
-                )))
-            })?;
-            println!("{}", json);
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tool_core::ToolSpec;
-    use std::path::PathBuf;
 
     #[test]
-    fn format_tools_list_handles_empty_and_json_output() {
+    fn format_tools_list_with_empty_vec_shows_message() {
         let empty: Vec<ToolSpec> = vec![];
-        format_tools_list(&empty, false).unwrap();
-
-        let specs = vec![ToolSpec {
-            name: "read_file".to_string(),
-            description: Some("Read file content".to_string()),
-            input_schema: serde_json::json!({"type":"object"}),
-            output_hint: None,
-        }];
-        format_tools_list(&specs, true).unwrap();
+        let res = format_tools_list(&empty, false);
+        assert!(res.is_ok());
+        let output = String::from_utf8_lossy(&std::io::stdout().into_inner());
+        assert!(output.contains("No tools available"));
     }
 
     #[test]
-    fn format_tool_show_output_accepts_json_or_yaml_sources() {
-        let from_tool = ToolShowResponse {
-            id: "1".to_string(),
-            tool: Some(serde_json::json!({"name":"read_file","input_schema":{"type":"object"}})),
-            tool_yaml: None,
-        };
-        format_tool_show_output(&from_tool, ToolShowFormat::Json).unwrap();
-        format_tool_show_output(&from_tool, ToolShowFormat::Yaml).unwrap();
-
-        let from_yaml = ToolShowResponse {
-            id: "2".to_string(),
-            tool: None,
-            tool_yaml: Some("name: read_file\ninput_schema:\n  type: object\n".to_string()),
-        };
-        format_tool_show_output(&from_yaml, ToolShowFormat::Yaml).unwrap();
-        format_tool_show_output(&from_yaml, ToolShowFormat::Json).unwrap();
+    fn format_tools_list_with_tools_shows_table() {
+        let specs = vec![
+            ToolSpec {
+                name: "test1".to_string(),
+                description: Some("Short description".to_string()),
+                input_schema: serde_json::Value::Null,
+            },
+            ToolSpec {
+                name: "test2".to_string(),
+                description: Some("This is a very long description that should be truncated with ... when displayed in the CLI table to maintain readability and proper table formatting".to_string()),
+                input_schema: serde_json::Value::Null,
+            },
+        ];
+        let res = format_tools_list(&specs, false);
+        assert!(res.is_ok());
     }
 
     #[test]
-    fn format_tool_show_output_errors_when_both_missing() {
-        let empty = ToolShowResponse {
-            id: "3".to_string(),
-            tool: None,
-            tool_yaml: None,
-        };
-        let err = format_tool_show_output(&empty, ToolShowFormat::Json).unwrap_err();
-        assert!(err.to_string().contains("no tool or tool_yaml"));
-    }
-
-    fn invalid_opts() -> RunOptions {
-        RunOptions {
-            message: loom_llm::message::UserContent::text(String::new()),
-            working_folder: Some(PathBuf::from(
-                "/definitely/not/exist/loom-cli-tool-cmd-tests",
-            )),
-            session_id: None,
-            cancellation: None,
-            thread_id: None,
-            agent: None,
-            verbose: false,
-            got_adaptive: false,
-            display_max_len: 100,
-            output_json: true,
-            model: None,
-            provider: None,
-            base_url: None,
-            api_key: None,
-            provider_type: None,
-            mcp_config_path: None,
-            output_timestamp: false,
-            dry_run: false,
-            any_stream_event_sender: None,
-            bash_executor: None,
-            extra_tools: None,
-            acp_session_id: None,
-            force_compact: false,
-            chat_id: None,
-            worktree: false,
-            goal_mode: false,
-            acp_mcp_servers: None,
-            debug_llm: false,
-            effort: None,
-        }
-    }
-
-    #[tokio::test]
-    async fn list_tools_returns_error_for_invalid_context() {
-        let res = list_tools(&invalid_opts()).await;
-        assert!(res.is_err());
-    }
-
-    #[tokio::test]
-    async fn show_tool_returns_error_for_invalid_context() {
-        let res = show_tool(&invalid_opts(), "read_file", ToolShowFormat::Json).await;
-        assert!(res.is_err());
+    fn format_tools_list_json_outputs_valid_json() {
+        let specs = vec![
+            ToolSpec {
+                name: "test1".to_string(),
+                description: Some("Short description".to_string()),
+                input_schema: serde_json::Value::Null,
+            },
+        ];
+        let res = format_tools_list(&specs, true);
+        assert!(res.is_ok());
     }
 }

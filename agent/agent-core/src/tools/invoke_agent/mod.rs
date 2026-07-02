@@ -51,7 +51,7 @@ use serde_json::Value;
 
 use crate::profile::list_available_profiles;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool};
-use crate::ReactBuildConfig;
+use crate::agent::ReactBuildConfig;
 use crate::tool_output_normalizer::{ToolOutputHint, ToolOutputStrategy};
 
 pub use tool_core::tool_name::TOOL_INVOKE_AGENT;

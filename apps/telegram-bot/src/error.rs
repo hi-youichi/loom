@@ -1,4 +1,4 @@
-﻿use thiserror::Error;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum BotError {
@@ -18,7 +18,7 @@ pub enum BotError {
     Agent(String),
 
     #[error("Agent run error: {0}")]
-    AgentRun(#[from] loom::agent_run::RunError),
+    AgentRun(#[from] agent::run::RunError),
 
     #[error("SQLite error: {0}")]
     Sqlite(#[from] rusqlite::Error),

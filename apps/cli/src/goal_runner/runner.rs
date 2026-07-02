@@ -14,7 +14,7 @@ use agent::goal_runner::state::{
     DEFAULT_MAX_ITERATIONS, MAX_CONSECUTIVE_FAILURES, MAX_HISTORY_ENTRIES,
 };
 use super::tool::CodingTool;
-use loom::agent_run::TypedAnyStreamEvent as FullTypedAnyStreamEvent;
+use agent::run::TypedAnyStreamEvent as FullTypedAnyStreamEvent;
 
 /// Fraction of token budget remaining that triggers the budget-limit prompt.
 const BUDGET_WARNING_FRACTION: f64 = 0.2;
@@ -592,7 +592,7 @@ fn resolve_tool(
             if let Some(ref sender) = event_sender {
                 let sender = sender.clone();
                 let adapted: Arc<dyn Fn(FullTypedAnyStreamEvent) + Send + Sync> = Arc::new(move |ev: FullTypedAnyStreamEvent| {
-                    if let Some(cli_ev) = loom::agent_run::to_loom_any_stream_event(&ev) {
+                    if let Some(cli_ev) = agent::run::to_loom_any_stream_event(&ev) {
                         sender(cli_ev);
                     }
                 });

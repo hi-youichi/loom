@@ -8,7 +8,7 @@ use model_spec_core::{
     registry::ModelEntry,
 };
 
-use crate::ReactBuildConfig;
+use crate::agent::ReactBuildConfig;
 
 /// Resolve `model_tier` in the config using the default resolver, returning a new config.
 pub async fn resolve_tier_and_build_config(config: &ReactBuildConfig) -> ReactBuildConfig {

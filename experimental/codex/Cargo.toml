@@ -11,7 +11,8 @@ name = "loom-codex"
 path = "src/main.rs"
 
 [dependencies]
-loom = { path = "../../loom" }
+agent = { path = "../../agent/agent-core" }
+tool-core = { path = "../../agent/tool/tool-core" }
 loom-llm = { path = "../../foundation/llm" }
 loom-stream = { path = "../../loom-stream" }
 config = { path = "../../config" }

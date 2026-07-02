@@ -13,7 +13,10 @@
 
 #[allow(clippy::module_inception)]
 mod agent;
+pub mod dup;
+pub mod got;
 pub mod react;
+pub mod tot;
 
 pub use agent::{Agent, AgentConfig, AgentError, AgentEvent, AgentResult};
 pub use react::*;

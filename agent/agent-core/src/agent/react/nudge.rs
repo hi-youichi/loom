@@ -11,7 +11,7 @@
 //! Loom's graph runner is stateless across invocations, so this struct carries the mutable counters
 //! that a higher-level conversation coordinator (CLI / ACP / goal runner) holds between turns.
 
-use crate::ReactBuildConfig;
+use crate::agent::ReactBuildConfig;
 
 /// Snapshot of which nudge-relevant tools are available in the current tool registry.
 ///

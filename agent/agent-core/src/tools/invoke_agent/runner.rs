@@ -7,7 +7,7 @@ use serde_json::Value;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::invoke_agent::build_config::build_config_from_profile;
 use crate::profile::resolve_profile;
-use crate::ReactBuildConfig;
+use crate::agent::ReactBuildConfig;
 use crate::agent::react::tier_apply::resolve_tier_and_build_config;
 use crate::agent::react::build::build_react_runner;
 

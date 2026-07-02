@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use agent::EnvContext;
+use crate::EnvContext;
 
 /// Default ReAct base system prompt when no `react.yaml` / `REACT_SYSTEM_PROMPT` override.
 ///

@@ -8,8 +8,8 @@ use crate::streaming::event_mapper::StreamEventMapper;
 use crate::streaming::message_handler::StreamCommand;
 use crate::traits::{AgentRunContext, MessageSender};
 use tool_extensions::set_current_chat_id;
-use loom::agent_run::{run_agent_with_options, RunCmd};
-use loom::cli_run::{RunCompletion, RunOptions};
+use agent::run::{build_react_config, run_agent_from_config, RunCmd, RunParams};
+use agent::run::{RunCompletion, RunOptions};
 
 use loom_llm::message::UserContent;
 use std::path::PathBuf;
@@ -84,7 +84,19 @@ pub async fn run_loom_agent_streaming(
     let mapper = StreamEventMapper::new(tx.clone());
     let on_event = mapper.boxed_callback();
 
-    let result = run_agent_with_options(&opts, &RunCmd::React, Some(on_event)).await;
+    let (config, _) = build_react_config(&opts);
+    let result = run_agent_from_config(
+        &config,
+        &RunCmd::React,
+        RunParams {
+            message: opts.message.clone(),
+            verbose: opts.verbose,
+            cancellation: opts.cancellation.clone(),
+            any_stream_event_sender: opts.any_stream_event_sender.clone(),
+            llm_override: None,
+        },
+        Some(on_event)
+    ).await;
 
     let completion = result?;
 

@@ -4,8 +4,6 @@ resolver = "2"
 
 members = [
 
-    "loom",
-
     "foundation/llm",
 
     "experimental/tool/lsp",
@@ -24,8 +22,6 @@ members = [
     "config",
 
     "foundation/model-spec-core",
-
-    "loom-examples",
 
     "apps/cli",
 
@@ -47,8 +43,6 @@ members = [
 
     "agent/agent-core",
 
-    "agent/agent-extensions",
-
     "agent/compress",
 
     "loom-commands",
@@ -66,7 +60,6 @@ members = [
     "experimental/curator",
 
     "loom-stream-display",
-
 
 
 
@@ -145,4 +138,3 @@ incremental = true
 opt-level = 0
 
 debug = 2
-

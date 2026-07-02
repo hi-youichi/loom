@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 
 use loom_graph_core::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
 use checkpoint::{CheckpointError, Checkpointer, RunnableConfig, Store};
-use agent::runner_common;
+use crate::runner_common;
 use loom_stream::StreamEvent;
 use tool_core::ToolRegistryLocked;
 use loom_llm::LlmClient;
@@ -55,7 +55,7 @@ pub async fn build_got_initial_state(
     })
 }
 
-pub use agent::RunnerError as GotRunError;
+pub use crate::RunnerError as GotRunError;
 
 /// GoT graph runner: encapsulates compiled graph and optional persistence.
 pub struct GotRunner {
@@ -288,7 +288,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             &streamed,
-            agent::runner_common::StreamRunOutcome::Finished(s) if !s.task_graph.nodes.is_empty()
+            crate::runner_common::StreamRunOutcome::Finished(s) if !s.task_graph.nodes.is_empty()
         ));
         assert!(!events.lock().unwrap().is_empty());
     }

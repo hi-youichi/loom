@@ -15,9 +15,7 @@ name = "loom"
 path = "src/main.rs"
 
 [dependencies]
-loom = { path = "../../loom" }
 agent = { path = "../../agent/agent-core" }
-agent-extensions = { path = "../../agent/agent-extensions" }
 loom-llm = { path = "../../foundation/llm" }
 loom-graph-core = { path = "../../foundation/graph-core" }
 

@@ -1,6 +1,6 @@
 //! CLI wrapper for background review.
 
-pub use loom::background_review::workflow::{
+pub use agent::background_review::workflow::{
     BackgroundReviewConfig, BackgroundReviewHandle,
     build_background_config_from_opts,
     ReviewOutputFn,
@@ -18,7 +18,7 @@ pub fn spawn_background_review(
     let on_output: ReviewOutputFn = std::sync::Arc::new(|msg: &str| {
         eprintln!("\n📚 {}", msg);
     });
-    loom::background_review::spawn_background_review(
+    agent::background_review::spawn_background_review(
         config, session_content, session_id, Some(on_output),
     );
 }

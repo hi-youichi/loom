@@ -6,8 +6,8 @@ use std::sync::Arc;
 use serde_json::json;
 use tokio::sync::{mpsc, Mutex};
 
-use loom::agent_run::{RunCmd, run_agent_with_options};
-use loom::cli_run::{RunOptions, RunCompletion};
+use agent::run::{build_react_config, run_agent_from_config, RunCmd, RunParams, RunOptions, RunCompletion, RunError};
+use tool_core::active_operation::RunCancellation;
 use loom_llm::message::UserContent;
 use stream_event::codex::{CodexErrorInfo, CodexEvent, CodexUsage};
 
@@ -316,7 +316,7 @@ impl CodexAgent {
             }
 
             // Set up cancellation
-            let run_cancellation = loom::agent_run::RunCancellation::new(0);
+            let run_cancellation = RunCancellation::new(0);
             let cancel_flag_clone = cancel_flag.clone();
             let token = run_cancellation.token();
             run_opts.cancellation = Some(run_cancellation);
@@ -351,12 +351,12 @@ impl CodexAgent {
                 });
             }
 
-            let on_event: Box<dyn FnMut(loom::agent_run::TypedAnyStreamEvent) + Send> = {
+            let on_event: Box<dyn FnMut(agent::run::TypedAnyStreamEvent) + Send> = {
                 let output_tx_ev = output_tx_ev.clone();
                 let approval_manager_ev = approval_manager_ev.clone();
                 let tracker = tracker.clone();
                 let thread_log = thread_log.clone();
-                Box::new(move |ev: loom::agent_run::TypedAnyStreamEvent| {
+                Box::new(move |ev: agent::run::TypedAnyStreamEvent| {
                     let output_tx_ev = output_tx_ev.clone();
                     let approval_manager_ev = approval_manager_ev.clone();
                     let tracker = tracker.clone();
@@ -388,8 +388,19 @@ impl CodexAgent {
                 })
             };
 
-            let result =
-                run_agent_with_options(&run_opts, &RunCmd::React, Some(on_event)).await;
+            let (config, _) = build_react_config(&run_opts);
+            let result: Result<RunCompletion, RunError> = run_agent_from_config(
+                &config,
+                &RunCmd::React,
+                RunParams {
+                    message: run_opts.message.clone(),
+                    verbose: run_opts.verbose,
+                    cancellation: run_opts.cancellation.clone(),
+                    any_stream_event_sender: run_opts.any_stream_event_sender.clone(),
+                    llm_override: None,
+                },
+                Some(on_event)
+            ).await;
 
             match result {
                 Ok(RunCompletion::Finished(_run_result)) => {

@@ -26,9 +26,9 @@ use loom_stream::state::ReActState;
 
 use chrono::DateTime;
 use config::load_full_config;
-use loom::agent_run::{run_agent_with_options, RunCmd, RunError};
-use loom::cli_run::{RunCompletion, RunOptions};
-use loom::agent_run::TypedAnyStreamEvent;
+use agent::run::{build_react_config, run_agent_from_config, RunCmd, RunParams, RunError};
+use agent::run::{RunCompletion, RunOptions};
+use agent::run::TypedAnyStreamEvent;
 use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -189,11 +189,11 @@ impl LoomAcpAgent {
     async fn resolve_model_with_tier_awareness(
         &self,
         session_config: &crate::session::SessionConfig,
-    ) -> loom::cli_run::ResolvedModelConfig {
+    ) -> agent::run::ResolvedModelConfig {
         let start_time = std::time::Instant::now();
 
         if let Some(ref acp_model) = session_config.model {
-            let resolved = loom::cli_run::resolve_model_config(Some(acp_model)).await;
+            let resolved = agent::run::resolve_model_config(Some(acp_model)).await;
             tracing::info!(
                 acp_model = %acp_model,
                 agent = %session_config.current_agent,
@@ -211,7 +211,7 @@ impl LoomAcpAgent {
         {
             if let Some(model_config) = profile.model {
                 if let Some(ref model_name) = model_config.name {
-                    let resolved = loom::cli_run::resolve_model_config(Some(model_name)).await;
+                    let resolved = agent::run::resolve_model_config(Some(model_name)).await;
                     tracing::info!(
                         model = %model_name,
                         agent = %session_config.current_agent,
@@ -234,7 +234,7 @@ impl LoomAcpAgent {
                     let resolved_config = agent::resolve_tier_and_build_config(&config).await;
 
                     if resolved_config.model.is_some() {
-                        let resolved = loom::cli_run::ResolvedModelConfig {
+                        let resolved = agent::run::ResolvedModelConfig {
                             model: resolved_config.model.clone(),
                             provider: resolved_config.llm_provider.clone(),
                             base_url: resolved_config.openai_base_url.clone(),
@@ -272,7 +272,7 @@ impl LoomAcpAgent {
             if let Some(ref pname) = full_config.default_provider {
                 if let Some(p) = full_config.providers.iter().find(|p| p.name == *pname) {
                     if let Some(ref model_name) = p.model {
-                        let mut resolved = loom::cli_run::resolve_model_config(Some(model_name)).await;
+                        let mut resolved = agent::run::resolve_model_config(Some(model_name)).await;
                         if resolved.model.is_some() {
                             if resolved.api_key.is_none() {
                                 resolved.api_key = p.api_key.clone();
@@ -289,7 +289,7 @@ impl LoomAcpAgent {
                             return resolved;
                         }
                     }
-                    return loom::cli_run::ResolvedModelConfig {
+                    return agent::run::ResolvedModelConfig {
                         model: p.model.clone(),
                         provider: Some(p.name.clone()),
                         base_url: p.base_url.clone(),
@@ -302,7 +302,7 @@ impl LoomAcpAgent {
         }
 
         let default_model = config::default_model();
-        loom::cli_run::resolve_model_config(Some(&default_model)).await
+        agent::run::resolve_model_config(Some(&default_model)).await
     }
 
     fn apply_session_mode(
@@ -717,7 +717,7 @@ Ok(SetSessionModeResponse::new())
                         let working_folder = entry
                             .working_directory
                             .clone()
-                            .unwrap_or_else(|| PathBuf::from(loom::cli_run::DEFAULT_WORKING_FOLDER));
+                            .unwrap_or_else(|| PathBuf::from(agent::run::DEFAULT_WORKING_FOLDER));
 
                         let resolved_goal = self.resolve_model_with_tier_awareness(&entry.session_config).await;
                         let goal_ctx_window = resolve_context_window_size(resolved_goal.model.as_deref()).await;
@@ -823,7 +823,7 @@ Ok(SetSessionModeResponse::new())
         let working_folder = entry
             .working_directory
             .clone()
-            .unwrap_or_else(|| PathBuf::from(loom::cli_run::DEFAULT_WORKING_FOLDER));
+            .unwrap_or_else(|| PathBuf::from(agent::run::DEFAULT_WORKING_FOLDER));
 
         let resolved = self
             .resolve_model_with_tier_awareness(&entry.session_config)
@@ -907,7 +907,19 @@ Ok(SetSessionModeResponse::new())
             }
         };
 
-        let result = run_agent_with_options(&opts, &RunCmd::React, on_event).await;
+        let (config, _) = build_react_config(&opts);
+        let result = run_agent_from_config(
+            &config,
+            &RunCmd::React,
+            RunParams {
+                message: opts.message.clone(),
+                verbose: opts.verbose,
+                cancellation: opts.cancellation.clone(),
+                any_stream_event_sender: opts.any_stream_event_sender.clone(),
+                llm_override: None,
+            },
+            on_event
+        ).await;
         self.sessions.finish_prompt(&key, cancellation.generation());
 
         match result {
@@ -1159,7 +1171,7 @@ Ok(SetSessionModeResponse::new())
                 // Convert cwd: Option<String> to PathBuf string (use default if None)
                 let cwd_str = s
                     .cwd
-                    .unwrap_or_else(|| loom::cli_run::DEFAULT_WORKING_FOLDER.to_string());
+                    .unwrap_or_else(|| agent::run::DEFAULT_WORKING_FOLDER.to_string());
                 let cwd_path = std::path::PathBuf::from(&cwd_str);
 
                 let mut session_json = serde_json::json!({

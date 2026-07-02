@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fmt::Debug;
-use stream_event::{
+use crate::{
     to_json as stream_event_to_json, EnvelopeState, MessageChunkKind, ProtocolEvent, StreamEvent,
     StreamMetadata,
 };

@@ -28,7 +28,7 @@ pub struct TotCandidate {
 ///
 /// Used by ThinkExpand (writes `candidates`), ThinkEvaluate (writes `scores`,
 /// `chosen_index`), and select condition / Backtrack (read `chosen_index`,
-/// `tried_indices`). Interacts with [`TotState`] and nodes in `crate::agent::tot`.
+/// `tried_indices`). Interacts with [`TotState`] and nodes in `crate::crate::tot`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TotExtension {
     /// Current depth in the thought tree (incremented each expand round).

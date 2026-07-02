@@ -3,10 +3,10 @@
 use std::sync::Arc;
 
 use loom_llm::LlmClient;
-use agent::ReactBuildConfig;
+use crate::agent::ReactBuildConfig;
 
 use crate::dup::{DupRunner, DupState};
-use agent::agent::react::build::{
+use crate::agent::react::build::{
     build_react_run_context, build_default_llm_with_tool_source, resolve_memory_db_path,
     build_checkpointer_for_state, BuildRunnerError,
     BoxedLlmClient,

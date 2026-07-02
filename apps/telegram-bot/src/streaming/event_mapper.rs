@@ -18,7 +18,7 @@ impl StreamEventMapper {
         Arc::new(Self { _tx: tx })
     }
 
-    pub(crate) fn boxed_callback(self: &Arc<Self>) -> Box<dyn FnMut(loom::agent_run::TypedAnyStreamEvent) + Send> {
+    pub(crate) fn boxed_callback(self: &Arc<Self>) -> Box<dyn FnMut(agent::run::TypedAnyStreamEvent) + Send> {
         let _inner = Arc::clone(self);
         Box::new(move |_ev| {
             // Intentionally empty: no intermediate display.
