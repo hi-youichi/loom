@@ -20,7 +20,7 @@ tool-core = { path = "../tool-core" }
 loom-llm = { path = "../../../foundation/llm" }
 loom-util = { path = "../../../foundation/loom-util" }
 skill = { path = "../../skill" }
-config = { path = "../../../config" }
+config = { path = "../../../foundation/config" }
 
 rmcp = { version = "0.16", features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
 

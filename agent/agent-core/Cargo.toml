@@ -44,7 +44,7 @@ worktree = { path = "../../experimental/worktree" }
 
 
 
-stream-event = { path = "../../stream-event" }
+stream-event = { path = "../../foundation/stream-event" }
 
 lsp = { path = "../../experimental/tool/lsp" }
 
@@ -75,7 +75,7 @@ futures = "0.3"
 
 futures-util = "0.3"
 
-env-config = { path = "../../config", package = "config" }
+env-config = { path = "../../foundation/config", package = "config" }
 
 model-spec-core = { path = "../../foundation/model-spec-core", features = ["tier"] }
 

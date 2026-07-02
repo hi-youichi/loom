@@ -26,10 +26,11 @@
 use std::fmt::Debug;
 use std::sync::Mutex;
 
-use crate::message::{MessageChunk, StreamSink};
+use crate::types::message::{MessageChunk, StreamSink};
 use tokio::sync::mpsc;
 
-use crate::{StreamEvent, StreamMetadata};
+use crate::types::stream_event::StreamEvent;
+use crate::types::metadata::StreamMetadata;
 
 /// Sink that converts `MessageChunk`s into `StreamEvent::Messages` and forwards them
 /// to a `mpsc::Sender<StreamEvent<S>>`.
@@ -98,7 +99,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::message::MessageChunk;
+    use crate::types::message::MessageChunk;
     use std::sync::Arc;
 
     #[derive(Clone, Debug)]
@@ -118,7 +119,7 @@ mod tests {
         match ev {
             StreamEvent::Messages { chunk, metadata } => {
                 assert_eq!(chunk.content, "hello");
-                assert_eq!(chunk.kind, crate::message::MessageChunkKind::Message);
+                assert_eq!(chunk.kind, crate::types::message::MessageChunkKind::Message);
                 assert_eq!(metadata.loom_node, "think");
                 assert!(metadata.namespace.is_none());
             }

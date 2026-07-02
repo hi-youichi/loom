@@ -18,7 +18,7 @@ loom-llm = { path = "../../foundation/llm" }
 
 
 # Config crate for loom_home
-env_config = { path = "../../config", package = "config" }
+env_config = { path = "../../foundation/config", package = "config" }
 
 # SQLite for review history persistence
 rusqlite = { version = "0.31", features = ["bundled"] }

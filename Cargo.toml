@@ -19,13 +19,13 @@ members = [
 
     "foundation/pregel",
 
-    "config",
+    "foundation/config",
 
     "foundation/model-spec-core",
 
     "apps/cli",
 
-    "stream-event",
+    "foundation/stream-event",
 
 
 

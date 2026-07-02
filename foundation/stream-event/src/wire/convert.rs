@@ -5,10 +5,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fmt::Debug;
-use crate::{
-    to_json as stream_event_to_json, EnvelopeState, MessageChunkKind, ProtocolEvent, StreamEvent,
-    StreamMetadata,
-};
+use crate::wire::envelope::{to_json as stream_event_to_json, EnvelopeState};
+use crate::wire::protocol::ProtocolEvent;
+use crate::types::stream_event::StreamEvent;
+use crate::types::metadata::StreamMetadata;
+use crate::types::message::MessageChunkKind;
 
 // ---------------------------------------------------------------------------
 // ProtocolEventEnvelope (from responses.rs)

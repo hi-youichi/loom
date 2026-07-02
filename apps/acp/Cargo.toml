@@ -20,10 +20,10 @@ checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
 tool-core = { path = "../../agent/tool/tool-core" }
 tool-basic = { path = "../../agent/tool/tool-basic" }
 model-spec-core = { path = "../../foundation/model-spec-core", features = ["tier"] }
-stream-event = { path = "../../stream-event" }
+stream-event = { path = "../../foundation/stream-event" }
 
 loom-curator = { path = "../../experimental/curator" }
-config = { path = "../../config", features = ["tracing-init"] }
+config = { path = "../../foundation/config", features = ["tracing-init"] }
 task-core = { path = "../../experimental/task/task-core" }
 loom-util = { path = "../../foundation/loom-util" }
 agent-client-protocol = { version = "0.15.1", features = ["unstable_boolean_config", "unstable_session_fork", "unstable_cancel_request", "unstable_model_config_category", "unstable_end_turn_token_usage"] }

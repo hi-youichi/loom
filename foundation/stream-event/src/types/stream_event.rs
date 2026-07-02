@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use crate::{CheckpointEvent, StreamMetadata};
-use crate::message::MessageChunk;
+use crate::types::metadata::{CheckpointEvent, StreamMetadata};
+use crate::types::message::MessageChunk;
 use serde_json::Value;
 use std::fmt::Debug;
 

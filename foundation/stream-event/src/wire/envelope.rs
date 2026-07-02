@@ -1,7 +1,7 @@
 //! Envelope (session_id, node_id, event_id) per protocol_spec §2 / §7.1.
 //! EnvelopeState tracks current node and injects envelope into each event.
 
-use crate::event::ProtocolEvent;
+use crate::wire::protocol::ProtocolEvent;
 use serde_json::Value;
 
 /// Envelope fields recommended for each message (protocol_spec §2, §7.1).
@@ -140,7 +140,6 @@ pub fn to_json(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event::ProtocolEvent;
     use serde_json::json;
 
     #[test]

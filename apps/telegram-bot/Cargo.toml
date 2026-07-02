@@ -23,7 +23,7 @@ anyhow = "1.0"
 chrono = "0.4"
 rand = "0.8"
 rusqlite = { version = "0.31", features = ["bundled"] }
-config = { path = "../../config", features = ["tracing-init"] }
+config = { path = "../../foundation/config", features = ["tracing-init"] }
 agent = { path = "../../agent/agent-core" }
 checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
 tool-core = { path = "../../agent/tool/tool-core" }

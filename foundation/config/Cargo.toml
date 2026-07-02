@@ -26,7 +26,7 @@ tracing-subscriber = { version = "0.3", optional = true, features = [
 ] }
 tracing-appender = { version = "0.2", optional = true }
 tracing-core = { version = "0.1", optional = true }
-model-spec-core = { path = "../foundation/model-spec-core" }
+model-spec-core = { path = "../model-spec-core" }
 dirs = "5.0"
 chrono = { version = "0.4", optional = true }
 

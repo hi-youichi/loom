@@ -9,7 +9,7 @@ license.workspace = true
 # Core dependencies
 loom-graph-core = { path = "../graph-core" }
 checkpoint = { path = "../checkpoint" }
-stream-event = { path = "../../stream-event" }
+stream-event = { path = "../stream-event" }
 
 # Async runtime
 tokio = { workspace = true }

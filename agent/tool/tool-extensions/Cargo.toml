@@ -17,7 +17,7 @@ serde_json = "1.0"
 
 loom-llm = { path = "../../../foundation/llm" }
 lsp = { path = "../../../experimental/tool/lsp" }
-config = { path = "../../../config" }
+config = { path = "../../../foundation/config" }
 
 tool-core = { path = "../tool-core" }
 

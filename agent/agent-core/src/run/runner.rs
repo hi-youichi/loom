@@ -19,10 +19,10 @@ use crate::agent::tot::build::build_tot_runner;
 use crate::agent::tot::{TotRunner, TotState};
 use loom_llm::LlmClient;
 use loom_llm::support::uuid6::uuid6;
-use stream_event::convert::{
+use stream_event::wire::convert::{
     stream_event_to_format_a, stream_event_to_protocol_envelope, ProtocolEventEnvelope,
 };
-use stream_event::envelope::EnvelopeState;
+use stream_event::wire::envelope::EnvelopeState;
 use crate::agent::ReactBuildConfig;
 use stream_event::StreamEvent;
 use tool_core::active_operation::RunCancellation;

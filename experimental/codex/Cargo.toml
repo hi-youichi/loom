@@ -14,8 +14,8 @@ path = "src/main.rs"
 agent = { path = "../../agent/agent-core" }
 tool-core = { path = "../../agent/tool/tool-core" }
 loom-llm = { path = "../../foundation/llm" }
-config = { path = "../../config" }
-stream-event = { path = "../../stream-event" }
+config = { path = "../../foundation/config" }
+stream-event = { path = "../../foundation/stream-event" }
 
 tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }

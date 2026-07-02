@@ -10,7 +10,7 @@ tracing = "0.1"
 thiserror = "2.0"
 fs4 = "0.12"
 uuid = { version = "1", features = ["v4"] }
-env-config = { path = "../../config", package = "config" }
+env-config = { path = "../../foundation/config", package = "config" }
 regex = "1"
 
 [dev-dependencies]

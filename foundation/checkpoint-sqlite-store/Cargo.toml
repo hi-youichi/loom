@@ -9,7 +9,7 @@ authors.workspace = true
 [dependencies]
 checkpoint = { path = "../checkpoint" }
 loom-llm = { path = "../llm" }
-env_config = { path = "../../config", package = "config" }
+env_config = { path = "../config", package = "config" }
 rusqlite = { version = "0.31", features = ["bundled"] }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
