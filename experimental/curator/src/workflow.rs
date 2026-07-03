@@ -6,6 +6,7 @@
 use super::curator::{Curator, CuratorConfig};
 use super::skill_registry::{default_path as skills_default_path, SkillRegistry};
 use agent::ReactBuildConfig;
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 use tracing::{info, warn};
@@ -18,21 +19,92 @@ fn pending_reviews() -> &'static Arc<PendingReviewRegistry> {
     PENDING_REVIEWS.get_or_init(|| Arc::new(PendingReviewRegistry::new()))
 }
 
+/// Access the global `PendingReviewRegistry`.
+///
+/// Initialized lazily on first call. Exposed for cross-crate callers
+/// (e.g. `apps/acp/src/review_runner.rs`) that need per-session review
+/// deduplication across the whole process.
+pub fn global_registry() -> &'static Arc<PendingReviewRegistry> {
+    pending_reviews()
+}
+
 /// Registry of pending background review handles.
+///
+/// Two complementary responsibilities:
+/// - `push` / `wait_all` track spawned tokio task handles for graceful shutdown.
+/// - `try_acquire` enforces per-session deduplication so a single session
+///   cannot stack overlapping reviews when prompts land faster than reviews
+///   complete.
 pub struct PendingReviewRegistry {
     handles: StdMutex<Vec<tokio::task::JoinHandle<()>>>,
+    sessions: StdMutex<HashSet<String>>,
+}
+
+/// RAII guard for a per-session review slot.
+///
+/// Holds the slot for the lifetime of the guard and releases it on drop.
+/// Move into the spawned task (or OS thread) so the slot lives as long as
+/// the review itself.
+pub struct ReviewGuard {
+    registry: Arc<PendingReviewRegistry>,
+    session_id: String,
+}
+
+impl Drop for ReviewGuard {
+    fn drop(&mut self) {
+        match self.registry.sessions.lock() {
+            Ok(mut sessions) => {
+                sessions.remove(&self.session_id);
+            }
+            Err(poisoned) => {
+                let mut sessions = poisoned.into_inner();
+                sessions.remove(&self.session_id);
+            }
+        }
+    }
 }
 
 impl PendingReviewRegistry {
     fn new() -> Self {
         Self {
             handles: StdMutex::new(Vec::new()),
+            sessions: StdMutex::new(HashSet::new()),
         }
     }
 
     pub fn push(&self, handle: tokio::task::JoinHandle<()>) {
         let mut handles = self.handles.lock().unwrap();
         handles.push(handle);
+    }
+
+    /// Try to acquire a per-session review slot.
+    ///
+    /// Returns `Some(guard)` if no review is currently in flight for
+    /// `session_id`. The guard holds the slot until dropped — move it into
+    /// the spawned task so the slot is released when the review completes.
+    ///
+    /// Returns `None` if a review is already running for that session;
+    /// the caller should skip the spawn (and ideally log it for observability).
+    pub fn try_acquire(self: &Arc<Self>, session_id: String) -> Option<ReviewGuard> {
+        let mut sessions = match self.sessions.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        if !sessions.insert(session_id.clone()) {
+            return None;
+        }
+        Some(ReviewGuard {
+            registry: self.clone(),
+            session_id,
+        })
+    }
+
+    /// Number of sessions with a review currently in flight.
+    pub fn active_sessions(&self) -> usize {
+        match self.sessions.lock() {
+            Ok(g) => g.len(),
+            Err(p) => p.into_inner().len(),
+        }
     }
 
     pub async fn wait_all(&self) -> usize {
@@ -219,7 +291,7 @@ mod tests {
         assert_eq!(registry.wait_all().await, 0);
     }
 
-    #[tokio::test]
+#[tokio::test]
     async fn push_then_wait_all_returns_count_and_drains() {
         let registry = PendingReviewRegistry::new();
         let handle = tokio::spawn(async {});
@@ -227,6 +299,46 @@ mod tests {
         assert_eq!(registry.wait_all().await, 1);
 
         assert_eq!(registry.wait_all().await, 0);
+    }
+
+    #[tokio::test]
+    async fn try_acquire_returns_guard_for_unseen_session() {
+        let registry = Arc::new(PendingReviewRegistry::new());
+        let guard = registry.try_acquire("session-a".into());
+        assert!(guard.is_some());
+        assert_eq!(registry.active_sessions(), 1);
+    }
+
+    #[tokio::test]
+    async fn try_acquire_returns_none_when_session_already_in_flight() {
+        let registry = Arc::new(PendingReviewRegistry::new());
+        let _first = registry.try_acquire("session-a".into()).expect("first");
+        let second = registry.try_acquire("session-a".into());
+        assert!(second.is_none(), "duplicate acquire must be rejected");
+        assert_eq!(registry.active_sessions(), 1);
+    }
+
+    #[tokio::test]
+    async fn try_acquire_allows_distinct_sessions_concurrently() {
+        let registry = Arc::new(PendingReviewRegistry::new());
+        let a = registry.try_acquire("session-a".into()).expect("a");
+        let b = registry.try_acquire("session-b".into()).expect("b");
+        assert_eq!(registry.active_sessions(), 2);
+        drop(a);
+        drop(b);
+        assert_eq!(registry.active_sessions(), 0);
+    }
+
+    #[tokio::test]
+    async fn dropping_guard_releases_slot_for_reacquire() {
+        let registry = Arc::new(PendingReviewRegistry::new());
+        {
+            let _guard = registry.try_acquire("session-a".into()).expect("first");
+            assert_eq!(registry.active_sessions(), 1);
+        }
+        assert_eq!(registry.active_sessions(), 0);
+        let _second = registry.try_acquire("session-a".into()).expect("after drop");
+        assert_eq!(registry.active_sessions(), 1);
     }
 
     #[tokio::test]

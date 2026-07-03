@@ -441,9 +441,10 @@ mod tests {
 
     #[test]
     fn test_circuit_breaker_timeout_recovery() {
+        let timeout_secs = 10;
         let config = CircuitBreakerConfig {
             failure_threshold: 1,
-            timeout_secs: 10, // Wait 10 seconds before allowing requests
+            timeout_secs,
             success_threshold: 1,
         };
         let mut cb = CircuitBreaker::new(config);
@@ -452,9 +453,12 @@ mod tests {
         assert_eq!(cb.state(), &CircuitState::Open);
         assert!(!cb.allow_request());
 
-        // Wait a moment for timeout
-        std::thread::sleep(std::time::Duration::from_secs(11));
-        
+        // Backdate `last_failure_time` so the configured timeout is already
+        // elapsed — no need to actually sleep 10+ seconds in the test.
+        cb.last_failure_time = Some(
+            std::time::Instant::now() - std::time::Duration::from_secs(timeout_secs + 1),
+        );
+
         assert!(cb.allow_request());
         assert_eq!(cb.state(), &CircuitState::HalfOpen);
     }

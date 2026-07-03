@@ -8,6 +8,7 @@
 use std::path::PathBuf;
 
 use loom_curator::{run_review, ReviewConfig, ReviewHistory, ReviewRecord};
+use loom_curator::workflow::global_registry;
 use agent::run::ResolvedModelConfig;
 use loom_llm::message::Message;
 use agent::ReactBuildConfig;
@@ -97,7 +98,23 @@ pub fn spawn_inprocess_review(
     review_skills: bool,
     trigger: String,
 ) {
+    // Per-session dedup: skip if a review is already in flight for this
+    // thread. The returned guard is moved into the spawned thread below
+    // so the slot is released only when the review itself completes.
+    let guard = match global_registry().try_acquire(thread_id.clone()) {
+        Some(g) => g,
+        None => {
+            info!(
+                thread_id = %thread_id,
+                trigger = %trigger,
+                "Background review already in flight for session, skipping duplicate spawn"
+            );
+            return;
+        }
+    };
+
     std::thread::spawn(move || {
+        let _guard = guard;
         let text = match extract_session_text(&thread_id) {
             Ok(t) => t,
             Err(e) => {
@@ -203,8 +220,29 @@ mod tests {
         assert_eq!(scope_to_review_config(&None), (true, true));
     }
 
-    #[test]
+#[test]
     fn scope_unknown_defaults_to_both() {
         assert_eq!(scope_to_review_config(&Some("unknown".into())), (true, true));
+    }
+
+    #[test]
+    fn dedup_blocks_concurrent_acquires_for_same_session() {
+        // Mirrors the dedup logic in `spawn_inprocess_review`: two consecutive
+        // `try_acquire` calls for the same thread_id must yield one guard and
+        // one rejection. Slot count must drop back to zero after the guard
+        // is dropped, so a follow-up call can succeed again.
+        let registry = global_registry();
+        let session = format!("dedup-test-{}", uuid::Uuid::new_v4());
+
+        let first = registry.try_acquire(session.clone()).expect("first");
+        assert_eq!(registry.active_sessions() >= 1, true);
+        let second = registry.try_acquire(session.clone());
+        assert!(second.is_none(), "second acquire for the same session must fail");
+        drop(first);
+        assert_eq!(
+            registry.try_acquire(session).is_some(),
+            true,
+            "slot must be released after drop"
+        );
     }
 }

@@ -54,7 +54,7 @@ pub use config::{BuiltinToolFilter, GotRunnerConfig, ReactBuildConfig, TotRunner
 pub use observe_node::ObserveNode;
 pub use runner::{
     build_react_initial_state, run_react_graph_stream, AgentOptions, ReactRunner,
-    RunError,
+    ReviewCoordinator, CoordinatorTrigger, RunError,
 };
 pub use title_assembly_middleware::TitleAssemblyMiddleware;
 pub use title_node::TitleNode;

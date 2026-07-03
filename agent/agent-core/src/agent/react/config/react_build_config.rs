@@ -214,8 +214,14 @@ impl ReactBuildConfig {
             is_background_review: false,
             memory_enabled: true,
             user_profile_enabled: true,
-            memory_nudge_interval: 10,
-            skill_nudge_interval: 10,
+            memory_nudge_interval: std::env::var("LOOM_MEMORY_NUDGE_INTERVAL")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(10),
+            skill_nudge_interval: std::env::var("LOOM_SKILL_NUDGE_INTERVAL")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(10),
             role_setting: None,
             agents_md: None,
             system_prompt_override: None,
@@ -347,5 +353,38 @@ mod tests {
     fn aux_model_default_is_none() {
         let config = ReactBuildConfig::default();
         assert!(config.aux_model.is_none());
+    }
+
+    #[test]
+    fn nudge_intervals_default_to_10() {
+        with_env("LOOM_MEMORY_NUDGE_INTERVAL", None, || {
+            with_env("LOOM_SKILL_NUDGE_INTERVAL", None, || {
+                let config = ReactBuildConfig::from_env();
+                assert_eq!(config.memory_nudge_interval, 10);
+                assert_eq!(config.skill_nudge_interval, 10);
+            });
+        });
+    }
+
+    #[test]
+    fn nudge_intervals_read_from_env() {
+        with_env("LOOM_MEMORY_NUDGE_INTERVAL", Some("5"), || {
+            with_env("LOOM_SKILL_NUDGE_INTERVAL", Some("20"), || {
+                let config = ReactBuildConfig::from_env();
+                assert_eq!(config.memory_nudge_interval, 5);
+                assert_eq!(config.skill_nudge_interval, 20);
+            });
+        });
+    }
+
+    #[test]
+    fn nudge_intervals_fallback_on_invalid_env() {
+        with_env("LOOM_MEMORY_NUDGE_INTERVAL", Some("not-a-number"), || {
+            with_env("LOOM_SKILL_NUDGE_INTERVAL", Some(""), || {
+                let config = ReactBuildConfig::from_env();
+                assert_eq!(config.memory_nudge_interval, 10);
+                assert_eq!(config.skill_nudge_interval, 10);
+            });
+        });
     }
 }

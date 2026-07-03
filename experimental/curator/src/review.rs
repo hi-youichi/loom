@@ -333,7 +333,13 @@ pub async fn run_review(
 
     let mut review_config = parent_config;
     let gate = ReviewToolGate::new();
+    // Dual-layer defense: `call_tool_filter` intercepts at tool-execution time
+    // (runtime guard), and `builtin_tool_filter` hides non-whitelisted tools
+    // from the LLM's tool list entirely (reduces hallucinated tool calls).
+    // This mirrors the proven pattern in `curator_llm.rs:259-261` and
+    // `backfill_triggers.rs:159-160`.
     review_config.call_tool_filter = Some(gate.as_builtin_filter());
+    review_config.builtin_tool_filter = Some(gate.as_builtin_filter());
 
     // If an aux model is configured, use it for the review agent instead of the
     // parent's main model. This allows cheaper/faster models for background review.

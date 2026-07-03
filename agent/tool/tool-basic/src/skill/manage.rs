@@ -39,9 +39,10 @@
 //!
 //! The tool is bound at construction time to a specific `WriteOrigin`
 //! (either `Foreground` or `BackgroundReview`) via the `for_foreground` or
-//! `for_background_review` factory methods. The `WriteOriginGuard` is set
-//! on every `call()` so that any code reading `WriteOrigin::current()`
-//! during the call sees the bound origin.
+//! `for_background_review` factory methods. Each `call()` enters a
+//! `with_write_origin(...)` scope so that any code reading
+//! `WriteOrigin::current()` during the call (including across `.await`
+//! points when the runtime reschedules the task) sees the bound origin.
 
 use std::sync::Arc;
 
@@ -49,7 +50,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use tool_core::{Tool, ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
-use skill::provenance::{WriteOrigin, WriteOriginGuard};
+use skill::provenance::{with_write_origin, WriteOrigin};
 use skill::storage::{Lifecycle, SkillContent, SkillError, SkillStorageRegistry, Source};
 use skill::usage::SkillUsageStore;
 use skill::security;
@@ -125,6 +126,10 @@ pub struct SkillManagerTool {
     storage: Arc<SkillStorageRegistry>,
     usage: Option<Arc<SkillUsageStore>>,
     default_origin: WriteOrigin,
+    /// Whether to run security scanning on agent-created skills.
+    /// Comes from `config.toml [skills] guard_agent_created`.
+    /// Default: `false` (matches Hermes).
+    guard_agent_created: bool,
 }
 
 impl SkillManagerTool {
@@ -136,6 +141,7 @@ impl SkillManagerTool {
             storage,
             usage,
             default_origin: WriteOrigin::BackgroundReview,
+            guard_agent_created: false,
         }
     }
 
@@ -147,7 +153,22 @@ impl SkillManagerTool {
             storage,
             usage,
             default_origin: WriteOrigin::Foreground,
+            guard_agent_created: false,
         }
+    }
+
+    /// Enable security scanning for agent-created skills.
+    ///
+    /// Mirrors `config.toml [skills] guard_agent_created = true`.
+    /// When enabled, `security_scan_skill` runs on every create/edit/patch/
+    /// write_file, blocking skills with Critical/High findings.
+    ///
+    /// Especially important for unattended background reviews (#9) where the
+    /// agent may create skills from prompt-injected context without user
+    /// supervision.
+    pub fn with_guard(mut self, enabled: bool) -> Self {
+        self.guard_agent_created = enabled;
+        self
     }
 
     async fn handle_create(&self, args: &Value) -> Result<Value, ToolSourceError> {
@@ -210,7 +231,7 @@ impl SkillManagerTool {
         let skill_dir = self.storage.skill_dir(Source::Auto, name);
         let skill_md_path = skill_dir.join("SKILL.md");
 
-        if let Err(report) = security::security_scan_skill(&skill_dir) {
+        if let Err(report) = security::security_scan_skill(&skill_dir, self.guard_agent_created) {
             let _ = self.storage.delete(name);
             return Ok(error_response(&report));
         }
@@ -308,7 +329,7 @@ impl SkillManagerTool {
 
         // Security scan — roll back on block by restoring original content.
         let skill_dir = self.storage.skill_dir(Source::Auto, name);
-        if let Err(report) = security::security_scan_skill(&skill_dir) {
+        if let Err(report) = security::security_scan_skill(&skill_dir, self.guard_agent_created) {
             let _ = self.storage.save(name, &original);
             return Ok(error_response(&report));
         }
@@ -453,7 +474,7 @@ impl SkillManagerTool {
         }
 
         // ── 5. Security scan — roll back on block ──
-        if let Err(report) = security::security_scan_skill(&skill_dir) {
+        if let Err(report) = security::security_scan_skill(&skill_dir, self.guard_agent_created) {
             if file_path.is_none() {
                 let _ = self.storage.save(name, &snapshot);
             } else {
@@ -577,7 +598,7 @@ impl SkillManagerTool {
             .map_err(map_skill_err)?;
 
         // Security scan — roll back on block
-        if let Err(report) = security::security_scan_skill(&skill_dir) {
+        if let Err(report) = security::security_scan_skill(&skill_dir, self.guard_agent_created) {
             match &original_content {
                 Some(orig) => { let _ = std::fs::write(&target, orig); }
                 None => { let _ = std::fs::remove_file(&target); }
@@ -753,32 +774,38 @@ impl Tool for SkillManagerTool {
         }
     }
 
-    async fn call(
+async fn call(
         &self,
         args: Value,
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let _guard = WriteOriginGuard::new(self.default_origin);
+        let action = args
+            .get("action")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolSourceError::InvalidInput("missing 'action' field".into()))?;
 
-        let result = match args.get("action").and_then(|v| v.as_str()) {
-            Some("create") => self.handle_create(&args).await?,
-            Some("patch") => self.handle_patch(&args).await?,
-            Some("edit") => self.handle_edit(&args).await?,
-            Some("delete") => self.handle_delete(&args).await?,
-            Some("write_file") => self.handle_write_file(&args).await?,
-            Some("remove_file") => self.handle_remove_file(&args).await?,
-            Some(other) => {
-                return Err(ToolSourceError::InvalidInput(format!(
-                    "unknown action: {}",
-                    other
-                )))
+        if !matches!(
+            action,
+            "create" | "patch" | "edit" | "delete" | "write_file" | "remove_file"
+        ) {
+            return Err(ToolSourceError::InvalidInput(format!(
+                "unknown action: {}",
+                action
+            )));
+        }
+
+        let result = with_write_origin(self.default_origin, async {
+            match action {
+                "create" => self.handle_create(&args).await,
+                "patch" => self.handle_patch(&args).await,
+                "edit" => self.handle_edit(&args).await,
+                "delete" => self.handle_delete(&args).await,
+                "write_file" => self.handle_write_file(&args).await,
+                "remove_file" => self.handle_remove_file(&args).await,
+                _ => unreachable!("action validated above"),
             }
-            None => {
-                return Err(ToolSourceError::InvalidInput(
-                    "missing 'action' field".into(),
-                ))
-            }
-        };
+        })
+        .await?;
 
         Ok(ToolCallContent::text(result.to_string()))
     }

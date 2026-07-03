@@ -69,6 +69,22 @@ pub struct SkillsConfig {
     pub preload: Option<Vec<String>>,
     #[serde(default)]
     pub platform_disabled: Option<std::collections::HashMap<String, Vec<String>>>,
+    /// Enable security scanning for agent-created skills (default: false).
+    ///
+    /// When `true`, the skill security scanner runs before persisting any
+    /// agent-created skill, blocking installs with Critical/High findings.
+    /// When `false` (default, matches Hermes), scans are skipped.
+    ///
+    /// This is especially important for unattended background reviews (#9):
+    /// a review agent running without user supervision could create skills
+    /// from prompt-injected context. Enabling this flag ensures dangerous
+    /// patterns (e.g. `curl | sh`) are caught before the skill is persisted
+    /// and auto-loaded by future sessions.
+    ///
+    /// Can also be set via the deprecated `SKILLS_GUARD_AGENT_CREATED` env var
+    /// (env var takes precedence for backward compatibility).
+    #[serde(default)]
+    pub guard_agent_created: Option<bool>,
 }
 
 /// Built-in dev agent: instructions embedded at compile time (loom-react-config/agents/dev/).

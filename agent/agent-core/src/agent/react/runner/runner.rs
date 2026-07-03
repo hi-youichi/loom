@@ -214,9 +214,28 @@ impl ReactRunner {
         )
         .await;
 
-        // After the graph finishes, wait briefly for the async title task.
-        // If the title is ready, emit a __title_finalize__ sentinel so the
-        // CLI can flush any pending_title that arrived during the run.
+        // Skip the title wait when the graph was cancelled or errored.
+        // wait_for_title() can block up to 30s; once the user has aborted
+        // the run, we should return immediately and let the spawned title
+        // task notify (or time out) in the background. Otherwise the prompt
+        // handler is held for the full title timeout, which surfaces as a
+        // 30s request timeout on the client side (see e2e_mega step 6).
+        if !matches!(
+            &result,
+            Ok(runner_common::StreamRunOutcome::Finished(_))
+        ) {
+            return match result {
+                Ok(runner_common::StreamRunOutcome::Finished(s)) => Ok(runner_common::StreamRunOutcome::Finished(s)),
+                Ok(runner_common::StreamRunOutcome::Cancelled) => Ok(runner_common::StreamRunOutcome::Cancelled),
+                Err(runner_common::StreamRunError::Execution(err)) => Err(RunError::Execution(err)),
+                Err(runner_common::StreamRunError::StreamEndedWithoutState(_)) => Err(RunError::StreamEndedWithoutState),
+            };
+        }
+
+        // After the graph finishes successfully, wait briefly for the async
+        // title task. If the title is ready, emit a __title_finalize__
+        // sentinel so the CLI can flush any pending_title that arrived
+        // during the run.
         if let Some(ref on_ev) = on_event {
             if let Some(title) = self.wait_for_title(Duration::from_secs(30)).await {
                 let snapshot = ReActState {
@@ -231,6 +250,9 @@ impl ReactRunner {
             }
         }
 
+        // Only reachable when `result` is `Ok(Finished(_))` (returned early
+        // otherwise). The exhaustive match documents the conversion to
+        // `RunError`; if the upstream enum grows, this will fail to compile.
         match result {
             Ok(runner_common::StreamRunOutcome::Finished(s)) => Ok(runner_common::StreamRunOutcome::Finished(s)),
             Ok(runner_common::StreamRunOutcome::Cancelled) => Ok(runner_common::StreamRunOutcome::Cancelled),

@@ -82,7 +82,7 @@ impl ReactLoop {
         }
     }
 
-    /// Hydrate `_turns_since_memory` from persisted conversation history.
+    /// Hydrate counters from persisted conversation history.
     ///
     /// Aligns with Hermes `conversation_loop.py:510-520`: when a freshly-built agent
     /// instance (counters at 0) resumes a long conversation, reconstruct an effective
@@ -90,12 +90,29 @@ impl ReactLoop {
     ///
     /// Uses modulo so a session that happens to land just past a multiple of N does
     /// **not** fire immediately on resume (which would surprise the user).
-    pub fn init_from_history(&mut self, prior_user_turns: u32) {
+    ///
+    /// Both counters are hydrated:
+    /// - `turns_since_memory` ← `prior_user_turns % memory_nudge_interval`
+    /// - `iters_since_skill` ← `prior_tool_iterations % skill_nudge_interval`
+    ///
+    /// The idempotency guard (`counter == 0`) ensures we don't overwrite a counter
+    /// that was already explicitly set (e.g. a mid-flight conversation loop).
+    pub fn init_from_history(
+        &mut self,
+        prior_user_turns: u32,
+        prior_tool_iterations: u32,
+    ) {
         if prior_user_turns > 0
             && self.turns_since_memory == 0
             && self.config.memory_nudge_interval > 0
         {
             self.turns_since_memory = prior_user_turns % self.config.memory_nudge_interval;
+        }
+        if prior_tool_iterations > 0
+            && self.iters_since_skill == 0
+            && self.config.skill_nudge_interval > 0
+        {
+            self.iters_since_skill = prior_tool_iterations % self.config.skill_nudge_interval;
         }
     }
 
@@ -345,7 +362,7 @@ mod tests {
         let mut cfg = base_config();
         cfg.memory_nudge_interval = 10;
         let mut rl = ReactLoop::new(cfg, true);
-        rl.init_from_history(15); // 15 prior user turns
+        rl.init_from_history(15, 0); // 15 prior user turns, 0 tool iters
         // 15 % 10 = 5
         assert_eq!(rl.turns_since_memory(), 5);
         // Next 5 turns fire (5 + 5 = 10)
@@ -363,7 +380,7 @@ mod tests {
         let mut cfg = base_config();
         cfg.memory_nudge_interval = 10;
         let mut rl = ReactLoop::new(cfg, true);
-        rl.init_from_history(10); // exactly at boundary → 10 % 10 = 0
+        rl.init_from_history(10, 0); // exactly at boundary → 10 % 10 = 0
         assert_eq!(rl.turns_since_memory(), 0);
         // 10 more turns needed to fire
         for _ in 0..9 {
@@ -470,7 +487,7 @@ mod tests {
         let mut cfg = base_config();
         cfg.memory_nudge_interval = 10;
         let mut rl = ReactLoop::new(cfg, true);
-        rl.init_from_history(0);
+        rl.init_from_history(0, 0);
         assert_eq!(rl.turns_since_memory(), 0);
     }
 
@@ -480,13 +497,63 @@ mod tests {
         let mut cfg = base_config();
         cfg.memory_nudge_interval = 10;
         let mut rl = ReactLoop::new(cfg, true);
-        rl.init_from_history(15);
+        rl.init_from_history(15, 0);
         assert_eq!(rl.turns_since_memory(), 5);
         // Simulate one turn passing
         rl.on_user_turn_start(&tools_both());
         assert_eq!(rl.turns_since_memory(), 6);
         // Second hydration should NOT reset (counter != 0)
-        rl.init_from_history(15);
+        rl.init_from_history(15, 0);
         assert_eq!(rl.turns_since_memory(), 6);
+    }
+
+    // ── Skill counter hydration from history ──
+    #[test]
+    fn skill_counter_hydration_from_history() {
+        let mut cfg = base_config();
+        cfg.skill_nudge_interval = 30;
+        let mut rl = ReactLoop::new(cfg, false);
+        // 25 prior tool iterations, 25 % 30 = 25
+        rl.init_from_history(0, 25);
+        assert_eq!(rl.iters_since_skill(), 25);
+        // Next 5 tool batches → total 30 → fires
+        for _ in 0..5 {
+            rl.on_tool_batch_complete(&tools_both());
+        }
+        rl.check_skill_trigger_after_turn(&tools_both());
+        assert!(rl.should_review_skills());
+        assert_eq!(rl.iters_since_skill(), 0);
+    }
+
+    // ── Skill counter hydration at boundary does not fire immediately ──
+    #[test]
+    fn skill_counter_hydration_boundary_no_immediate_fire() {
+        let mut cfg = base_config();
+        cfg.skill_nudge_interval = 30;
+        let mut rl = ReactLoop::new(cfg, false);
+        // 30 prior tool iterations, 30 % 30 = 0 → needs full 30 more
+        rl.init_from_history(0, 30);
+        assert_eq!(rl.iters_since_skill(), 0);
+        for _ in 0..29 {
+            rl.on_tool_batch_complete(&tools_both());
+        }
+        rl.check_skill_trigger_after_turn(&tools_both());
+        assert!(!rl.should_review_skills());
+    }
+
+    // ── Skill counter hydration is idempotent ──
+    #[test]
+    fn skill_counter_hydration_is_idempotent() {
+        let mut cfg = base_config();
+        cfg.skill_nudge_interval = 30;
+        let mut rl = ReactLoop::new(cfg, false);
+        rl.init_from_history(0, 25);
+        assert_eq!(rl.iters_since_skill(), 25);
+        // One batch passes
+        rl.on_tool_batch_complete(&tools_both());
+        assert_eq!(rl.iters_since_skill(), 26);
+        // Second hydration should NOT reset (counter != 0)
+        rl.init_from_history(0, 25);
+        assert_eq!(rl.iters_since_skill(), 26);
     }
 }
