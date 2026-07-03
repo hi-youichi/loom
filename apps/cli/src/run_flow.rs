@@ -56,10 +56,10 @@ pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool
         acp_session_id: None,
         force_compact: false,
         chat_id: None,
-        worktree: args.worktree,
+worktree: args.worktree,
         goal_mode: false,
         acp_mcp_servers: None,
-        effort: None,
+        effort: args.effort.clone(),
     }
 }
 
@@ -131,8 +131,41 @@ pub(crate) async fn run_interactive_mode(
         }
     }
 
-    run_repl_loop(opts, cmd, reply_len, output.clone(), stream_out, force_quit).await?;
+run_repl_loop(opts, cmd, reply_len, output.clone(), stream_out, force_quit).await?;
     print_session_status(opts.thread_id.as_deref(), true, output.json);
     println!("Bye.");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    /// `--effort` on the top-level `Args` must be plumbed through `build_run_options`
+    /// into `RunOptions.effort` so the LLM client receives the value downstream.
+    #[test]
+    fn build_run_options_propagates_effort_flag() {
+        let args = Args::parse_from(["loom", "--effort", "high", "hello"]);
+        let opts = build_run_options(&args, "hello".to_string(), false);
+        assert_eq!(opts.effort.as_deref(), Some("high"));
+    }
+
+    /// `--effort auto` is treated as "use model default" downstream; we only verify
+    /// the string flows through unchanged.
+    #[test]
+    fn build_run_options_propagates_effort_auto() {
+        let args = Args::parse_from(["loom", "--effort", "auto", "hi"]);
+        let opts = build_run_options(&args, "hi".to_string(), false);
+        assert_eq!(opts.effort.as_deref(), Some("auto"));
+    }
+
+    /// No `--effort` flag → `None` (preserves prior behaviour: don't send the
+    /// `reasoning_effort` parameter to the API at all).
+    #[test]
+    fn build_run_options_default_effort_is_none() {
+        let args = Args::parse_from(["loom", "hi"]);
+        let opts = build_run_options(&args, "hi".to_string(), false);
+        assert!(opts.effort.is_none());
+    }
 }

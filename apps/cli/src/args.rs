@@ -83,9 +83,16 @@ pub(crate) struct Args {
     #[arg(long = "worktree")]
     pub(crate) worktree: bool,
 
-    /// Debug LLM: print full system prompt and messages to stderr before sending to LLM
+/// Debug LLM: print full system prompt and messages to stderr before sending to LLM
     #[arg(long)]
     pub(crate) debug_llm: bool,
+
+    /// Reasoning effort level passed to the model as `reasoning_effort`.
+    /// Accepts: auto, none, minimal, low, medium, high, xhigh.
+    /// "auto" means use the model's default (don't send the parameter).
+    /// Unknown values are forwarded and warned by the LLM client.
+    #[arg(long, value_name = "LEVEL")]
+    pub(crate) effort: Option<String>,
 
     /// Log level (tracing EnvFilter syntax). Overrides RUST_LOG when set; default RUST_LOG or info.
     #[arg(long, global = true, value_name = "LEVEL")]
@@ -432,9 +439,14 @@ pub(crate) struct GoalArgs {
     #[arg(long, value_name = "TOKENS")]
     pub(crate) token_budget: Option<u32>,
 
-    /// Shell command to verify objective after each iteration (e.g. "cargo test")
+/// Shell command to verify objective after each iteration (e.g. "cargo test")
     #[arg(long, value_name = "CMD")]
     pub(crate) verify: Option<String>,
+
+    /// Reasoning effort level for goal turns (auto|none|minimal|low|medium|high|xhigh).
+    /// "auto" means use the model's default. Forwarded to the LLM client per turn.
+    #[arg(long, value_name = "LEVEL")]
+    pub(crate) effort: Option<String>,
 }
 
 #[derive(clap::Args, Debug, Clone)]

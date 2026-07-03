@@ -138,6 +138,7 @@ pub struct LoomTool {
     api_key: Option<String>,
     provider_type: Option<String>,
     agent: Option<String>,
+    effort: Option<String>,
     any_stream_event_sender: Option<Arc<dyn Fn(FullTypedAnyStreamEvent) + Send + Sync>>,
 }
 
@@ -159,6 +160,7 @@ impl LoomTool {
             api_key: None,
             provider_type: None,
             agent: None,
+            effort: None,
             any_stream_event_sender: None,
         }
     }
@@ -170,6 +172,14 @@ impl LoomTool {
 
     pub fn with_model(mut self, m: String) -> Self {
         self.model = Some(m);
+        self
+    }
+
+    /// Sets the reasoning effort level forwarded to the LLM client per turn.
+    /// Accepts the same values as the CLI `--effort` flag
+    /// (auto|none|minimal|low|medium|high|xhigh).
+    pub fn with_effort(mut self, e: String) -> Self {
+        self.effort = Some(e);
         self
     }
 
@@ -243,10 +253,10 @@ impl CodingTool for LoomTool {
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
-            worktree: false,
+worktree: false,
             goal_mode: true,
             acp_mcp_servers: None,
-            effort: None,
+            effort: self.effort.clone(),
         };
 
         let (config, _) = build_react_config(&opts);

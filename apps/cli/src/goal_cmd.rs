@@ -73,8 +73,11 @@ let description = match &ga.description {
                 mcp_config_path,
             )
             .with_cancellation(run_cancellation.clone());
-            if let Some(ref model) = ga.model {
+if let Some(ref model) = ga.model {
                 loom_tool = loom_tool.with_model(model.clone());
+            }
+            if let Some(ref effort) = ga.effort {
+                loom_tool = loom_tool.with_effort(effort.clone());
             }
             Box::new(loom_tool)
         }
