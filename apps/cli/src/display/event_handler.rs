@@ -45,6 +45,9 @@ pub struct EventState {
     pub session_start: Option<std::time::Instant>,
     /// Streaming markdown renderer for terminal output.
     pub markdown_renderer: StreamingMarkdownRenderer,
+    /// Title received from the async title task; flushed at the next
+    /// non-Messages event boundary to avoid interleaving with assistant output.
+    pub pending_title: Option<String>,
 }
 
 impl EventState {
@@ -67,6 +70,7 @@ impl EventState {
             compact: false,
             session_start: None,
             markdown_renderer: StreamingMarkdownRenderer::new(),
+            pending_title: None,
         }
     }
 
@@ -200,6 +204,11 @@ pub fn on_event_react(
                 sp.finish_box();
                 eprintln!();
             }
+            if node_id != "think" && node_id != "title" {
+                if let Some(title) = s.pending_title.take() {
+                    eprintln!("Session title: {}", title);
+                }
+            }
             if node_id == "think" {
                 // Initialize session_start on first think
                 if s.session_start.is_none() {
@@ -223,9 +232,12 @@ pub fn on_event_react(
             handle_messages(s, chunk, output_timestamp);
         }
         StreamEvent::Updates { node_id, state, .. } => {
-            // Always show title generation result (non-verbose too)
             if node_id == "title" {
                 if let Some(ref title) = state.summary {
+                    s.pending_title = Some(title.clone());
+                }
+            } else if node_id == "__title_finalize__" || node_id != "think" {
+                if let Some(title) = s.pending_title.take() {
                     eprintln!("Session title: {}", title);
                 }
             }

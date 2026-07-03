@@ -11,13 +11,17 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tokio::sync::{Notify, OnceCell};
+use tracing::warn;
 
 use loom_graph_core::GraphError;
 use loom_graph_core::Next;
+use loom_graph_core::Node;
 use loom_llm::{LlmHeaders, LlmProvider};
 use loom_llm::message::Message;
+use stream_event::StreamEvent;
+use crate::run::TypedAnyStreamEvent;
 use crate::state::ReActState;
-use loom_graph_core::Node;
 
 /// Max characters for stored session summary (matches prompt "不超过50字"; total includes "..." when truncated).
 const MAX_SUMMARY_CHARS: usize = 50;
@@ -38,11 +42,20 @@ fn clamp_summary_chars(s: &str) -> String {
 /// suitable for display in session lists.
 pub struct TitleNode {
     provider: Arc<dyn LlmProvider>,
+    slot: Arc<OnceCell<String>>,
+    notify: Arc<Notify>,
+    sender: Option<Arc<dyn Fn(TypedAnyStreamEvent) + Send + Sync>>,
 }
 
 impl TitleNode {
-    pub fn new(provider: Arc<dyn LlmProvider>, _headers: Option<LlmHeaders>) -> Self {
-        Self { provider }
+    pub fn new(
+        provider: Arc<dyn LlmProvider>,
+        _headers: Option<LlmHeaders>,
+        slot: Arc<OnceCell<String>>,
+        notify: Arc<Notify>,
+        sender: Option<Arc<dyn Fn(TypedAnyStreamEvent) + Send + Sync>>,
+    ) -> Self {
+        Self { provider, slot, notify, sender }
     }
 }
 
@@ -50,8 +63,7 @@ impl TitleNode {
 impl Node<ReActState> for TitleNode {
     fn id(&self) -> &str { "title" }
 
-    async fn run(&self, mut state: ReActState) -> Result<(ReActState, Next), GraphError> {
-        // Build messages for title generation
+    async fn run(&self, state: ReActState) -> Result<(ReActState, Next), GraphError> {
         let recent = state
             .messages
             .iter()
@@ -70,12 +82,48 @@ impl Node<ReActState> for TitleNode {
             .chain(std::iter::once(user))
             .collect::<Vec<_>>();
 
-        let client = self.provider.create_client(self.provider.default_model())?;
-        let response = client.invoke(&messages).await?;
-        let title_raw = response.content.trim().to_string();
+        let provider = Arc::clone(&self.provider);
+        let slot = Arc::clone(&self.slot);
+        let notify = Arc::clone(&self.notify);
+        let sender = self.sender.clone();
 
-        let title = clamp_summary_chars(&title_raw);
-        state.summary = Some(title);
+        tokio::spawn(async move {
+            let result = async {
+                let client = provider.create_client(provider.default_model())?;
+                let response = client.invoke(&messages).await?;
+                let title_raw = response.content.trim().to_string();
+                Ok::<_, GraphError>(clamp_summary_chars(&title_raw))
+            }
+            .await;
+
+            match result {
+                Ok(title) => {
+                    // Send the title event FIRST so the CLI's on_event callback
+                    // (which sets pending_title) runs before the runner's
+                    // wait_for_title wakes up and emits the finalize sentinel.
+                    if let Some(sender) = sender {
+                        let snapshot = ReActState {
+                            summary: Some(title.clone()),
+                            ..Default::default()
+                        };
+                        sender(TypedAnyStreamEvent::React(StreamEvent::Updates {
+                            node_id: "title".to_string(),
+                            state: snapshot,
+                            namespace: None,
+                        }));
+                    }
+                    // Then set the slot and signal the runner.
+                    let _ = slot.set(title);
+                    notify.notify_one();
+                }
+                Err(e) => {
+                    warn!("Title generation failed: {e}");
+                    // Still notify so the runner doesn't wait the full timeout
+                    // for a title that will never arrive.
+                    notify.notify_one();
+                }
+            }
+        });
 
         Ok((state, Next::Node("think".into())))
     }

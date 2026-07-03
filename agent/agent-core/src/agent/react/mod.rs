@@ -37,6 +37,7 @@ pub mod tier_apply;
 mod observe_node;
 mod runner;
 mod think_node;
+mod title_assembly_middleware;
 mod title_node;
 mod with_node_logging;
 
@@ -55,6 +56,7 @@ pub use runner::{
     build_react_initial_state, run_react_graph_stream, AgentOptions, ReactRunner,
     RunError,
 };
+pub use title_assembly_middleware::TitleAssemblyMiddleware;
 pub use title_node::TitleNode;
 pub use think_node::ThinkNode;
 pub use with_node_logging::WithNodeLogging;

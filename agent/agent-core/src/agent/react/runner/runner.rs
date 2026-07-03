@@ -2,6 +2,9 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
+
+use tokio::sync::{Notify, OnceCell};
 
 use crate::agent::react::REACT_SYSTEM_PROMPT;
 use crate::compress::{build_graph, CompactionConfig, CompressionGraphNode};
@@ -25,10 +28,11 @@ use super::options::{resolve_run_agent_options, AgentOptions};
 use crate::agent::react::act_node::ActNode;
 
 use crate::agent::react::observe_node::ObserveNode;
+use crate::agent::react::title_assembly_middleware::TitleAssemblyMiddleware;
 use crate::agent::react::title_node::TitleNode;
 use crate::agent::react::think_node::ThinkNode;
 use crate::agent::react::tools_condition;
-use crate::agent::react::with_node_logging::WithNodeLogging;
+
 
 pub struct ReactRunner {
     compiled: CompiledStateGraph<ReActState>,
@@ -37,6 +41,8 @@ pub struct ReactRunner {
     system_prompt: String,
     cancellation: Option<RunCancellation>,
     any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
+    title_slot: Arc<OnceCell<String>>,
+    title_notify: Arc<Notify>,
 }
 
 impl ReactRunner {
@@ -54,6 +60,18 @@ impl ReactRunner {
     /// Returns a reference to the checkpointer, if any.
     pub fn checkpointer(&self) -> Option<&Arc<dyn Checkpointer<ReActState>>> {
         self.checkpointer.as_ref()
+    }
+
+    /// Wait for the async title task to complete (with a timeout).
+    /// Returns the title if it becomes available within the timeout.
+    async fn wait_for_title(&self, timeout: Duration) -> Option<String> {
+        if tokio::time::timeout(timeout, self.title_notify.notified())
+            .await
+            .is_err()
+        {
+            return None;
+        }
+        self.title_slot.get().cloned()
     }
 
     pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>) -> Self {
@@ -92,9 +110,14 @@ impl ReactRunner {
             graph = graph.with_store(s);
         }
 
+        let title_slot = Arc::new(OnceCell::new());
+        let title_notify = Arc::new(Notify::new());
         let title_node = TitleNode::new(
             title_provider.unwrap_or_else(|| Arc::clone(&provider)),
             title_headers,
+            Arc::clone(&title_slot),
+            Arc::clone(&title_notify),
+            any_stream_event_sender.clone(),
         );
 
         let think_condition_path_map: HashMap<String, String> = [
@@ -123,23 +146,20 @@ impl ReactRunner {
             .add_edge("observe", "compress")
             .add_edge("compress", "think");
 
-        let graph = if verbose {
-            graph.with_node_logging()
-        } else {
-            graph
-        };
-
         let graph = graph.with_metadata_extractor(Arc::new(|state: &ReActState| {
             state.summary.clone()
         }));
 
-        let compiled = match (&checkpointer, verbose) {
-            (Some(cp), true) => {
-                let mw = Arc::new(LoggingNodeMiddleware::<ReActState>::default());
-                graph.compile_with_checkpointer_and_middleware(Arc::clone(cp), mw)?
-            }
-            (Some(cp), false) => graph.compile_with_checkpointer(Arc::clone(cp))?,
-            (None, _) => graph.compile()?,
+        let logger = if verbose {
+            Some(Arc::new(LoggingNodeMiddleware::<ReActState>::default()))
+        } else {
+            None
+        };
+        let mw = Arc::new(TitleAssemblyMiddleware::new(Arc::clone(&title_slot), logger));
+
+        let compiled = match &checkpointer {
+            Some(cp) => graph.compile_with_checkpointer_and_middleware(Arc::clone(cp), mw)?,
+            None => graph.compile_with_middleware(mw)?,
         };
 
         Ok(Self {
@@ -149,6 +169,8 @@ impl ReactRunner {
             system_prompt,
             cancellation,
             any_stream_event_sender,
+            title_slot,
+            title_notify,
         })
     }
 
@@ -187,10 +209,28 @@ impl ReactRunner {
             &self.compiled,
             state,
             run_config,
-            on_event,
+            on_event.clone(),
             self.cancellation.as_ref().map(RunCancellation::token),
         )
         .await;
+
+        // After the graph finishes, wait briefly for the async title task.
+        // If the title is ready, emit a __title_finalize__ sentinel so the
+        // CLI can flush any pending_title that arrived during the run.
+        if let Some(ref on_ev) = on_event {
+            if let Some(title) = self.wait_for_title(Duration::from_secs(30)).await {
+                let snapshot = ReActState {
+                    summary: Some(title),
+                    ..Default::default()
+                };
+                on_ev(StreamEvent::Updates {
+                    node_id: "__title_finalize__".to_string(),
+                    state: snapshot,
+                    namespace: None,
+                });
+            }
+        }
+
         match result {
             Ok(runner_common::StreamRunOutcome::Finished(s)) => Ok(runner_common::StreamRunOutcome::Finished(s)),
             Ok(runner_common::StreamRunOutcome::Cancelled) => Ok(runner_common::StreamRunOutcome::Cancelled),

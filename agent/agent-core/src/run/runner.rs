@@ -124,10 +124,21 @@ pub async fn run_agent_from_config(
         config.got_config.adaptive = *got_adaptive;
     }
 
-    let runner = build_runner(&config, cmd, &mut params).await?;
-
     let on_event: Option<Arc<Mutex<Box<dyn FnMut(TypedAnyStreamEvent) + Send>>>> =
         on_event.map(|b| Arc::new(Mutex::new(b)));
+
+    if params.any_stream_event_sender.is_none() {
+        if let Some(ref on_event_arc) = on_event {
+            let on_event_clone = Arc::clone(on_event_arc);
+            params.any_stream_event_sender = Some(Arc::new(move |ev: TypedAnyStreamEvent| {
+                if let Ok(mut f) = on_event_clone.lock() {
+                    f(ev);
+                }
+            }));
+        }
+    }
+
+    let runner = build_runner(&config, cmd, &mut params).await?;
 
     let message = &params.message;
     let result = match &runner {
