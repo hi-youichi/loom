@@ -32,7 +32,7 @@
 use crate::content::extract_locations;
 use loom_util::text::truncate::truncate_tail;
 use agent_client_protocol::schema::v1::{
-    ContentBlock, ContentChunk, CurrentModeUpdate, Diff, MessageId, Plan, PlanEntry,
+    ContentBlock, ContentChunk, CurrentModeUpdate, Diff, MessageId, Meta, Plan, PlanEntry,
     PlanEntryPriority, PlanEntryStatus, SessionId, SessionInfoUpdate, SessionModeId,
     SessionNotification, SessionUpdate, Terminal, TerminalId, TextContent, ToolCall, ToolCallId,
     ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
@@ -41,7 +41,9 @@ use agent_client_protocol::schema::v1::{
 use loom_llm::message::Message;
 use stream_event::{MessageChunkKind, StreamEvent};
 use agent::run::TypedAnyStreamEvent;
+use crate::agent::TurnUsage;
 use serde_json::Value;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
@@ -115,13 +117,18 @@ pub enum StreamUpdate {
     /// Reports the agent's planned tasks with their priority and status.
     Plan { entries: Vec<PlanEntry> },
 
-    /// Context window usage update (ACP `usage_update`).
-    /// Reports current context token usage and total window size.
+/// Context window usage update (ACP `usage_update`).
+    /// Reports current context token usage and total window size, plus optional
+    /// billing-level token breakdown carried in ACP's `_meta` extension channel.
     UsageUpdate {
-        /// Tokens currently in context.
+        /// Tokens currently in context (per LLM call prompt).
         used: u64,
         /// Total context window size in tokens.
         size: u64,
+        /// Optional `_meta` payload: session-level billing token breakdown
+        /// (`token_usage.{input_tokens,output_tokens,total_tokens,cached_tokens}`).
+        /// Only populated when `SessionNotifier` is wired with a `TurnUsage` accumulator.
+        meta: Option<Meta>,
     },
 }
 
@@ -407,8 +414,12 @@ let update = match u {
         StreamUpdate::Plan { entries } => {
             SessionUpdate::Plan(Plan::new(entries.clone()))
         }
-        StreamUpdate::UsageUpdate { used, size } => {
-            SessionUpdate::UsageUpdate(UsageUpdate::new(*used, *size))
+StreamUpdate::UsageUpdate { used, size, meta } => {
+            let mut u = UsageUpdate::new(*used, *size);
+            if let Some(m) = meta {
+                u = u.meta(m.clone());
+            }
+            SessionUpdate::UsageUpdate(u)
         }
     };
     Some(SessionNotification::new(session_id.clone(), update))
@@ -497,6 +508,10 @@ pub struct SessionNotifier {
     current_message_id: Mutex<Option<String>>,
     /// Context window size in tokens; when set, usage_update notifications are emitted.
     context_window_size: Option<u64>,
+    /// Session-level billing token accumulator. When set, each `UsageUpdate`
+    /// notification carries an extra `_meta.token_usage` field with cumulative
+    /// input/output/cached/total tokens across all LLM calls in this prompt.
+    usage_acc: Option<Arc<Mutex<TurnUsage>>>,
 }
 
 impl SessionNotifier {
@@ -506,6 +521,7 @@ impl SessionNotifier {
             session_id,
             current_message_id: Mutex::new(None),
             context_window_size: None,
+            usage_acc: None,
         }
     }
 
@@ -516,11 +532,42 @@ impl SessionNotifier {
         self
     }
 
+    /// Attach a session-level token accumulator so each `UsageUpdate` notification
+    /// carries an ACP `_meta.token_usage` payload with cumulative billing tokens
+    /// across all LLM calls in the prompt.
+    pub(crate) fn with_usage_acc(mut self, acc: Arc<Mutex<TurnUsage>>) -> Self {
+        self.usage_acc = Some(acc);
+        self
+    }
+
+    /// Snapshot the current token accumulator into an ACP `_meta` payload.
+    /// Returns `None` when no accumulator is wired or no usage has been
+    /// observed yet (to avoid emitting an empty `_meta` block).
+    fn snapshot_token_usage_meta(&self) -> Option<Meta> {
+        let acc = self.usage_acc.as_ref()?;
+        let guard = acc.lock().ok()?;
+        if guard.total_tokens == 0 && guard.input_tokens == 0 && guard.output_tokens == 0 {
+            return None;
+        }
+        let mut map = Meta::new();
+        map.insert(
+            "token_usage".to_string(),
+            serde_json::json!({
+                "input_tokens": guard.input_tokens,
+                "output_tokens": guard.output_tokens,
+                "total_tokens": guard.total_tokens,
+                "cached_tokens": guard.cached_tokens,
+            }),
+        );
+        Some(map)
+    }
+
     pub async fn send_event(&self, event: &TypedAnyStreamEvent) {
         let mut updates = loom_event_to_updates(event);
         if let Some(size) = self.context_window_size {
             if let Some(used) = extract_usage_tokens(event) {
-                updates.push(StreamUpdate::UsageUpdate { used, size });
+                let meta = self.snapshot_token_usage_meta();
+                updates.push(StreamUpdate::UsageUpdate { used, size, meta });
             }
         }
         for u in updates {
@@ -537,7 +584,8 @@ impl SessionNotifier {
         let mut updates = loom_event_to_updates(event);
         if let Some(size) = self.context_window_size {
             if let Some(used) = extract_usage_tokens(event) {
-                updates.push(StreamUpdate::UsageUpdate { used, size });
+                let meta = self.snapshot_token_usage_meta();
+                updates.push(StreamUpdate::UsageUpdate { used, size, meta });
             }
         }
         self.send_updates(updates);
@@ -968,13 +1016,175 @@ fn extract_target_from_input(name: &str, input: Option<&serde_json::Value>) -> O
                 let display = if key == "command" || key == "cmd" {
                     val.to_string()
                 } else {
-                    truncate_tail(val, 60)
+truncate_tail(val, 60)
                 };
                 return Some(display);
             }
         }
     }
     None
+}
+
+#[cfg(test)]
+mod token_usage_meta_tests {
+    use super::*;
+    use crate::agent::TurnUsage;
+    use crate::agent::capture_turn_usage;
+    use stream_event::StreamEvent;
+    use std::collections::HashMap;
+
+    /// Capture should leave the snapshot empty when no LLM usage has been observed.
+    #[test]
+    fn snapshot_meta_is_none_when_acc_is_empty() {
+        let (tx, _rx) = mpsc::channel::<SessionNotification>(8);
+        let acc: Arc<Mutex<TurnUsage>> = Arc::new(Mutex::new(TurnUsage::default()));
+        let notifier = SessionNotifier::new(tx, SessionId::new("sess"))
+            .with_context_window_size(8192)
+            .with_usage_acc(acc);
+        assert!(notifier.snapshot_token_usage_meta().is_none());
+    }
+
+    /// Capture then snapshot: meta must contain all four billing fields.
+    #[test]
+    fn snapshot_meta_includes_all_billing_fields_after_capture() {
+        let (tx, _rx) = mpsc::channel::<SessionNotification>(8);
+        let acc: Arc<Mutex<TurnUsage>> = Arc::new(Mutex::new(TurnUsage::default()));
+        let notifier = SessionNotifier::new(tx, SessionId::new("sess"))
+            .with_context_window_size(8192)
+            .with_usage_acc(acc.clone());
+
+        // Inject a synthetic Usage event covering all four fields.
+        let ev = TypedAnyStreamEvent::React(StreamEvent::Usage {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            cached_tokens: Some(20),
+            decode_duration: None,
+            prefill_duration: None,
+        });
+        capture_turn_usage(&ev, &acc);
+
+        let meta = notifier.snapshot_token_usage_meta().expect("meta present");
+        let token_usage = meta
+            .get("token_usage")
+            .expect("token_usage key present")
+            .as_object()
+            .expect("token_usage is object");
+        assert_eq!(token_usage["input_tokens"], serde_json::json!(100));
+        assert_eq!(token_usage["output_tokens"], serde_json::json!(50));
+        assert_eq!(token_usage["total_tokens"], serde_json::json!(150));
+        assert_eq!(token_usage["cached_tokens"], serde_json::json!(20));
+    }
+
+    /// Multi-turn accumulation must monotonically grow the snapshot.
+    #[test]
+    fn snapshot_meta_grows_across_multiple_llm_calls() {
+        let (tx, _rx) = mpsc::channel::<SessionNotification>(8);
+        let acc: Arc<Mutex<TurnUsage>> = Arc::new(Mutex::new(TurnUsage::default()));
+        let notifier = SessionNotifier::new(tx, SessionId::new("sess"))
+            .with_context_window_size(8192)
+            .with_usage_acc(acc.clone());
+
+        for (prompt, completion, cached) in [(100u32, 50, Some(20u32)), (200, 80, None), (50, 30, Some(10))] {
+            let ev = TypedAnyStreamEvent::React(StreamEvent::Usage {
+                prompt_tokens: prompt,
+                completion_tokens: completion,
+                total_tokens: prompt + completion,
+                cached_tokens: cached,
+                decode_duration: None,
+                prefill_duration: None,
+            });
+            capture_turn_usage(&ev, &acc);
+        }
+
+        let meta = notifier.snapshot_token_usage_meta().expect("meta present");
+        let tu = meta["token_usage"].as_object().unwrap();
+        assert_eq!(tu["input_tokens"], serde_json::json!(350));
+        assert_eq!(tu["output_tokens"], serde_json::json!(160));
+        assert_eq!(tu["total_tokens"], serde_json::json!(510));
+        assert_eq!(tu["cached_tokens"], serde_json::json!(30));
+    }
+
+    /// StreamUpdate -> SessionNotification serialization must carry _meta.token_usage
+    /// when the notifier is wired with an accumulator and a Usage event arrives.
+    #[tokio::test]
+    async fn notifier_emits_usage_update_with_token_usage_meta() {
+        let (tx, mut rx) = mpsc::channel::<SessionNotification>(8);
+        let acc: Arc<Mutex<TurnUsage>> = Arc::new(Mutex::new(TurnUsage::default()));
+        let notifier = SessionNotifier::new(tx, SessionId::new("sess"))
+            .with_context_window_size(8192)
+            .with_usage_acc(acc.clone());
+
+        let ev = TypedAnyStreamEvent::React(StreamEvent::Usage {
+            prompt_tokens: 4096,
+            completion_tokens: 512,
+            total_tokens: 4608,
+            cached_tokens: Some(1024),
+            decode_duration: None,
+            prefill_duration: None,
+        });
+        capture_turn_usage(&ev, &acc);
+        notifier.try_send_event(&ev);
+
+        // Drain and inspect the last notification.
+        let mut last: Option<SessionNotification> = None;
+        while let Ok(n) = rx.try_recv() {
+            last = Some(n);
+        }
+        let notif = last.expect("at least one notification");
+        let raw = serde_json::to_value(&notif).expect("serialize notification");
+        let update = &raw["update"];
+        assert_eq!(update["sessionUpdate"], "usage_update");
+        assert_eq!(update["used"], 4096);
+        assert_eq!(update["size"], 8192);
+        let meta = update["_meta"]
+            .as_object()
+            .expect("_meta is object");
+        assert!(meta.contains_key("token_usage"));
+        assert_eq!(meta["token_usage"]["input_tokens"], serde_json::json!(4096));
+        assert_eq!(meta["token_usage"]["output_tokens"], serde_json::json!(512));
+        assert_eq!(meta["token_usage"]["total_tokens"], serde_json::json!(4608));
+        assert_eq!(meta["token_usage"]["cached_tokens"], serde_json::json!(1024));
+    }
+
+    /// Without `with_usage_acc`, the notification should still go out but
+    /// without `_meta.token_usage` (backward compatibility).
+    #[tokio::test]
+    async fn notifier_without_acc_omits_token_usage_meta() {
+        let (tx, mut rx) = mpsc::channel::<SessionNotification>(8);
+        let notifier = SessionNotifier::new(tx, SessionId::new("sess"))
+            .with_context_window_size(8192);
+
+        let ev = TypedAnyStreamEvent::React(StreamEvent::Usage {
+            prompt_tokens: 100,
+            completion_tokens: 20,
+            total_tokens: 120,
+            cached_tokens: Some(0),
+            decode_duration: None,
+            prefill_duration: None,
+        });
+        notifier.try_send_event(&ev);
+
+        let mut last: Option<SessionNotification> = None;
+        while let Ok(n) = rx.try_recv() {
+            last = Some(n);
+        }
+        let notif = last.expect("at least one notification");
+        let raw = serde_json::to_value(&notif).expect("serialize");
+        let update = &raw["update"];
+        assert_eq!(update["used"], 100);
+        // No _meta, or _meta present but no token_usage key — either is acceptable.
+        let has_token_usage = update["_meta"]["token_usage"].is_object();
+        assert!(!has_token_usage, "_meta.token_usage must not be present without acc");
+    }
+
+    /// `HashMap` import used to silence unused-import warnings in test builds.
+    #[test]
+    fn _hashmap_import_is_used() {
+        let mut m: HashMap<String, u64> = HashMap::new();
+        m.insert("k".to_string(), 1);
+        assert_eq!(m.len(), 1);
+    }
 }
 
 

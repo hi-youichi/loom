@@ -182,6 +182,7 @@ pub fn is_excluded_path(path: &Path) -> bool {
         ".git", ".github", ".hub", ".archive", ".venv", "venv",
         "node_modules", "site-packages", "__pycache__",
         ".tox", ".nox", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+        "curator",
     ];
     path.file_name()
         .and_then(|n| n.to_str())
@@ -283,10 +284,11 @@ mod tests {
         assert!(meta.matches_platform("windows"));
     }
 
-    #[test]
+#[test]
     fn is_excluded_path_dirs() {
         assert!(is_excluded_path(Path::new(".git")));
         assert!(is_excluded_path(Path::new("node_modules")));
+        assert!(is_excluded_path(Path::new("curator")));
         assert!(!is_excluded_path(Path::new("my-skill")));
     }
 }

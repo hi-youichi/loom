@@ -883,7 +883,7 @@ Ok(SetSessionModeResponse::new())
             effort: resolved.effort,
         };
 
-        let session_id = args.session_id.clone();
+let session_id = args.session_id.clone();
         let tx = self.session_update_tx.clone();
         let usage_acc: Arc<Mutex<TurnUsage>> = Arc::new(Mutex::new(TurnUsage::default()));
         let on_event: Option<Box<dyn FnMut(TypedAnyStreamEvent) + Send>> = {
@@ -891,7 +891,8 @@ Ok(SetSessionModeResponse::new())
             match tx {
                 Some(sender) => {
                     let notifier = SessionNotifier::new(sender, session_id)
-                        .with_context_window_size(context_window_size);
+                        .with_context_window_size(context_window_size)
+                        .with_usage_acc(acc.clone());
                     let closure = move |ev: TypedAnyStreamEvent| {
                         capture_turn_usage(&ev, &acc);
                         notifier.try_send_event(&ev);
@@ -1433,12 +1434,12 @@ fn map_run_error(e: RunError) -> agent_client_protocol::Error {
     agent_client_protocol::Error::internal_error().data(e.to_string())
 }
 
-#[derive(Default)]
-struct TurnUsage {
-    input_tokens: u64,
-    output_tokens: u64,
-    total_tokens: u64,
-    cached_tokens: u64,
+#[derive(Default, Clone, Debug)]
+pub(crate) struct TurnUsage {
+    pub(crate) input_tokens: u64,
+    pub(crate) output_tokens: u64,
+    pub(crate) total_tokens: u64,
+    pub(crate) cached_tokens: u64,
 }
 
 fn extract_llm_usage<S>(ev: &stream_event::StreamEvent<S>) -> Option<(u32, u32, u32, Option<u32>)>
@@ -1466,7 +1467,7 @@ fn extract_llm_usage_from_any(ev: &TypedAnyStreamEvent) -> Option<(u32, u32, u32
     }
 }
 
-fn capture_turn_usage(ev: &TypedAnyStreamEvent, acc: &Mutex<TurnUsage>) {
+pub(crate) fn capture_turn_usage(ev: &TypedAnyStreamEvent, acc: &Mutex<TurnUsage>) {
     if let Some((prompt, completion, total, cached)) = extract_llm_usage_from_any(ev) {
         let mut a = acc.lock().unwrap();
         a.input_tokens += prompt as u64;

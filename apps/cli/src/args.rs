@@ -530,6 +530,10 @@ pub(crate) enum CuratorCommand {
         /// Archive skills idle for at least N days
         #[arg(long, default_value = "90")]
         days: u32,
+        /// Skip the y/N confirmation prompt (Hermes-aligned).
+        /// Mirrors `hermes_cli/curator.py:344-352` non-interactive path.
+        #[arg(short = 'y', long)]
+        yes: bool,
     },
     /// Pause curator (skip next scheduled runs)
     Pause,
@@ -570,9 +574,22 @@ pub(crate) enum CuratorCommand {
         /// Snapshot filename (e.g. curator-2025-08-19T12-34-56.tar.gz)
         #[arg(value_name = "SNAPSHOT")]
         snapshot: String,
+        /// Skip the y/N confirmation prompt (Hermes-aligned).
+        /// Mirrors `hermes_cli/curator.py:391-461`.
+        #[arg(short = 'y', long)]
+        yes: bool,
+        /// Capture the current library state as a numbered pre-rollback
+        /// snapshot before applying the rollback. Hermes does this so the
+        /// user can recover if the rollback was a mistake.
+        #[arg(long = "capture-pre", default_value = "true")]
+        capture_pre: bool,
     },
     /// List available backup snapshots
     Snapshots,
+    /// List archived (soft-removed) agent-created skills.
+    /// Archived skills live under `.archive/` next to the active skill tree.
+    /// Mirrors Hermes `skill_usage.py:482-567` `list_archived_names`.
+    ListArchived,
     /// Backfill triggers for skills that have an empty trigger list
     BackfillTriggers {
         /// Only process a specific skill by name
@@ -591,6 +608,11 @@ pub(crate) struct CuratorCmdArgs {
     /// Dry run: report but don't modify
     #[arg(long)]
     pub(crate) dry_run: bool,
+    /// Run curator on a recurring interval (seconds). Replaces one-shot
+    /// `curator run` with a daemon-style loop. Mirrors Hermes
+    /// `agent/curator.py` recurring-scheduler hook. Default 0 (one-shot).
+    #[arg(long, default_value = "0", value_name = "SECONDS")]
+    pub(crate) watch: u64,
 }
 
 #[derive(clap::Args, Debug, Clone)]

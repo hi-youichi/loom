@@ -125,6 +125,7 @@ impl From<(String, SkillUsage)> for SkillUsageReport {
 }
 
 /// Store for skill usage statistics.
+#[derive(Clone)]
 pub struct SkillUsageStore {
     path: PathBuf,
 }
@@ -138,7 +139,15 @@ impl SkillUsageStore {
     }
 
     /// Increment the use count for a skill.
+    ///
+    /// Hermes-aligned provenance filter (`skill_usage.py:159-217, 290-293`):
+    /// only skills marked as `agent_created` get their counters bumped.
+    /// Bundled/hub-installed skills are excluded so the curator's
+    /// recommendations are based solely on the agent's own behavior.
     pub fn bump_use(&self, name: &str) {
+        if !self.is_agent_created(name) {
+            return;
+        }
         self.update(name, |u| {
             u.use_count += 1;
             u.last_used_at = Some(Utc::now().to_rfc3339());
@@ -146,7 +155,11 @@ impl SkillUsageStore {
     }
 
     /// Increment the view count for a skill.
+    /// See [`Self::bump_use`] for the provenance-filter rationale.
     pub fn bump_view(&self, name: &str) {
+        if !self.is_agent_created(name) {
+            return;
+        }
         self.update(name, |u| {
             u.view_count += 1;
             u.last_viewed_at = Some(Utc::now().to_rfc3339());
@@ -154,7 +167,11 @@ impl SkillUsageStore {
     }
 
     /// Increment the patch count for a skill.
+    /// See [`Self::bump_use`] for the provenance-filter rationale.
     pub fn bump_patch(&self, name: &str) {
+        if !self.is_agent_created(name) {
+            return;
+        }
         self.update(name, |u| {
             u.patch_count += 1;
             u.last_patched_at = Some(Utc::now().to_rfc3339());
@@ -261,6 +278,19 @@ impl SkillUsageStore {
     }
 
     /// Save all usage data to the store.
+    ///
+    /// Uses `atomic_write_text` so the destination is never observed in a
+    /// half-written state, even if the process is killed mid-write. The helper
+    /// also generates a per-call unique tempfile (pid + nanos), which closes
+    /// the concurrent-process rename-to-same-tmp collision that the previous
+    /// `self.path.with_extension("tmp")` scheme allowed.
+    ///
+    /// **Caveat — cross-process RMW**: there is still no OS-level lock here.
+    /// Two processes calling `bump_use` simultaneously will each load-then-save
+    /// and the last writer wins (lost update). Mirrors Hermes
+    /// `skill_usage.py:67-100, 343-365`. A shared `fs2`/`fs4` advisory lock
+    /// is tracked separately (TODO hermes-port #0); for now callers that share
+    /// the store must serialise externally.
     pub fn save(&self, data: &HashMap<String, SkillUsage>) -> Result<(), std::io::Error> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
@@ -268,10 +298,7 @@ impl SkillUsageStore {
         let json = serde_json::to_string_pretty(data).map_err(|e| {
             std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
         })?;
-        let tmp = self.path.with_extension("tmp");
-        fs::write(&tmp, &json)?;
-        fs::rename(&tmp, &self.path)?;
-        Ok(())
+        crate::storage::atomic_write_text(&self.path, &json)
     }
 
     /// Save a single entry (load existing, update, save).

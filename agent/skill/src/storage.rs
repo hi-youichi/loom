@@ -8,8 +8,78 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::Value as YamlValue;
 use std::collections::HashSet;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
+
+/// Atomically write `text` to `path` via a unique sibling tempfile + fsync + rename.
+///
+/// Guarantees the destination is never observed in a half-written state, even if
+/// the process is killed mid-write. Aligns with Hermes
+/// `skill_manager_tool.py:_atomic_write_text` (tools/skill_manager_tool.py:67-100).
+///
+/// Returns the original `std::io::Error` on failure so callers can map it to
+/// their own error type.
+pub fn atomic_write_text(path: &Path, text: &str) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let pid = std::process::id();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp = path.with_extension(format!(
+        "tmp.{}.{}.{}",
+        pid,
+        nanos,
+        path.extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+    ));
+    {
+        let mut f = fs::File::create(&tmp)?;
+        f.write_all(text.as_bytes())?;
+        f.sync_all()?;
+    }
+    fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Walk upward from `start` removing empty directories until we reach `stop`
+/// (exclusive) or hit a non-empty directory. Bounded — never removes `stop`
+/// itself, even if empty.
+///
+/// Mirrors Hermes `skill_manager_tool.py:702-705` `_cleanup_empty_parents`.
+/// Used after `delete`/`remove_file` so the skill tree does not accumulate
+/// ghost support-file directories when their last file is removed.
+pub fn cleanup_empty_parents(start: &Path, stop: &Path) {
+    let mut cur = match start.parent() {
+        Some(p) => p.to_path_buf(),
+        None => return,
+    };
+    loop {
+        if !cur.starts_with(stop) {
+            return;
+        }
+        if cur == stop {
+            return;
+        }
+        let is_empty = fs::read_dir(&cur)
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false);
+        if !is_empty {
+            return;
+        }
+        if fs::remove_dir(&cur).is_err() {
+            return;
+        }
+        match cur.parent() {
+            Some(p) => cur = p.to_path_buf(),
+            None => return,
+        }
+    }
+}
 
 /// Skill lifecycle state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -78,12 +148,16 @@ pub enum SkillError {
     NotFound(String),
     #[error("Invalid skill format: {0}")]
     InvalidFormat(String),
-    /// Skill is pinned/protected and cannot be deleted or archived.
+/// Skill is pinned/protected and cannot be deleted or archived.
     #[error("Skill '{0}' is pinned and cannot be deleted or archived")]
     Pinned(String),
+    /// Restore target already exists in the active tree.
+    #[error("Skill '{0}' already exists in the active tree")]
+    AlreadyExists(String),
 }
 
 /// Registry for persistent skill storage.
+#[derive(Clone)]
 pub struct SkillStorageRegistry {
     base_dir: PathBuf,
 }
@@ -227,7 +301,60 @@ impl SkillStorageRegistry {
                 return self.load_from_path(&path);
             }
         }
-        Err(SkillError::NotFound(name.to_string()))
+        // Hermes-aligned cross-profile hint
+        // (`skill_manager_tool.py:298-398`): when a skill is missing from
+        // the current registry, surface available alternatives so the user
+        // is not left guessing whether the skill exists at all or whether
+        // they are looking at the wrong profile.
+        let hint = self.suggest_skill_alternatives(name);
+        Err(SkillError::NotFound(format!("{}{}", name, hint)))
+    }
+
+    /// Build a diagnostic hint when `name` is not in the current registry.
+    ///
+    /// Mirrors `skill_manager_tool.py:298-398`. Walks the parent's parent
+    /// (i.e. one level above `base_dir`) for sibling profiles whose name
+    /// contains `name` as a substring, and returns a "did you mean" string
+    /// listing the first few matches. Returns an empty string when no
+    /// helpful hint is available so the error remains compact.
+    fn suggest_skill_alternatives(&self, name: &str) -> String {
+        // Walk the parent's parent for sibling profiles (one level up is
+        // typically `~/.loom/profiles/` or `~/.loom/data/skills/`).
+        let Some(profile_root) = self.base_dir.parent().and_then(|p| p.parent()) else {
+            return String::new();
+        };
+        if !profile_root.exists() {
+            return String::new();
+        }
+        let needle = name.to_ascii_lowercase();
+        let mut matches: Vec<String> = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(profile_root) {
+            for entry in rd.flatten() {
+                if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    continue;
+                }
+                let profile_name = entry
+                    .file_name()
+                    .to_string_lossy()
+                    .to_string();
+                if profile_name.to_ascii_lowercase().contains(&needle) {
+                    matches.push(profile_name);
+                }
+                if matches.len() >= 3 {
+                    break;
+                }
+            }
+        }
+        if matches.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "
+Hint: skill '{}' not found in current profile.                  Did you mean a skill in one of these profiles? {}                  Use `loom --profile <name>` to switch.",
+                name,
+                matches.join(", ")
+            )
+        }
     }
 
     fn load_from_path(&self, path: &Path) -> Result<SkillContent, SkillError> {
@@ -344,12 +471,12 @@ impl SkillStorageRegistry {
             map
         }))?;
 
-        let file_content = format!("---\n{}---\n{}", frontmatter, content.body);
-        fs::write(&path, file_content)?;
+let file_content = format!("---\n{}---\n{}", frontmatter, content.body);
+        atomic_write_text(&path, &file_content)?;
         Ok(())
     }
 
-    /// Delete a skill from the registry.
+/// Delete a skill from the registry.
     ///
     /// Searches the entire tree for the skill directory and removes it.
     pub fn delete(&self, name: &str) -> Result<(), SkillError> {
@@ -361,6 +488,7 @@ impl SkillStorageRegistry {
             }
             if dir.exists() {
                 fs::remove_dir_all(&dir)?;
+                cleanup_empty_parents(&dir, &self.base_dir);
                 return Ok(());
             }
         }
@@ -383,10 +511,10 @@ impl SkillStorageRegistry {
                     serde_yaml::Value::Bool(pinned),
                 );
 
-                let new_yaml = serde_yaml::to_string(&frontmatter)
+let new_yaml = serde_yaml::to_string(&frontmatter)
                     .map_err(|e| SkillError::InvalidFormat(e.to_string()))?;
                 let new_content = format!("---\n{}---\n{}", new_yaml, body);
-                fs::write(&path, new_content)?;
+                atomic_write_text(&path, &new_content)?;
                 return Ok(());
             }
         }
@@ -414,7 +542,7 @@ impl SkillStorageRegistry {
                 let raw = fs::read_to_string(&path)?;
                 let (mut frontmatter, body) = parse_frontmatter(&raw);
 
-                frontmatter.insert(
+frontmatter.insert(
                     serde_yaml::Value::String("lifecycle".into()),
                     serde_yaml::Value::String(
                         serde_yaml::to_string(&lifecycle)
@@ -427,7 +555,7 @@ impl SkillStorageRegistry {
                 let new_yaml = serde_yaml::to_string(&frontmatter)
                     .map_err(|e| SkillError::InvalidFormat(e.to_string()))?;
                 let new_content = format!("---\n{}---\n{}", new_yaml, body);
-                fs::write(&path, new_content)?;
+                atomic_write_text(&path, &new_content)?;
                 return Ok(());
             }
         }
@@ -539,15 +667,15 @@ impl SkillStorageRegistry {
         let dir = self
             .find_skill_dir(skill_name)
             .ok_or_else(|| SkillError::NotFound(skill_name.to_string()))?;
-        let file_path = dir.join(path.trim_start_matches('/'));
+let file_path = dir.join(path.trim_start_matches('/'));
         if let Some(parent) = file_path.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(&file_path, content)?;
+        atomic_write_text(&file_path, content)?;
         Ok(())
     }
 
-    /// Remove a file from a skill's directory.
+/// Remove a file from a skill's directory.
     pub fn remove_file(&self, skill_name: &str, path: &str) -> Result<(), SkillError> {
         let dir = self
             .find_skill_dir(skill_name)
@@ -555,6 +683,7 @@ impl SkillStorageRegistry {
         let file_path = dir.join(path.trim_start_matches('/'));
         if file_path.exists() {
             fs::remove_file(&file_path)?;
+            cleanup_empty_parents(&file_path, &dir);
             Ok(())
         } else {
             Err(SkillError::NotFound(format!(

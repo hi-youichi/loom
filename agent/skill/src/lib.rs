@@ -52,7 +52,7 @@ pub use discovery::{SkillEntry, SkillRegistry, SkillSource};
     pub use security::security_scan_skill;
 pub use preprocessing::{substitute_template_vars, expand_inline_shell};
 pub use provenance::{with_write_origin, WriteOrigin};
-pub use storage::{Lifecycle, SkillContent, SkillError, SkillMeta, Source};
+pub use storage::{atomic_write_text, Lifecycle, SkillContent, SkillError, SkillMeta, Source};
 pub use sync::{sync_skills, SyncResult};
 pub use usage::{SkillUsage, SkillUsageReport, SkillUsageStore};
 pub use utils::{SkillMetadata, ReadinessStatus};

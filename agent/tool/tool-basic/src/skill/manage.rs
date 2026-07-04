@@ -51,7 +51,7 @@ use serde_json::{json, Value};
 use tool_core::{Tool, ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
 use skill::provenance::{with_write_origin, WriteOrigin};
-use skill::storage::{Lifecycle, SkillContent, SkillError, SkillStorageRegistry, Source};
+use skill::storage::{atomic_write_text, Lifecycle, SkillContent, SkillError, SkillStorageRegistry, Source};
 use skill::usage::SkillUsageStore;
 use skill::security;
 use skill::validation::{validate_skill_create, validate_skill_name, validate_skill_path, validate_frontmatter, validate_name_match, Severity, ValidationWarning};
@@ -130,6 +130,12 @@ pub struct SkillManagerTool {
     /// Comes from `config.toml [skills] guard_agent_created`.
     /// Default: `false` (matches Hermes).
     guard_agent_created: bool,
+    /// Optional registry reference for post-write cache invalidation.
+    /// When `Some`, every successful create/edit/patch/delete/write_file/
+    /// remove_file call drops the discovery cache so the next system-prompt
+    /// snapshot reflects the new file. Mirrors Hermes
+    /// `skill_manager_tool.py:870-873`.
+    registry: Option<Arc<skill::discovery::SkillRegistry>>,
 }
 
 impl SkillManagerTool {
@@ -142,6 +148,7 @@ impl SkillManagerTool {
             usage,
             default_origin: WriteOrigin::BackgroundReview,
             guard_agent_created: false,
+            registry: None,
         }
     }
 
@@ -154,6 +161,7 @@ impl SkillManagerTool {
             usage,
             default_origin: WriteOrigin::Foreground,
             guard_agent_created: false,
+            registry: None,
         }
     }
 
@@ -169,6 +177,22 @@ impl SkillManagerTool {
     pub fn with_guard(mut self, enabled: bool) -> Self {
         self.guard_agent_created = enabled;
         self
+    }
+
+    /// Attach a `SkillRegistry` so post-write cache invalidation happens on
+    /// every successful action. Without this, the discovery cache may serve
+    /// stale `available_skills` XML after the agent creates a new skill.
+    pub fn with_registry(mut self, registry: Arc<skill::discovery::SkillRegistry>) -> Self {
+        self.registry = Some(registry);
+        self
+    }
+
+    /// Drop the discovery cache so the next `available_skills()` call rebuilds
+    /// from disk. Safe to call when no registry is attached (no-op).
+    fn invalidate_discovery_cache(&self) {
+        if let Some(reg) = &self.registry {
+            reg.invalidate_cache();
+        }
     }
 
     async fn handle_create(&self, args: &Value) -> Result<Value, ToolSourceError> {
@@ -278,6 +302,9 @@ impl SkillManagerTool {
         if !warnings.is_empty() {
             response["warnings"] = json!(warnings);
         }
+        // Hermes `skill_manager_tool.py:870-873`: drop the discovery cache
+        // so the next system-prompt snapshot reflects the new skill.
+        self.invalidate_discovery_cache();
         Ok(response)
     }
 
@@ -338,6 +365,7 @@ impl SkillManagerTool {
             usage.bump_patch(name);
         }
 
+        self.invalidate_discovery_cache();
         let skill_md_path = skill_dir.join("SKILL.md");
         let abs_path = skill_md_path.to_string_lossy().to_string();
         let description_truncated: String = description.chars().take(120).collect();
@@ -467,10 +495,12 @@ impl SkillManagerTool {
                 }));
             }
 
-            self.storage.save(name, &updated).map_err(map_skill_err)?;
-        } else {
-            std::fs::write(&target_path, &new_content)
-                .map_err(|e| map_skill_err(SkillError::Io(e)))?;
+            if file_path.is_none() {
+                self.storage.save(name, &updated).map_err(map_skill_err)?;
+            } else {
+                atomic_write_text(&target_path, &new_content)
+                    .map_err(|e| map_skill_err(SkillError::Io(e)))?;
+            }
         }
 
         // ── 5. Security scan — roll back on block ──
@@ -478,7 +508,7 @@ impl SkillManagerTool {
             if file_path.is_none() {
                 let _ = self.storage.save(name, &snapshot);
             } else {
-                let _ = std::fs::write(&target_path, &original_raw);
+                let _ = atomic_write_text(&target_path, &original_raw);
             }
             return Ok(error_response(&report));
         }
@@ -488,6 +518,7 @@ impl SkillManagerTool {
             usage.bump_patch(name);
         }
 
+        self.invalidate_discovery_cache();
         let replacement_label = if match_count == 1 { "replacement" } else { "replacements" };
         Ok(json!({
             "success": true,
@@ -544,6 +575,7 @@ impl SkillManagerTool {
             usage.forget_with_intent(name, target);
         }
 
+        self.invalidate_discovery_cache();
         let mut message = format!("Deleted skill '{}'.", name);
         if let Some(ref target) = absorbed_into {
             if !target.is_empty() {
@@ -591,7 +623,7 @@ impl SkillManagerTool {
         let skill_dir = self.storage.skill_dir(Source::Auto, name);
         let target = skill_dir.join(file_path.trim_start_matches('/'));
         let original_metadata = std::fs::metadata(&target).ok();
-        let original_content = std::fs::read(&target).ok();
+        let original_content = std::fs::read_to_string(&target).ok();
 
         self.storage
             .write_file(name, file_path, file_content)
@@ -600,7 +632,7 @@ impl SkillManagerTool {
         // Security scan — roll back on block
         if let Err(report) = security::security_scan_skill(&skill_dir, self.guard_agent_created) {
             match &original_content {
-                Some(orig) => { let _ = std::fs::write(&target, orig); }
+                Some(orig) => { let _ = atomic_write_text(&target, orig); }
                 None => { let _ = std::fs::remove_file(&target); }
             }
             // Best-effort restore original metadata (Unix only)
@@ -614,6 +646,7 @@ impl SkillManagerTool {
             return Ok(error_response(&report));
         }
 
+        self.invalidate_discovery_cache();
         let abs_path = target.to_string_lossy().to_string();
         Ok(json!({
             "success": true,
@@ -661,6 +694,7 @@ impl SkillManagerTool {
             .remove_file(name, file_path)
             .map_err(map_skill_err)?;
 
+        self.invalidate_discovery_cache();
         Ok(json!({
             "success": true,
             "message": format!("File '{}' removed from skill '{}'.", file_path, name),

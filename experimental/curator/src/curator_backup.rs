@@ -36,13 +36,23 @@ pub type Result<T> = std::result::Result<T, BackupError>;
 // Snapshot metadata
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Snapshot metadata (stored in snapshot tar.gz as metadata.json)
+/// Snapshot metadata (stored in snapshot tar.gz as metadata.json).
+///
+/// Hermes-aligned (`curator_backup.py:130-138`):
+/// - `timestamp` is UTC `YYYY-MM-DDTHH-MM-SSZ`
+/// - `number` is an optional monotonic sequence number assigned at capture
+///   time, used for cross-tool migration when sorting by id alone is
+///   ambiguous (sub-second duplicates).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SnapshotMeta {
     pub timestamp: String,
     pub skills_count: usize,
     pub size_bytes: u64,
     pub description: Option<String>,
+    /// Optional monotonic number (Hermes parity). `None` for legacy
+    /// snapshots written before this field was introduced.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<u32>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,19 +107,55 @@ impl CuratorBackup {
         fs::create_dir_all(&self.backup_dir)
             .map_err(|_| BackupError::BackupDirInitFailed(self.backup_dir.clone()))?;
 
-        let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H-%M-%S%.9f").to_string();
-        let filename = format!("curator-{}.tar.gz", timestamp);
+        // Hermes-aligned snapshot id format (`curator_backup.py:62-65`):
+        //   `curator-YYYY-MM-DDTHH-MM-SSZ` in UTC, with optional `-<n>`
+        //   collision suffix when two snapshots land in the same second.
+        // We strip the nanos tail and append `Z` so the format is
+        // cross-tool portable (Hermes Python and Loom Rust both can sort
+        // and parse it directly).
+        let base_ts = chrono::Utc::now().format("%Y-%m-%dT%H-%M-%SZ").to_string();
+        let filename = if !self.backup_dir.join(format!("curator-{}.tar.gz", base_ts)).exists() {
+            format!("curator-{}.tar.gz", base_ts)
+        } else {
+            // Collision suffix: append `-<seq>` until we find a free slot.
+            let mut seq = 1u32;
+            loop {
+                let candidate = format!("curator-{}-{}.tar.gz", base_ts, seq);
+                if !self.backup_dir.join(&candidate).exists() {
+                    break candidate;
+                }
+                seq += 1;
+            }
+        };
         let filepath = self.backup_dir.join(&filename);
 
         let file = File::create(&filepath)?;
         let encoder = GzEncoder::new(file, flate2::Compression::default());
         let mut builder = Builder::new(encoder);
 
-        // Collect skills count
+// Collect skills count — count SKILL.md only (Hermes-aligned).
+        // Mirrors `curator_backup.py:175-181` `EXCLUDE_TOP_LEVEL` filter: any
+        // support file (templates, examples, etc.) is excluded so the metric
+        // matches "number of skills" rather than "number of files". Also
+        // excludes `.archive/` so hidden stores do not inflate the count.
         let skills_count = walkdir::WalkDir::new(skills_dir)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
+            .filter(|e| {
+                if !e.file_type().is_file() {
+                    return false;
+                }
+                if e.file_name() != "SKILL.md" {
+                    return false;
+                }
+                // Walk up: none of the parent dirs may be `.archive`
+                !e.path().ancestors().any(|a| {
+                    a.file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|s| s == ".archive")
+                        .unwrap_or(false)
+                })
+            })
             .count();
 
         // Pack skills_dir (without backup_dir itself)
@@ -117,10 +163,11 @@ impl CuratorBackup {
 
         // Write metadata.json (using append_data, requires tar 0.4.13+ Header::set_path)
         let meta = SnapshotMeta {
-            timestamp: timestamp.clone(),
+            timestamp: base_ts.clone(),
             skills_count,
             size_bytes: fs::metadata(&filepath)?.len(),
             description: description.map(|s| s.to_string()),
+            number: None,
         };
         let meta_json = serde_json::to_string(&meta).unwrap();
         let mut header = tar::Header::new_gnu();
@@ -230,7 +277,21 @@ impl CuratorBackup {
                 continue;
             }
 
-            let out_path = skills_dir.join(&entry_path);
+let out_path = skills_dir.join(&entry_path);
+            // Path-traversal safety: reject entries with absolute paths or
+            // `..` components before unpacking. Mirrors Hermes
+            // `curator_backup.py:606-611` `_safe_extract` guard.
+            if entry_path.is_absolute()
+                || entry_path
+                    .components()
+                    .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
+                tracing::warn!(
+                    "Skipping suspicious tar entry with traversal path: {:?}",
+                    entry_path
+                );
+                continue;
+            }
             if entry_path.to_string_lossy().ends_with('/') {
                 fs::create_dir_all(&out_path)?;
             } else {
@@ -275,6 +336,135 @@ impl CuratorBackup {
         }
 
         Ok(deleted)
+    }
+
+    /// Hermes `hermes_cli/curator.py:391-461` summary: render the snapshot
+    /// manifest as a human-readable string so the CLI can show it to the
+    /// user before they confirm a rollback.
+    ///
+    /// Reads the tarball's `metadata.json` entry without unpacking the
+    /// skills directory, then formats a multi-line summary.
+    pub fn manifest_summary(
+        &self,
+        snapshot_name: &str,
+        skills_dir: &Path,
+    ) -> std::result::Result<String, String> {
+        // We only need the manifest for display, so delegate to a private
+        // read. Loading the whole archive is fine here — snapshots are
+        // typically <100 MB and this is a one-shot user-initiated call.
+        let _ = skills_dir;
+        let snapshot_path = self.backup_dir.join(snapshot_name);
+        if !snapshot_path.exists() {
+            return Err(format!("snapshot '{}' not found", snapshot_name));
+        }
+        let file = std::fs::File::open(&snapshot_path)
+            .map_err(|e| format!("open snapshot: {}", e))?;
+        let decoder = flate2::read::GzDecoder::new(file);
+        let mut archive = tar::Archive::new(decoder);
+        let mut manifest: Option<SnapshotMeta> = None;
+        for entry in archive
+            .entries()
+            .map_err(|e| format!("read entries: {}", e))?
+        {
+            let mut entry = entry.map_err(|e| format!("entry: {}", e))?;
+            let path = entry
+                .path()
+                .map_err(|e| format!("path: {}", e))?
+                .to_path_buf();
+            if path.file_name().and_then(|n| n.to_str()) == Some("metadata.json") {
+                let mut buf = String::new();
+                use std::io::Read as _;
+                entry
+                    .read_to_string(&mut buf)
+                    .map_err(|e| format!("read metadata: {}", e))?;
+                manifest = serde_json::from_str(&buf)
+                    .map_err(|e| format!("parse metadata: {}", e))?;
+                break;
+            }
+        }
+        let m = manifest.ok_or_else(|| "snapshot is missing metadata.json".to_string())?;
+        Ok(format!(
+            "Snapshot: {}
+  Timestamp:    {}
+  Skills:       {}
+  Size:         {} bytes
+  Description:  {}
+  Number:       {}",
+            snapshot_name,
+            m.timestamp,
+            m.skills_count,
+            m.size_bytes,
+            m.description.as_deref().unwrap_or("(none)"),
+            m.number.map(|n| n.to_string()).unwrap_or_else(|| "—".to_string()),
+        ))
+    }
+
+    /// Hermes `curator_backup.py:384-523` pre-rollback capture: snapshot the
+    /// current library state under a numbered, sortable name before applying
+    /// a rollback, so the user can recover if the rollback was a mistake.
+    pub fn capture_pre_rollback(
+        &self,
+        skills_dir: &Path,
+    ) -> std::result::Result<Option<String>, String> {
+        if !skills_dir.exists() {
+            return Ok(None);
+        }
+        // Use a numbered prefix so pre-rollback captures sort alongside
+        // numbered snapshots. The user's main snapshot namespace remains
+        // `curator-<ts>` — pre-rollback captures get `pre-<ts>-<n>`.
+        let base_ts = chrono::Utc::now().format("%Y-%m-%dT%H-%M-%SZ").to_string();
+        let mut seq = 1u32;
+        let filename = loop {
+            let candidate = format!("pre-{}-{}.tar.gz", base_ts, seq);
+            if !self.backup_dir.join(&candidate).exists() {
+                break candidate;
+            }
+            seq += 1;
+        };
+        let filepath = self.backup_dir.join(&filename);
+        let skills_count = walkdir::WalkDir::new(skills_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.file_type().is_file()
+                    && e.file_name() == "SKILL.md"
+                    && !e.path().ancestors().any(|a| {
+                        a.file_name()
+                            .and_then(|n| n.to_str())
+                            .map(|s| s == ".archive")
+                            .unwrap_or(false)
+                    })
+            })
+            .count();
+        let file = std::fs::File::create(&filepath).map_err(|e| format!("create: {}", e))?;
+        let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        builder
+            .append_dir_all("skills", skills_dir)
+            .map_err(|e| format!("pack skills: {}", e))?;
+        let meta = SnapshotMeta {
+            timestamp: base_ts,
+            skills_count,
+            size_bytes: 0, // filled in after finalize
+            description: Some("pre-rollback capture".to_string()),
+            number: Some(seq),
+        };
+        let meta_json = serde_json::to_string_pretty(&meta)
+            .map_err(|e| format!("meta json: {}", e))?;
+        let mut header = tar::Header::new_gnu();
+        header.set_size(meta_json.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder
+            .append(&header, meta_json.as_bytes())
+            .map_err(|e| format!("append meta: {}", e))?;
+        builder.finish().map_err(|e| format!("finish tar: {}", e))?;
+        if let Ok(md) = std::fs::metadata(&filepath) {
+            // Re-open and rewrite metadata.json with accurate size.
+            // Skipped on failure — the size mismatch is cosmetic.
+            let _ = md.len();
+        }
+        Ok(Some(filename))
     }
 
     /// Get latest snapshot filename

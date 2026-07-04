@@ -35,6 +35,22 @@ pub struct ReactBuildConfig {
     pub aux_model: Option<String>,
     pub llm_provider: Option<String>,
     pub llm_provider_name: Option<String>,
+    /// Hermes-aligned curator provider override (`curator.py:1250-1410`).
+    /// When `Some`, takes precedence over `aux_model` for the curator LLM
+    /// pass. `None` (or `Some("")`) falls through to the next tier.
+pub curator_provider: Option<String>,
+    /// Hermes-aligned curator model override (`curator.py:1250-1410`).
+    /// When `Some`, takes precedence over `aux_model` for the curator LLM
+    /// pass. `None` (or `Some("")`) falls through to the next tier.
+pub curator_model: Option<String>,
+    /// Hermes-aligned curator api-key override (`curator.py:1250-1410`).
+    /// When `Some`, takes precedence over the global `openai_api_key` for
+    /// the curator LLM pass.
+pub curator_api_key: Option<String>,
+    /// Hermes-aligned curator base-url override (`curator.py:1250-1410`).
+    /// When `Some`, takes precedence over the global `openai_base_url` for
+    /// the curator LLM pass.
+pub curator_base_url: Option<String>,
     pub openai_temperature: Option<String>,
     pub embedding_api_key: Option<String>,
     pub embedding_base_url: Option<String>,
@@ -107,6 +123,10 @@ impl Default for ReactBuildConfig {
             aux_model: None,
             llm_provider: None,
             llm_provider_name: None,
+            curator_provider: None,
+            curator_model: None,
+            curator_api_key: None,
+            curator_base_url: None,
             embedding_api_key: None,
             embedding_base_url: None,
             embedding_model: None,
@@ -180,6 +200,10 @@ impl ReactBuildConfig {
             aux_model: std::env::var("LOOM_AUX_MODEL").ok(),
             llm_provider: None,
             llm_provider_name: None,
+            curator_provider: std::env::var("LOOM_CURATOR_PROVIDER").ok(),
+            curator_model: std::env::var("LOOM_CURATOR_MODEL").ok(),
+            curator_api_key: std::env::var("LOOM_CURATOR_API_KEY").ok(),
+            curator_base_url: std::env::var("LOOM_CURATOR_BASE_URL").ok(),
             embedding_api_key: std::env::var("EMBEDDING_API_KEY").ok(),
             embedding_base_url: std::env::var("EMBEDDING_BASE_URL").ok(),
             embedding_model: std::env::var("EMBEDDING_MODEL").ok(),
@@ -231,6 +255,65 @@ impl ReactBuildConfig {
             reasoning_effort: None,
         }
     }
+
+    /// Hermes `curator.py:1250-1410` three-way provider resolution.
+    ///
+    /// For each slot (`provider`, `model`, `api_key`, `base_url`) the
+    /// precedence is:
+    ///
+    /// 1. `curator_<slot>` override (Some non-empty wins).
+    /// 2. The deprecated `aux_model` (or `llm_provider`/`llm_provider_name`)
+    ///    auxiliary tier.
+    /// 3. The global session value (`openai_api_key`, `openai_base_url`,
+    ///    `model`, etc.).
+    ///
+    /// Returns a `CuratorProviderOverrides` struct with the resolved
+    /// values. `None` means "no override; downstream code should fall back
+    /// to its own defaults". Empty strings are treated as `None` so an
+    /// unset env var or config field does not accidentally clobber the
+    /// global value.
+    pub fn resolve_curator_overrides(&self) -> CuratorProviderOverrides {
+        fn pick(over: Option<&str>, aux: Option<&str>, glob: Option<&str>) -> Option<String> {
+            let over = over.filter(|s| !s.is_empty());
+            let aux = aux.filter(|s| !s.is_empty());
+            let glob = glob.filter(|s| !s.is_empty());
+            over.map(String::from).or(aux.map(String::from)).or(glob.map(String::from))
+        }
+        CuratorProviderOverrides {
+            provider: pick(
+                self.curator_provider.as_deref(),
+                self.llm_provider_name.as_deref().or(self.llm_provider.as_deref()),
+                None,
+            ),
+            model: pick(
+                self.curator_model.as_deref(),
+                self.aux_model.as_deref(),
+                self.model.as_deref(),
+            ),
+            api_key: pick(
+                self.curator_api_key.as_deref(),
+                None,
+                self.openai_api_key.as_deref(),
+            ),
+            base_url: pick(
+                self.curator_base_url.as_deref(),
+                None,
+                self.openai_base_url.as_deref(),
+            ),
+        }
+    }
+}
+
+/// Resolved curator provider overrides produced by
+/// `ReactBuildConfig::resolve_curator_overrides`.
+///
+/// Mirrors Hermes `curator.py:1395-1410` provider-resolution helper.
+#[derive(Debug, Clone, Default)]
+pub struct CuratorProviderOverrides {
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub api_key: Option<String>,
+    pub base_url: Option<String>,
 }
 
 #[cfg(test)]

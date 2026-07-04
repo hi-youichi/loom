@@ -149,7 +149,7 @@ async fn e2e_mega_full_protocol_flow() {
             .and_then(Value::as_str)
             .unwrap_or("(error)");
         if let Some(err) = tc_resp.get("error") {
-            eprintln!("Step 5a: prompt error: {err}");
+        eprintln!("Step 5a: prompt error: {err}");
         }
         assert_eq!(tc_stop, "end_turn",
             "Step 5a: stopReason should be end_turn, got {tc_stop} (response: {tc_resp:#})");
@@ -208,9 +208,9 @@ async fn e2e_mega_full_protocol_flow() {
         if cancel_stop != "cancelled" {
             // If no result, check for error (cancel might be reflected as error)
             if let Some(err) = cancel_resp.get("error") {
-                eprintln!("Step 6: prompt cancelled via error response: {err}");
+            eprintln!("Step 6: prompt cancelled via error response: {err}");
             } else {
-                eprintln!("Step 6: unexpected stopReason={cancel_stop}, response={cancel_resp:#}");
+            eprintln!("Step 6: unexpected stopReason={cancel_stop}, response={cancel_resp:#}");
             }
         }
         assert_eq!(
@@ -254,11 +254,32 @@ async fn e2e_mega_full_protocol_flow() {
                 json!({"cwd": env.cwd.to_string_lossy()}),
             )
             .await;
-        if let Some(sessions) = list.get("result").and_then(|r| r.get("sessions")).and_then(Value::as_array) {
-            eprintln!("Step 9: list ✓ ({} sessions)", sessions.len());
-        } else {
-            eprintln!("Step 9: session/list returned no result (checkpoints table may not exist without prompts)");
-        }
+        let sessions = list
+            .get("result")
+            .and_then(|r| r.get("sessions"))
+            .and_then(Value::as_array)
+            .expect("Step 9: session/list must return result.sessions[]");
+        assert!(
+            !sessions.is_empty(),
+            "Step 9: session/list should return at least one session, got {}",
+            sessions.len()
+        );
+        let ids: Vec<&str> = sessions
+            .iter()
+            .filter_map(|s| s.get("sessionId").and_then(Value::as_str))
+            .collect();
+        assert!(
+            ids.contains(&session_id.as_str()),
+            "Step 9: original session {session_id} missing from list, got {ids:?}"
+        );
+        assert!(
+            ids.contains(&session_id_b.as_str()),
+            "Step 9: forked session {session_id_b} missing from list, got {ids:?}"
+        );
+        eprintln!(
+            "Step 9: list ✓ ({} sessions, original+fork present)",
+            sessions.len()
+        );
 
         // ── Step 10: error paths ──────────────────────────────────────
         let unknown = h.request_raw("session/foo", json!({})).await;
@@ -301,3 +322,5 @@ async fn e2e_mega_full_protocol_flow() {
 
     tokio::time::sleep(Duration::from_millis(20)).await;
 }
+
+                // ── Step 9: session/list ──────────────────────────────────────

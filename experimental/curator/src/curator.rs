@@ -262,6 +262,7 @@ impl CuratorStateStore for MemoryStateStore {
     }
 }
 
+#[derive(Clone)]
 pub struct Curator {
     pub skills: SkillRegistry,
     config: CuratorConfig,
@@ -286,9 +287,16 @@ impl Curator {
         self
     }
 
-    pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
+pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
         self.skill_usage = skill_usage;
         self
+    }
+
+    /// Expose agent-created provenance check (Hermes
+    /// `curator.py:234-257`). Pin/Unpin/Rollback gates consult this to
+    /// reject bundled/hub-installed skills that should never be curated.
+    pub fn is_agent_created_skill(&self, name: &str) -> bool {
+        self.skill_usage.is_agent_created(name)
     }
 
     pub fn should_run(&self, idle_for_seconds: Option<f64>) -> bool {
@@ -531,6 +539,96 @@ impl Curator {
         }
 
         Ok(report)
+    }
+
+    /// Hermes-aligned prune entry point (`hermes_cli/curator.py:304-369`).
+    ///
+    /// Unlike `run(dry_run)`, this honours an explicit `days` threshold passed
+    /// by the CLI rather than using `config.archive_days`. The legacy
+    /// `loom curator prune --days N` path was a no-op for `days` — it just
+    /// called `curator.run(dry_run)` and printed the value. This method
+    /// threads `days` through by overriding `stale_days_auto`,
+    /// `stale_days_manual`, and `archive_days` for the duration of the call.
+    ///
+    /// `dry_run=true` returns the same `CuratorReport` shape but performs no
+    /// lifecycle mutations.
+    pub fn prune(&self, days: u32, dry_run: bool) -> Result<CuratorReport, SkillError> {
+        let mut config = self.config.clone();
+        config.stale_days_auto = days;
+        config.stale_days_manual = days;
+        config.archive_days = days;
+        let scoped = Curator {
+            skills: self.skills.clone(),
+            config,
+            state_path: self.state_path.clone(),
+            skill_usage: self.skill_usage.clone(),
+        };
+        scoped.run(dry_run)
+    }
+
+    /// Hermes `skill_usage.py:482-567` `archive_skill`: physically move an
+    /// agent-created skill into `.archive/<name>/` so it disappears from the
+    /// active registry but stays recoverable via `restore_skill`.
+    ///
+    /// Returns the source path that was moved (for logging / rollback).
+    /// Returns `Err(SkillError::NotFound)` when the skill does not exist
+    /// under the active base dir.
+    pub fn archive_skill(&self, name: &str) -> Result<std::path::PathBuf, SkillError> {
+        let src = self.skills.base_dir().join(name);
+        if !src.is_dir() {
+            return Err(SkillError::NotFound(name.to_string()));
+        }
+        let archive_root = self.skills.base_dir().join(".archive");
+        std::fs::create_dir_all(&archive_root)?;
+        let dst = archive_root.join(name);
+        if dst.exists() {
+            // Already archived; treat as success to match Hermes semantics.
+            return Ok(src);
+        }
+        std::fs::rename(&src, &dst)?;
+        info!("Archived skill '{}' to {}", name, dst.display());
+        Ok(src)
+    }
+
+    /// Inverse of `archive_skill`: move `.archive/<name>/` back into the
+    /// active base dir. Returns the destination path on success.
+    pub fn restore_skill(&self, name: &str) -> Result<std::path::PathBuf, SkillError> {
+        let archive_root = self.skills.base_dir().join(".archive");
+        let src = archive_root.join(name);
+        if !src.is_dir() {
+            return Err(SkillError::NotFound(format!(
+                "'{}' not found under {}",
+                name,
+                archive_root.display()
+            )));
+        }
+        let dst = self.skills.base_dir().join(name);
+        if dst.exists() {
+            return Err(SkillError::AlreadyExists(name.to_string()));
+        }
+        std::fs::rename(&src, &dst)?;
+        info!("Restored skill '{}' from {}", name, src.display());
+        Ok(dst)
+    }
+
+    /// Hermes `skill_usage.py:482-567` `list_archived_names`: list the
+    /// agent-created skills currently living under `.archive/`.
+    pub fn list_archived_skills(&self) -> Result<Vec<String>, SkillError> {
+        let archive_root = self.skills.base_dir().join(".archive");
+        if !archive_root.exists() {
+            return Ok(Vec::new());
+        }
+        let mut out = Vec::new();
+        for entry in std::fs::read_dir(&archive_root)? {
+            let entry = entry?;
+            if entry.file_type()?.is_dir() {
+                if let Some(name) = entry.file_name().to_str() {
+                    out.push(name.to_string());
+                }
+            }
+        }
+        out.sort();
+        Ok(out)
     }
 
     pub fn touch_skill(&self, name: &str) -> Result<(), SkillError> {

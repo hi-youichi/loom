@@ -43,6 +43,16 @@ pub struct SkillRegistry {
     cache: std::sync::Mutex<crate::cache::SkillCache>,
 }
 
+impl Clone for SkillRegistry {
+    fn clone(&self) -> Self {
+        let cache = self.cache.lock().map(|c| c.clone()).unwrap_or_default();
+        Self {
+            skills: self.skills.clone(),
+            cache: std::sync::Mutex::new(cache),
+        }
+    }
+}
+
 impl SkillRegistry {
     pub fn empty() -> Self {
         Self {

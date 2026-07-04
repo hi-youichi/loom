@@ -538,6 +538,29 @@ pub(crate) async fn handle_curator_command(
 
     match &curator_args.command {
         CuratorCommand::Run { force: _ } => {
+            // Hermes `agent/curator.py` recurring-scheduler hook
+            // (gap #16): when `--watch <seconds>` is set, re-run the
+            // curator on a fixed interval until the process is killed.
+            // Default (`watch = 0`) keeps one-shot behaviour.
+            if curator_args.watch > 0 {
+                eprintln!(
+                    "[curator] watch mode: running every {}s (Ctrl-C to stop)",
+                    curator_args.watch
+                );
+                loop {
+                    let report = curator.run(curator_args.dry_run)?;
+                    if !json {
+                        println!(
+                            "[{}] Active: {}  Archived: {}  Reactivated: {}",
+                            chrono::Utc::now().format("%H:%M:%S"),
+                            report.active,
+                            report.archived.len(),
+                            report.reactivated.len()
+                        );
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(curator_args.watch));
+                }
+            }
             // Phase 0: Run auto-transitions (stale/archive/reactivate)
             let report: CuratorReport = curator.run(curator_args.dry_run)?;
 
@@ -652,6 +675,53 @@ pub(crate) async fn handle_curator_command(
             top_skills.sort_by(|a, b| b.use_count.cmp(&a.use_count));
             let top_skills: Vec<_> = top_skills.into_iter().take(5).collect();
 
+            // Hermes-aligned leaderboards (`hermes_cli/curator.py:105-163`):
+            // least-recently-active (oldest `last_used_at`), most-active
+            // (highest `use_count`), least-active (lowest non-zero
+            // `use_count`). The "top 5" by-uses view above covers the
+            // most-active case; the next three complement it.
+            let mut lra: Vec<_> = usage_reports
+                .iter()
+                .filter(|u| u.last_used_at.is_some())
+                .collect();
+            lra.sort_by(|a, b| a.last_used_at.cmp(&b.last_used_at));
+            let least_recently_active: Vec<_> = lra.into_iter().take(5).collect();
+
+            let mut la: Vec<_> = usage_reports
+                .iter()
+                .filter(|u| u.use_count > 0)
+                .collect();
+            la.sort_by(|a, b| a.use_count.cmp(&b.use_count));
+            let least_active: Vec<_> = la.into_iter().take(5).collect();
+
+            let most_active: Vec<_> = top_skills.clone();
+
+            // Hermes-aligned bucket function (`hermes_cli/curator.py:19-36`):
+            // render a duration as e.g. `3s`, `12m`, `4h`, `2d`. Used by the
+            // status board to display age without a date library.
+            fn bucket_age(rfc3339: Option<&str>) -> String {
+                use chrono::{DateTime, Utc};
+                let Some(s) = rfc3339 else {
+                    return "—".into();
+                };
+                let Ok(t) = DateTime::parse_from_rfc3339(s) else {
+                    return "?".into();
+                };
+                let dt = Utc::now()
+                    .signed_duration_since(t.with_timezone(&Utc))
+                    .num_seconds()
+                    .max(0);
+                if dt < 60 {
+                    format!("{}s", dt)
+                } else if dt < 3600 {
+                    format!("{}m", dt / 60)
+                } else if dt < 86_400 {
+                    format!("{}h", dt / 3600)
+                } else {
+                    format!("{}d", dt / 86_400)
+                }
+            }
+
             if json {
                 println!("{}", serde_json::to_string_pretty(&serde_json::json!({
                     "enabled": curator.config_enabled(),
@@ -703,17 +773,60 @@ pub(crate) async fn handle_curator_command(
                     active, stale, archived, pinned);
                 if !top_skills.is_empty() {
                     println!();
-                    println!("Top Skills (by usage):");
-                    for (i, u) in top_skills.iter().enumerate() {
+                    println!("Most-active skills (by uses):");
+                    for (i, u) in most_active.iter().enumerate() {
+                        println!("  {}. {} — {} uses, {} views, last used {} ago",
+                            i + 1, u.name, u.use_count, u.view_count,
+                            bucket_age(u.last_used_at.as_deref()));
+                    }
+                }
+                if !least_recently_active.is_empty() {
+                    println!();
+                    println!("Least-recently-active skills:");
+                    for (i, u) in least_recently_active.iter().enumerate() {
+                        println!("  {}. {} — last used {} ago",
+                            i + 1, u.name, bucket_age(u.last_used_at.as_deref()));
+                    }
+                }
+                if !least_active.is_empty() {
+                    println!();
+                    println!("Least-active skills (still used):");
+                    for (i, u) in least_active.iter().enumerate() {
                         println!("  {}. {} — {} uses, {} views",
                             i + 1, u.name, u.use_count, u.view_count);
                     }
                 }
             }
         }
-        CuratorCommand::Prune { days } => {
-            // bulk archive old skills
-            let report = curator.run(curator_args.dry_run)?;
+        CuratorCommand::Prune { days, yes } => {
+            // Hermes `hermes_cli/curator.py:344-352`: prompt y/N unless `--yes`.
+            // Dry-run is non-destructive so skip the prompt there too.
+            if !yes && !curator_args.dry_run {
+                eprint!(
+                    "Archive all skills idle for >= {} days? [y/N] ",
+                    days
+                );
+                use std::io::Write;
+                let _ = std::io::stderr().flush();
+                let mut input = String::new();
+                match std::io::stdin().read_line(&mut input) {
+                    Ok(_) => {
+                        let trimmed = input.trim();
+                        if !trimmed.eq_ignore_ascii_case("y") {
+                            println!("Aborted.");
+                            return Ok(());
+                        }
+                    }
+                    Err(_) => {
+                        // EOF / closed stdin — Hermes aborts on EOF.
+                        println!("Aborted (no stdin).");
+                        return Ok(());
+                    }
+                }
+            }
+            // Thread `days` through (gap #3 fix). `run()` would have ignored
+            // it and used config.archive_days instead.
+            let report = curator.prune(*days, curator_args.dry_run)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
@@ -734,10 +847,26 @@ pub(crate) async fn handle_curator_command(
             println!("Curator resumed.");
         }
         CuratorCommand::Pin { skill } => {
+            // Hermes guard: only agent-created (or curated) skills may be
+            // pinned. Bundled/hub-installed skills are read-only and pinning
+            // them would silently mutate upstream copies (`curator.py:234-257`).
+            if !curator.is_agent_created_skill(skill) {
+                return Err(format!(
+                    "Cannot pin '{}': only agent-created or curated skills can be pinned. \
+                     Bundled and hub-installed skills are read-only.",
+                    skill
+                ).into());
+            }
             curator.skills.set_pinned(skill, true).map_err(|e| format!("{:?}", e))?;
             println!("✓ Pinned '{}'", skill);
         }
         CuratorCommand::Unpin { skill } => {
+            if !curator.is_agent_created_skill(skill) {
+                return Err(format!(
+                    "Cannot unpin '{}': only agent-created or curated skills may be pinned.",
+                    skill
+                ).into());
+            }
             curator.skills.set_pinned(skill, false).map_err(|e| format!("{:?}", e))?;
             println!("✓ Unpinned '{}'", skill);
         }
@@ -785,11 +914,48 @@ pub(crate) async fn handle_curator_command(
                 println!("  Location: {}", backup.backup_dir().display());
             }
         }
-        CuratorCommand::Rollback { snapshot } => {
+        CuratorCommand::Rollback { snapshot, yes, capture_pre } => {
             use loom_curator::CuratorBackup;
 
             let skills_dir = loom_curator::skill_registry::default_path();
             let backup = CuratorBackup::new();
+
+            // Hermes `hermes_cli/curator.py:391-461`: print manifest summary
+            // before confirmation so the user can see what they are rolling
+            // back to.
+            match backup.manifest_summary(snapshot, &skills_dir) {
+                Ok(summary) => println!("{}", summary),
+                Err(e) => eprintln!("(manifest read failed: {})", e),
+            }
+            if !yes {
+                eprint!("Roll back skill library to '{}'? [y/N] ", snapshot);
+                use std::io::Write;
+                let _ = std::io::stderr().flush();
+                let mut input = String::new();
+                match std::io::stdin().read_line(&mut input) {
+                    Ok(_) => {
+                        let trimmed = input.trim();
+                        if !trimmed.eq_ignore_ascii_case("y") {
+                            println!("Aborted.");
+                            return Ok(());
+                        }
+                    }
+                    Err(_) => {
+                        println!("Aborted (no stdin).");
+                        return Ok(());
+                    }
+                }
+            }
+            // Hermes `curator_backup.py:384-523`: capture the current
+            // library state as a numbered pre-rollback snapshot so the
+            // user can recover if the rollback was a mistake.
+            if *capture_pre {
+                match backup.capture_pre_rollback(&skills_dir) {
+                    Ok(Some(name)) => println!("Pre-rollback snapshot saved as '{}'.", name),
+                    Ok(None) => println!("(no skills to snapshot)"),
+                    Err(e) => eprintln!("(pre-rollback snapshot failed: {})", e),
+                }
+            }
 
             backup
                 .rollback(snapshot, &skills_dir)
@@ -824,6 +990,27 @@ pub(crate) async fn handle_curator_command(
                             .map(|d| format!(" — {}", d))
                             .unwrap_or_default(),
                     );
+                }
+            }
+        }
+        CuratorCommand::ListArchived => {
+            // Hermes `skill_usage.py:482-567` `list_archived_names`:
+            // list agent-created skills that were soft-archived under
+            // `.archive/`. Restorable via `loom curator restore <name>`.
+            let archived = curator
+                .list_archived_skills()
+                .map_err(|e| format!("{:?}", e))?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&archived)?);
+            } else if archived.is_empty() {
+                println!(
+                    "No archived skills. Use `loom curator archive <name>` to archive one."
+                );
+            } else {
+                println!("Archived skills ({} total):", archived.len());
+                println!("{}", "=".repeat(60));
+                for name in &archived {
+                    println!("  .archive/{}", name);
                 }
             }
         }

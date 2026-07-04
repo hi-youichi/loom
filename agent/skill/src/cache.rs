@@ -34,6 +34,7 @@ struct CachedSkillEntry {
     source: SkillSource,
 }
 
+#[derive(Clone)]
 pub struct SkillCache {
     lru: Vec<(String, Vec<SkillEntry>)>,
 }

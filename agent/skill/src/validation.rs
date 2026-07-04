@@ -15,7 +15,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::storage::SkillContent;
 
-const MAX_SKILL_BODY_SIZE: usize = 32 * 1024;
+/// Hermes `MAX_SKILL_BODY_SIZE = 100_000` (chars). We measure in bytes here
+/// (UTF-8 worst-case 4 bytes/char) and round up to 100 KiB so multi-byte
+/// content is not silently truncated below the Hermes-equivalent character
+/// budget. Aligned with `skill_manager_tool.py:164` (tools/skill_manager_tool.py).
+pub const MAX_SKILL_BODY_SIZE: usize = 100 * 1024;
 const MAX_SKILL_NAME_LEN: usize = 64;
 const MAX_SKILL_DESCRIPTION_LEN: usize = 1024;
 
@@ -292,10 +296,23 @@ pub fn validate_skill_name(name: &str) -> ValidationResult {
         valid = false;
     }
 
-    if name.contains("..") || name.contains('/') || name.contains('\\') {
+if name.contains("..") || name.contains('/') || name.contains('\\') {
         warnings.push(ValidationWarning {
             severity: Severity::Critical,
             message: "Skill name contains path traversal characters".to_string(),
+        });
+        valid = false;
+    }
+
+    // First character must be alphanumeric — Hermes `curator.py:109`
+    // (`_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")`). Names like
+    // `-foo` or `._x` are rejected to keep directory listings sorted sanely
+    // and avoid accidental shell-flag interpretation on tooling that passes
+    // the name as the first arg.
+    if !name.is_empty() && !name.chars().next().unwrap().is_ascii_alphanumeric() {
+        warnings.push(ValidationWarning {
+            severity: Severity::Critical,
+            message: "Skill name must start with an alphanumeric character".to_string(),
         });
         valid = false;
     }
@@ -644,10 +661,35 @@ mod tests {
             .any(|w| w.message.contains("Backslash")));
     }
 
-    #[test]
+#[test]
     fn simple_name_passes() {
         let result = validate_skill_path("my-skill");
         assert!(result.valid);
+    }
+
+    #[test]
+    fn first_char_must_be_alphanumeric() {
+        for bad in &[".foo", "-foo", "_foo", "..hidden"] {
+            let r = validate_skill_name(bad);
+            assert!(!r.valid, "expected '{}' to fail first-char check", bad);
+            assert!(
+                r.warnings
+                    .iter()
+                    .any(|w| w.message.contains("start with an alphanumeric")),
+                "expected first-char warning for '{}'",
+                bad
+            );
+        }
+        for good in &["foo", "foo-bar", "1foo", "x.y", "a_b"] {
+            let r = validate_skill_name(good);
+            assert!(
+                !r.warnings
+                    .iter()
+                    .any(|w| w.message.contains("start with an alphanumeric")),
+                "unexpected first-char warning for '{}'",
+                good
+            );
+        }
     }
 
     // ── validate_memory_content ──
