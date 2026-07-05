@@ -1,8 +1,14 @@
 //! Custom event formatters for tracing log output.
 //!
 //! Two formats are provided:
-//! - `TextWithSpanIds`: plain-text with `thread_id`, `trace_id`, `span_id` per line
+//! - `TextWithSpanIds`: plain-text with `thread_id`, `root_span_id`, `span_id` per line
 //! - `JsonWithSpanIds`: structured JSON with the same fields
+//!
+//! Naming clarification:
+//! - `thread_id` — the session/business identifier (e.g. `session-abc-123`)
+//! - `root_span_id` — the tracing span-tree root span's numeric ID (was previously
+//!   confusingly named `trace_id`); different from `thread_id`
+//! - `span_id` — the current span's numeric ID
 
 use std::fmt;
 use std::thread;
@@ -23,10 +29,10 @@ impl FormatTime for LocalTimer {
     }
 }
 
-/// Plain-text formatter that prefixes each line with `thread_id`, `trace_id`, and `span_id` from the current span scope.
+/// Plain-text formatter that prefixes each line with `thread_id`, `root_span_id`, and `span_id` from the current span scope.
 ///
-/// Output format: `TIMESTAMP thread_id=TID trace_id=X span_id=Y LEVEL target: event_fields` when the event has a parent span;
-/// otherwise `TIMESTAMP thread_id=TID LEVEL target: event_fields` (no trace_id/span_id prefix).
+/// Output format: `TIMESTAMP thread_id=TID root_span_id=X span_id=Y LEVEL target: event_fields` when the event has a parent span;
+/// otherwise `TIMESTAMP thread_id=TID LEVEL target: event_fields` (no root_span_id/span_id prefix).
 pub struct TextWithSpanIds {
     timer: LocalTimer,
     pub(crate) with_level: bool,
@@ -151,13 +157,13 @@ where
 
         if let Some(span) = ctx.parent_span() {
             let span_id = span.id().into_u64().to_string();
-            let trace_id = span
+            let root_span_id = span
                 .scope()
                 .from_root()
                 .next()
                 .map(|root: SpanRef<'_, S>| root.id().into_u64().to_string())
                 .unwrap_or_else(|| span_id.clone());
-            write!(writer, " trace_id={} span_id={}", trace_id, span_id)?;
+            write!(writer, " root_span_id={} span_id={}", root_span_id, span_id)?;
         }
 
         if self.with_level {
@@ -178,7 +184,7 @@ where
     }
 }
 
-/// JSON formatter that emits structured log lines with `thread_id`, `trace_id`, and `span_id`.
+/// JSON formatter that emits structured log lines with `thread_id`, `root_span_id`, and `span_id`.
 ///
 /// Each event is a single JSON object on one line (NDJSON-friendly).
 /// Fields attached to the event are inlined at the top level of the object.
@@ -302,15 +308,15 @@ where
         let target = event.metadata().target().to_string();
         let module_path = event.metadata().module_path().map(|s| s.to_string());
 
-        let (trace_id, span_id) = if let Some(span) = ctx.parent_span() {
+        let (root_span_id, span_id) = if let Some(span) = ctx.parent_span() {
             let sid = span.id().into_u64().to_string();
-            let trid = span
+            let rsid = span
                 .scope()
                 .from_root()
                 .next()
                 .map(|root: SpanRef<'_, S>| root.id().into_u64().to_string())
                 .unwrap_or_else(|| sid.clone());
-            (Some(trid), Some(sid))
+            (Some(rsid), Some(sid))
         } else {
             (None, None)
         };
@@ -326,8 +332,8 @@ where
         write!(writer, ",\"level\":{}", serde_json::to_string(&level).unwrap_or_default())?;
         write!(writer, ",\"target\":{}", serde_json::to_string(&target).unwrap_or_default())?;
         write!(writer, ",\"thread_id\":{}", serde_json::to_string(&tid).unwrap_or_default())?;
-        if let Some(trid) = trace_id {
-            write!(writer, ",\"trace_id\":{}", serde_json::to_string(&trid).unwrap_or_default())?;
+        if let Some(rsid) = root_span_id {
+            write!(writer, ",\"root_span_id\":{}", serde_json::to_string(&rsid).unwrap_or_default())?;
         }
         if let Some(sid) = span_id {
             write!(writer, ",\"span_id\":{}", serde_json::to_string(&sid).unwrap_or_default())?;
@@ -492,7 +498,7 @@ mod tests {
 
         let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
         assert!(output.contains("thread_id="), "missing thread_id in: {output}");
-        assert!(output.contains("trace_id="), "missing trace_id in: {output}");
+        assert!(output.contains("root_span_id="), "missing root_span_id in: {output}");
         assert!(output.contains("span_id="), "missing span_id in: {output}");
         assert!(output.contains("INFO"), "missing INFO in: {output}");
         assert!(output.contains("hello"), "missing hello in: {output}");
@@ -526,7 +532,7 @@ mod tests {
         assert_eq!(parsed["level"], "INFO");
         assert!(parsed.get("target").is_some());
         assert!(parsed.get("thread_id").is_some());
-        assert!(parsed.get("trace_id").is_some(), "missing trace_id");
+        assert!(parsed.get("root_span_id").is_some(), "missing root_span_id");
         assert!(parsed.get("span_id").is_some(), "missing span_id");
     }
 
@@ -551,7 +557,7 @@ mod tests {
 
         let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(output.trim()).unwrap_or_else(|e| panic!("not valid JSON: {output}: {e}"));
-        assert!(parsed.get("trace_id").is_none(), "unexpected trace_id");
+        assert!(parsed.get("root_span_id").is_none(), "unexpected root_span_id");
         assert!(parsed.get("span_id").is_none(), "unexpected span_id");
     }
 
@@ -576,7 +582,7 @@ mod tests {
 
         let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
         assert!(output.contains("thread_id="), "missing thread_id in: {output}");
-        assert!(!output.contains("trace_id="), "unexpected trace_id in: {output}");
+        assert!(!output.contains("root_span_id="), "unexpected root_span_id in: {output}");
         assert!(!output.contains("span_id="), "unexpected span_id in: {output}");
     }
 
