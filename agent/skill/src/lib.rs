@@ -43,6 +43,7 @@ pub mod sync;
 pub mod usage;
 pub mod utils;
 pub mod validation;
+pub mod archive;
 
 pub use bundles::{BundleRegistry, SkillBundle};
 pub use cache::SkillCache;

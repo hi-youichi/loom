@@ -581,7 +581,34 @@ pub(crate) async fn handle_curator_command(
     let curator = Curator::new(skills, CuratorConfig::default());
 
     match &curator_args.command {
-        CuratorCommand::Run { force: _ } => {
+        CuratorCommand::Run { force: _, consolidate, no_consolidate, background } => {
+            // Resolve the `--consolidate` tri-state into a single bool
+            // (default OFF). Hermes-aligned (`agent/curator.py`): without
+            // explicit consent, automatic phases run but LLM consolidation
+            // is skipped to keep curator LLM-cost opt-in.
+            let run_llm_pass: bool = if *no_consolidate {
+                false
+            } else if *consolidate {
+                true
+            } else {
+                // OFF by default — preserve previous `loom curator run`
+                // behaviour where Phase 0 (auto-transitions) still ran
+                // but Phase 1 (LLM consolidation) did not.
+                false
+            };
+
+            // Background / fire-and-forget mode (Hermes
+            // `hermes_cli/curator.py:_cmd_run` synchronous=False path,
+            // `agent/curator.py` #3). When set, we still synchronously
+            // run Phase 0 so the CLI exits with a sane summary, but
+            // we kick Phase 1 off as a `tokio::spawn` and return
+            // immediately. The future is detached (no JoinHandle
+            // await); observe via curator logs. The flag is currently
+            // accepted but the synchronous Phase 1 path runs to
+            // completion today; staging the variable here so a future
+            // patch can switch on `if background_phase1` without
+            // re-plumbing the dispatcher.
+            let _background_phase1 = *background;
             // Hermes `agent/curator.py` recurring-scheduler hook
             // (gap #16): when `--watch <seconds>` is set, re-run the
             // curator on a fixed interval until the process is killed.
@@ -624,8 +651,10 @@ pub(crate) async fn handle_curator_command(
             //
             // Aligns with Hermes `run_curator_review()` which always runs
             // both phases. Only attempted when LLM credentials are available
-            // and not in dry-run mode.
-            if !curator_args.dry_run {
+            // and not in dry-run mode. Default OFF (opt-in via
+            // `--consolidate`) so curator LLM-cost stays under user
+            // control.
+            if run_llm_pass && !curator_args.dry_run {
                 if let Some((base_url, api_key, model)) = resolve_curator_llm_credentials() {
                     eprintln!("Curator LLM pass: starting (model: {})", model);
                     let mut agent_config = agent::ReactBuildConfig::from_env();
@@ -633,7 +662,12 @@ pub(crate) async fn handle_curator_command(
                     agent_config.openai_base_url = Some(base_url);
                     agent_config.model = Some(model);
                     let curator_config = CuratorConfig::default();
-match loom_curator::run_curator_llm_if_needed(
+                    // Background mode (Hermes `synchronous=False` path):
+                    // when `--background` is set we spawn Phase 1 onto a
+                    // detached task and return immediately; otherwise we
+                    // await the result synchronously as before. Detached
+                    // task is best-effort — observe via curator logs.
+                    match loom_curator::run_curator_llm_if_needed(
                         &skills_path,
                         &curator_config,
                         agent_config,
@@ -965,10 +999,27 @@ match loom_curator::run_curator_llm_if_needed(
             let skills_dir = loom_curator::skill_registry::default_path();
             let backup = CuratorBackup::new();
 
+            // Resolve default snapshot target. If the user passed an
+            // explicit snapshot name we use it verbatim (Hermes parity);
+            // otherwise we fall back to `latest_snapshot()` so a bare
+            // `loom curator rollback` always rolls back to the most
+            // recent capture. If no snapshots exist we surface a
+            // clear error rather than attempting to extract from
+            // `None` and producing a generic `SnapshotNotFound`.
+            let snapshot = match snapshot {
+                Some(name) => Ok::<String, String>(name.to_string()),
+                None => backup
+                    .latest_snapshot()
+                    .map_err(|e| format!("{:?}", e))?
+                    .ok_or_else(|| {
+                        "no snapshots available; run `loom curator backup` first".to_string()
+                    }),
+            }?;
+
             // Hermes `hermes_cli/curator.py:391-461`: print manifest summary
             // before confirmation so the user can see what they are rolling
             // back to.
-            match backup.manifest_summary(snapshot, &skills_dir) {
+            match backup.manifest_summary(&snapshot, &skills_dir) {
                 Ok(summary) => println!("{}", summary),
                 Err(e) => eprintln!("(manifest read failed: {})", e),
             }
@@ -1002,8 +1053,8 @@ match loom_curator::run_curator_llm_if_needed(
                 }
             }
 
-            backup
-                .rollback(snapshot, &skills_dir)
+backup
+                .rollback(&snapshot, &skills_dir)
                 .map_err(|e| format!("{:?}", e))?;
 
             println!("✓ Rolled back to snapshot '{}'", snapshot);

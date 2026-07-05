@@ -89,7 +89,8 @@ fn draw_tools_table(tools: &[ToolSpec]) -> String {
     for tool in tools {
         let desc = tool.description.as_deref().unwrap_or("");
         let desc = if desc.len() > LIST_DESC_MAX_LEN {
-            format!("{}...", &desc[..LIST_DESC_MAX_LEN])
+            let cut = desc.floor_char_boundary(LIST_DESC_MAX_LEN);
+            format!("{}...", &desc[..cut])
         } else {
             desc.to_string()
         };

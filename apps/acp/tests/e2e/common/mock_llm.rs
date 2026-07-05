@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 

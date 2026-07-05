@@ -8,6 +8,7 @@
 //! - Profile loading, tier resolution, prompt assembly
 
 pub mod agent;
+pub mod agent_cache;
 pub mod commands;
 pub mod compress;
 pub mod goal_runner;

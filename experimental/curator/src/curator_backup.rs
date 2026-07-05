@@ -314,9 +314,43 @@ impl CuratorBackup {
     /// which left `skills_dir` partially-written on extract errors and
     /// leaked a `pre-rollback-temp` file on success.
     pub fn rollback(&self, snapshot_name: &str, skills_dir: &Path) -> Result<()> {
-        let snapshot_path = self.backup_dir.join(snapshot_name);
+let snapshot_path = self.backup_dir.join(snapshot_name);
         if !snapshot_path.exists() {
             return Err(BackupError::SnapshotNotFound(snapshot_name.to_string()));
+        }
+
+        // Priority #22 gap (Hermes `curator_backup.py`): capture a
+        // pre-rollback snapshot with `protect_ids={target_id}` BEFORE
+        // any staging swap. The auto-prune pass at line ~620 walks the
+        // backup dir and removes everything older than the cap; without
+        // passing the rollback target through, a concurrent auto-prune
+        // (or a curator run started in parallel by the agent) could
+        // evict the snapshot we're about to swap in. Round-2 added the
+        // `protect_ids` parameter on the prune side, but the rollback()
+        // call site didn't capture-and-pass — that's what this block
+        // fixes. The snapshot is best-effort: if the backup subsystem
+        // is disabled or the dir is unwritable, we proceed with the
+        // rollback and log a warning (matches Hermes' degradation
+        // semantics — losing a pre-rollback capture is recoverable but
+        // losing the actual rollback isn't).
+        let target_id = snapshot_name.to_string();
+        let mut protect_ids: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        protect_ids.insert(target_id.clone());
+        if let Some(pre_path) = self.snapshot_skills_with_protect(
+            "pre-rollback",
+            &protect_ids,
+        ) {
+            tracing::info!(
+                "Curator rollback: pre-rollback protect snapshot at {:?} (target={})",
+                pre_path,
+                target_id
+            );
+        } else {
+            tracing::warn!(
+                "Curator rollback: could not capture pre-rollback protect snapshot; \
+                 proceeding without auto-prune protection"
+            );
         }
 
         let base_ts = chrono::Utc::now().format("%Y-%m-%dT%H-%M-%SZ").to_string();
@@ -422,15 +456,40 @@ impl CuratorBackup {
     /// # Arguments
     /// * `keep` — keep recent N snapshots (default 5)
     /// * `dry_run` — if true, only report snapshots to delete, don't actually delete
-    pub fn prune_old_snapshots(&self, keep: usize, dry_run: bool) -> Result<Vec<String>> {
+    /// * `protect_ids` — snapshot filenames that must NEVER be pruned, even if
+    ///   they fall outside the `keep` window. Hermes parity
+    ///   (`tools/curator_backup.py` #1): without this guard, a long-running
+    ///   `rollback(snapshot_X)` could have its target evicted by an
+    ///   intervening `auto_snapshot` + `prune_old_snapshots(5)`, leaving
+    ///   the restore to fail mid-extract with `SnapshotNotFound`.
+    pub fn prune_old_snapshots(
+        &self,
+        keep: usize,
+        dry_run: bool,
+        protect_ids: &std::collections::HashSet<String>,
+    ) -> Result<Vec<String>> {
         let snapshots = self.list_snapshots()?;
 
-        if snapshots.len() <= keep {
-            tracing::debug!("prune: {} snapshots <= keep({}), nothing to prune", snapshots.len(), keep);
+        if snapshots.is_empty() {
             return Ok(vec![]);
         }
 
-        let to_delete: Vec<_> = snapshots.iter().skip(keep).collect();
+        // Build a whitelist of filenames that cannot be deleted regardless
+        // of age or recency rank. `latest_snapshot()` is always retained
+        // implicitly via `keep` for callers that don't supply protect_ids.
+        let to_delete: Vec<_> = snapshots
+            .iter()
+            .skip(keep)
+            .map(|m| (format!("curator-{}.tar.gz", m.timestamp), m))
+            .filter(|(filename, _)| {
+                let protected = protect_ids.contains(filename);
+                if protected {
+                    tracing::debug!("prune: skipping protected snapshot {}", filename);
+                }
+                !protected
+            })
+            .map(|(_, m)| m)
+            .collect();
         let mut deleted = Vec::new();
 
         for meta in to_delete {
@@ -592,12 +651,14 @@ impl CuratorBackup {
             return Ok(None);
         }
         let filename = self.snapshot(skills_dir, Some("auto-pre-curator-run"))?;
-        // Auto cleanup: keep recent 5
-        self.prune_old_snapshots(5, false)?;
+        // Auto cleanup: keep recent 5. `protect_ids` is empty here; a
+        // concurrent `rollback()` would have set a non-empty set in its
+        // own prune call so its target stays untouched.
+        self.prune_old_snapshots(5, false, &std::collections::HashSet::new())?;
         Ok(Some(filename))
     }
 
-    /// Wrapper for snapshot() + auto prune (aligns with `snapshot_skills(reason)`)
+/// Wrapper for snapshot() + auto prune (aligns with `snapshot_skills(reason)`)
     ///
     /// Difference from `auto_snapshot`:
     /// - Checks curator enabled config 
@@ -612,6 +673,19 @@ impl CuratorBackup {
     /// * `Some(PathBuf)` — snapshot directory path
     /// * `None` — skip snapshot (disabled/directory doesn't exist/error)
     pub fn snapshot_skills(&self, reason: &str) -> Option<PathBuf> {
+        self.snapshot_skills_with_protect(reason, &std::collections::HashSet::new())
+    }
+
+    /// Like `snapshot_skills` but threads `protect_ids` through to the
+    /// subsequent `prune_old_snapshots` call. Priority #22 gap (Hermes
+    /// `curator_backup.py`): `rollback(snapshot_X)` needs to ensure the
+    /// auto-prune pass immediately after a pre-rollback capture cannot
+    /// evict the target snapshot we're about to swap in.
+    pub fn snapshot_skills_with_protect(
+        &self,
+        reason: &str,
+        protect_ids: &std::collections::HashSet<String>,
+    ) -> Option<PathBuf> {
         let skills_dir = dirs::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("loom")
@@ -648,8 +722,11 @@ impl CuratorBackup {
             }
         };
 
-        // 5. Prune old snapshots ))
-        if self.prune_old_snapshots(5, false).is_err() {
+        // 5. Prune old snapshots, honouring protect_ids.
+        if self
+            .prune_old_snapshots(5, false, protect_ids)
+            .is_err()
+        {
             tracing::debug!("prune_old_snapshots failed");
         }
 
@@ -734,7 +811,9 @@ mod tests {
         let snapshots = backup.list_snapshots().unwrap();
         assert_eq!(snapshots.len(), 8, "should have 8 snapshots before prune");
 
-        let deleted = backup.prune_old_snapshots(5, false).unwrap();
+        let deleted = backup
+            .prune_old_snapshots(5, false, &std::collections::HashSet::new())
+            .unwrap();
         assert_eq!(deleted.len(), 3, "8 - 5 = 3 should be deleted");
 
         let remaining = backup.list_snapshots().unwrap();
@@ -836,7 +915,9 @@ mod tests {
         fs::write(skills_dir.path().join("x"), "x").unwrap();
         backup.snapshot(skills_dir.path(), None).unwrap();
 
-        let deleted = backup.prune_old_snapshots(5, false).unwrap();
+        let deleted = backup
+            .prune_old_snapshots(5, false, &std::collections::HashSet::new())
+            .unwrap();
         assert!(deleted.is_empty());
     }
 
@@ -853,7 +934,9 @@ mod tests {
             backup.snapshot(&subdir, None).unwrap();
         }
 
-        let deleted = backup.prune_old_snapshots(5, true).unwrap();
+        let deleted = backup
+            .prune_old_snapshots(5, true, &std::collections::HashSet::new())
+            .unwrap();
         assert_eq!(deleted.len(), 2);
 
         // Dry run: nothing actually deleted

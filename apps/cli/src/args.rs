@@ -28,6 +28,15 @@ pub(crate) struct Args {
     #[arg(short, long, value_name = "DIR")]
     pub(crate) working_folder: Option<PathBuf>,
 
+    /// Attach image(s) to the user message. Repeatable. Routes through
+    /// `decide_image_input_mode` (Hermes parity, `cli.py` #3): a
+    /// vision-capable model receives `UserContent::Multimodal` via
+    /// `apps/acp/src/content.rs:323`; otherwise `vision_analyze` is
+    /// invoked to convert to text. Format: `PATH` (relative to
+    /// `working_folder` if set, else cwd).
+    #[arg(long, value_name = "PATH", action = clap::ArgAction::Append)]
+    pub(crate) image: Vec<PathBuf>,
+
     /// Override LLM model for this run. Supports bare name ("gpt-4o") or "provider/model" format
     /// (e.g. "zhipuai-coding-plan/glm-5.1") to auto-select provider from [[providers]] in config.toml.
     #[arg(short('M'), long, value_name = "MODEL")]
@@ -538,6 +547,23 @@ pub(crate) enum CuratorCommand {
         /// Force LLM pass even if interval gating would skip it
         #[arg(long)]
         force: bool,
+        /// Force the LLM consolidation pass regardless of interval/idle
+        /// gating. Defaults to OFF so LLM cost is opt-in. Hermes-aligned
+        /// (`agent/curator.py`): without this flag, automatic phases
+        /// (stale → archive / reactivation) still run, but the LLM
+        /// consolidation step is skipped.
+        ///
+        /// Tri-state via clap: `--consolidate` enables,
+        /// `--no-consolidate` disables, omitting both leaves it unset.
+        #[arg(long, overrides_with = "no_consolidate")]
+        consolidate: bool,
+        #[arg(long, hide = true, conflicts_with = "consolidate")]
+        no_consolidate: bool,
+        /// Run curator asynchronously (fire-and-forget) and exit
+        /// immediately. Mirrors Hermes `hermes_cli/curator.py:_cmd_run`'s
+        /// `synchronous=False` path (`agent/curator.py` #3).
+        #[arg(long)]
+        background: bool,
     },
     /// Show curator status and statistics
     Status,
@@ -587,9 +613,14 @@ pub(crate) enum CuratorCommand {
     },
     /// Roll back the skill library to a previous snapshot
     Rollback {
-        /// Snapshot filename (e.g. curator-2025-08-19T12-34-56.tar.gz)
+        /// Snapshot filename (e.g. curator-2025-08-19T12-34-56.tar.gz).
+        /// Optional: omit to roll back to the *newest* snapshot on file
+        /// (`CuratorBackup::latest_snapshot`). Hermes parity
+        /// (`hermes_cli/curator.py` `_cmd_rollback` requires explicit
+        /// snapshot name; we default-to-newest so casual user-initiated
+        /// rollbacks always produce a no-op / safe move).
         #[arg(value_name = "SNAPSHOT")]
-        snapshot: String,
+        snapshot: Option<String>,
         /// Skip the y/N confirmation prompt (Hermes-aligned).
         /// Mirrors `hermes_cli/curator.py:391-461`.
         #[arg(short = 'y', long)]

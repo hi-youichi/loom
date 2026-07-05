@@ -580,7 +580,7 @@ fn resolve_tool(
     match tool_name {
         "loom" => {
             let mcp_config_path = write_mcp_config(db_path, working_dir)?;
-            let session_id = format!("goal-{}", &id[..8]);
+            let session_id = format!("goal-{}", &id[..id.floor_char_boundary(8)]);
             let mut tool = super::tool::LoomTool::new(
                 session_id,
                 working_dir.to_path_buf(),

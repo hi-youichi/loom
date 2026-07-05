@@ -249,6 +249,16 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                 loom_command::Command::ReviewSkill { .. } => {
                     // not supported in telegram bot; fall through
                 }
+                loom_command::Command::Help { .. }
+                | loom_command::Command::Tools
+                | loom_command::Command::Model { .. }
+                | loom_command::Command::Resume { .. }
+                | loom_command::Command::Undo
+                | loom_command::Command::Retry
+                | loom_command::Command::History { .. }
+                | loom_command::Command::Exit => {
+                    // not supported in telegram bot; fall through
+                }
             }
         }
 

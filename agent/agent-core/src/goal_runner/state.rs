@@ -1,5 +1,19 @@
 use loom_llm::LlmUsage;
 
+/// Exit code (EX_TEMPFAIL = 75 from sysexits.h) emitted by `loom` when the
+/// LLM provider returns a transient rate-limit / billing error AND the
+/// caller is a Kanban orchestrator that knows how to back off and retry
+/// the task instead of marking it failed.
+///
+/// Gated on `LOOM_KANBAN_TASK` so the default `loom` CLI still exits 1
+/// for any error — only Kanban-style supervisors (which poll the
+/// process exit code) opt in to the recoverable signal.
+///
+/// Hermes parity (`hermes/cli.py`): the Kanban supervisor already
+/// interprets 75 as "re-enqueue, don't fail"; Loom gains the same
+/// signal here without changing the protocol.
+pub const KANBAN_RATE_LIMIT_EXIT_CODE: i32 = 75;
+
 pub struct TurnResult {
     pub reply: String,
     pub reasoning_content: Option<String>,

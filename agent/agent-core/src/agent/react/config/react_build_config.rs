@@ -62,6 +62,13 @@ pub curator_base_url: Option<String>,
     pub mcp_servers: Option<Vec<McpServerDef>>,
     pub skill_registry: Option<Arc<SkillRegistry>>,
     pub max_sub_agent_depth: Option<u32>,
+    /// Curator-LLM-pass recursion limit (Hermes parity, `agent/curator.py`
+    /// #15). When `Some(n)`, the curator's ObserveNode is constructed
+    /// with `with_loop_max_turns(n)` so a runaway loop can never run
+    /// forever. `None` (current default) leaves ObserveNode in its
+    /// `with_loop()` unlimited state — `Agent::from_config` reads this
+    /// field to apply the cap once plumbed.
+    pub curator_max_iterations: Option<u32>,
     pub dry_run: bool,
     pub builtin_tool_filter: Option<BuiltinToolFilter>,
     pub call_tool_filter: Option<BuiltinToolFilter>,
@@ -137,6 +144,7 @@ impl Default for ReactBuildConfig {
             mcp_servers: None,
             skill_registry: None,
             max_sub_agent_depth: None,
+            curator_max_iterations: Some(9999),
             dry_run: false,
             builtin_tool_filter: None,
             call_tool_filter: None,
@@ -223,6 +231,9 @@ impl ReactBuildConfig {
             mcp_servers: None,
             skill_registry: None,
             max_sub_agent_depth: std::env::var("MAX_SUB_AGENT_DEPTH")
+                .ok()
+                .and_then(|s| s.parse().ok()),
+            curator_max_iterations: std::env::var("LOOM_CURATOR_MAX_ITERATIONS")
                 .ok()
                 .and_then(|s| s.parse().ok()),
             dry_run: std::env::var("LOOM_DRY_RUN")

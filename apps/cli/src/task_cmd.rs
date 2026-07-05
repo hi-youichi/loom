@@ -273,7 +273,8 @@ fn truncate_name(desc: &str) -> String {
     if line.len() <= 60 {
         line.to_string()
     } else {
-        format!("{}...", &line[..57])
+        let cut = line.floor_char_boundary(57);
+        format!("{}...", &line[..cut])
     }
 }
 

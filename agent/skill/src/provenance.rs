@@ -87,6 +87,24 @@ where
     WRITE_ORIGIN.scope(origin, fut).await
 }
 
+/// Skill names that must never be deleted, archived, or moved to the
+/// `Archived` state, regardless of who issued the call. Hermes parity
+/// (`skill_usage.py:402-431`): `plan` is the only built-in whose
+/// absence silently bricks the planning pipeline, so every mutating
+/// path gates on this constant before the `is_agent_created` /
+/// `WriteOrigin` checks. Adding to this list is the safe way to
+/// whitelist a built-in — touching the gate functions in
+/// `manage.rs` is not required.
+pub const PROTECTED_BUILTIN_SKILLS: &[&str] = &["plan"];
+
+/// Returns true if `name` is in [`PROTECTED_BUILTIN_SKILLS`]. Use this
+/// helper everywhere a mutating path (archive_skill, set_state Archived,
+/// storage::delete, …) would otherwise proceed. Centralising the check
+/// here means adding a new protected skill is a single-line change.
+pub fn is_protected_builtin(name: &str) -> bool {
+    PROTECTED_BUILTIN_SKILLS.contains(&name)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -199,11 +199,13 @@ pub fn format_report(findings: &[ThreatFinding]) -> String {
 }
 
 /// Truncate a matched snippet to avoid dumping large amounts of content.
+/// UTF-8 safe via `floor_char_boundary` so multibyte chars (CJK) never panic.
 fn truncate_snippet(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
     } else {
-        format!("{}...", &s[..max_len])
+        let cut = s.floor_char_boundary(max_len);
+        format!("{}...", &s[..cut])
     }
 }
 

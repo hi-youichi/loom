@@ -81,7 +81,12 @@ fn extract_session_text(thread_id: &str) -> Result<String, String> {
             }
         }
     }
-    Ok(parts.join("\n"))
+    // Strip the curator's `<background_review>` harness block so the
+    // review-runner doesn't re-inject the curator's one-shot memory/skill
+    // instructions back into the LLM context. Hermes `hermes_state.py`
+    // #10 parity.
+    let assembled = parts.join("\n");
+    Ok(loom_llm::message::strip_background_review_harness(&assembled))
 }
 
 /// Spawn an in-process background review thread.
@@ -235,13 +240,12 @@ mod tests {
         let session = format!("dedup-test-{}", uuid::Uuid::new_v4());
 
         let first = registry.try_acquire(session.clone()).expect("first");
-        assert_eq!(registry.active_sessions() >= 1, true);
+        assert!(registry.active_sessions() >= 1);
         let second = registry.try_acquire(session.clone());
         assert!(second.is_none(), "second acquire for the same session must fail");
         drop(first);
-        assert_eq!(
+        assert!(
             registry.try_acquire(session).is_some(),
-            true,
             "slot must be released after drop"
         );
     }

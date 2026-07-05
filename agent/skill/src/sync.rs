@@ -243,7 +243,11 @@ for name in &bundled_names {
             Ok(c) => c,
             Err(_) => continue,
         };
-        let src_hash = compute_hash(&src_content);
+        // Hermes parity (`skills_sync.py:118-145`): the manifest hash covers
+        // the whole skill tree (attached resources included), not just the
+        // SKILL.md bytes. `src_path` is the SKILL.md path so we hash its
+        // parent directory. Same applies to the dest_hash branch below.
+        let src_hash = compute_dir_hash(src_path.parent().unwrap_or(src_path.as_path()));
 
         if !dest_dir.is_dir() {
             // DELETED-BY-USER guard (`skills_sync.py:204-225`): a skill that
@@ -255,9 +259,16 @@ for name in &bundled_names {
             // asked for a re-sync. Hermes honours a `LOOM_SKILL_FORCE`
             // flag here; we keep that behaviour and rely on the manifest
             // entry to detect "user previously removed".
+            // DELETED-BY-USER detection (`skills_sync.py:204-225`): the
+            // dead `!bundled_skills.contains_key(name)` was removed — we're
+            // iterating `bundled_names`, so that condition was always false
+            // (silently masking user-deleted skill reinstalls). The
+            // manifest walk at the end of `sync_skills` is the authoritative
+            // pass that drops entries whose bundled counterpart has gone
+            // away; here we only need the "previously-installed but dest
+            // dir is now gone" check.
             let user_deleted = manifest.entries.contains_key(name)
                 && !dest_dir.is_dir()
-                && !bundled_skills.contains_key(name)
                 && std::env::var("LOOM_SKILL_FORCE").is_err();
             if user_deleted {
                 result.skipped.push(format!("{} (deleted by user)", name));
@@ -277,11 +288,8 @@ for name in &bundled_names {
             Some(ref recorded_hash) if recorded_hash == &src_hash => {
                 result.skipped.push(name.clone());
             }
-            Some(ref recorded_hash) => {
-                let dest_hash = std::fs::read_to_string(&dest_skill)
-                    .ok()
-                    .map(|c| compute_hash(&c))
-                    .unwrap_or_default();
+Some(ref recorded_hash) => {
+                let dest_hash = compute_dir_hash(&dest_dir);
                 if dest_hash == *recorded_hash {
                     // Hermes-aligned UPDATE branch (skills_sync.py:262-289):
                     // rename dest→dest.bak, copytree src→dest, on failure
@@ -337,23 +345,30 @@ for name in &bundled_names {
     result
 }
 
+/// Recursively scan `dir` for `SKILL.md` files, preserving category
+/// subdirectories (e.g. `mlops/axolotl/SKILL.md`).
+///
+/// Hermes parity (`skills_sync.py:301-356`): the bundled layout may nest
+/// skills under category subdirs (mlops/axolotl/, data-science/kafka/, …)
+/// and the original flat `read_dir` scan dropped them silently. We use
+/// the existing `collect_files_sorted` helper to rglob `SKILL.md` files
+/// and record their parent directory name as the skill key.
 fn scan_bundled_skills(dir: &Path) -> HashMap<String, PathBuf> {
     let mut skills = HashMap::new();
     if !dir.is_dir() {
         return skills;
     }
-    if let Ok(entries) = fs::read_dir(dir) {
-        for e in entries.flatten() {
-            let path = e.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let skill_file = path.join("SKILL.md");
-            if skill_file.is_file() {
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    skills.insert(name.to_string(), skill_file);
-                }
-            }
+    let mut paths: Vec<PathBuf> = Vec::new();
+    collect_files_sorted(dir, &mut paths);
+    for p in paths {
+        if p.file_name().and_then(|n| n.to_str()) != Some("SKILL.md") {
+            continue;
+        }
+        let Some(parent) = p.parent() else { continue };
+        // Skill key is the parent dir's name (Hermes parity) so category
+        // subdirs (mlops/axolotl) collide by `axolotl`, not by full path.
+        if let Some(name) = parent.file_name().and_then(|n| n.to_str()) {
+            skills.entry(name.to_string()).or_insert(p);
         }
     }
     skills

@@ -9,6 +9,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
+use loom_util::text::truncate::truncate;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
 
@@ -126,12 +127,67 @@ impl Tool for ReadFileTool {
         for (i, line) in selected.iter().enumerate() {
             let line_num = start + i + 1;
             let truncated = if line.len() > MAX_LINE_LENGTH {
-                format!("{}...", &line[..MAX_LINE_LENGTH])
+                format!("{}...", truncate(line, MAX_LINE_LENGTH))
             } else {
                 (*line).to_string()
             };
             out.push_str(&format!("  {}\t{}\n", line_num, truncated));
         }
         Ok(ToolCallContent::text(out))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression: byte slice at MAX_LINE_LENGTH=2000 panicked when a line
+    /// exceeded 2000 bytes and byte 2000 fell inside a CJK char (e.g. '户').
+    /// `用` (U+7528) is 3 bytes in UTF-8; 700 copies = 2100 bytes > 2000,
+    /// and byte 2000..2003 of that range is inside the 667th character.
+    #[tokio::test]
+    async fn read_file_long_cjk_line_truncates_on_char_boundary() {
+        let tmp = tempfile::tempdir().unwrap();
+        let long_cjk = "用".repeat(700); // 2100 bytes, > MAX_LINE_LENGTH=2000
+        let file = tmp.path().join("cjk.txt");
+        std::fs::write(&file, format!("{}\nshort\n", long_cjk)).unwrap();
+
+        let tool = ReadFileTool::new(Arc::new(tmp.path().to_path_buf()));
+        let res = tool
+            .call(json!({"path": "cjk.txt"}), None)
+            .await
+            .expect("CJK line must not panic during truncation");
+        let text = res.as_text().expect("text content");
+
+        // First line is the truncated CJK line; must start with `"  1\t"` and
+        // end with the truncation marker. The trailing empty line (from the
+        // terminal `\n`) makes the whole text end with `\n`, so we check the
+        // first line in isolation.
+        assert!(text.starts_with("  1\t"));
+        assert!(text.contains("..."));
+        let first_line_end = text.find('\n').expect("first line present");
+        assert!(text[..first_line_end].ends_with("..."));
+
+        // The CJK content must be carried through. After floor_char_boundary(2000)
+        // it lands at byte 1998 (one full "用" earlier), so the line starts with
+        // 666 visible CJK chars.
+        assert!(text.contains("用"));
+    }
+
+    /// Short lines (including non-ASCII but under the limit) pass through unchanged.
+    #[tokio::test]
+    async fn read_file_short_multibyte_line_passes_through() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("hi.txt");
+        std::fs::write(&file, "你好世界\n").unwrap();
+
+        let tool = ReadFileTool::new(Arc::new(tmp.path().to_path_buf()));
+        let res = tool
+            .call(json!({"path": "hi.txt"}), None)
+            .await
+            .expect("must succeed");
+        let text = res.as_text().expect("text content");
+        assert!(text.contains("你好世界"));
+        assert!(!text.contains("..."));
     }
 }

@@ -3,6 +3,7 @@
 use async_trait::async_trait;
 use serde_json::json;
 
+use loom_util::text::truncate::truncate;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolOutputHint, ToolOutputStrategy};
 use tool_core::Tool;
 
@@ -180,7 +181,7 @@ fn format_results(value: &serde_json::Value, text_max_per_result: usize) -> Stri
             let summary = summary.trim();
             if !summary.is_empty() {
                 let excerpt = if summary.len() > text_max_per_result {
-                    format!("{}...", &summary[..text_max_per_result])
+                    format!("{}...", truncate(summary, text_max_per_result))
                 } else {
                     summary.to_string()
                 };
@@ -198,7 +199,7 @@ fn format_results(value: &serde_json::Value, text_max_per_result: usize) -> Stri
                 .is_empty()
         {
             let excerpt = if text.len() > text_max_per_result {
-                format!("{}...", &text[..text_max_per_result])
+                format!("{}...", truncate(text, text_max_per_result))
             } else {
                 text.to_string()
             };

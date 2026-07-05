@@ -9,8 +9,86 @@ use serde_yaml::Value as YamlValue;
 use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
+
+/// Hermes parity (`skill_utils.is_excluded_skill_path`, gap #7):
+/// decision function for whether a given path belongs to a skill
+/// the curator should skip during backup/snapshot/count. Mirrors the
+/// Python helper exactly — `True` if the path is a builtin marker
+/// (`.archive`, `_builtin`, `__pycache__`, dotfiles) or any hidden
+/// store under `.loom/`. Used by `experimental/curator/src/curator_backup.rs`
+/// so the snapshot's `skills_count` matches what Hermes would have
+/// emitted.
+pub fn is_excluded_skill_path(path: &std::path::Path) -> bool {
+    // Reject hidden directory entries (`.archive`, `_builtin`,
+    // `__pycache__`, `.git`, etc.).
+    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+        if name.starts_with('.') {
+            return true;
+        }
+        if name.starts_with('_') && name != "_" {
+            return true;
+        }
+        if name == "__pycache__" {
+            return true;
+        }
+    }
+    // Reject any path that lives inside the global `.loom/` data
+    // store (those are internal markers, not bundled skills).
+    for ancestor in path.ancestors() {
+        if let Some(name) = ancestor.file_name().and_then(|n| n.to_str()) {
+            if name == ".loom" || name == ".archive" {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod excluded_path_tests {
+    use super::is_excluded_skill_path;
+    use std::path::Path;
+
+    #[test]
+    fn rejects_dotfile_directories() {
+        assert!(is_excluded_skill_path(Path::new(
+            "/skills/.archive/old-skill/SKILL.md"
+        )));
+        assert!(is_excluded_skill_path(Path::new(
+            "/skills/.git/HEAD"
+        )));
+    }
+
+    #[test]
+    fn rejects_pycache_and_underscore_dirs() {
+        assert!(is_excluded_skill_path(Path::new(
+            "/skills/_builtin/foo/SKILL.md"
+        )));
+        assert!(is_excluded_skill_path(Path::new(
+            "/skills/foo/__pycache__/x.py"
+        )));
+    }
+
+    #[test]
+    fn rejects_paths_under_loom_data_dir() {
+        assert!(is_excluded_skill_path(Path::new(
+            "/home/u/.loom/skills/.archive/x/SKILL.md"
+        )));
+    }
+
+    #[test]
+    fn accepts_normal_skill_paths() {
+        assert!(!is_excluded_skill_path(Path::new(
+            "/skills/plan/SKILL.md"
+        )));
+        assert!(!is_excluded_skill_path(Path::new(
+            "/skills/code-review/SKILL.md"
+        )));
+    }
+}
 use std::path::{Path, PathBuf};
 use thiserror::Error;
+use crate::usage::SkillUsageStore;
 
 /// Atomically write `text` to `path` via a unique sibling tempfile + fsync + rename.
 ///
@@ -77,6 +155,76 @@ pub fn cleanup_empty_parents(start: &Path, stop: &Path) {
         match cur.parent() {
             Some(p) => cur = p.to_path_buf(),
             None => return,
+        }
+    }
+}
+
+/// Hermes-aligned delete-target guard
+/// (`skill_manager_tool.py:404-432`): refuse to delete a skill whose
+/// directory (or any ancestor on the way to `base_dir`) is a symlink,
+/// hard-link, or junction that escapes `base_dir`. Without this check a
+/// malicious or stray `mklink /J auto\plan C:\Windows` would cause
+/// `remove_dir_all` to recurse into the system path.
+///
+/// Strategy:
+///   1. Use `symlink_metadata` (not `metadata`) so we see the lstat
+///      file type and detect symlinks even when the target is missing.
+///   2. `canonicalize` the directory, then walk ancestors verifying
+///      every prefix is inside `base_dir`. Any `..` segment, symlink,
+///      or junction that pushes the canonical path out of `base_dir`
+///      yields `SkillError::InvalidFormat`.
+fn _validate_delete_target(dir: &Path, base_dir: &Path) -> Result<(), SkillError> {
+    // 1. Direct symlink check. `symlink_metadata` follows the symlink
+    //    only for the final component; here we want the raw lstat so
+    //    that `dir` itself being a symlink is caught.
+    match fs::symlink_metadata(dir) {
+        Ok(md) if md.file_type().is_symlink() => {
+            return Err(SkillError::InvalidFormat(format!(
+                "refusing to delete symlinked skill directory: {}",
+                dir.display()
+            )));
+        }
+        Ok(_) => {}
+        Err(e) => {
+            return Err(SkillError::Io(e));
+        }
+    }
+
+    // 2. Canonicalize and verify ancestry. On Windows `canonicalize`
+    //    resolves junctions; on POSIX it follows symlinks. Either way
+    //    we now have the absolute real path.
+    let canonical = match fs::canonicalize(dir) {
+        Ok(p) => p,
+        Err(e) => {
+            // Missing target after the symlink_metadata check usually
+            // means a dangling junction; refuse conservatively.
+            return Err(SkillError::Io(e));
+        }
+    };
+    let base_canonical = match fs::canonicalize(base_dir) {
+        Ok(p) => p,
+        Err(e) => {
+            return Err(SkillError::Io(e));
+        }
+    };
+
+    // 3. Walk ancestors of `canonical` until we reach `base_canonical`.
+    //    If we hit a junction/symlink that escapes before then, the
+    //    prefix-starts_with check on the raw `cur` still catches it
+    //    because canonicalize already resolved all links.
+    let mut cur = canonical.as_path();
+    loop {
+        if cur == base_canonical {
+            return Ok(());
+        }
+        match cur.parent() {
+            Some(p) => cur = p,
+            None => {
+                return Err(SkillError::InvalidFormat(format!(
+                    "refusing to delete skill directory outside base: {}",
+                    dir.display()
+                )));
+            }
         }
     }
 }
@@ -215,6 +363,16 @@ impl SkillStorageRegistry {
     /// Get the base directory for this registry.
     pub fn base_dir(&self) -> &Path {
         &self.base_dir
+    }
+
+    /// Construct a `SkillUsageStore` rooted at this registry's base
+    /// directory. Returns `Some(_)` because the usage store is
+    /// always derivable from `base_dir` — callers in the curator
+    /// (`archive_skill` / `restore_skill`) use this to keep the
+    /// `.curator_suppressed` list in sync without having to thread
+    /// an extra dependency through `Curator` (priority #20).
+    pub fn usage_store(&self) -> SkillUsageStore {
+        SkillUsageStore::new(&self.base_dir)
     }
 
     /// Compute the storage directory for a skill given its source.
@@ -475,6 +633,18 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
 
     /// Save a skill to the registry.
     pub fn save(&self, name: &str, content: &SkillContent) -> Result<(), SkillError> {
+        // Pinned-skill gate (Hermes parity, `tools/skill_manager_tool.py`):
+        // a skill whose `SKILL.md` frontmatter declares `pinned: true` is
+        // immutable via the surface APIs (save / patch / write_file /
+        // remove_file). Only `delete()` and `set_lifecycle(Archived)`
+        // were previously guarded; this extends the contract to `save`.
+        if let Some(existing_dir) = self.find_skill_dir(name) {
+            let path = existing_dir.join("SKILL.md");
+            if path.exists() && self.read_pinned_from_frontmatter(&path) == Some(true) {
+                return Err(SkillError::Pinned(name.to_string()));
+            }
+        }
+
         // Hermes parity (`skill_manager_tool.py` ~L300): when a category is
         // supplied, the skill lives under
         // `base_dir/source/<category>/<name>/SKILL.md` rather than the
@@ -554,7 +724,7 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
         Ok(())
     }
 
-    /// Delete a skill from the registry.
+/// Delete a skill from the registry.
     ///
     /// Searches the entire tree for the skill directory and removes it.
     pub fn delete(&self, name: &str) -> Result<(), SkillError> {
@@ -564,6 +734,13 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
             if skill_md.exists() && self.read_pinned_from_frontmatter(&skill_md) == Some(true) {
                 return Err(SkillError::Pinned(name.to_string()));
             }
+            // Hermes-aligned symlink/junction guard
+            // (`skill_manager_tool.py:404-432`): refuse to follow a
+            // symlink or junction that resolves outside `base_dir`. A
+            // malicious `.bundled_manifest`/hub entry (or a stray
+            // `mklink /J`) cannot trick us into `rm -rf` on a parent
+            // directory or a system path.
+            _validate_delete_target(&dir, &self.base_dir)?;
             if dir.exists() {
                 fs::remove_dir_all(&dir)?;
                 cleanup_empty_parents(&dir, &self.base_dir);
@@ -642,6 +819,17 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
 
     /// Patch a skill by replacing text.
     pub fn patch(&self, name: &str, old_string: &str, new_string: &str) -> Result<(), SkillError> {
+        // Pinned-skill gate: a `pinned: true` frontmatter makes the skill
+        // immutable through every write surface. Only delete() /
+        // set_lifecycle(Archived) were previously guarded; extend the
+        // contract to `patch`. Without this, `manage.rs::handle_patch`
+        // could silently overwrite a protected skill's body.
+        if let Some(dir) = self.find_skill_dir(name) {
+            let path = dir.join("SKILL.md");
+            if path.exists() && self.read_pinned_from_frontmatter(&path) == Some(true) {
+                return Err(SkillError::Pinned(name.to_string()));
+            }
+        }
         let mut content = self.load(name)?;
         if !content.raw.contains(old_string) {
             return Err(SkillError::InvalidFormat(format!(
@@ -744,6 +932,16 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
         path: &str,
         content: &str,
     ) -> Result<(), SkillError> {
+        // Pinned-skill gate (extend the immutable-surface contract from
+        // delete()/set_lifecycle(Archived) to write_file). A user with
+        // `manage.rs::handle_write_file` would otherwise be able to swap
+        // any file under a pinned skill's directory.
+        if let Some(dir) = self.find_skill_dir(skill_name) {
+            let skill_md = dir.join("SKILL.md");
+            if skill_md.exists() && self.read_pinned_from_frontmatter(&skill_md) == Some(true) {
+                return Err(SkillError::Pinned(skill_name.to_string()));
+            }
+        }
         let dir = self
             .find_skill_dir(skill_name)
             .ok_or_else(|| SkillError::NotFound(skill_name.to_string()))?;
@@ -757,6 +955,16 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
 
     /// Remove a file from a skill's directory.
     pub fn remove_file(&self, skill_name: &str, path: &str) -> Result<(), SkillError> {
+        // Pinned-skill gate (extend the immutable-surface contract from
+        // delete()/set_lifecycle(Archived) to remove_file). Without it, a
+        // caller could strip SKILL.md frontmatter, leaving the skill in
+        // an unrecoverable state.
+        if let Some(dir) = self.find_skill_dir(skill_name) {
+            let skill_md = dir.join("SKILL.md");
+            if skill_md.exists() && self.read_pinned_from_frontmatter(&skill_md) == Some(true) {
+                return Err(SkillError::Pinned(skill_name.to_string()));
+            }
+        }
         let dir = self
             .find_skill_dir(skill_name)
             .ok_or_else(|| SkillError::NotFound(skill_name.to_string()))?;

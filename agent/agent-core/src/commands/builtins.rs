@@ -19,12 +19,20 @@ pub fn execute(cmd: Command, state: &mut dyn ResetState) -> CommandResult {
             state.reset_context();
             CommandResult::Reply("Context cleared.".into())
         }
-        Command::Compact { .. }
+Command::Compact { .. }
         | Command::Summarize
         | Command::Models { .. }
         | Command::ModelsUse { .. }
         | Command::Goal { .. }
-        | Command::ReviewSkill { .. } => CommandResult::PassThrough,
+        | Command::ReviewSkill { .. }
+        | Command::Help { .. }
+        | Command::Tools
+        | Command::Model { .. }
+        | Command::Resume { .. }
+        | Command::Undo
+        | Command::Retry
+        | Command::History { .. }
+        | Command::Exit => CommandResult::PassThrough,
     }
 }
 
@@ -81,7 +89,18 @@ where
 
             Ok(CommandResult::Reply(content))
         }
-        Command::Models { .. } | Command::ModelsUse { .. } | Command::Goal { .. } | Command::ReviewSkill { .. } => Ok(CommandResult::PassThrough),
+        Command::Models { .. }
+        | Command::ModelsUse { .. }
+        | Command::Goal { .. }
+        | Command::ReviewSkill { .. }
+        | Command::Help { .. }
+        | Command::Tools
+        | Command::Model { .. }
+        | Command::Resume { .. }
+        | Command::Undo
+        | Command::Retry
+        | Command::History { .. }
+        | Command::Exit => Ok(CommandResult::PassThrough),
     }
 }
 

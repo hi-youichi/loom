@@ -83,6 +83,10 @@ async-openai = { version = "0.32", features = ["chat-completion", "embedding", "
 
 task-core = { path = "../../experimental/task/task-core" }
 
+lru = "0.12"
+
+parking_lot = "0.12"
+
 
 
 [dev-dependencies]

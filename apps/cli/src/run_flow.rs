@@ -31,7 +31,7 @@ pub(crate) fn output_config(args: &Args) -> OutputConfig {
 
 pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool) -> RunOptions {
     RunOptions {
-        message: UserContent::Text(message),
+        message: build_user_content_with_images(args, message),
         working_folder: args.working_folder.clone(),
         session_id: None,
         cancellation: None,
@@ -60,6 +60,170 @@ worktree: args.worktree,
         goal_mode: false,
         acp_mcp_servers: None,
         effort: args.effort.clone(),
+    }
+}
+
+/// `--image` routing (priority #16 gap, Hermes parity `cli.py`).
+///
+/// Round-2 only declared the `image: Vec<PathBuf>` flag without
+/// implementing routing; calling `loom --image foo.png "describe this"`
+/// was a no-op (the image was silently dropped). This function:
+///   1. If `args.image` is empty, returns `UserContent::Text(message)`.
+///   2. Otherwise probes the resolved model via
+///      `decide_image_input_mode` (vision-capable or text fallback).
+///   3. For the vision path, reads each file and base64-encodes as a
+///      `ContentPart::ImageUrl` data URL (mirrors
+///      `apps/acp/src/content.rs:323`).
+///   4. For the text path, inlines a `[attached image: <name>]`
+///      marker per file alongside the original message. The full
+///      `vision_analyze` LLM round-trip is out of scope for a CLI
+///      dispatch (the `run_flow` path doesn't carry a client); the
+///      agent loop in `apps/cli/src/run/agent.rs` is the right place
+///      for that fall-back once `--image` is wired through ACP. For
+///      now we surface a clear message and degrade to text.
+pub(crate) fn build_user_content_with_images(args: &Args, message: String) -> UserContent {
+    if args.image.is_empty() {
+        return UserContent::Text(message);
+    }
+    let mode = decide_image_input_mode(&args.model);
+    match mode {
+        ImageInputMode::Multimodal => build_multimodal(&args.image, message),
+        ImageInputMode::TextFallback => build_text_fallback(&args.image, message),
+    }
+}
+
+/// Routing decision: vision-capable vs. text fallback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ImageInputMode {
+    /// Model advertises vision capability — emit `UserContent::Multimodal`
+    /// with base64 data URLs.
+    Multimodal,
+    /// Model is text-only — inline markers and let the downstream
+    /// agent loop call `vision_analyze` to convert image -> text.
+    TextFallback,
+}
+
+/// Determine whether the resolved model supports vision. Used by
+/// `build_user_content_with_images` and by tests.
+///
+/// Resolution order:
+///   1. If `--model gpt-4o` / `--model claude-sonnet-4` / `--model gemini-2.0-*`
+///      style names match the model catalog (TODO: integrate `ModelCatalog`),
+///      consult that. For now we use a substring heuristic on the model id.
+///   2. Otherwise default to TextFallback (the safe choice).
+///
+/// The heuristic is intentionally narrow — only well-known vision
+/// prefixes trigger Multimodal. New models must be added to the
+/// `VISION_MODEL_HINTS` slice, not the other way around; this avoids
+/// accidentally inlining raw image bytes into a text-only model.
+pub(crate) fn decide_image_input_mode(model_id: &Option<String>) -> ImageInputMode {
+    const VISION_MODEL_HINTS: &[&str] = &[
+        "gpt-4o",
+        "gpt-4-vision",
+        "gpt-5",
+        "claude-3",
+        "claude-4",
+        "claude-sonnet-4",
+        "claude-opus-4",
+        "claude-haiku-4",
+        "gemini-1.5",
+        "gemini-2",
+        "qwen-vl",
+        "qwen2-vl",
+        "qvq",
+        "llava",
+        "pixtral",
+        "vision",
+        "-v",
+    ];
+    let id = match model_id {
+        Some(s) => s.to_ascii_lowercase(),
+        None => return ImageInputMode::TextFallback,
+    };
+    if VISION_MODEL_HINTS.iter().any(|h| id.contains(h)) {
+        ImageInputMode::Multimodal
+    } else {
+        ImageInputMode::TextFallback
+    }
+}
+
+/// Construct a multimodal `UserContent` with one `ImageUrl` part per
+/// file. Each file is read into memory and base64-encoded into a
+/// `data:<mime>;base64,...` URL. Files larger than 8 MB are skipped
+/// with a `tracing::warn!` rather than failing the whole call — the
+/// user can retry with a smaller crop.
+fn build_multimodal(images: &[std::path::PathBuf], message: String) -> UserContent {
+    use base64::Engine as _;
+    use loom_llm::message::ContentPart;
+    const MAX_BYTES: u64 = 8 * 1024 * 1024;
+    let mut parts: Vec<ContentPart> = Vec::new();
+    if !message.is_empty() {
+        parts.push(ContentPart::Text { text: message });
+    }
+    for path in images {
+        match std::fs::read(path) {
+            Ok(bytes) if bytes.len() as u64 <= MAX_BYTES => {
+                let mime = guess_mime(path);
+                let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                parts.push(ContentPart::ImageUrl {
+                    url: format!("data:{};base64,{}", mime, encoded),
+                    detail: None,
+                });
+            }
+            Ok(_) => {
+                tracing::warn!(
+                    "image too large, skipping: {} (>8 MB)",
+                    path.display()
+                );
+            }
+            Err(e) => {
+                tracing::warn!("failed to read image {}: {}", path.display(), e);
+            }
+        }
+    }
+    if parts.is_empty() {
+        UserContent::Text(String::new())
+    } else {
+        UserContent::Multimodal(parts)
+    }
+}
+
+/// Text-mode degradation: prepend a `[attached image: <name>]` marker
+/// per file. The downstream ACP review-runner / agent loop is
+/// responsible for calling `vision_analyze` if it wants richer
+/// descriptions; here we just preserve the fact that an image was
+/// attached.
+fn build_text_fallback(images: &[std::path::PathBuf], message: String) -> UserContent {
+    let mut buf = String::new();
+    for path in images {
+        buf.push_str(&format!(
+            "[attached image: {}]\n",
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("<unknown>")
+        ));
+    }
+    buf.push_str(&message);
+    UserContent::Text(buf)
+}
+
+/// Minimal MIME guesser — three file extensions cover the common
+/// cases (PNG/JPEG/WEBP). Anything else gets `application/octet-stream`
+/// which is fine because the upstream LLM only uses the data URL for
+/// opaque decoding anyway.
+fn guess_mime(path: &std::path::Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("webp") => "image/webp",
+        Some("gif") => "image/gif",
+        Some("bmp") => "image/bmp",
+        _ => "application/octet-stream",
     }
 }
 
@@ -126,6 +290,29 @@ pub(crate) async fn run_interactive_mode(
             )?,
             Err(err) => {
                 eprintln!("error: {}", err);
+                // Kanban-aware exit-code routing (Hermes parity,
+                // `agent/cli.py` #1). When the caller's supervisor is
+                // a Kanban orchestrator, surface a transient rate-limit
+                // or billing error as EX_TEMPFAIL (75) so the
+                // supervisor can re-enqueue the task instead of
+                // marking it failed. Default UX (no `LOOM_KANBAN_TASK`)
+                // keeps the existing exit-1 behaviour so end users
+                // aren't surprised by a different exit code in
+                // scripts.
+                if std::env::var_os("LOOM_KANBAN_TASK").is_some() {
+                    let msg = err.to_string().to_ascii_lowercase();
+                    let is_transient = msg.contains("rate")
+                        || msg.contains("429")
+                        || msg.contains("too many requests")
+                        || msg.contains("quota")
+                        || msg.contains("billing")
+                        || msg.contains("insufficient credit");
+                    if is_transient {
+                        std::process::exit(
+                            agent::goal_runner::state::KANBAN_RATE_LIMIT_EXIT_CODE,
+                        );
+                    }
+                }
                 std::process::exit(1);
             }
         }

@@ -556,6 +556,10 @@ impl SkillManagerTool {
 
     async fn handle_delete(&self, args: &Value) -> Result<Value, ToolSourceError> {
         let name = require_str(args, "name")?;
+        // `absorbed_into` parsed twice: once for validation, once for the
+        // archive-vs-delete router below. The router uses `Some(_)` to
+        // distinguish "user wants this skill archived" from "user wants
+        // this skill deleted"; an empty string is still a "Some".
         let absorbed_into = args
             .get("absorbed_into")
             .and_then(|v| v.as_str())
@@ -587,7 +591,33 @@ impl SkillManagerTool {
             }
         }
 
-        self.storage.delete(name).map_err(map_skill_err)?;
+        // Archive routing — Hermes parity (`tools/skill_manager_tool.py`
+        // gap #4). Two cases route to `SkillArchiveService::archive`
+        // rather than `storage.delete`:
+        //   1. `absorbed_into` is present (merge-into-umbrella path)
+        //   2. caller is the background-review pass (curator managed
+        //      the skill, we may want to inspect/restore later)
+        //
+        // Plain user-initiated delete with no umbrella and no
+        // BackgroundReview origin keeps the original `storage.delete`
+        // path (Loom's current behaviour, gap #8 says this is OK).
+        let should_archive =
+            absorbed_into.is_some() || WriteOrigin::is_background_review();
+        if should_archive {
+            // `SkillStorageRegistry::base_dir()` is public on the storage
+            // crate's API surface; we just need its owned `PathBuf` form
+            // so `archive_skill_to` can take a stable reference regardless
+            // of registry lifetime.
+            let base_dir = self.storage.base_dir().to_path_buf();
+            if let Err(e) = skill::archive::archive_skill_to(&base_dir, name) {
+                return Ok(json!({
+                    "success": false,
+                    "error": format!("archive failed: {:?}", e),
+                }));
+            }
+        } else {
+            self.storage.delete(name).map_err(map_skill_err)?;
+        }
 
         if let Some(ref usage) = self.usage {
             let target = absorbed_into

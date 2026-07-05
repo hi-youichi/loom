@@ -6,6 +6,39 @@
 pub const THINKING_START: &str = "\u{3c}think\u{3e}";
 pub const THINKING_END: &str = "\u{3c}/think\u{3e}";
 
+/// Hermes-aligned reasoning-tag open/close pairs (`cli.py:strip_reasoning_tags`).
+///
+/// OpenAI o1/o-series, Anthropic extended-thinking, DeepSeek R1, and a
+/// handful of Chinese base models all surface their chain-of-thought
+/// under different tag names. The persisted chat history must not
+/// include any of these, otherwise the next replay leaks the previous
+/// turn's reasoning. Open and close variants are kept separate so that
+/// a model that forgets a closing tag (only an opener appears in the
+/// stream) can still be sanitised to its opening point.
+pub const REASONING_TAGS: &[(&str, &str)] = &[
+    (THINKING_START, THINKING_END),
+    ("\u{3c}thinking\u{3e}", "\u{3c}/thinking\u{3e}"),
+    ("\u{3c}reasoning\u{3e}", "\u{3c}/reasoning\u{3e}"),
+    ("\u{3c}REASONING_SCRATCHPAD\u{3e}", "\u{3c}/REASONING_SCRATCHPAD\u{3e}"),
+    ("\u{3c}thought\u{3e}", "\u{3c}/thought\u{3e}"),
+];
+
+/// Hermes-aligned tool/function-call tag pairs (`cli.py:strip_tool_tags`).
+///
+/// Some tool-emitting providers (notably the in-house JSON-mode
+/// shim used by the background-review harness) wrap raw tool call
+/// payloads in legacy XML tags instead of the OpenAI native
+/// `tool_calls` field. Those tags must not survive into the
+/// persisted history because re-playing them would re-fire the
+/// tool.
+pub const TOOL_TAGS: &[(&str, &str)] = &[
+    ("\u{3c}tool_call\u{3e}", "\u{3c}/tool_call\u{3e}"),
+    ("\u{3c}tool_calls\u{3e}", "\u{3c}/tool_calls\u{3e}"),
+    ("\u{3c}tool_result\u{3e}", "\u{3c}/tool_result\u{3e}"),
+    ("\u{3c}function_call\u{3e}", "\u{3c}/function_call\u{3e}"),
+    ("\u{3c}function_calls\u{3e}", "\u{3c}/function_calls\u{3e}"),
+];
+
 /// Segment produced by the incremental parser.
 #[derive(Debug)]
 pub enum ThinkingSegment {
@@ -19,19 +52,70 @@ pub enum ThinkingSegment {
 ///
 /// Used to produce the final stored `content` after streaming completes.
 pub fn strip_thinking_tags(s: &str) -> String {
-    let mut out = String::new();
+    strip_reasoning_and_tool_tags(s)
+}
+
+/// Removes both reasoning (`<think>`/`<thinking>`/...) and tool
+/// (`<tool_call>`/...) tag blocks from a complete string.
+///
+/// Handles three termination cases per pair, mirroring Hermes'
+/// `_strip_paired_tags`:
+///   1. **closed** — `<tag>body</tag>` removed entirely,
+///   2. **unterminated** — `<tag>...end-of-string` removed down to
+///      the opener (matches Hermes' "drop the rest"),
+///   3. **orphan close** — `</tag>` without an opener is dropped
+///      too, so a stray closing tag does not leak.
+///
+/// The original [`strip_thinking_tags`] is preserved as a thin
+/// wrapper for backwards compatibility.
+pub fn strip_reasoning_and_tool_tags(s: &str) -> String {
+    let mut out = strip_paired_tags(s, REASONING_TAGS);
+    out = strip_paired_tags(&out, TOOL_TAGS);
+    out
+}
+
+fn strip_paired_tags(s: &str, pairs: &[(&str, &str)]) -> String {
+    let mut out = String::with_capacity(s.len());
     let mut rest = s;
-    while let Some(start) = rest.find(THINKING_START) {
-        out.push_str(&rest[..start]);
-        rest = &rest[start + THINKING_START.len()..];
-        if let Some(end) = rest.find(THINKING_END) {
-            rest = &rest[end + THINKING_END.len()..];
-        } else {
-            break;
+    loop {
+        // Find the earliest opener across all pairs.
+        let next_open = pairs
+            .iter()
+            .filter_map(|(open, _)| rest.find(open).map(|i| (i, open)))
+            .min_by_key(|(i, _)| *i);
+        let Some((idx, open)) = next_open else {
+            out.push_str(rest);
+            return out;
+        };
+        // Drop orphan closes (any pair's closer before `idx`).
+        let mut scan = &rest[..idx];
+        let mut dropped_orphans = String::new();
+        for (_, close) in pairs {
+            while let Some(j) = scan.find(close) {
+                dropped_orphans.push_str(&scan[..j]);
+                scan = &scan[j + close.len()..];
+            }
+        }
+        out.push_str(&dropped_orphans);
+        out.push_str(scan);
+        // Advance past the opener.
+        let after_open = &rest[idx + open.len()..];
+        // Find the matching closer.
+        let close_for_open = pairs
+            .iter()
+            .find(|(o, _)| *o == *open)
+            .map(|(_, c)| *c)
+            .unwrap_or("");
+        match after_open.find(close_for_open) {
+            Some(j) => {
+                rest = &after_open[j + close_for_open.len()..];
+            }
+            None => {
+                // Unterminated: drop the rest of the string entirely.
+                return out;
+            }
         }
     }
-    out.push_str(rest);
-    out
 }
 
 /// Extracts text inside thinking tags from a complete string.

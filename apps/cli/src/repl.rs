@@ -121,9 +121,40 @@ fn handle_repl_command(cmd: loom_command::Command) -> String {
         loom_command::Command::Goal { .. } => {
             "/goal requires an active session with LLM access.".into()
         }
-        loom_command::Command::ReviewSkill { .. } => {
+loom_command::Command::ReviewSkill { .. } => {
             "/review-skill requires an active session with LLM access.".into()
         }
+        // Priority #18 (Hermes parity, `cli.py`): placeholder
+        // replies for the high-value slash commands added in
+        // `agent/agent-core/src/commands/parser.rs`. Real executors
+        // would call into SessionManager / model catalog; for now
+        // each prints a one-line stub so the parser round-trip
+        // works and the user sees feedback immediately.
+        loom_command::Command::Help { command } => match command {
+            Some(c) => format!("/help {}: see the docs for `{}`.", c, c),
+            None => "/help: /reset /compact /summarize /models /model /goal /review-skill /tools /resume /undo /retry /history /exit".into(),
+        },
+        loom_command::Command::Tools => {
+            "/tools: enumerated tool list (stub — see agent/agent-core/src/tools for the registry).".into()
+        }
+        loom_command::Command::Model { model_id } => match model_id {
+            Some(id) => format!("/model {}: switching model (stub — handler in subcommands).", id),
+            None => "/model <id>: switch the active model; run /models to list.".into(),
+        },
+        loom_command::Command::Resume { selector } => match selector {
+            Some(s) => format!("/resume {}: resuming session (stub).", s),
+            None => "/resume <title|id>: pick a previous session.".into(),
+        },
+        loom_command::Command::Undo => {
+            "/undo: rolling back the most recent assistant turn (stub — see SessionManager::restore_rewound).".into()
+        }
+        loom_command::Command::Retry => {
+            "/retry: re-running the most recent user prompt (stub).".into()
+        }
+        loom_command::Command::History { count } => {
+            format!("/history: showing last {} user prompts (stub).", count.unwrap_or(10))
+        }
+        loom_command::Command::Exit => "/exit: leaving the REPL (stub).".into(),
     }
 }
 

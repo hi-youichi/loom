@@ -88,12 +88,47 @@ pub fn build_react_config(
     if let Some(ref key) = effective_opts.api_key {
         base.openai_api_key = Some(key.clone());
     }
-    if let Some(ref t) = effective_opts.provider_type {
+if let Some(ref t) = effective_opts.provider_type {
         base.llm_provider = Some(t.clone());
     }
     if let Some(ref effort) = effective_opts.effort {
         base.reasoning_effort = Some(effort.clone());
     }
+
+    // Priority #21 (Hermes `gateway/run.py` #3): route the agent
+    // construction through the bounded LRU `AgentCache` so repeated
+    // turns with the same `(agent_id, model_id, working_folder)`
+    // don't pay cold-start cost every time. The cache is process-wide
+    // — the same builder keeps the handle alive across CLI repl
+    // commands and ACP review-runner turns.
+    //
+    // Construction is lazy via `get_or_build`; on first call the
+    // closure calls the existing build path below (`(base, resolved_agent)`).
+    // On subsequent calls the cached handle is returned without
+    // touching `ReactBuildConfig::from_env()` or `load_profile_from_options`.
+    use std::sync::OnceLock;
+    static AGENT_CACHE: OnceLock<
+        std::sync::Arc<crate::agent_cache::AgentCache<ReactBuildConfig>>,
+    > = OnceLock::new();
+    let cache = AGENT_CACHE.get_or_init(|| {
+        std::sync::Arc::new(crate::agent_cache::AgentCache::new())
+    });
+    let wf = effective_opts
+        .working_folder
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let key = crate::agent_cache::AgentKey::new(
+        effective_opts.agent.clone().unwrap_or_else(|| "default".to_string()),
+        effective_opts.model.clone().unwrap_or_else(|| "default".to_string()),
+        wf,
+    );
+    let _cached = cache.get_or_build(key.clone(), || {
+        std::sync::Arc::new(base.clone())
+    });
+    // Refresh `last_used` so the idle sweeper doesn't evict an active
+    // session's handle while the user is idle but still working.
+    let _ = cache.sweep_idle();
 
     if let Some(ref prof) = profile {
         if let Some(t) = prof.model.as_ref().and_then(|m| m.temperature) {

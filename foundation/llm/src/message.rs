@@ -7,6 +7,147 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
+/// Strip background-review harness blocks from a transcript text.
+///
+/// Hermes parity (`hermes_state.py` #10, `agent/background_review.py:474-479`):
+/// when a session is replayed into a downstream context (CLI Codex export,
+/// ACP review-runner, stream bridge history snapshot), the curator's
+/// `<background_review>` … `</background_review>` block must be removed so
+/// the LLM that consumes the replayed text doesn't try to invoke
+/// memory/skill tools at inference time. The harness is a one-shot
+/// curator-side prompt, not part of the durable user/assistant dialogue.
+///
+/// ContentKind-aware walker variant: applies `strip_background_review_harness`
+/// to every text-bearing variant of a `Message` (System, User::Text,
+/// User::Multimodal::Text parts, Assistant payload content + tool_calls args,
+/// Tool content text). Multimodal binary parts (Image/Video/Audio/Pdf) are
+/// passed through unchanged — they cannot contain the harness marker. Used
+/// by `apps/acp/src/stream_bridge.rs::send_history` so a forked-review leak
+/// cannot reach user-visible ACP notifications (priority #13 gap).
+pub fn strip_background_review_in_messages(messages: &mut [Message]) {
+    for m in messages.iter_mut() {
+        match m {
+            Message::System(s) => {
+                let stripped = strip_background_review_harness(s);
+                if stripped != *s {
+                    *s = stripped;
+                }
+            }
+            Message::User(uc) => match uc {
+                UserContent::Text(s) => {
+                    let stripped = strip_background_review_harness(s);
+                    if stripped != *s {
+                        *s = stripped;
+                    }
+                }
+                UserContent::Multimodal(parts) => {
+                    for part in parts.iter_mut() {
+                        if let ContentPart::Text { text } = part {
+                            let stripped = strip_background_review_harness(text);
+                            if stripped != *text {
+                                *text = stripped;
+                            }
+                        }
+                    }
+                }
+            },
+            Message::Assistant(payload) => {
+                let stripped = strip_background_review_harness(&payload.content);
+                if stripped != payload.content {
+                    payload.content = stripped;
+                }
+                for tc in payload.tool_calls.iter_mut() {
+                    let stripped = strip_background_review_harness(&tc.arguments);
+                    if stripped != tc.arguments {
+                        tc.arguments = stripped;
+                    }
+                }
+            }
+            Message::Tool { content, .. } => {
+                if let ToolCallContent::Text(t) = content {
+                    let stripped = strip_background_review_harness(t);
+                    if stripped != *t {
+                        *t = stripped;
+                    }
+                }
+            }
+        }
+    }
+}
+///
+/// Recognition is a literal substring match on the literal opening tag
+/// `pub const REVIEW_INSTRUCTION: &str = "<background_review>"` defined in
+/// `experimental/curator/src/review.rs:23` and its literal closing tag;
+/// this avoids pulling a regex crate across the workspace just for one
+/// stripping call site.
+///
+/// Implementation note: the loop owns a `String` buffer rather than
+/// borrowing from the input — that avoids lifetime plumbing through the
+/// `while let Some(...)` borrow scope, which the borrow checker cannot
+/// verify when we replace the borrowed tail on each iteration.
+pub fn strip_background_review_harness(text: &str) -> String {
+    const OPEN: &str = "<background_review>";
+    const CLOSE: &str = "</background_review>";
+    let mut rest: String = text.to_owned();
+    let mut out = String::with_capacity(rest.len());
+    while let Some(open_idx) = rest.find(OPEN) {
+        // Push everything before the open tag verbatim.
+        out.push_str(&rest[..open_idx]);
+        let after_open = &rest[open_idx + OPEN.len()..];
+        match after_open.find(CLOSE) {
+            Some(close_idx) => {
+                // Drop the entire `<background_review>…</background_review>`
+                // block, then collapse the leading newline so the rejoined
+                // text doesn't grow a stray blank line per replay.
+                let tail = &after_open[close_idx + CLOSE.len()..];
+                rest = if let Some(stripped) = tail.strip_prefix('\n') {
+                    stripped.to_owned()
+                } else {
+                    tail.to_owned()
+                };
+            }
+            None => {
+                // Unterminated block — bail out, leave the rest verbatim so
+                // we don't accidentally swallow the rest of the session.
+                out.push_str(&rest[open_idx..]);
+                rest.clear();
+                break;
+            }
+        }
+    }
+    out.push_str(&rest);
+    out
+}
+
+#[cfg(test)]
+mod strip_background_review_tests {
+    use super::strip_background_review_harness;
+
+    #[test]
+    fn removes_single_block() {
+        let txt = "user: hi\n\n<background_review>\n- save prefs\n</background_review>\n\nassistant: ok";
+        let out = strip_background_review_harness(txt);
+        assert!(!out.contains("<background_review>"));
+        assert!(!out.contains("</background_review>"));
+        assert!(out.contains("user: hi"));
+        assert!(out.contains("assistant: ok"));
+    }
+
+    #[test]
+    fn leaves_text_without_block_intact() {
+        let txt = "user: hi\nassistant: ok\n<unrelated>keep</unrelated>";
+        let out = strip_background_review_harness(txt);
+        assert_eq!(out, txt);
+    }
+
+    #[test]
+    fn unterminated_block_is_left_verbatim() {
+        let txt = "user: hi\n<background_review>\nnever closes";
+        let out = strip_background_review_harness(txt);
+        assert_eq!(out, txt);
+    }
+}
+
 /// User message content: plain text or multimodal part array.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -122,9 +263,61 @@ impl UserContent {
             .collect()
     }
 
-    /// Returns `true` if every modality in this content is supported by the given model.
+/// Returns `true` if every modality in this content is supported by the given model.
     pub fn is_supported_by(&self, model: &model_spec_core::Model) -> bool {
         self.unsupported_modalities(model).is_empty()
+    }
+}
+
+/// Multimodal NUL-prefix encoding (priority #10 gap).
+///
+/// Hermes parity (`hermes_state.py`): in the SQLite checkpoint store,
+/// message `content` for a multimodal message is stored as a JSON-encoded
+/// blob, while plain text is stored as a plain string. Naively persisting
+/// either as a UTF-8 string loses the binary/text type distinction, and
+/// reading the column back can't tell whether to JSON-decode.
+///
+/// We use the C0 control sentinel `\x00json:` followed by JSON for
+/// multimodal content. Plain text never starts with NUL so existing rows
+/// decode identically (no migration). Encoding is the inverse.
+///
+/// The NUL byte is invalid inside a JSON string literal (JSON requires
+/// `\u0000` to be escaped), so any incoming `decode_content` of a NUL-prefixed
+/// blob that fails to parse as JSON falls back to plain-text decoding
+/// rather than panicking — that's important because user history replay
+/// must never crash on a corrupt row.
+pub const MULTIMODAL_NUL_PREFIX: &str = "\0json:";
+
+pub fn encode_content(c: &UserContent) -> String {
+    match c {
+        UserContent::Text(s) => s.clone(),
+        UserContent::Multimodal(parts) => {
+            match serde_json::to_string(parts) {
+                Ok(json) => format!("{}{}", MULTIMODAL_NUL_PREFIX, json),
+                Err(_) => {
+                    // Serialization can't realistically fail for our enum
+                    // (only String fields), but if it does, fall back to
+                    // the joined-text representation so we don't drop the
+                    // message entirely.
+                    c.as_text().into_owned()
+                }
+            }
+        }
+    }
+}
+
+pub fn decode_content(s: &str) -> UserContent {
+    if let Some(rest) = s.strip_prefix(MULTIMODAL_NUL_PREFIX) {
+        match serde_json::from_str::<Vec<ContentPart>>(rest) {
+            Ok(parts) if !parts.is_empty() => {
+                // Safe: multimodal constructor rejects empty parts (returns
+                // Err), but we already checked `!parts.is_empty()` above.
+                UserContent::Multimodal(parts)
+            }
+            _ => UserContent::Text(s.to_string()),
+        }
+    } else {
+        UserContent::Text(s.to_string())
     }
 }
 

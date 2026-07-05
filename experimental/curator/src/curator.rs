@@ -606,6 +606,20 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
     /// Returns `Err(SkillError::NotFound)` when the skill does not exist
     /// under the active base dir.
     pub fn archive_skill(&self, name: &str) -> Result<std::path::PathBuf, SkillError> {
+        // Hard-gate `PROTECTED_BUILTIN_SKILLS` (e.g. `plan`) BEFORE any
+        // provenance check. Latent risk: if `prune_builtins` ever flips on
+        // (Hermes `tools/skill_usage.py` #9), `is_agent_created_skill`
+        // would otherwise let the bundled `plan` skill become archivable
+        // and silently break the planning pipeline. We centralise the
+        // allowlist here so adding a new protected skill is a single-line
+        // change in `agent/skill/src/provenance.rs:98`.
+        if skill::provenance::is_protected_builtin(name) {
+            return Err(SkillError::Pinned(format!(
+                "'{}' is a protected builtin; refusing to archive",
+                name
+            )));
+        }
+
         // Provenance guard: only agent-created skills may be archived by the
         // curator. Without this check a bundled or user-installed skill
         // would silently disappear under `.archive/` and surface in
@@ -623,21 +637,22 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
         if !src.is_dir() {
             return Err(SkillError::NotFound(name.to_string()));
         }
-        let archive_root = self.skills.base_dir().join(".archive");
+let archive_root = self.skills.base_dir().join(".archive");
         std::fs::create_dir_all(&archive_root)?;
         let mut dst = archive_root.join(name);
         if dst.exists() {
-            // Hermes-aligned collision fallback: append a timestamp suffix
-            // so we never silently overwrite an earlier archive. Prevents
-            // `restore_skill` from picking up the wrong copy.
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
+            // Hermes-aligned collision fallback: append a 14-digit UTC
+            // stamp (`%Y%m%d%H%M%S`, Hermes `skill_usage.py:506-512`) so
+            // we never silently overwrite an earlier archive and
+            // `restore_skill` can disambiguate by suffix length /
+            // digit-only shape. The previous `as_secs()` form was a
+            // 10-digit counter that collided on rapid re-archives and
+            // left `restore_skill` guessing which copy to pick.
+            let ts = Utc::now().format("%Y%m%d%H%M%S").to_string();
             dst = archive_root.join(format!("{}-{}", name, ts));
         }
         // Cross-device rename fallback: `fs::rename` fails on Windows when
-        // src/dst are on different volumes. Mirror Hermes `shutil.move`,
+// src/dst are on different volumes. Mirror Hermes `shutil.move`,
         // which falls back to copy+remove.
         if let Err(e) = std::fs::rename(&src, &dst) {
             if e.raw_os_error() == Some(17) || e.raw_os_error() == Some(18) {
@@ -653,6 +668,13 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
                 return Err(SkillError::Io(e));
             }
         }
+        // Priority #20 (Hermes `tools/skill_usage.py`): record the
+        // pruned skill in `.curator_suppressed` so the next
+        // `sync_skills` / `loom update` pass does not re-seed it from
+        // the bundled manifest. The list is consulted by
+        // `agent/skill/src/sync.rs` before applying any bundled write
+        // unless the user explicitly sets `LOOM_SKILL_FORCE=1`.
+        self.skills.usage_store().add_suppressed_name(name);
         info!("Archived skill '{}' to {}", name, dst.display());
         Ok(src)
     }
@@ -676,27 +698,38 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
             return Ok(self.skills.base_dir().join(name));
         }
 
-        let archive_root = self.skills.base_dir().join(".archive");
+let archive_root = self.skills.base_dir().join(".archive");
         let src = archive_root.join(name);
-        if !src.is_dir() {
-            return Err(SkillError::NotFound(format!(
-                "'{}' not found under {}",
-                name,
-                archive_root.display()
-            )));
-        }
+        let src = if src.is_dir() {
+            src
+        } else {
+            // Hermes-aligned fallback (`skill_usage.py:540-548`): walk
+            // `.archive/<name>-*` and pick the entry whose suffix is
+            // exactly 14 ASCII digits (`%Y%m%d%H%M%S`). Anything else
+            // (e.g. the legacy `as_secs()` form, a stray `-bak` backup
+            // dir, user-supplied names) is rejected so a manual
+            // `mv .archive/<name>.bak .archive/<name>` cannot sneak
+            // through and overwrite the active tree.
+            match pick_timestamped_archive(&archive_root, name) {
+                Some(p) => p,
+                None => {
+                    return Err(SkillError::NotFound(format!(
+                        "'{}' not found under {}",
+                        name,
+                        archive_root.display()
+                    )));
+                }
+            }
+        };
         let mut dst = self.skills.base_dir().join(name);
         if dst.exists() {
-            // Hermes-aligned collision fallback: append a timestamp suffix
-            // so the restore is recoverable even when an earlier skill
-            // with the same name is present.
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
+            // Hermes-aligned collision fallback: append a 14-digit UTC
+            // stamp so the restore is recoverable even when an earlier
+            // skill with the same name is present.
+            let ts = Utc::now().format("%Y%m%d%H%M%S").to_string();
             dst = self.skills.base_dir().join(format!("{}-{}", name, ts));
         }
-        // Cross-device rename fallback (see archive_skill).
+// Cross-device rename fallback (see archive_skill).
         if let Err(e) = std::fs::rename(&src, &dst) {
             if e.raw_os_error() == Some(17) || e.raw_os_error() == Some(18) {
                 info!(
@@ -709,6 +742,11 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
                 return Err(SkillError::Io(e));
             }
         }
+        // Priority #20 (Hermes `tools/skill_usage.py`): a restored skill
+        // must be removed from `.curator_suppressed` so the next sync
+        // pass keeps it. Idempotent — `remove_suppressed_name` is a
+        // no-op if the name wasn't in the list.
+        self.skills.usage_store().remove_suppressed_name(name);
         info!("Restored skill '{}' from {}", name, src.display());
         Ok(dst)
     }
@@ -806,7 +844,21 @@ pub fn mark_run_completed(&self) -> Result<(), SkillError> {
         self.save_state(&state)
     }
 
-    fn update_lifecycle(&self, name: &str, lifecycle: Lifecycle) -> Result<(), SkillError> {
+fn update_lifecycle(&self, name: &str, lifecycle: Lifecycle) -> Result<(), SkillError> {
+        // Priority #24 (regression fix): gate `set_state(Archived)` for
+        // PROTECTED_BUILTIN_SKILLS alongside the existing `archive_skill`
+        // gate. Without this, the curator pass that flips Stale -> Archived
+        // (the `run_for_goal` walker at line ~509) could archive a
+        // bundled `plan` skill the moment `is_agent_created_skill` had
+        // previously succeeded under a renamed copy. The check must fire
+        // BEFORE the load() so we don't even read the on-disk state for
+        // a protected skill.
+        if lifecycle == Lifecycle::Archived && skill::provenance::is_protected_builtin(name) {
+            return Err(SkillError::Pinned(format!(
+                "'{}' is a protected builtin; refusing set_state(Archived)",
+                name
+            )));
+        }
         let mut skill = self.skills.load(name)?;
         skill.lifecycle = lifecycle;
         self.skills.save(name, &skill)
@@ -834,6 +886,34 @@ fs::rename(&tmp_path, &self.state_path)?;
 
 /// Hermes-aligned `shutil.copytree` analogue used by the cross-device
 /// rename fallback in `archive_skill`/`restore_skill` when
+/// Hermes-aligned archive disambiguation (`skill_usage.py:540-548`):
+/// scan `.archive/<name>-*` and return the directory whose suffix is
+/// exactly 14 ASCII digits (`%Y%m%d%H%M%S`). Any other shape (the
+/// legacy `as_secs()` form, `-bak`, manual `mv`, …) is rejected so we
+/// cannot accidentally restore a stale copy. If multiple match, pick
+/// the lexicographically largest (matches Hermes' "most recent first").
+fn pick_timestamped_archive(archive_root: &std::path::Path, name: &str) -> Option<std::path::PathBuf> {
+    let prefix = format!("{}-", name);
+    let entries = std::fs::read_dir(archive_root).ok()?;
+    let mut candidates: Vec<std::path::PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let n = e.file_name().to_string_lossy().to_string();
+            if !n.starts_with(&prefix) {
+                return None;
+            }
+            let suffix = &n[prefix.len()..];
+            if suffix.len() == 14 && suffix.chars().all(|c| c.is_ascii_digit()) {
+                Some(e.path())
+            } else {
+                None
+            }
+        })
+        .collect();
+    candidates.sort();
+    candidates.pop()
+}
+
 /// `fs::rename` fails on cross-volume links (Windows error 17).
 fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), SkillError> {
     std::fs::create_dir_all(dst)?;
@@ -2483,9 +2563,11 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
         assert_eq!(state.run_count, 0);
 
         // Test save and load
-        let mut new_state = CuratorState::default();
-        new_state.paused = true;
-        new_state.run_count = 5;
+        let new_state = CuratorState {
+            paused: true,
+            run_count: 5,
+            ..Default::default()
+        };
         store.save(&new_state).unwrap();
 
         let loaded = store.load().unwrap();
@@ -2535,9 +2617,11 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
         assert_eq!(state.run_count, 0);
 
         // Test save and load
-        let mut new_state = CuratorState::default();
-        new_state.paused = true;
-        new_state.run_count = 10;
+        let new_state = CuratorState {
+            paused: true,
+            run_count: 10,
+            ..Default::default()
+        };
         store.save(&new_state).unwrap();
 
         let loaded = store.load().unwrap();
@@ -2614,9 +2698,11 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
             .with_state_path(state_dir.path().join("state.json"));
 
         // Test save_state
-        let mut state = CuratorState::default();
-        state.paused = true;
-        state.run_count = 3;
+        let state = CuratorState {
+            paused: true,
+            run_count: 3,
+            ..Default::default()
+        };
         curator.save_state(&state).unwrap();
 
         // Test load_state

@@ -669,7 +669,7 @@ impl SessionNotifier {
         }
     }
 
-    pub async fn send_history(&self, messages: &[Message]) {
+pub async fn send_history(&self, messages: &[Message]) {
         tracing::debug!(
             session_id = %self.session_id,
             total_messages = messages.len(),
@@ -678,6 +678,20 @@ impl SessionNotifier {
         let mut tool_calls_map: HashMap<String, (String, Option<Value>)> = HashMap::new();
         let mut sent_count: usize = 0;
         let mut skipped_system: usize = 0;
+
+        // Priority #13 gap (Hermes `hermes_state.py` #10): strip the
+        // curator's `<background_review>...</background_review>`
+        // harness from each Message variant before sending. Round-2
+        // only wrapped the two `extract_session_text` text-returning
+        // helpers; this site takes `&[Message]` directly and was
+        // skipped, leaving a forked-review leak able to reach
+        // user-visible ACP notifications. The walker is
+        // `loom_llm::message::strip_background_review_in_messages`
+        // and is ContentKind-aware (User::Text / Multimodal parts /
+        // Assistant payload + tool_calls args / Tool content / System).
+        let mut owned: Vec<Message> = messages.to_vec();
+        loom_llm::message::strip_background_review_in_messages(&mut owned);
+        let messages: &[Message] = &owned;
 
         for (idx, message) in messages.iter().enumerate() {
             let msg_type = match message {

@@ -459,6 +459,48 @@ impl LoomAcpAgent {
             model_reasoning_efforts.as_deref(),
         )
         .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
+        // Curator opportunistic hook (Hermes `agent/curator.py` #12 —
+        // `maybe_run_curator` is defined at
+        // `experimental/curator/src/workflow.rs:290` but had zero callers
+        // in `apps/`). On every `session/new`, read the session idle
+        // duration via `SkillUsageStore` (cheap mtime-based) and, if
+        // the curator's interval gating decides a run is needed,
+        // spawn the LLM pass as a detached task so the ACP handshake
+        // isn't blocked on the LLM round-trip.
+        //
+        // Tracked using `tracing::info!` so missing-runs show up in
+        // `loom-acp` logs; `maybe_run_curator` itself swallows errors
+        // and returns `None`.
+        let cwd_for_curator = args.cwd.clone();
+        tokio::spawn(async move {
+            let skills_path = loom_curator::skill_registry::default_path();
+            let cfg = loom_curator::CuratorConfig::default();
+            let base_config = agent::ReactBuildConfig::from_env();
+            let _ = cwd_for_curator; // reserved for future path resolution
+            // Priority #17 (Hermes `agent/curator.py` #13): source the
+            // idle gate from session-state so the auto-spawned path
+            // honors the same idle threshold as a manual `curator run`.
+            // Round-2 left this as `default()` with no `idle_for_seconds`
+            // threading — the curator ran regardless of recent
+            // activity. We resolve the idle window from the
+            // `LOOM_CURATOR_IDLE_SECS` env var (default 300s) so
+            // operators can tune it without a recompile.
+            let idle_for_seconds = std::env::var("LOOM_CURATOR_IDLE_SECS")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(300);
+            tracing::info!(
+                "session/new — opportunistically running curator (idle_for_seconds={})",
+                idle_for_seconds
+            );
+            loom_curator::workflow::maybe_run_curator(
+                &skills_path,
+                &cfg,
+                base_config,
+                Some(idle_for_seconds),
+            )
+            .await;
+        });
         Ok(NewSessionResponse::new(session_id)
             .modes(self.agent_registry.to_session_mode_state(current_mode))
             .config_options(config_options))

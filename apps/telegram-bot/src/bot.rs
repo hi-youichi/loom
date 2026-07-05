@@ -1,6 +1,7 @@
 //! Bot instance management and long polling support
 
 use crate::config::{load_config, BotConfig, Settings, TelegramBotConfig};
+use crate::error::BotError;
 use crate::handler_deps::ChatRunRegistry;
 use crate::router::default_handler;
 use std::sync::Arc;
@@ -42,7 +43,21 @@ impl BotManager {
         // Initialize Telegram API for loom tools
         crate::telegram_tools::init_telegram_api(bot.clone());
 
-        let me = bot.get_me().await;
+        // Hermes `gateway/run.py:62-72` analogue: bound the startup
+        // `get_me()` call with a 30s timeout. Without this, a hung
+        // Telegram API (rate-limit, network partition, regional
+        // outage) wedges the bot process during boot and never
+        // produces a diagnostic. A missing `username` is non-fatal —
+        // it only disables @-mention gating, the rest of the bot
+        // continues to function.
+        const GET_ME_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+        let me = tokio::time::timeout(GET_ME_TIMEOUT, bot.get_me())
+            .await
+            .map_err(|_| BotError::Config(format!(
+                "telegram get_me() timed out after {}s — continuing with empty username",
+                GET_ME_TIMEOUT.as_secs()
+            )))
+            .and_then(|res| res.map_err(BotError::Network));
         let bot_username = match me {
             Ok(m) => m.username.clone().unwrap_or_default(),
             Err(_) => String::new(),

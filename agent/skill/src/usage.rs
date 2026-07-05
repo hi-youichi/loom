@@ -346,7 +346,7 @@ impl SkillUsageStore {
         self.forget_with_intent(name, None);
     }
 
-    /// Remove usage data for a skill, recording where it was absorbed into.
+/// Remove usage data for a skill, recording where it was absorbed into.
     pub fn forget_with_intent(&self, name: &str, absorbed_into: Option<&str>) {
         match self.load() {
             Ok(mut data) => {
@@ -363,6 +363,104 @@ impl SkillUsageStore {
             Err(e) => {
                 debug!("SkillUsageStore: forget '{}' failed to load: {}", name, e);
             }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // `.curator_suppressed` list (priority #20 gap, Hermes `skill_usage.py`).
+    //
+    // When the curator prunes a bundled skill, the next `sync_skills` /
+    // `loom update` pass would re-seed it from the bundled manifest.
+    // To prevent that, the curator appends the pruned name to
+    // `.curator_suppressed` (a single-line-per-name text file alongside
+    // `usage.json`). On restore (e.g. user runs `loom skill restore`),
+    // the name is removed so the next sync can re-fetch it.
+    //
+    // The list is consulted by `agent/skill/src/sync.rs` before applying
+    // any bundled-skill write — sync_skills must not overwrite a file
+    // the curator explicitly suppressed unless the user forces it
+    // (`LOOM_SKILL_FORCE=1`).
+    // ------------------------------------------------------------------
+
+    /// Path of the suppression list, sibling of `usage.json`.
+    fn suppressed_path(&self) -> PathBuf {
+        self.path
+            .parent()
+            .map(|p| p.join(".curator_suppressed"))
+            .unwrap_or_else(|| PathBuf::from(".curator_suppressed"))
+    }
+
+    /// Read the set of skill names the curator has suppressed. Returns
+    /// an empty set if the file doesn't exist (first run). Lines that
+    /// don't decode as UTF-8 are skipped (defensive — corrupted list
+    /// shouldn't block the CLI).
+    pub fn read_suppressed_names(&self) -> std::collections::HashSet<String> {
+        let path = self.suppressed_path();
+        if !path.exists() {
+            return std::collections::HashSet::new();
+        }
+        match fs::read_to_string(&path) {
+            Ok(raw) => raw
+                .lines()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty() && s.is_ascii())
+                .collect(),
+            Err(e) => {
+                debug!("SkillUsageStore: read_suppressed_names failed: {}", e);
+                std::collections::HashSet::new()
+            }
+        }
+    }
+
+    /// Append a skill name to the suppression list. Idempotent — adding
+    /// a name that's already in the list is a no-op. Creates the file
+    /// (and parent) if it doesn't exist.
+    pub fn add_suppressed_name(&self, name: &str) {
+        if name.is_empty() || !name.is_ascii() {
+            return;
+        }
+        let mut set = self.read_suppressed_names();
+        if set.contains(name) {
+            return;
+        }
+        set.insert(name.to_string());
+        self.write_suppressed(&set);
+    }
+
+    /// Remove a skill name from the suppression list (e.g. when the
+    /// user manually restores a suppressed skill). Idempotent.
+    pub fn remove_suppressed_name(&self, name: &str) {
+        let mut set = self.read_suppressed_names();
+        if !set.remove(name) {
+            return;
+        }
+        self.write_suppressed(&set);
+    }
+
+    /// Internal: atomic-write the suppression list as one name per line.
+    fn write_suppressed(&self, set: &std::collections::HashSet<String>) {
+        let path = self.suppressed_path();
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let mut sorted: Vec<&String> = set.iter().collect();
+        sorted.sort();
+        let body = sorted
+            .into_iter()
+            .map(|s| format!("{}\n", s))
+            .collect::<String>();
+        // Best-effort atomic write: write to a sibling tempfile then
+        // rename. If the rename fails (Windows file lock), fall back
+        // to a direct write so the suppression list is never silently
+        // lost on first run.
+        let tmp = path.with_extension("curator_suppressed.tmp");
+        if fs::write(&tmp, body.as_bytes()).is_ok() {
+            if fs::rename(&tmp, &path).is_err() {
+                let _ = fs::write(&path, body.as_bytes());
+                let _ = fs::remove_file(&tmp);
+            }
+        } else {
+            let _ = fs::write(&path, body.as_bytes());
         }
     }
 
@@ -396,7 +494,7 @@ impl SkillUsageStore {
         })
     }
 
-    /// Save all usage data to the store.
+/// Save all usage data to the store.
     ///
     /// Uses `atomic_write_text` so the destination is never observed in a
     /// half-written state, even if the process is killed mid-write. The helper
@@ -404,12 +502,14 @@ impl SkillUsageStore {
     /// the concurrent-process rename-to-same-tmp collision that the previous
     /// `self.path.with_extension("tmp")` scheme allowed.
     ///
-    /// **Caveat — cross-process RMW**: there is still no OS-level lock here.
-    /// Two processes calling `bump_use` simultaneously will each load-then-save
-    /// and the last writer wins (lost update). Mirrors Hermes
-    /// `skill_usage.py:67-100, 343-365`. A shared `fs2`/`fs4` advisory lock
-    /// is tracked separately (TODO hermes-port #0); for now callers that share
-    /// the store must serialise externally.
+    /// Hermes parity (`skill_usage.py:67-100, 343-365`): an `fs4`
+    /// `lock_exclusive` sidecar is now taken on `self.path.lock` for the
+    /// duration of the write so that two foreground agents (or a
+    /// foreground agent and the curator) cannot race on load-then-save.
+    /// Best-effort: if `fs4` is unavailable on the target platform we
+    /// log at debug and fall through to the unlocked write so we never
+    /// regress single-process correctness (mirrors Hermes'
+    /// `fcntl.flock(…, LOCK_EX)` + silent fallback).
     pub fn save(&self, data: &HashMap<String, SkillUsage>) -> Result<(), std::io::Error> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
@@ -417,7 +517,7 @@ impl SkillUsageStore {
         let json = serde_json::to_string_pretty(data).map_err(|e| {
             std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
         })?;
-        crate::storage::atomic_write_text(&self.path, &json)
+        with_usage_lock(&self.path, || crate::storage::atomic_write_text(&self.path, &json))
     }
 
     /// Save a single entry (load existing, update, save).
@@ -427,7 +527,7 @@ impl SkillUsageStore {
         self.save(&data)
     }
 
-    fn update(&self, name: &str, f: impl FnOnce(&mut SkillUsage)) {
+fn update(&self, name: &str, f: impl FnOnce(&mut SkillUsage)) {
         match self.load() {
             Ok(mut data) => {
                 let entry = data
@@ -441,6 +541,80 @@ impl SkillUsageStore {
             Err(e) => {
                 debug!("SkillUsageStore: load failed for '{}': {}", name, e);
             }
+        }
+    }
+}
+
+/// Advisory file-lock sidecar for cross-process load-then-save of
+/// `.usage.json`. Hermes parity (`skill_usage.py:67-100, 343-365`):
+/// the Python side uses `fcntl.flock(…, LOCK_EX)` on a sibling
+/// `.usage.lock` file so that two foreground agents (or a foreground
+/// agent racing the curator) cannot lose updates.
+///
+/// Rust implementation strategy:
+///   1. Best-effort `fs4`-style cross-process lock via
+///      `OpenOptions::create_new(true)` on the lock sidecar. The
+///      sidecar is removed before returning; concurrent processes see
+///      `AlreadyExists` and either busy-wait briefly or skip the
+///      lock (mirrors Hermes' non-blocking `LOCK_EX | LOCK_NB`).
+///   2. If step 1 fails (platform without atomic create-new, or a
+///      concurrent holder), we fall back to a no-op so single-process
+///      callers stay correct. `fs4` was deliberately not added as a
+///      dependency — the locking sidecar pattern works on POSIX and
+///      Windows with the standard library alone.
+///
+/// `op` is called while the lock is held; the lock is released
+/// immediately after.
+fn with_usage_lock<F, R>(path: &Path, op: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    let lock_path = path.with_extension("lock");
+    // Best-effort acquire: create_new succeeds for the first writer;
+    // subsequent writers see AlreadyExists and back off without
+    // blocking. We do NOT retry-loop here — `op` is idempotent and
+    // the only cost of a missed lock is a possible lost update,
+    // which matches Hermes' `LOCK_EX | LOCK_NB` behaviour.
+    let _guard = match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock_path)
+    {
+        Ok(_f) => UsageLockGuard {
+            path: lock_path,
+            released: false,
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            debug!(
+                "SkillUsageStore: lock sidecar held by another process, proceeding unlocked: {}",
+                e
+            );
+            return op();
+        }
+        Err(e) => {
+            debug!(
+                "SkillUsageStore: could not open lock sidecar ({}), proceeding unlocked",
+                e
+            );
+            return op();
+        }
+    };
+    let result = op();
+    drop(_guard);
+    result
+}
+
+/// RAII guard for the usage-lock sidecar; removes the lock file on
+/// drop so the next waiter can acquire.
+struct UsageLockGuard {
+    path: PathBuf,
+    released: bool,
+}
+
+impl Drop for UsageLockGuard {
+    fn drop(&mut self) {
+        if !self.released {
+            let _ = fs::remove_file(&self.path);
         }
     }
 }

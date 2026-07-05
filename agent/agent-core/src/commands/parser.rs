@@ -30,6 +30,13 @@ pub fn parse(text: &str) -> Option<Command> {
                 None => Some(Command::Models { query: None }),
             }
         }
+        "/model" => {
+            let id = trimmed
+                .strip_prefix("/model")
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            Some(Command::Model { model_id: id })
+        }
         "/goal" => {
             let description = trimmed
                 .strip_prefix("/goal")
@@ -46,6 +53,36 @@ pub fn parse(text: &str) -> Option<Command> {
                 .filter(|s| !s.is_empty());
             Some(Command::ReviewSkill { scope })
         }
+        // Priority #18 (Hermes parity, `cli.py`): high-value expansion.
+        // Each parser branch here is a one-liner because the heavy
+        // lifting lives in the executor; we only need to split the
+        // argument string.
+        "/help" | "/?" => {
+            let arg = trimmed
+                .strip_prefix("/help")
+                .or_else(|| trimmed.strip_prefix("/?"))
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            Some(Command::Help { command: arg })
+        }
+        "/tools" => Some(Command::Tools),
+        "/resume" => {
+            let sel = trimmed
+                .strip_prefix("/resume")
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            Some(Command::Resume { selector: sel })
+        }
+        "/undo" => Some(Command::Undo),
+        "/retry" => Some(Command::Retry),
+        "/history" => {
+            let count = trimmed
+                .strip_prefix("/history")
+                .map(|s| s.trim())
+                .and_then(|s| s.parse::<usize>().ok());
+            Some(Command::History { count })
+        }
+        "/exit" | "/quit" => Some(Command::Exit),
         _ => None,
     }
 }
