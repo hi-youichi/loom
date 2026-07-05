@@ -211,6 +211,7 @@ pub async fn run_curator_llm_pass(
     registry: &SkillRegistry,
     usage_store: &SkillUsageStore,
     usage_reports: &[skill::SkillUsageReport],
+    dry_run: bool,
 ) -> Result<CuratorLlmPassOutcome, String> {
     let start = std::time::Instant::now();
 
@@ -233,8 +234,12 @@ pub async fn run_curator_llm_pass(
         active_skills.len()
     );
 
-    // Build prompt (includes CURATOR_REVIEW_PROMPT + skill list)
-    let prompt = curator::build_llm_prompt(&active_skills, usage_reports);
+    // Build prompt (includes CURATOR_REVIEW_PROMPT + skill list).
+    // `dry_run` (Hermes parity: `agent/curator.py:run_curator_review(..., dry_run=True)`)
+    // prepends a "## Mode: DRY RUN" banner so the LLM produces an analysis
+    // that *describes* changes without committing them. The downstream tools
+    // still run; the caller is responsible for gating writes.
+    let prompt = curator::build_llm_prompt(&active_skills, usage_reports, dry_run);
 
     // Build curator tools — injected via extra_tools so the agent uses the
     // storage-based SkillRegistry (auto/curated/evolved), not the discovery-based one.
@@ -242,12 +247,29 @@ pub async fn run_curator_llm_pass(
 
     // Configure agent for curator mode — mirrors review.rs isolation pattern.
     let gate = ReviewToolGate::with_allowed(vec!["skill_list", "skill_view", "skill_manage"]);
-    let mut config = base_config;
+let mut config = base_config;
 
-    // If an aux model is configured, use it for the curator agent instead of the
-    // main session model. Aligns Hermes `aux_model` / `dev_model` configuration.
-    if let Some(ref aux) = config.aux_model {
+    // Hermes parity: thread LOOM_CURATOR_* env vars through to this pass.
+    // `resolve_curator_overrides()` reads the env once and returns an
+    // overrides bag; we apply it BEFORE the aux-model override below so the
+    // two never fight (explicit env wins; aux is only used when nothing is
+    // explicitly set).
+    let overrides = config.resolve_curator_overrides();
+    if let Some(m) = overrides.model {
+        config.model = Some(m);
+    } else if let Some(ref aux) = config.aux_model.clone() {
+        // If an aux model is configured, use it for the curator agent instead of the
+        // main session model. Aligns Hermes `aux_model` / `dev_model` configuration.
         config.model = Some(aux.clone());
+    }
+    if let Some(p) = overrides.provider {
+        config.llm_provider_name = Some(p);
+    }
+    if let Some(k) = overrides.api_key {
+        config.openai_api_key = Some(k);
+    }
+    if let Some(u) = overrides.base_url {
+        config.openai_base_url = Some(u);
     }
 
     config.is_background_review = true;
@@ -540,13 +562,14 @@ mod tests {
         assert!(truncated.ends_with('.'));
     }
 
-    fn make_test_skill_content(name: &str) -> SkillContent {
+fn make_test_skill_content(name: &str) -> SkillContent {
         SkillContent {
             name: name.to_string(),
             description: format!("Test skill {}", name),
             triggers: vec!["test".into()],
             lifecycle: Lifecycle::Active,
             source: crate::Source::Auto,
+            category: None,
             created_by: None,
             body: "Do stuff".to_string(),
             raw: String::new(),
@@ -655,6 +678,7 @@ mod tests {
             &registry,
             &usage,
             &[],
+            false,
         ).await.unwrap();
 
         // Agent::from_config with default config should fail, returning a degraded outcome

@@ -178,27 +178,70 @@ impl SkillUsageStore {
         });
     }
 
-    /// Mark a skill as agent-created.
+/// Mark a skill as agent-created.
+    ///
+    /// Hermes-aligned provenance guard (matches `skill_usage.py:171-195,
+    /// 290-293`): a skill that appears in `.bundled_manifest` or is owned by
+    /// a hub source recorded in `.hub/lock.json` is **off-limits** and must
+    /// never be re-marked as agent-created. Otherwise the curator would
+    /// silently archive skills the user installed from the hub.
     pub fn mark_agent_created(&self, name: &str) {
+        if self.is_off_limits(name) {
+            debug!(
+                "SkillUsageStore: refusing to mark '{}' as agent-created (bundled/hub-owned)",
+                name
+            );
+            return;
+        }
         self.update(name, |u| {
             u.created_by = Some("agent".to_string());
         });
     }
 
     /// Check if a skill was created by the agent (background review).
+    ///
+    /// Hermes-aligned two-step filter (`skill_usage.py:290-293`):
+    /// 1. The skill must NOT be listed in `.bundled_manifest` or owned by a
+    ///    hub source in `.hub/lock.json` — those skills are user-installed
+    ///    and protected from curator pruning.
+    /// 2. The skill's usage record must carry `created_by == "agent"`.
+    ///
+    /// The function intentionally depends on filesystem provenance rather
+    /// than the `created_by` field alone, so a corrupted `.usage.json`
+    /// cannot accidentally turn a bundled skill into an "agent-created"
+    /// one. Bundled/hub-owned skills always return `false`.
     pub fn is_agent_created(&self, name: &str) -> bool {
+        if self.is_off_limits(name) {
+            return false;
+        }
         self.get(name)
             .and_then(|u| u.created_by)
             .map(|by| by == "agent")
             .unwrap_or(false)
     }
 
+    /// Whether this skill is **curator-managed** (the original
+    /// "agent-created + this curator run" predicate used for pruning
+    /// decisions). It still requires `created_by == "agent"`.
+    ///
+    /// Note: this is the stricter predicate — bundled/hub-owned skills are
+    /// excluded by `is_agent_created` so they are excluded here too.
+    pub fn is_curator_managed(&self, name: &str) -> bool {
+        self.is_agent_created(name)
+    }
+
     /// List all skill names created by the agent.
+    ///
+    /// Filters out any skill that is bundled or hub-owned (same off-limits
+    /// set used by `is_agent_created`). Without this filter the curator
+    /// would surface bundled/hub skills as agent-created candidates and
+    /// silently archive them.
     pub fn agent_created_names(&self) -> Vec<String> {
         self.load()
             .map(|data| {
                 data.iter()
                     .filter(|(_, u)| u.created_by.as_deref() == Some("agent"))
+                    .filter(|(name, _)| !self.is_off_limits(name))
                     .map(|(name, _)| name.clone())
                     .collect()
             })
@@ -206,20 +249,96 @@ impl SkillUsageStore {
     }
 
     /// Update the lifecycle state of a skill.
+    ///
+    /// Hermes parity (`skill_usage.py:215-227`): when a skill transitions
+    /// to `Archived` we stamp `archived_at`; when it transitions back to
+    /// `Active` (e.g. via a rollback) we clear the stale stamp so the
+    /// `last_activity_at` derivation and audit reports do not surface
+    /// phantom archive timestamps.
     pub fn set_state(&self, name: &str, state: Lifecycle) {
         self.update(name, |u| {
             u.state = state;
-            if matches!(state, Lifecycle::Archived) {
-                u.archived_at = Some(Utc::now().to_rfc3339());
+            match state {
+                Lifecycle::Archived => {
+                    u.archived_at = Some(Utc::now().to_rfc3339());
+                }
+                Lifecycle::Active => {
+                    u.archived_at = None;
+                }
+                _ => {}
             }
         });
     }
 
-    /// Set the pinned status of a skill.
+/// Set the pinned status of a skill.
     pub fn set_pinned(&self, name: &str, pinned: bool) {
         self.update(name, |u| {
             u.pinned = pinned;
         });
+    }
+
+    /// Filesystem-based provenance guard: returns `true` if `name` is either
+    /// listed in `.bundled_manifest` (built-in) or owned by a hub source in
+    /// `.hub/lock.json` (user-installed via the hub).
+    ///
+    /// Hermes parity (`skill_usage.py:171-195, 290-293`): bundled and
+    /// hub-owned skills must never be reported as `agent_created`, because
+    /// the curator would silently archive them otherwise.
+    ///
+    /// Best-effort: any read error (missing file, malformed JSON) is treated
+    /// as "no off-limits entry" so the curator can still run on partially
+    /// initialised installations.
+    fn is_off_limits(&self, name: &str) -> bool {
+        let base = match self.path.parent() {
+            Some(p) => p,
+            None => return false,
+        };
+
+        // 1. `.bundled_manifest` — built-in skills. Hermes-aligned parser
+        //    tolerates missing file, blank lines, `#` comments.
+        let manifest_path = base.join(".bundled_manifest");
+        if manifest_path.is_file() {
+            if let Ok(data) = fs::read_to_string(&manifest_path) {
+                for line in data.lines() {
+                    let line = line.trim();
+                    if line.is_empty() || line.starts_with('#') {
+                        continue;
+                    }
+                    if let Some((entry_name, _hash)) = line.split_once(':') {
+                        if entry_name.trim() == name {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. `.hub/lock.json` — user-installed hub skills. The hub subsystem
+        //    is not yet ported to Rust (separate hermes-port gap), so we
+        //    best-effort parse a generic shape:
+        //      { "entries": [{ "name": "...", "source": "..." }, ...] }
+        //    Unknown files / schemas are silently ignored.
+        let hub_lock = base.join(".hub").join("lock.json");
+        if hub_lock.is_file() {
+            if let Ok(data) = fs::read_to_string(&hub_lock) {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) {
+                    if let Some(arr) = v.get("entries").and_then(|x| x.as_array()) {
+                        for entry in arr {
+                            if entry
+                                .get("name")
+                                .and_then(|n| n.as_str())
+                                .map(|s| s == name)
+                                .unwrap_or(false)
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        false
     }
 
     /// Remove usage data for a skill, optionally recording the deletion intent.

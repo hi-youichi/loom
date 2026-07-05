@@ -875,12 +875,13 @@ async fn remove_file_no_files_available_returns_null() {
     storage
         .save(
             "manual-skill",
-            &SkillContent {
+&SkillContent {
                 name: "manual-skill".into(),
                 description: "d".into(),
                 triggers: vec![],
                 lifecycle: Lifecycle::Active,
                 source: Source::Manual,
+                category: None,
                 created_by: None,
                 body: "body".into(),
                 raw: String::new(),

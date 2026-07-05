@@ -32,6 +32,10 @@ pub use review_tool_gate::{ReviewToolGate, REVIEW_ALLOWED_TOOLS};
 
 pub use skill_registry::{SkillRegistry, SkillContent, SkillMeta, SkillError, Lifecycle, Source};
 pub use skill::{SkillUsage, SkillUsageStore};
+pub use skill::sync::{
+    sync_skills, BundledManifest, SyncResult, compute_hash, compute_content_hash,
+    compute_dir_hash,
+};
 pub use curator::{
     Curator, CuratorConfig, CuratorReport,
     CuratorState, CuratorStateStore, FileStateStore, MemoryStateStore,

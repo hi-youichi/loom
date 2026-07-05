@@ -195,6 +195,7 @@ pub async fn run_curator_llm_if_needed(
     curator_config: &CuratorConfig,
     base_config: ReactBuildConfig,
     force: bool,
+    dry_run: bool,
 ) -> Result<Option<crate::curator_llm::CuratorLlmPassOutcome>, String> {
     let skills = SkillRegistry::new(skills_path);
     let state_path = skills_path.join("curator").join("state.json");
@@ -211,37 +212,56 @@ pub async fn run_curator_llm_if_needed(
         .agent_created_report()
         .unwrap_or_default();
 
-    let outcome = crate::curator_llm::run_curator_llm_pass(base_config, &skills, &usage_store, &usage_reports)
-        .await?;
+    let outcome = crate::curator_llm::run_curator_llm_pass(
+        base_config,
+        &skills,
+        &usage_store,
+        &usage_reports,
+        dry_run,
+    )
+    .await?;
 
     // Check for degraded run (Hermes "Never raises" — errors land in run_error)
     if let Some(ref err) = outcome.run_error {
         warn!("Curator LLM pass error: {}", err);
     }
 
-    // Update curator state to record this run
-    if let Err(e) = curator.mark_run_completed() {
-        warn!("Curator: failed to mark run completed: {:?}", e);
-    }
-
-    // Persist per-run report (JSON + Markdown)
+    // Persist per-run report (JSON + Markdown) BEFORE bumping run state so
+    // `last_report_path` in state.json can point at the on-disk report.
+    // Hermes parity (`agent/curator.py:1652-1662`): the report is what
+    // `bump_run` references, so the order matters.
     let run_id = format!(
         "curator-{}",
         chrono::Utc::now().format("%Y-%m-%dT%H-%M-%S")
     );
     let run_report = crate::curator::CuratorRunReport::from_llm_pass_outcome(&outcome, &run_id);
     let reports_dir = skills_path.join("curator").join("reports");
-    match run_report.save_to_dir(&reports_dir) {
+    let saved_report: Option<std::path::PathBuf> = match run_report.save_to_dir(&reports_dir) {
         Ok((json_path, md_path)) => {
             info!(
                 "Curator report saved: {} + {}",
                 json_path.display(),
                 md_path.display()
             );
+            Some(md_path)
         }
         Err(e) => {
             warn!("Curator: failed to save run report: {:?}", e);
+            None
         }
+    };
+
+    // Update curator state via `bump_run` (Hermes parity: now populates
+    // `last_run_summary` / `last_report_path` / `last_run_duration_seconds`).
+    // The old `mark_run_completed()` only bumped `last_run_at` + `run_count`,
+    // leaving the richer telemetry fields empty.
+    let elapsed = std::time::Duration::from_secs_f64(outcome.elapsed_seconds);
+    if let Err(e) = curator.bump_run(
+        elapsed,
+        Some(&outcome.summary),
+        saved_report.as_deref(),
+    ) {
+        warn!("Curator: failed to bump run: {:?}", e);
     }
 
     info!(
@@ -272,7 +292,7 @@ pub async fn maybe_run_curator(
     curator_config: &CuratorConfig,
     base_config: ReactBuildConfig,
 ) -> Option<crate::curator_llm::CuratorLlmPassOutcome> {
-    match run_curator_llm_if_needed(skills_path, curator_config, base_config, false).await {
+    match run_curator_llm_if_needed(skills_path, curator_config, base_config, false, false).await {
         Ok(opt) => opt,
         Err(e) => {
             warn!("Curator background run failed (suppressed): {}", e);
@@ -374,7 +394,7 @@ mod tests {
     async fn run_curator_llm_if_needed_returns_none_when_not_forced_and_should_run_false() {
         let dir = tempfile::tempdir().unwrap();
         let result =
-            run_curator_llm_if_needed(dir.path(), &CuratorConfig::default(), ReactBuildConfig::default(), false)
+            run_curator_llm_if_needed(dir.path(), &CuratorConfig::default(), ReactBuildConfig::default(), false, false)
                 .await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());

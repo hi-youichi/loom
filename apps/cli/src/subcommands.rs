@@ -441,19 +441,63 @@ pub(crate) fn handle_skills_command(
                 println!("{}", skill.body);
             }
         }
-        SkillsCommand::Create { name, description, triggers } => {
+SkillsCommand::Create { name, description, triggers } => {
             let skill = SkillContent {
                 name: name.clone(),
                 description: description.clone().unwrap_or_default(),
                 triggers: triggers.clone(),
                 lifecycle: Lifecycle::Active,
                 source: Source::Manual,
+                category: None,
                 created_by: None,
                 body: String::new(),
                 raw: String::new(),
             };
-            registry.save(name, &skill)?;
+registry.save(name, &skill)?;
             println!("Created skill: {}", name);
+        }
+        SkillsCommand::Sync {
+            bundled_dir,
+            user_dir,
+            force,
+        } => {
+            use loom_curator::sync_skills;
+            let bundled = bundled_dir
+                .as_deref()
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| {
+                    config::home::loom_home().join("bundled-skills")
+                });
+            let user = user_dir
+                .as_deref()
+                .map(std::path::PathBuf::from)
+                .unwrap_or(loom_curator::skill_registry::default_path());
+            let _ = force;
+            let result = sync_skills(&bundled, &user);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                println!("Skills sync:");
+                println!("{}", "═".repeat(60));
+                println!("  Bundled source: {}", bundled.display());
+                println!("  User target:    {}", user.display());
+                println!("Added:   {}", result.added.len());
+                for n in &result.added {
+                    println!("  + {}", n);
+                }
+                println!("Updated: {}", result.updated.len());
+                for n in &result.updated {
+                    println!("  ~ {}", n);
+                }
+                println!("Skipped: {}", result.skipped.len());
+                for n in &result.skipped {
+                    println!("  - {}", n);
+                }
+                println!("Removed: {}", result.removed.len());
+                for n in &result.removed {
+                    println!("  ✗ {}", n);
+                }
+            }
         }
         SkillsCommand::Edit { name } => {
             let skill = registry.load(name)?;
@@ -589,11 +633,12 @@ pub(crate) async fn handle_curator_command(
                     agent_config.openai_base_url = Some(base_url);
                     agent_config.model = Some(model);
                     let curator_config = CuratorConfig::default();
-                    match loom_curator::run_curator_llm_if_needed(
+match loom_curator::run_curator_llm_if_needed(
                         &skills_path,
                         &curator_config,
                         agent_config,
                         true,
+                        curator_args.dry_run,
                     )
                     .await
                     {

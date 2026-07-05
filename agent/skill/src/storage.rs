@@ -105,6 +105,45 @@ pub enum Source {
     Evolved,
 }
 
+impl Source {
+    /// Directory segment under `base_dir` for this source (Hermes parity
+    /// with `skill_manager_tool.py:_skill_dir_for_source`). Mirrors the
+    /// match arm inside `skill_dir()` but is callable from
+    /// `save()`'s category-aware branch.
+    pub fn dir_name(self) -> &'static str {
+        match self {
+            Source::Auto => "auto",
+            Source::Manual => "curated",
+            Source::Evolved => "evolved",
+        }
+    }
+}
+
+/// Sanitize a user-supplied category segment so it cannot escape `base_dir`.
+///
+/// Rejects empty, `.`, `..`, `/`, `\\`, NUL, control chars, and reserved
+/// Windows device names. Lowercases ASCII to keep directory lookups
+/// case-insensitive on Windows. Matches the spirit of Hermes'
+/// `skill_manager_tool.py:_sanitize_category`.
+fn sanitize_category(raw: &str) -> String {
+    let trimmed = raw.trim().to_ascii_lowercase();
+    if trimmed.is_empty()
+        || trimmed == "."
+        || trimmed == ".."
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed.contains('\0')
+        || trimmed.chars().any(|c| c.is_control())
+    {
+        return "_invalid".to_string();
+    }
+    let reserved = ["con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "lpt1", "lpt2"];
+    if reserved.contains(&trimmed.as_str()) {
+        return "_invalid".to_string();
+    }
+    trimmed
+}
+
 /// Metadata for a skill in the registry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillMeta {
@@ -131,7 +170,10 @@ pub struct SkillContent {
     pub triggers: Vec<String>,
     pub lifecycle: Lifecycle,
     pub source: Source,
-    #[serde(default)]
+    /// Optional category/domain segment used by storage to place the skill
+    /// under `base_dir/source/category/name/` (Hermes parity,
+    /// `skill_manager_tool.py` ~L300).
+    pub category: Option<String>,
     pub created_by: Option<String>,
     pub body: String,
     pub raw: String,
@@ -148,7 +190,7 @@ pub enum SkillError {
     NotFound(String),
     #[error("Invalid skill format: {0}")]
     InvalidFormat(String),
-/// Skill is pinned/protected and cannot be deleted or archived.
+    /// Skill is pinned/protected and cannot be deleted or archived.
     #[error("Skill '{0}' is pinned and cannot be deleted or archived")]
     Pinned(String),
     /// Restore target already exists in the active tree.
@@ -318,28 +360,40 @@ impl SkillStorageRegistry {
     /// listing the first few matches. Returns an empty string when no
     /// helpful hint is available so the error remains compact.
     fn suggest_skill_alternatives(&self, name: &str) -> String {
-        // Walk the parent's parent for sibling profiles (one level up is
-        // typically `~/.loom/profiles/` or `~/.loom/data/skills/`).
+        // Hermes-aligned sibling-profile rglob
+        // (`skill_manager_tool.py:298-398`). Instead of a fuzzy substring
+        // match on profile directory names, walk the parent (profiles/),
+        // enumerate every profile dir, rglob SKILL.md inside each, and
+        // surface the profile name when an actual SKILL.md is found there.
+        // This eliminates the previous false positives (e.g. a profile
+        // called "auto-curator" matching the skill name "auto").
         let Some(profile_root) = self.base_dir.parent().and_then(|p| p.parent()) else {
             return String::new();
         };
         if !profile_root.exists() {
             return String::new();
         }
-        let needle = name.to_ascii_lowercase();
         let mut matches: Vec<String> = Vec::new();
-        if let Ok(rd) = std::fs::read_dir(profile_root) {
-            for entry in rd.flatten() {
-                if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                    continue;
-                }
-                let profile_name = entry
-                    .file_name()
-                    .to_string_lossy()
-                    .to_string();
-                if profile_name.to_ascii_lowercase().contains(&needle) {
-                    matches.push(profile_name);
-                }
+        let entries = match std::fs::read_dir(profile_root) {
+            Ok(rd) => rd,
+            Err(_) => return String::new(),
+        };
+        for entry in entries.flatten() {
+            if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            let profile_name = entry.file_name().to_string_lossy().to_string();
+            let skills_tree = entry.path().join("skills");
+            if !skills_tree.is_dir() {
+                continue;
+            }
+            // rglob SKILL.md under each profile's skills/ tree. Hermes
+            // does a full scan (skills_sync.py:301-356); we mirror that and
+            // bail out as soon as we find any SKILL.md to keep the hint
+            // cheap on large profiles.
+            let found_skill = walk_rglob_skill_md(&skills_tree).is_some();
+            if found_skill {
+                matches.push(profile_name);
                 if matches.len() >= 3 {
                     break;
                 }
@@ -401,12 +455,18 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
             .and_then(|v| v.as_str())
             .map(String::from);
 
+        let category = frontmatter
+            .get("category")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
         Ok(SkillContent {
             name,
             description,
             triggers,
             lifecycle,
             source,
+            category,
             created_by,
             body,
             raw: raw_owned,
@@ -415,11 +475,21 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
 
     /// Save a skill to the registry.
     pub fn save(&self, name: &str, content: &SkillContent) -> Result<(), SkillError> {
-        // If skill already exists somewhere in the tree, overwrite in place
-        // to avoid creating duplicates when the layout has been migrated.
-        let dir = match self.find_skill_dir(name) {
-            Some(existing) => existing,
-            None => self.skill_dir(content.source, name),
+        // Hermes parity (`skill_manager_tool.py` ~L300): when a category is
+        // supplied, the skill lives under
+        // `base_dir/source/<category>/<name>/SKILL.md` rather than the
+        // flat `base_dir/source/<name>/SKILL.md`. Previously the category
+        // argument was echoed in the JSON response but never consulted by
+        // `save()`, so all category-bearing skills collapsed to the same
+        // directory and clobbered each other.
+        let dir = if let Some(cat) = content.category.as_deref().filter(|c| !c.is_empty()) {
+            let sanitized = sanitize_category(cat);
+            self.base_dir.join(content.source.dir_name()).join(&sanitized).join(name)
+        } else {
+            match self.find_skill_dir(name) {
+                Some(existing) => existing,
+                None => self.skill_dir(content.source, name),
+            }
         };
         fs::create_dir_all(&dir)?;
         let path = dir.join("SKILL.md");
@@ -468,15 +538,23 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
                     YamlValue::String(by.clone()),
                 );
             }
+            if let Some(ref cat) = content.category {
+                if !cat.is_empty() {
+                    map.insert(
+                        YamlValue::String("category".into()),
+                        YamlValue::String(cat.clone()),
+                    );
+                }
+            }
             map
         }))?;
 
-let file_content = format!("---\n{}---\n{}", frontmatter, content.body);
+        let file_content = format!("---\n{}---\n{}", frontmatter, content.body);
         atomic_write_text(&path, &file_content)?;
         Ok(())
     }
 
-/// Delete a skill from the registry.
+    /// Delete a skill from the registry.
     ///
     /// Searches the entire tree for the skill directory and removes it.
     pub fn delete(&self, name: &str) -> Result<(), SkillError> {
@@ -511,7 +589,7 @@ let file_content = format!("---\n{}---\n{}", frontmatter, content.body);
                     serde_yaml::Value::Bool(pinned),
                 );
 
-let new_yaml = serde_yaml::to_string(&frontmatter)
+                let new_yaml = serde_yaml::to_string(&frontmatter)
                     .map_err(|e| SkillError::InvalidFormat(e.to_string()))?;
                 let new_content = format!("---\n{}---\n{}", new_yaml, body);
                 atomic_write_text(&path, &new_content)?;
@@ -542,7 +620,7 @@ let new_yaml = serde_yaml::to_string(&frontmatter)
                 let raw = fs::read_to_string(&path)?;
                 let (mut frontmatter, body) = parse_frontmatter(&raw);
 
-frontmatter.insert(
+                frontmatter.insert(
                     serde_yaml::Value::String("lifecycle".into()),
                     serde_yaml::Value::String(
                         serde_yaml::to_string(&lifecycle)
@@ -579,6 +657,7 @@ frontmatter.insert(
             triggers: content.triggers.clone(),
             lifecycle: content.lifecycle,
             source: content.source,
+            category: content.category.clone(),
             created_by: content.created_by.clone(),
             body,
             raw: content.raw.clone(),
@@ -630,6 +709,7 @@ frontmatter.insert(
             triggers: content.triggers.clone(),
             lifecycle: content.lifecycle,
             source: content.source,
+            category: content.category.clone(),
             created_by: content.created_by.clone(),
             body,
             raw: content.raw.clone(),
@@ -667,7 +747,7 @@ frontmatter.insert(
         let dir = self
             .find_skill_dir(skill_name)
             .ok_or_else(|| SkillError::NotFound(skill_name.to_string()))?;
-let file_path = dir.join(path.trim_start_matches('/'));
+        let file_path = dir.join(path.trim_start_matches('/'));
         if let Some(parent) = file_path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -675,7 +755,7 @@ let file_path = dir.join(path.trim_start_matches('/'));
         Ok(())
     }
 
-/// Remove a file from a skill's directory.
+    /// Remove a file from a skill's directory.
     pub fn remove_file(&self, skill_name: &str, path: &str) -> Result<(), SkillError> {
         let dir = self
             .find_skill_dir(skill_name)
@@ -759,6 +839,38 @@ fn compute_match_score(query: &str, query_words: &HashSet<&str>, meta: &SkillMet
     max_score
 }
 
+/// Hermes-aligned recursive `SKILL.md` search used by
+/// `suggest_skill_alternatives`. Bails out as soon as it finds the first
+/// matching `SKILL.md` so the hint is cheap on large profiles.
+fn walk_rglob_skill_md(root: &Path) -> Option<PathBuf> {
+    if !root.is_dir() {
+        return None;
+    }
+    let mut stack: Vec<PathBuf> = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = match fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let ft = match entry.file_type() {
+                Ok(f) => f,
+                Err(_) => continue,
+            };
+            if ft.is_dir() {
+                if is_excluded_path(&path) {
+                    continue;
+                }
+                stack.push(path);
+            } else if ft.is_file() && path.file_name().and_then(|n| n.to_str()) == Some("SKILL.md") {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -773,6 +885,7 @@ mod tests {
             triggers: vec!["rust".into(), "cargo".into(), "compiler error".into()],
             lifecycle: Lifecycle::Active,
             source: Source::Auto,
+            category: None,
             created_by: None,
             body: "1. Read the error\n2. Identify cause\n".to_string(),
             raw: String::new(),
@@ -794,6 +907,7 @@ mod tests {
             triggers: vec!["test".into()],
             lifecycle: Lifecycle::Active,
             source: Source::Manual,
+            category: None,
             created_by: None,
             body: "Do stuff".to_string(),
             raw: String::new(),
@@ -814,6 +928,7 @@ mod tests {
             triggers: vec!["rust compiler error".into()],
             lifecycle: Lifecycle::Active,
             source: Source::Auto,
+            category: None,
             created_by: None,
             body: "Steps...".to_string(),
             raw: String::new(),
@@ -833,6 +948,7 @@ mod tests {
             triggers: vec![],
             lifecycle: Lifecycle::Active,
             source: Source::Manual,
+            category: None,
             created_by: None,
             body: "...".to_string(),
             raw: String::new(),
@@ -859,6 +975,7 @@ mod tests {
             triggers: vec![],
             lifecycle: Lifecycle::Active,
             source: Source::Manual,
+            category: None,
             created_by: None,
             body: "...".to_string(),
             raw: String::new(),
@@ -889,6 +1006,7 @@ mod tests {
             triggers: vec![],
             lifecycle: Lifecycle::Active,
             source: Source::Manual,
+            category: None,
             created_by: None,
             body: "...".to_string(),
             raw: String::new(),
@@ -914,6 +1032,7 @@ mod tests {
             triggers: vec![],
             lifecycle: Lifecycle::Active,
             source: Source::Manual,
+            category: None,
             created_by: None,
             body: "...".to_string(),
             raw: String::new(),
@@ -939,6 +1058,7 @@ mod tests {
             triggers: vec![],
             lifecycle: Lifecycle::Active,
             source: Source::Manual,
+            category: None,
             created_by: None,
             body: "...".to_string(),
             raw: String::new(),

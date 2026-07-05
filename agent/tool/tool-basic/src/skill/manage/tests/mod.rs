@@ -30,12 +30,13 @@ pub fn save_skill(storage: &SkillStorageRegistry, name: &str, description: &str,
     storage
         .save(
             name,
-            &SkillContent {
+&SkillContent {
                 name: name.into(),
                 description: description.into(),
                 triggers: vec![],
                 lifecycle: Lifecycle::Active,
                 source: Source::Auto,
+                category: None,
                 created_by: None,
                 body: parsed_body,
                 raw: make_skill_md(name, description, body),

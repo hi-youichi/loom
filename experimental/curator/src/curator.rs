@@ -11,7 +11,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tracing::{debug, info, warn};
 
@@ -101,6 +101,12 @@ pub struct CuratorReport {
     pub archived: Vec<String>,
     pub overlapping: Vec<OverlapPair>,
     pub reactivated: Vec<String>,
+    /// Hermes `hermes_cli/curator.py:354-368` parity: per-skill prune
+    /// failures collected during the heuristic archive phase. CLI prints
+    /// a `failures:` block and exits 1 on any failure so a single broken
+    /// skill never silently aborts a curator run with the rest unarchived.
+    #[serde(default)]
+    pub failures: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,7 +164,7 @@ pub trait CuratorStateStore: Send + Sync {
         self.load().map(|s| s.paused).unwrap_or(false)
     }
 
-    fn bump_run(
+fn bump_run(
         &self,
         duration_secs: f64,
         summary: Option<&str>,
@@ -450,6 +456,11 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
             archived: Vec::new(),
             overlapping: Vec::new(),
             reactivated: Vec::new(),
+            // Hermes `hermes_cli/curator.py:354-368` parity: per-skill
+            // archive failures are collected into `report.failures` and
+            // surfaced to the CLI so a single broken skill never silently
+            // aborts the rest of the curator run.
+            failures: Vec::new(),
         };
 
         for meta in &all_skills {
@@ -482,13 +493,34 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
                     if days_since < stale_days {
                         info!("Reactivating stale skill '{}' ({} days since last use)", meta.name, days_since);
                         report.reactivated.push(meta.name.clone());
-                        if !dry_run {
+                    if !dry_run {
                             self.update_lifecycle(&meta.name, Lifecycle::Active)?;
                         }
                     } else if days_since >= self.config.archive_days {
                         report.archived.push(meta.name.clone());
                         if !dry_run {
+                            // Hermes-aligned archive discipline: stamp the
+                            // lifecycle enum first (so the SKILL.md frontmatter
+                            // reflects the new state even before the dir is
+                            // moved), then physically move the dir under
+                            // `.archive/` so it leaves the active discovery
+                            // tree (`archive_skill` no-ops on the second pass
+                            // if the dir is already archived).
                             self.update_lifecycle(&meta.name, Lifecycle::Archived)?;
+                            // Collect per-skill archive failures
+                            // (`hermes_cli/curator.py:354-368`) so the CLI
+                            // can surface them and exit 1 instead of
+                            // silently swallowing the error.
+                            if let Err(e) = self.archive_skill(&meta.name) {
+                                let msg = format!("{:?}", e);
+                                warn!(
+                                    "Curator: archive failed for '{}': {}",
+                                    meta.name, msg
+                                );
+                                report
+                                    .failures
+                                    .push((meta.name.clone(), msg));
+                            }
                             info!("Archived '{}' ({} days unused)", meta.name, days_since);
                         }
                     } else {
@@ -574,18 +606,53 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
     /// Returns `Err(SkillError::NotFound)` when the skill does not exist
     /// under the active base dir.
     pub fn archive_skill(&self, name: &str) -> Result<std::path::PathBuf, SkillError> {
+        // Provenance guard: only agent-created skills may be archived by the
+        // curator. Without this check a bundled or user-installed skill
+        // would silently disappear under `.archive/` and surface in
+        // `restore` listings as if it were agent-created. Hermes aligns by
+        // reading `.bundled_manifest` and `.hub/lock.json` first; we reuse
+        // `is_agent_created_skill` which already implements that check.
+        if !self.is_agent_created_skill(name) {
+            return Err(SkillError::NotFound(format!(
+                "'{}' is not agent-created; refusing to archive (pin check)",
+                name
+            )));
+        }
+
         let src = self.skills.base_dir().join(name);
         if !src.is_dir() {
             return Err(SkillError::NotFound(name.to_string()));
         }
         let archive_root = self.skills.base_dir().join(".archive");
         std::fs::create_dir_all(&archive_root)?;
-        let dst = archive_root.join(name);
+        let mut dst = archive_root.join(name);
         if dst.exists() {
-            // Already archived; treat as success to match Hermes semantics.
-            return Ok(src);
+            // Hermes-aligned collision fallback: append a timestamp suffix
+            // so we never silently overwrite an earlier archive. Prevents
+            // `restore_skill` from picking up the wrong copy.
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            dst = archive_root.join(format!("{}-{}", name, ts));
         }
-        std::fs::rename(&src, &dst)?;
+        // Cross-device rename fallback: `fs::rename` fails on Windows when
+        // src/dst are on different volumes. Mirror Hermes `shutil.move`,
+        // which falls back to copy+remove.
+        if let Err(e) = std::fs::rename(&src, &dst) {
+            if e.raw_os_error() == Some(17) || e.raw_os_error() == Some(18) {
+                // 17=ERROR_NOT_SAME_DEVICE, 18=ERROR_NO_MORE_FILES (rare on
+                // edge cases). Fall back to copy_tree + remove_dir_all.
+                info!(
+                    "fs::rename failed for '{}' ({}); falling back to copy+remove",
+                    name, e
+                );
+                copy_dir_recursive(&src, &dst)?;
+                std::fs::remove_dir_all(&src)?;
+            } else {
+                return Err(SkillError::Io(e));
+            }
+        }
         info!("Archived skill '{}' to {}", name, dst.display());
         Ok(src)
     }
@@ -593,6 +660,22 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
     /// Inverse of `archive_skill`: move `.archive/<name>/` back into the
     /// active base dir. Returns the destination path on success.
     pub fn restore_skill(&self, name: &str) -> Result<std::path::PathBuf, SkillError> {
+        // Shadowing guard: refuse to overwrite a skill that already exists
+        // in the active tree, OR a non-agent-created skill (bundled / hub).
+        // Hermes refuses both before touching disk.
+        if self.is_agent_created_skill(name)
+            && self
+                .skills
+                .base_dir()
+                .join(name)
+                .join("SKILL.md")
+                .exists()
+        {
+            // Already in the active tree — caller is racing with another
+            // restore. Treat as no-op success to match Hermes.
+            return Ok(self.skills.base_dir().join(name));
+        }
+
         let archive_root = self.skills.base_dir().join(".archive");
         let src = archive_root.join(name);
         if !src.is_dir() {
@@ -602,11 +685,30 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
                 archive_root.display()
             )));
         }
-        let dst = self.skills.base_dir().join(name);
+        let mut dst = self.skills.base_dir().join(name);
         if dst.exists() {
-            return Err(SkillError::AlreadyExists(name.to_string()));
+            // Hermes-aligned collision fallback: append a timestamp suffix
+            // so the restore is recoverable even when an earlier skill
+            // with the same name is present.
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            dst = self.skills.base_dir().join(format!("{}-{}", name, ts));
         }
-        std::fs::rename(&src, &dst)?;
+        // Cross-device rename fallback (see archive_skill).
+        if let Err(e) = std::fs::rename(&src, &dst) {
+            if e.raw_os_error() == Some(17) || e.raw_os_error() == Some(18) {
+                info!(
+                    "fs::rename failed for restore '{}' ({}); falling back to copy+remove",
+                    name, e
+                );
+                copy_dir_recursive(&src, &dst)?;
+                std::fs::remove_dir_all(&src)?;
+            } else {
+                return Err(SkillError::Io(e));
+            }
+        }
         info!("Restored skill '{}' from {}", name, src.display());
         Ok(dst)
     }
@@ -654,11 +756,42 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
     /// Updates `last_run_at`, `run_count`, and `skill_last_used` in the
     /// curator state file. Used by the LLM pass to record its execution
     /// so that `should_run()` correctly defers the next run.
-    pub fn mark_run_completed(&self) -> Result<(), SkillError> {
+pub fn mark_run_completed(&self) -> Result<(), SkillError> {
         let mut state = self.load_state()?;
         let now = Utc::now();
         state.last_run_at = Some(now.to_rfc3339());
         state.run_count += 1;
+
+        // Seed skill_last_used for all currently-known skills
+        if let Ok(metas) = self.skills.list() {
+            for meta in &metas {
+                state
+                    .skill_last_used
+                    .entry(meta.name.clone())
+                    .or_insert_with(|| now.to_rfc3339());
+            }
+        }
+
+        self.save_state(&state)
+    }
+
+    /// Update curator state after an LLM review pass, populating the
+    /// richer telemetry fields (`last_run_summary`, `last_report_path`,
+    /// `last_run_duration_seconds`) on top of `mark_run_completed`'s
+    /// `last_run_at` + `run_count` baseline.
+    pub fn bump_run(
+        &self,
+        duration: std::time::Duration,
+        summary: Option<&str>,
+        report_path: Option<&Path>,
+    ) -> Result<(), SkillError> {
+        let mut state = self.load_state()?;
+        let now = Utc::now();
+        state.run_count += 1;
+        state.last_run_at = Some(now.to_rfc3339());
+        state.last_run_duration_seconds = Some(duration.as_secs_f64());
+        state.last_run_summary = summary.map(String::from);
+        state.last_report_path = report_path.map(|p| p.to_string_lossy().into_owned());
 
         // Seed skill_last_used for all currently-known skills
         if let Ok(metas) = self.skills.list() {
@@ -694,9 +827,57 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
         let data = serde_json::to_string_pretty(state).map_err(|e| SkillError::InvalidFormat(e.to_string()))?;
         let tmp_path = self.state_path.with_extension("tmp");
         fs::write(&tmp_path, &data)?;
-        fs::rename(&tmp_path, &self.state_path)?;
-    Ok(())
+fs::rename(&tmp_path, &self.state_path)?;
+        Ok(())
     }
+}
+
+/// Hermes-aligned `shutil.copytree` analogue used by the cross-device
+/// rename fallback in `archive_skill`/`restore_skill` when
+/// `fs::rename` fails on cross-volume links (Windows error 17).
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), SkillError> {
+    std::fs::create_dir_all(dst)?;
+    let mut stack: Vec<std::path::PathBuf> = vec![src.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = match fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(e) => return Err(SkillError::Io(e)),
+        };
+        for entry in entries {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(e) => return Err(SkillError::Io(e)),
+            };
+            let from = entry.path();
+            let ft = match entry.file_type() {
+                Ok(f) => f,
+                Err(e) => return Err(SkillError::Io(e)),
+            };
+            let rel = from.strip_prefix(src).unwrap_or(&from);
+            let to = dst.join(rel);
+            if ft.is_dir() {
+                std::fs::create_dir_all(&to)?;
+                stack.push(from);
+            } else if ft.is_symlink() {
+                let target = fs::read_link(&from)?;
+                #[cfg(unix)]
+                std::os::unix::fs::symlink(&target, &to)?;
+                #[cfg(not(unix))]
+                {
+                    if target.is_dir() {
+                        copy_dir_recursive(&target, &to)?;
+                    } else if target.is_file() {
+                        fs::copy(&target, &to)?;
+                    } else {
+                        fs::copy(&from, &to)?;
+                    }
+                }
+            } else {
+                fs::copy(&from, &to)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn compute_days_since(
@@ -1292,7 +1473,12 @@ pub fn parse_llm_review_response(raw: &str) -> LlMReviewResult {
 /// sends only name + description + usage stats per skill (no body, no triggers).
 /// This keeps the prompt compact (~150 chars/skill vs ~450 in the old format)
 /// so 200+ skills fit in a single LLM context without timeout.
-pub fn build_llm_prompt(skills: &[SkillContent], usage_reports: &[SkillUsageReport]) -> String {
+///
+/// `dry_run` (Hermes parity: `agent/curator.py:run_curator_review(..., dry_run=True)`):
+/// when `true`, prepend a `## Mode: DRY RUN` banner so the LLM produces an
+/// analysis that *describes* changes without committing them. Tools still
+/// run; downstream callers gate writes on the same flag.
+pub fn build_llm_prompt(skills: &[SkillContent], usage_reports: &[SkillUsageReport], dry_run: bool) -> String {
     use std::collections::HashMap;
     use std::fmt::Write;
 
@@ -1302,6 +1488,14 @@ pub fn build_llm_prompt(skills: &[SkillContent], usage_reports: &[SkillUsageRepo
         .collect();
 
     let mut prompt = CURATOR_REVIEW_PROMPT.trim().to_string();
+    if dry_run {
+        prompt.push_str(
+            "\n\n## Mode: DRY RUN\n\n\
+             You are running in dry-run mode. Produce the YAML analysis as usual, \
+             but DO NOT describe any tool calls that would modify the skill library. \
+             Treat all proposed changes as informational; the caller will not commit them.\n",
+        );
+    }
     prompt.push_str("\n\n## Active Skills\n\n");
 
     if skills.is_empty() {
@@ -1704,13 +1898,14 @@ clusters: [[invalid yaml
 mod tests {
     use super::*;
     
-    fn make_test_skill(name: &str, source: Source) -> SkillContent {
+fn make_test_skill(name: &str, source: Source) -> SkillContent {
         SkillContent {
             name: name.to_string(),
             description: format!("Test skill {}", name),
             triggers: vec!["test".into()],
             lifecycle: Lifecycle::Active,
             source,
+            category: None,
             created_by: None,
             body: "Do stuff".to_string(),
             raw: String::new(),
@@ -2032,7 +2227,7 @@ mod tests {
             },
         ];
 
-        let prompt = build_llm_prompt(&skills, &usage_reports);
+        let prompt = build_llm_prompt(&skills, &usage_reports, false);
 
         assert!(prompt.contains("Active Skills"));
         assert!(prompt.contains("skill-a"));
@@ -2050,7 +2245,7 @@ mod tests {
         let skills: Vec<SkillContent> = vec![];
         let usage_reports: Vec<SkillUsageReport> = vec![];
 
-        let prompt = build_llm_prompt(&skills, &usage_reports);
+        let prompt = build_llm_prompt(&skills, &usage_reports, false);
 
         assert!(prompt.contains("Active Skills"));
         assert!(prompt.contains("No active skills found. Nothing to consolidate."));
@@ -2062,7 +2257,7 @@ mod tests {
         let skills = vec![make_test_skill("skill-a", Source::Auto)];
         let usage_reports: Vec<SkillUsageReport> = vec![];
 
-        let prompt = build_llm_prompt(&skills, &usage_reports);
+        let prompt = build_llm_prompt(&skills, &usage_reports, false);
 
         assert!(prompt.contains("skill-a"));
         assert!(prompt.contains("Test skill skill-a"));

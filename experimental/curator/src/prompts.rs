@@ -248,6 +248,27 @@ pub const CURATOR_SYSTEM_PROMPT: &str = "You are Loom's background skill CURATOR
 /// - Which skills should be consolidated into umbrella skills
 /// - Which skills should be pruned (archived with no absorption)
 /// - What new umbrella skills should be created
+///
+/// Hermes `agent/curator.py:280-298` `CURATOR_DRY_RUN_BANNER` parity:
+/// when `dry_run` is true, this banner is prepended to the prompt so the
+/// LLM is told up-front that every mutating tool call (`skill_manage
+/// action=write_file` and any terminal mutation) MUST be reported as
+/// "would do X" rather than executed. This is what lets `loom curator run
+/// --dry-run` return an LLM plan without committing changes.
+pub const CURATOR_DRY_RUN_BANNER: &str = r#"
+────────────────────────────────────────────────────────────
+DRY-RUN MODE — read-only pass, no on-disk changes are allowed.
+- `skill_manage action=create`   →  DO NOT CALL.  Describe what you would create.
+- `skill_manage action=edit`     →  DO NOT CALL.  Describe what you would edit.
+- `skill_manage action=patch`    →  DO NOT CALL.  Describe the patch.
+- `skill_manage action=write_file` → DO NOT CALL. Describe the file.
+- `skill_manage action=delete`   →  DO NOT CALL.  Describe what you would delete.
+At the end of your reply, list every mutating action you would have
+performed in a `## Dry-run plan` section. The CLI prints that plan to
+the user verbatim.
+────────────────────────────────────────────────────────────
+"#;
+
 pub const CURATOR_REVIEW_PROMPT: &str = r#"You are running as Loom's background skill CURATOR. This is an
 UMBRELLA-BUILDING consolidation pass, not a passive audit and not a
 duplicate-finder.

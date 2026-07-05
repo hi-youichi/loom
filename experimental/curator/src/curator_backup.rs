@@ -158,14 +158,70 @@ impl CuratorBackup {
             })
             .count();
 
-        // Pack skills_dir (without backup_dir itself)
-        builder.append_dir_all("skills", skills_dir)?;
+// Pack skills_dir (without backup_dir itself).
+        // Hermes parity (`curator_backup.py:175-181, 245-280`): the
+        // `EXCLUDE_TOP_LEVEL` filter prevents the snapshot from bundling
+        // internal-only directories such as `.hub/` (the skills-hub
+        // bookkeeping area) and `.curator_backups/` (the snapshot storage
+        // itself, which would otherwise recurse into the tarball).
+        // Previously only `skills_count` honored this filter, so the
+        // tarball would still include those subtrees and the metric no
+        // longer matched "the on-disk skill count".
+        const EXCLUDE_TOP_LEVEL: &[&str] = &[".hub", ".curator_backups"];
+        for entry in walkdir::WalkDir::new(skills_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            // Skip any file whose top-level ancestor (relative to
+            // skills_dir) is in the exclude list.
+            let rel = path.strip_prefix(skills_dir).unwrap_or(path);
+            let top_segment = rel
+                .components()
+                .next()
+                .and_then(|c| c.as_os_str().to_str())
+                .unwrap_or("");
+            if EXCLUDE_TOP_LEVEL.contains(&top_segment) {
+                continue;
+            }
+            let rel_str = match rel.to_str() {
+                Some(s) => s,
+                None => continue,
+            };
+            let tar_path = format!("skills/{}", rel_str.replace('\\', "/"));
+            let mut file = match File::open(path) {
+                Ok(f) => f,
+                Err(_) => continue,
+            };
+            use std::io::Read as _;
+            let mut data = Vec::new();
+            if file.read_to_end(&mut data).is_err() {
+                continue;
+            }
+            let mut header = tar::Header::new_gnu();
+            let size = data.len() as u64;
+            header.set_size(size);
+            header.set_mode(0o644);
+            if header.set_path(&tar_path).is_err() {
+                continue;
+            }
+            if builder.append(&header, &data[..]).is_err() {
+                continue;
+            }
+        }
 
-        // Write metadata.json (using append_data, requires tar 0.4.13+ Header::set_path)
+        builder.finish()?;
+        drop(builder);
+
         let meta = SnapshotMeta {
             timestamp: base_ts.clone(),
             skills_count,
-            size_bytes: fs::metadata(&filepath)?.len(),
+            // Filled in after the metadata.json payload is appended below;
+            // reading fs::metadata here would under-count by the JSON size.
+            size_bytes: 0,
             description: description.map(|s| s.to_string()),
             number: None,
         };
@@ -176,10 +232,24 @@ impl CuratorBackup {
         header.set_entry_type(tar::EntryType::file());
         header.set_path("metadata.json")
             .map_err(std::io::Error::other)?;
+        // Re-open for appending metadata.json; builder was dropped above.
+        let file = std::fs::OpenOptions::new().append(true).open(&filepath)?;
+        let mut builder = Builder::new(file);
         builder.append_data(&mut header, "metadata.json", meta_json.as_bytes())?;
-
         builder.finish()?;
         drop(builder);
+
+        // Hermes-aligned metadata: capture `size_bytes` AFTER the archive has
+        // been fully flushed (skills + metadata.json) so the reported value
+        // reflects the complete tarball on disk. A `GzEncoder` only emits
+        // bytes into the underlying file when dropped / `try_finish`d, and
+        // reading metadata between the two `drop(builder)` calls would
+        // under-count by the metadata.json payload (~200-400 B).
+        let size_bytes = fs::metadata(&filepath)
+            .map(|m| m.len())
+            .unwrap_or(0);
+        let mut meta = meta;
+        meta.size_bytes = size_bytes;
 
         tracing::info!(
             "Curator snapshot created: {} ({} skills, {} bytes)",
@@ -234,72 +304,113 @@ impl CuratorBackup {
     /// # Arguments
     /// * `snapshot_name` — snapshot filename, e.g. `curator-2025-08-19T12-34-56.tar.gz`
     /// * `skills_dir` — target restore directory
+    ///
+    /// Atomicity (`curator_backup.py:574-624`): extract the snapshot into a
+    /// timestamped staging directory *first*, then swap it into place. If
+    /// extraction fails, the staging dir is rmtree'd and the original
+    /// `skills_dir` is untouched. If the swap fails, the original is moved
+    /// back from a sidecar `.rollback-old-<ts>` directory. This replaces
+    /// the old "backup to `pre-rollback-temp` and unpack in-place" flow,
+    /// which left `skills_dir` partially-written on extract errors and
+    /// leaked a `pre-rollback-temp` file on success.
     pub fn rollback(&self, snapshot_name: &str, skills_dir: &Path) -> Result<()> {
         let snapshot_path = self.backup_dir.join(snapshot_name);
         if !snapshot_path.exists() {
             return Err(BackupError::SnapshotNotFound(snapshot_name.to_string()));
         }
 
-        // Backup current skills (in case rollback fails)
-        let temp_backup = self.backup_dir.join("pre-rollback-temp");
-        if skills_dir.exists() {
-            let file = File::create(&temp_backup)?;
-            let encoder = GzEncoder::new(file, flate2::Compression::default());
-            let mut builder = Builder::new(encoder);
-            builder.append_dir_all("skills", skills_dir)?;
-            builder.finish()?;
+        let base_ts = chrono::Utc::now().format("%Y-%m-%dT%H-%M-%SZ").to_string();
+        let staging_dir = self
+            .backup_dir
+            .join(format!(".rollback-staging-{}", base_ts));
+        let old_sidecar = self
+            .backup_dir
+            .join(format!(".rollback-old-{}", base_ts));
+
+        // Drop the legacy flat `pre-rollback-temp` file if a previous crash
+        // left it behind; it is not part of the atomic flow anymore.
+        let legacy_temp = self.backup_dir.join("pre-rollback-temp");
+        if legacy_temp.exists() {
+            let _ = fs::remove_file(&legacy_temp);
         }
 
-        // Unpack snapshot (overwrite skills_dir)
-        let file = File::open(&snapshot_path)?;
-        let decoder = GzDecoder::new(file);
-        let mut archive = Archive::new(decoder);
-
-        // Clean old content first
-        if skills_dir.exists() {
-            fs::remove_dir_all(skills_dir)?;
+        // Make sure the parent dir for staging exists (it should — we just
+        // verified `snapshot_path` lives there).
+        if let Some(parent) = staging_dir.parent() {
+            fs::create_dir_all(parent).ok();
         }
-        fs::create_dir_all(skills_dir)?;
+        if let Err(e) = fs::create_dir_all(&staging_dir) {
+            return Err(BackupError::Io(e));
+        }
 
-        // Unpack (tar internal paths are skills/...)
-        for mut entry in archive.entries()? {
-            let mut entry_path = match entry {
-                Ok(ref e) => match e.path() {
+        // Phase 1: extract into staging_dir. Any error here is recoverable:
+        // rmtree staging and return.
+        let extract_result = (|| -> Result<()> {
+            let file = File::open(&snapshot_path)?;
+            let decoder = GzDecoder::new(file);
+            let mut archive = Archive::new(decoder);
+            for entry in archive.entries()? {
+                let mut entry = entry?;
+                let mut entry_path = match entry.path() {
                     Ok(p) => p.to_path_buf(),
                     Err(_) => continue,
-                },
-                Err(_) => continue,
-            };
-            // Strip "skills/" prefix
-            if entry_path.starts_with("skills/") {
-                entry_path = entry_path.strip_prefix("skills/").unwrap().to_path_buf();
-            } else {
-                continue;
-            }
-
-let out_path = skills_dir.join(&entry_path);
-            // Path-traversal safety: reject entries with absolute paths or
-            // `..` components before unpacking. Mirrors Hermes
-            // `curator_backup.py:606-611` `_safe_extract` guard.
-            if entry_path.is_absolute()
-                || entry_path
-                    .components()
-                    .any(|c| matches!(c, std::path::Component::ParentDir))
-            {
-                tracing::warn!(
-                    "Skipping suspicious tar entry with traversal path: {:?}",
-                    entry_path
-                );
-                continue;
-            }
-            if entry_path.to_string_lossy().ends_with('/') {
-                fs::create_dir_all(&out_path)?;
-            } else {
-                if let Some(parent) = out_path.parent() {
-                    fs::create_dir_all(parent).ok();
+                };
+                if entry_path.starts_with("skills/") {
+                    entry_path = entry_path.strip_prefix("skills/").unwrap().to_path_buf();
+                } else {
+                    continue;
                 }
-                if let Ok(ref mut e) = entry { e.unpack(&out_path)?; }
+                // Path-traversal safety: reject entries with absolute paths or
+                // `..` components before unpacking. Mirrors Hermes
+                // `curator_backup.py:606-611` `_safe_extract` guard.
+                if entry_path.is_absolute()
+                    || entry_path
+                        .components()
+                        .any(|c| matches!(c, std::path::Component::ParentDir))
+                {
+                    tracing::warn!(
+                        "Skipping suspicious tar entry with traversal path: {:?}",
+                        entry_path
+                    );
+                    continue;
+                }
+                let out_path = staging_dir.join(&entry_path);
+                if entry_path.to_string_lossy().ends_with('/') {
+                    fs::create_dir_all(&out_path)?;
+                } else {
+                    if let Some(parent) = out_path.parent() {
+                        fs::create_dir_all(parent).ok();
+                    }
+                    entry.unpack(&out_path)?;
+                }
             }
+            Ok(())
+        })();
+
+        if let Err(e) = extract_result {
+            let _ = fs::remove_dir_all(&staging_dir);
+            return Err(e);
+        }
+
+        // Phase 2: atomic swap. Move current skills_dir aside (if it
+        // exists), move staging into place, then rmtree the sidecar.
+        if skills_dir.exists() {
+            if let Err(e) = fs::rename(skills_dir, &old_sidecar) {
+                let _ = fs::remove_dir_all(&staging_dir);
+                return Err(BackupError::Io(e));
+            }
+        }
+        if let Err(e) = fs::rename(&staging_dir, skills_dir) {
+            // Try to put the original back; if that fails too, the user
+            // is in a degraded state but we surface the swap error.
+            if old_sidecar.exists() {
+                let _ = fs::rename(&old_sidecar, skills_dir);
+            }
+            let _ = fs::remove_dir_all(&staging_dir);
+            return Err(BackupError::Io(e));
+        }
+        if old_sidecar.exists() {
+            let _ = fs::remove_dir_all(&old_sidecar);
         }
 
         tracing::info!("Curator rollback complete: {}", snapshot_name);

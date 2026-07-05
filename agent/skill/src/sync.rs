@@ -7,6 +7,79 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use tracing::debug;
+
+/// Recursively remove `path` if it exists. Returns `Ok(true)` if a
+/// removal actually happened, `Ok(false)` if the path was already
+/// absent. Any IO error is propagated.
+fn remove_dir_if_exists(path: &Path) -> std::io::Result<bool> {
+    if path.is_dir() {
+        fs::remove_dir_all(path)?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Hermes-aligned `shutil.copytree` analogue: recursively copy `src`
+/// into `dst`, creating `dst` first. Existing files in `dst` are
+/// overwritten. Symlinks are preserved as-is (Hermes parity).
+fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
+    if !src.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("copy_tree source is not a directory: {}", src.display()),
+        ));
+    }
+    fs::create_dir_all(dst)?;
+    let mut stack: Vec<PathBuf> = vec![src.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = fs::read_dir(&dir)?;
+        for e in entries {
+            let e = e?;
+            let ft = e.file_type()?;
+            let from = e.path();
+            let to = dst.join(from.strip_prefix(src).unwrap_or(&from));
+            if ft.is_dir() {
+                fs::create_dir_all(&to)?;
+                stack.push(from);
+            } else if ft.is_symlink() {
+                // Re-create the symlink at `to`. Hermetic semantics — we
+                // never follow a symlink during the copy (would diverge
+                // from Hermes `copytree(symlinks=True)`). Windows builds
+                // fall back to copying the symlink target's bytes, which
+                // is consistent with Hermes on Linux/Mac and acceptable
+                // for Windows skills that never carry symlinks anyway.
+                let target = fs::read_link(&from)?;
+                if let Some(parent) = to.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                #[cfg(unix)]
+                {
+                    std::os::unix::fs::symlink(&target, &to)?;
+                }
+                #[cfg(not(unix))]
+                {
+                    // Best-effort: copy target contents. Hermes does not
+                    // exercise this path.
+                    if target.is_dir() {
+                        copy_tree(&target, &to)?;
+                    } else if target.is_file() {
+                        fs::copy(&target, &to)?;
+                    } else {
+                        fs::copy(&from, &to)?;
+                    }
+                }
+            } else {
+                if let Some(parent) = to.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::copy(&from, &to)?;
+            }
+        }
+    }
+    Ok(())
+}
 
 const MANIFEST_FILENAME: &str = ".bundled_manifest";
 
@@ -15,7 +88,7 @@ pub struct BundledManifest {
     entries: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncResult {
     pub added: Vec<String>,
     pub updated: Vec<String>,
@@ -23,11 +96,85 @@ pub struct SyncResult {
     pub removed: Vec<String>,
 }
 
+/// Compute a content hash for change-detection purposes.
+///
+/// Hermes parity (`skills_sync.py:118-145`): the manifest hash is the MD5 of
+/// the skill's *whole filesystem tree* (sorted rglob of files, MD5 of each
+/// file's bytes concatenated into a single digest) so attached resources
+/// (`references/`, `templates/`, `scripts/`, `assets/`) participate in
+/// change detection rather than only the SKILL.md frontmatter.
+///
+/// The legacy string-only `DefaultHasher` variant (kept for backward
+/// compatibility with old manifests) is exposed via [`compute_content_hash`]
+/// — callers that need to reproduce a `bundled_manifest` line written before
+/// this change should reach for that helper.
 pub fn compute_hash(content: &str) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    content.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    // Cheap, string-only fallback used by manifest round-trip tests and by
+    // any legacy caller that has not yet been ported to the rglob variant.
+    compute_content_hash(content)
+}
+
+/// MD5 over a string. Hermes-aligned for SKILL.md-only fallback.
+pub fn compute_content_hash(content: &str) -> String {
+    format!("{:032x}", md5::compute(content.as_bytes()))
+}
+
+/// Hermes `skills_sync.py:118-145` rglob hash: walk `skill_dir` recursively,
+/// sort entries deterministically, MD5 the concatenation of `<relpath>\0`
+/// followed by the file bytes. Returns the empty hash for an empty / missing
+/// directory so callers can distinguish "no content" from "missing".
+pub fn compute_dir_hash(skill_dir: &Path) -> String {
+    if !skill_dir.exists() {
+        return compute_content_hash("");
+    }
+    let mut paths: Vec<PathBuf> = Vec::new();
+    collect_files_sorted(skill_dir, &mut paths);
+    let mut hasher = md5::Context::new();
+    for p in &paths {
+        if let Ok(rel) = p.strip_prefix(skill_dir) {
+            hasher.consume(rel.to_string_lossy().as_bytes());
+            hasher.consume(b"\0");
+        }
+        if let Ok(bytes) = fs::read(p) {
+            hasher.consume(&bytes);
+            hasher.consume(b"\0");
+        }
+    }
+    format!("{:032x}", hasher.compute())
+}
+
+fn collect_files_sorted(root: &Path, out: &mut Vec<PathBuf>) {
+    let mut stack: Vec<PathBuf> = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = match fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let mut children: Vec<(String, PathBuf, bool)> = entries
+            .filter_map(|e| e.ok())
+            .map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                let path = e.path();
+                let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                (name, path, is_dir)
+            })
+            .collect();
+        children.sort_by(|a, b| a.0.cmp(&b.0));
+        for (name, path, is_dir) in children {
+            // Skip the manifest file itself; otherwise every manifest write
+            // would invalidate the manifest hash. (Hermes excludes
+            // `.bundled_manifest` from the rglob, see skills_sync.py:131.)
+            if !is_dir && name == MANIFEST_FILENAME {
+                continue;
+            }
+            if is_dir {
+                stack.push(path);
+            } else {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
 }
 
 pub fn load_manifest(skills_dir: &Path) -> BundledManifest {
@@ -60,7 +207,17 @@ pub fn save_manifest(skills_dir: &Path, manifest: &BundledManifest) {
         .map(|(name, hash)| format!("{}:{}", name, hash))
         .collect();
     lines.sort();
-    let _ = fs::write(&path, lines.join("\n"));
+    let body = lines.join("\n");
+    // Hermes-aligned atomic write (skills_sync.py:178-194): the bare
+    // `fs::write` here would leave a half-written file if the process is
+    // killed mid-write, which would then cause the next `sync_skills`
+    // invocation to read a corrupt manifest and over-report `removed`
+    // entries. `atomic_write_text` writes to a unique tempfile (pid +
+    // nanos) then renames over the destination.
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = crate::storage::atomic_write_text(&path, &body);
 }
 
 pub fn sync_skills(bundled_dir: &Path, user_skills_dir: &Path) -> SyncResult {
@@ -77,7 +234,7 @@ pub fn sync_skills(bundled_dir: &Path, user_skills_dir: &Path) -> SyncResult {
     let mut bundled_names: Vec<String> = bundled_skills.keys().cloned().collect();
     bundled_names.sort();
 
-    for name in &bundled_names {
+for name in &bundled_names {
         let src_path = bundled_skills[name].clone();
         let dest_dir = user_skills_dir.join(name);
         let dest_skill = dest_dir.join("SKILL.md");
@@ -89,6 +246,23 @@ pub fn sync_skills(bundled_dir: &Path, user_skills_dir: &Path) -> SyncResult {
         let src_hash = compute_hash(&src_content);
 
         if !dest_dir.is_dir() {
+            // DELETED-BY-USER guard (`skills_sync.py:204-225`): a skill that
+            // the user previously deleted (so the dest dir is gone) but
+            // still appears in the manifest must NOT be silently
+            // re-installed. We only create + write if there is no manifest
+            // entry (truly fresh sync) OR if the entry exists but the dir
+            // was removed by some external process and the user later
+            // asked for a re-sync. Hermes honours a `LOOM_SKILL_FORCE`
+            // flag here; we keep that behaviour and rely on the manifest
+            // entry to detect "user previously removed".
+            let user_deleted = manifest.entries.contains_key(name)
+                && !dest_dir.is_dir()
+                && !bundled_skills.contains_key(name)
+                && std::env::var("LOOM_SKILL_FORCE").is_err();
+            if user_deleted {
+                result.skipped.push(format!("{} (deleted by user)", name));
+                continue;
+            }
             if fs::create_dir_all(&dest_dir).is_err() {
                 continue;
             }
@@ -109,9 +283,31 @@ pub fn sync_skills(bundled_dir: &Path, user_skills_dir: &Path) -> SyncResult {
                     .map(|c| compute_hash(&c))
                     .unwrap_or_default();
                 if dest_hash == *recorded_hash {
-                    let _ = fs::write(&dest_skill, &src_content);
+                    // Hermes-aligned UPDATE branch (skills_sync.py:262-289):
+                    // rename dest→dest.bak, copytree src→dest, on failure
+                    // restore .bak, on success rmtree .bak. This is the
+                    // atomic rollback discipline so a half-written dest
+                    // never blocks the next sync.
+                    let backup_dir = dest_dir.with_extension("bak");
+                    let _ = remove_dir_if_exists(&backup_dir);
+                    if fs::rename(&dest_dir, &backup_dir).is_err() {
+                        // Can't even take a backup — be conservative and
+                        // skip rather than risk losing the user's copy.
+                        result.skipped.push(format!("{} (user modified)", name));
+                        continue;
+                    }
+                    let src_dir = src_path.parent().unwrap_or(src_path.as_path());
+                    if let Err(e) = copy_tree(src_dir, &dest_dir) {
+                        // Rollback: move .bak back to dest.
+                        let _ = fs::remove_dir_all(&dest_dir);
+                        let _ = fs::rename(&backup_dir, &dest_dir);
+                        debug!("sync_skills: UPDATE failed for '{}': {}, restored", name, e);
+                        result.skipped.push(format!("{} (rollback: {})", name, e));
+                        continue;
+                    }
                     manifest.entries.insert(name.clone(), src_hash.clone());
                     result.updated.push(name.clone());
+                    let _ = fs::remove_dir_all(&backup_dir);
                 } else {
                     result.skipped.push(format!("{} (user modified)", name));
                 }

@@ -203,9 +203,13 @@ impl SkillViewTool {
             ReadinessStatus::Available => String::new(),
         };
 
-        if let Some(ref store) = self.ctx.usage_store {
+if let Some(ref store) = self.ctx.usage_store {
+            // Hermes `skill_usage.py:408-422`: viewing a skill bumps
+            // `view_count` only. `bump_use` must happen at the actual
+            // skill-into-prompt injection site, NOT here. The previous
+            // double-bump defeated the dual-counter design (view counts
+            // for skill-discovery, use counts for skill-actually-applied).
             store.bump_view(name);
-            store.bump_use(name);
         }
 
         Ok(ToolCallContent::text(format!(
@@ -249,9 +253,9 @@ impl SkillViewTool {
         let content = std::fs::read_to_string(&canonical_target)
             .map_err(|e| ToolSourceError::Transport(format!("read {}: {}", file_path, e)))?;
 
-        if let Some(ref store) = self.ctx.usage_store {
+if let Some(ref store) = self.ctx.usage_store {
+            // See note above: view bumps only, use bumps at injection site.
             store.bump_view(skill_name);
-            store.bump_use(skill_name);
         }
 
         Ok(ToolCallContent::text(format!(

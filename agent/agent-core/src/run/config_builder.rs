@@ -19,6 +19,7 @@ pub use super::runner::{RunCmd, RunError};
 use crate::ResolvedAgent;
 use crate::agent::ReactBuildConfig;
 use skill::discovery::SkillRegistry;
+use skill::usage::SkillUsageStore;
 use crate::{EnvContext, ProjectInfo};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -208,9 +209,17 @@ pub fn build_react_config(
         let mut prompt = skill_registry.1.clone();
         if let Some(ref p) = profile {
             if let Some(preload) = p.skills.as_ref().and_then(|s| s.preload.as_ref()) {
+                // Hermes parity (`skill_usage.py:bump_use_on_inject`): each
+                // preloaded skill is actually injected into the prompt, so
+                // this is the production bump_use site (not the manual
+                // `touch_skill` in curator.rs). Without this call, use_count
+                // telemetry would only increment on curator touch, defeating
+                // the dual-counter design (view at view, use at inject).
+                let usage_store = SkillUsageStore::new(&working_folder);
                 let mut buf = String::new();
                 for name in preload {
                     if let Ok(content) = skill_registry.0.load_skill(name) {
+                        usage_store.bump_use(name);
                         buf.push_str(&format!(
                             "<skill name=\"{}\">\n{}</skill>\n",
                             name, content

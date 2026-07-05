@@ -405,6 +405,65 @@ pub fn validate_skill_path(path: &str) -> ValidationResult {
         });
     }
 
+    // Hermes-aligned ALLOWED_SUBDIRS whitelist
+    // (`skill_manager_tool.py:171, 401-426`). The schema documents it in
+    // `manage.rs:794`, but the runtime validator previously only checked
+    // for traversal — which let a malicious skill author smuggle a `bin/`,
+    // `.git/` or executable payload through `handle_write_file`. Reject any
+    // top-level subdirectory segment that is outside the canonical skill
+    // layout.
+    const ALLOWED_SUBDIRS: &[&str] = &["references", "templates", "scripts", "assets"];
+    // Hermes parity (`skill_manager_tool.py:401-426`): Hermes rejects
+    // single-segment paths that look like executable filenames (`.sh`,
+    // `.exe`, …) even though it accepts bare skill names. The old early-
+    // break bypassed this for *any* single-segment path, so `runme.sh`
+    // and `evil_path` were both accepted.
+    const EXECUTABLE_EXTS: &[&str] = &[
+        ".sh", ".bash", ".zsh", ".exe", ".bat", ".cmd", ".ps1", ".vbs",
+        ".scr", ".com", ".cpl", ".msi", ".jar", ".py", ".rb", ".pl",
+    ];
+    let has_separator = path.contains('/') || path.contains('\\');
+    for segment in path.split(['/', '\\']).filter(|s| !s.is_empty()) {
+        if ALLOWED_SUBDIRS.contains(&segment) {
+            continue;
+        }
+        // SKILL.md (the file itself) is allowed at any depth.
+        if segment == "SKILL.md" || segment.ends_with(".md") {
+            continue;
+        }
+        // Single-segment paths get the early-exit ONLY when they look like
+        // a skill name (lowercase alphanumeric with `-`, `_`, `.` and no
+        // executable-looking extension). Previously the loop would also
+        // accept `runme.sh` because the early-exit matched the *first*
+        // iteration; we now gate it on the executable-extension check so
+        // `runme.sh`, `evil_path.exe`, `setup.py`, etc. are rejected even
+        // when there are no path separators. The "my-skill" / "my_skill"
+        // / "my.skill" common case still passes.
+        if !has_separator {
+            let lower = segment.to_ascii_lowercase();
+            if !EXECUTABLE_EXTS.iter().any(|ext| lower.ends_with(ext)) {
+                break;
+            }
+            warnings.push(ValidationWarning {
+                severity: Severity::Critical,
+                message: format!(
+                    "Single-segment path '{}' uses an executable extension; not allowed in skill layout",
+                    segment
+                ),
+            });
+            valid = false;
+            break;
+        }
+        warnings.push(ValidationWarning {
+            severity: Severity::Critical,
+            message: format!(
+                "Subdirectory '{}' is not in the allowed list: {:?}",
+                segment, ALLOWED_SUBDIRS
+            ),
+        });
+        valid = false;
+    }
+
     ValidationResult { valid, warnings }
 }
 
@@ -440,13 +499,14 @@ mod tests {
     use super::*;
     use crate::storage::{Lifecycle, Source};
 
-    fn skill(name: &str, description: &str, body: &str) -> SkillContent {
+fn skill(name: &str, description: &str, body: &str) -> SkillContent {
         SkillContent {
             name: name.to_string(),
             description: description.to_string(),
             triggers: vec![],
             lifecycle: Lifecycle::Active,
             source: Source::Auto,
+            category: None,
             created_by: None,
             body: body.to_string(),
             raw: body.to_string(),

@@ -473,6 +473,22 @@ pub(crate) enum SkillsCommand {
     Edit { name: String },
     /// Delete a skill
     Delete { name: String },
+    /// Sync bundled skills into the user's skill library (Hermes
+    /// parity, `skills_sync.py`).
+    Sync {
+        /// Override the bundled-skills source directory (Hermes
+        /// `LOOM_BUNDLED_SKILLS_DIR`).
+        #[arg(long, env = "LOOM_BUNDLED_SKILLS_DIR", value_name = "DIR")]
+        bundled_dir: Option<String>,
+        /// Override the user-skills target directory (Hermes
+        /// `LOOM_USER_SKILLS_DIR`).
+        #[arg(long, env = "LOOM_USER_SKILLS_DIR", value_name = "DIR")]
+        user_dir: Option<String>,
+        /// Force reinstall even when the manifest says the user
+        /// previously deleted the skill.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 /// Arguments for the `skill-usage` subcommand.

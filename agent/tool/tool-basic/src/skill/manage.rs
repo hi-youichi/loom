@@ -227,6 +227,12 @@ impl SkillManagerTool {
             triggers,
             lifecycle: Lifecycle::Active,
             source: Source::Auto,
+            // Hermes parity (`skill_manager_tool.py` ~L300): the category
+            // argument previously was only echoed in the JSON response and
+            // never threaded into `storage.save()`. Now `save()` places the
+            // skill under `base_dir/source/<category>/<name>/` when this is
+            // Some, so the on-disk layout matches Hermes' `_create_skill`.
+            category: category.map(|s| s.to_string()),
             created_by: Some("agent".to_string()),
             body,
             raw: String::new(),
@@ -311,6 +317,11 @@ impl SkillManagerTool {
     async fn handle_edit(&self, args: &Value) -> Result<Value, ToolSourceError> {
         let name = require_str(args, "name")?;
         let raw_content = require_str(args, "content")?;
+        // Hermes parity (`skill_manager_tool.py` ~L300): keep the
+        // existing category on edit — storage::save()'s category-aware
+        // branch would otherwise relocate the skill to the flat layout
+        // and silently drop its category.
+        let category = args.get("category").and_then(|v| v.as_str());
 
         // Check skill exists before attempting edit.
         let original = match self.storage.load(name) {
@@ -339,6 +350,12 @@ impl SkillManagerTool {
             triggers,
             lifecycle: Lifecycle::Active,
             source: Source::Auto,
+            // Hermes parity (`skill_manager_tool.py` ~L300): the category
+            // argument previously was only echoed in the JSON response and
+            // never threaded into `storage.save()`. Now `save()` places the
+            // skill under `base_dir/source/<category>/<name>/` when this is
+            // Some, so the on-disk layout matches Hermes' `_create_skill`.
+            category: category.map(|s| s.to_string()),
             created_by: Some("agent".to_string()),
             body,
             raw: String::new(),
@@ -472,12 +489,16 @@ impl SkillManagerTool {
                 triggers
             };
 
-            let updated = SkillContent {
+        let updated = SkillContent {
                 name: name.to_string(),
                 description: description.clone(),
                 triggers,
                 lifecycle: Lifecycle::Active,
                 source: Source::Auto,
+                // Hermes parity: preserve the existing skill's category so
+                // `storage::save()`'s category-aware branch does not move
+                // the skill to the flat layout on every patch.
+                category: snapshot.category.clone(),
                 created_by: Some("agent".to_string()),
                 body,
                 raw: new_content.clone(),
@@ -647,6 +668,13 @@ impl SkillManagerTool {
         }
 
         self.invalidate_discovery_cache();
+        // Hermes parity (`skill_manager_tool.py:886-887`): write_file is one
+        // of the four mutating actions that bumps the skill's patch counter.
+        // Without this, the curator's heuristic archive phase under-counts
+        // user edits and never prunes genuinely stale skills.
+        if let Some(ref store) = self.usage {
+            store.bump_patch(name);
+        }
         let abs_path = target.to_string_lossy().to_string();
         Ok(json!({
             "success": true,
@@ -695,6 +723,12 @@ impl SkillManagerTool {
             .map_err(map_skill_err)?;
 
         self.invalidate_discovery_cache();
+        // See `handle_write_file` above — Hermes bumps patch for every
+        // mutating action including remove_file. Without this, the curator
+        // never re-evaluates a skill after its support files are trimmed.
+        if let Some(ref store) = self.usage {
+            store.bump_patch(name);
+        }
         Ok(json!({
             "success": true,
             "message": format!("File '{}' removed from skill '{}'.", file_path, name),
@@ -808,7 +842,7 @@ impl Tool for SkillManagerTool {
         }
     }
 
-async fn call(
+    async fn call(
         &self,
         args: Value,
         _ctx: Option<&ToolCallContext>,
