@@ -25,7 +25,7 @@
 //! - [`ReactBuildConfig`]: configuration for building runners from env or files.
 //! - [`ReactRunContext`]: resolved checkpointer, store, tool source, and run config.
 //!
-//! Custom files (act_node, config, observe_node, think_node, title_node, with_node_logging, build, runner) remain local.
+//! Custom files (act_node, config, observe_node, think_node, title_generator, with_node_logging, build, runner) remain local.
 
 mod act_node;
 mod act_utils;
@@ -37,8 +37,7 @@ pub mod tier_apply;
 mod observe_node;
 mod runner;
 mod think_node;
-mod title_assembly_middleware;
-mod title_node;
+pub mod title_generator;
 mod with_node_logging;
 
 pub use act_node::ActNode;
@@ -56,8 +55,7 @@ pub use runner::{
     build_react_initial_state, run_react_graph_stream, AgentOptions, ReactRunner,
     ReviewCoordinator, CoordinatorTrigger, RunError,
 };
-pub use title_assembly_middleware::TitleAssemblyMiddleware;
-pub use title_node::TitleNode;
+
 pub use think_node::ThinkNode;
 pub use with_node_logging::WithNodeLogging;
 

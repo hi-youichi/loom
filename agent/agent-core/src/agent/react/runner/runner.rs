@@ -2,9 +2,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
-use tokio::sync::{Notify, OnceCell};
 
 use crate::agent::react::REACT_SYSTEM_PROMPT;
 use crate::compress::{build_graph, CompactionConfig, CompressionGraphNode};
@@ -28,21 +26,18 @@ use super::options::{resolve_run_agent_options, AgentOptions};
 use crate::agent::react::act_node::ActNode;
 
 use crate::agent::react::observe_node::ObserveNode;
-use crate::agent::react::title_assembly_middleware::TitleAssemblyMiddleware;
-use crate::agent::react::title_node::TitleNode;
 use crate::agent::react::think_node::ThinkNode;
 use crate::agent::react::tools_condition;
 
 
-pub struct ReactRunner {
+    pub struct ReactRunner {
     compiled: CompiledStateGraph<ReActState>,
     checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
     runnable_config: Option<RunnableConfig>,
     system_prompt: String,
     cancellation: Option<RunCancellation>,
     any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
-    title_slot: Arc<OnceCell<String>>,
-    title_notify: Arc<Notify>,
+    title_provider: Arc<dyn LlmProvider>,
 }
 
 impl ReactRunner {
@@ -62,17 +57,7 @@ impl ReactRunner {
         self.checkpointer.as_ref()
     }
 
-    /// Wait for the async title task to complete (with a timeout).
-    /// Returns the title if it becomes available within the timeout.
-    async fn wait_for_title(&self, timeout: Duration) -> Option<String> {
-        if tokio::time::timeout(timeout, self.title_notify.notified())
-            .await
-            .is_err()
-        {
-            return None;
-        }
-        self.title_slot.get().cloned()
-    }
+
 
     pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>) -> Self {
         self.any_stream_event_sender = sender;
@@ -110,15 +95,8 @@ impl ReactRunner {
             graph = graph.with_store(s);
         }
 
-        let title_slot = Arc::new(OnceCell::new());
-        let title_notify = Arc::new(Notify::new());
-        let title_node = TitleNode::new(
-            title_provider.unwrap_or_else(|| Arc::clone(&provider)),
-            title_headers,
-            Arc::clone(&title_slot),
-            Arc::clone(&title_notify),
-            any_stream_event_sender.clone(),
-        );
+        let title_provider = title_provider.unwrap_or_else(|| Arc::clone(&provider));
+        let _ = title_headers; // reserved for future provider-level header injection
 
         let think_condition_path_map: HashMap<String, String> = [
             ("tools".into(), "act".into()),
@@ -131,12 +109,10 @@ impl ReactRunner {
 
         graph
             .add_node("think", Arc::new(think))
-            .add_node("title", Arc::new(title_node))
             .add_node("act", Arc::clone(&act) as Arc<dyn loom_graph_core::Node<ReActState>>)
             .add_node("observe", Arc::new(observe))
             .add_node("compress", compress_node)
-            .add_edge(START, "title")
-            .add_edge("title", "think")
+            .add_edge(START, "think")
             .add_conditional_edges(
                 "think",
                 Arc::new(|state: &ReActState| tools_condition(state).as_str().to_string()),
@@ -150,16 +126,18 @@ impl ReactRunner {
             state.summary.clone()
         }));
 
-        let logger = if verbose {
-            Some(Arc::new(LoggingNodeMiddleware::<ReActState>::default()))
+        let compiled = if verbose {
+            let mw: Arc<LoggingNodeMiddleware<ReActState>> =
+                Arc::new(LoggingNodeMiddleware::<ReActState>::default());
+            match &checkpointer {
+                Some(cp) => graph.compile_with_checkpointer_and_middleware(Arc::clone(cp), mw)?,
+                None => graph.compile_with_middleware(mw)?,
+            }
         } else {
-            None
-        };
-        let mw = Arc::new(TitleAssemblyMiddleware::new(Arc::clone(&title_slot), logger));
-
-        let compiled = match &checkpointer {
-            Some(cp) => graph.compile_with_checkpointer_and_middleware(Arc::clone(cp), mw)?,
-            None => graph.compile_with_middleware(mw)?,
+            match &checkpointer {
+                Some(cp) => graph.compile_with_checkpointer(Arc::clone(cp))?,
+                None => graph.compile()?,
+            }
         };
 
         Ok(Self {
@@ -169,8 +147,7 @@ impl ReactRunner {
             system_prompt,
             cancellation,
             any_stream_event_sender,
-            title_slot,
-            title_notify,
+            title_provider,
         })
     }
 
@@ -214,40 +191,31 @@ impl ReactRunner {
         )
         .await;
 
-        // Skip the title wait when the graph was cancelled or errored.
-        // wait_for_title() can block up to 30s; once the user has aborted
-        // the run, we should return immediately and let the spawned title
-        // task notify (or time out) in the background. Otherwise the prompt
-        // handler is held for the full title timeout, which surfaces as a
-        // 30s request timeout on the client side (see e2e_mega step 6).
-        if !matches!(
-            &result,
-            Ok(runner_common::StreamRunOutcome::Finished(_))
-        ) {
-            return match result {
-                Ok(runner_common::StreamRunOutcome::Finished(s)) => Ok(runner_common::StreamRunOutcome::Finished(s)),
-                Ok(runner_common::StreamRunOutcome::Cancelled) => Ok(runner_common::StreamRunOutcome::Cancelled),
-                Err(runner_common::StreamRunError::Execution(err)) => Err(RunError::Execution(err)),
-                Err(runner_common::StreamRunError::StreamEndedWithoutState(_)) => Err(RunError::StreamEndedWithoutState),
-            };
-        }
-
-        // After the graph finishes successfully, wait briefly for the async
-        // title task. If the title is ready, emit a __title_finalize__
-        // sentinel so the CLI can flush any pending_title that arrived
-        // during the run.
-        if let Some(ref on_ev) = on_event {
-            if let Some(title) = self.wait_for_title(Duration::from_secs(30)).await {
-                let snapshot = ReActState {
-                    summary: Some(title),
-                    ..Default::default()
-                };
-                on_ev(StreamEvent::Updates {
-                    node_id: "__title_finalize__".to_string(),
-                    state: snapshot,
-                    namespace: None,
-                });
-            }
+        // Fire-and-forget title generation after graph completes.
+        // No more `wait_for_title(30s)` blocking the return path.
+        if let Ok(runner_common::StreamRunOutcome::Finished(ref s)) = result {
+            let provider = Arc::clone(&self.title_provider);
+            let messages = s.messages.clone();
+            let sender = self.any_stream_event_sender.clone();
+            tokio::spawn(async move {
+                if let Some(title) =
+                    crate::agent::react::title_generator::generate_title(&provider, &messages).await
+                {
+                    if let Some(ref sender) = sender {
+                        let snapshot = ReActState {
+                            summary: Some(title),
+                            ..Default::default()
+                        };
+                        sender(crate::run::TypedAnyStreamEvent::React(
+                            StreamEvent::Updates {
+                                node_id: "title".to_string(),
+                                state: snapshot,
+                                namespace: None,
+                            },
+                        ));
+                    }
+                }
+            });
         }
 
         // Only reachable when `result` is `Ok(Finished(_))` (returned early
