@@ -116,7 +116,7 @@ impl PregelGraphView {
                 is_internal: name == TASKS_CHANNEL,
             })
             .collect::<Vec<_>>();
-        channels.sort_by(|a, b| a.name.cmp(&b.name));
+        channels.sort_by_key(|a| a.name.clone());
 
         let mut nodes = graph
             .nodes
@@ -140,7 +140,7 @@ impl PregelGraphView {
                 }
             })
             .collect::<Vec<_>>();
-        nodes.sort_by(|a, b| a.name.cmp(&b.name));
+        nodes.sort_by_key(|a| a.name.clone());
 
         let mut edges = Vec::new();
         for node in &nodes {
@@ -164,12 +164,8 @@ impl PregelGraphView {
                 });
             }
         }
-        edges.sort_by(|a, b| {
-            (a.source.as_str(), a.target.as_str(), edge_kind_rank(a.kind)).cmp(&(
-                b.source.as_str(),
-                b.target.as_str(),
-                edge_kind_rank(b.kind),
-            ))
+        edges.sort_by_cached_key(|a| {
+            (a.source.clone(), a.target.clone(), edge_kind_rank(a.kind))
         });
 
         let mut subgraphs = Vec::new();
@@ -186,7 +182,7 @@ impl PregelGraphView {
                     });
                 }
             }
-            subgraphs.sort_by(|a, b| a.path.cmp(&b.path));
+            subgraphs.sort_by_key(|a| a.path.clone());
         }
 
         Self {

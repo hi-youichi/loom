@@ -894,13 +894,13 @@ pub fn check_orphan_tool_calls(messages: &[Message]) -> Vec<String> {
                     }
                 }
             }
-            Message::Tool { tool_call_id, .. } => {
-                if !known_tool_call_ids.contains(tool_call_id) {
-                    warnings.push(format!(
-                        "Tool message with tool_call_id '{}' has no matching assistant tool_call — this will be rejected by the API",
-                        tool_call_id
-                    ));
-                }
+            Message::Tool { tool_call_id, .. }
+                if !known_tool_call_ids.contains(tool_call_id) =>
+            {
+                warnings.push(format!(
+                    "Tool message with tool_call_id '{}' has no matching assistant tool_call — this will be rejected by the API",
+                    tool_call_id
+                ));
             }
             _ => {}
         }

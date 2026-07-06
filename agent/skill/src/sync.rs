@@ -159,7 +159,7 @@ fn collect_files_sorted(root: &Path, out: &mut Vec<PathBuf>) {
                 (name, path, is_dir)
             })
             .collect();
-        children.sort_by(|a, b| a.0.cmp(&b.0));
+        children.sort_by_key(|a| a.0.clone());
         for (name, path, is_dir) in children {
             // Skip the manifest file itself; otherwise every manifest write
             // would invalidate the manifest hash. (Hermes excludes

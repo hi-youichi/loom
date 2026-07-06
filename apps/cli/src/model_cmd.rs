@@ -124,7 +124,7 @@ async fn query_providers_models_from_spec(providers: &[ProviderDef]) -> Vec<Prov
                 .iter()
                 .map(|provider| {
                     let mut models = by_provider.remove(&provider.name).unwrap_or_default();
-                    models.sort_by(|a, b| a.id.cmp(&b.id));
+                    models.sort_by_key(|a| a.id.clone());
                     ProviderModels::ok(provider.name.clone(), models)
                 })
                 .collect()

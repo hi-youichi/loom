@@ -390,12 +390,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", "=".repeat(72));
 
         // Sort: by kind, then file, then line
-        unused_types.sort_by(|a, b| {
-            a.kind_label
-                .cmp(&b.kind_label)
-                .then_with(|| a.file.cmp(&b.file))
-                .then_with(|| a.line.cmp(&b.line))
-        });
+        unused_types.sort_by_cached_key(|a| (a.kind_label.clone(), a.file.clone(), a.line));
 
         // Group by kind
         let mut current_kind = "";

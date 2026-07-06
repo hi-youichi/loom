@@ -50,11 +50,7 @@ pub fn pick_best_for_tier<'a>(
         return None;
     }
 
-    candidates.sort_by(|a, b| {
-        let da = a.1.release_date.as_deref().unwrap_or("");
-        let db = b.1.release_date.as_deref().unwrap_or("");
-        db.cmp(da)
-    });
+    candidates.sort_by_key(|a| std::cmp::Reverse(a.1.release_date.as_deref().unwrap_or("")));
 
     candidates.into_iter().next()
 }

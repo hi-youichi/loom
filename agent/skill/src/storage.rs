@@ -995,7 +995,7 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
             }
         }
 
-        scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by_cached_key(|a| std::cmp::Reverse(a.0.partial_cmp(&f64::INFINITY).unwrap_or(std::cmp::Ordering::Equal)));
 
         let mut results = Vec::new();
         for (_, name) in scored {

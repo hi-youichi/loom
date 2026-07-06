@@ -160,13 +160,13 @@ pub fn scan(content: &str) -> Vec<ThreatFinding> {
         .collect();
 
     // Sort by severity descending (High first)
-    findings.sort_by(|a, b| {
-        let order = |s: &Severity| match s {
-            Severity::High => 0,
-            Severity::Medium => 1,
-            Severity::Low => 2,
+    findings.sort_by_cached_key(|a| {
+        let severity_rank = match a.severity {
+            Severity::High => 3,
+            Severity::Medium => 2,
+            Severity::Low => 1,
         };
-        order(&a.severity).cmp(&order(&b.severity))
+        (std::cmp::Reverse(severity_rank), a.pattern_name.to_string())
     });
 
     findings

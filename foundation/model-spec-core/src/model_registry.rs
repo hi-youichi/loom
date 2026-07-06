@@ -181,11 +181,7 @@ impl ModelRegistry {
             }
         }
 
-        all_models.sort_by(|a, b| {
-            a.provider
-                .cmp(&b.provider)
-                .then_with(|| a.name.cmp(&b.name))
-        });
+        all_models.sort_by_cached_key(|a| (a.provider.clone(), a.name.clone()));
 
         tracing::info!(
             total_models = all_models.len(),

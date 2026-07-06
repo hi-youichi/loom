@@ -107,7 +107,7 @@ pub(crate) async fn handle_session_command(
                     });
                 }
                 if effective_args.reverse {
-                    found.sort_by(|a, b| a.last_updated.cmp(&b.last_updated));
+                    found.sort_by_key(|a| a.last_updated);
                 }
                 found
             } else {
@@ -751,7 +751,7 @@ pub(crate) async fn handle_curator_command(
                 .iter()
                 .filter(|u| u.use_count > 0)
                 .collect();
-            top_skills.sort_by(|a, b| b.use_count.cmp(&a.use_count));
+            top_skills.sort_by_key(|a| std::cmp::Reverse(a.use_count));
             let top_skills: Vec<_> = top_skills.into_iter().take(5).collect();
 
             // Hermes-aligned leaderboards (`hermes_cli/curator.py:105-163`):
@@ -763,14 +763,14 @@ pub(crate) async fn handle_curator_command(
                 .iter()
                 .filter(|u| u.last_used_at.is_some())
                 .collect();
-            lra.sort_by(|a, b| a.last_used_at.cmp(&b.last_used_at));
+            lra.sort_by_key(|a| a.last_used_at.clone());
             let least_recently_active: Vec<_> = lra.into_iter().take(5).collect();
 
             let mut la: Vec<_> = usage_reports
                 .iter()
                 .filter(|u| u.use_count > 0)
                 .collect();
-            la.sort_by(|a, b| a.use_count.cmp(&b.use_count));
+            la.sort_by_key(|a| a.use_count);
             let least_active: Vec<_> = la.into_iter().take(5).collect();
 
             let most_active: Vec<_> = top_skills.clone();

@@ -66,7 +66,7 @@ impl FileSessionStore {
             })
             .collect();
 
-        sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        sessions.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
         sessions.truncate(limit);
         Ok(sessions)
     }

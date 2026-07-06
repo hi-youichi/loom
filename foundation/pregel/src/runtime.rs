@@ -221,7 +221,7 @@ impl PregelRuntime {
         self.validate()?;
         let mut entries = Vec::new();
         collect_subgraphs(self, "", recurse, &mut entries);
-        entries.sort_by(|a, b| a.path.cmp(&b.path));
+        entries.sort_by_key(|a| a.path.clone());
         Ok(entries)
     }
 

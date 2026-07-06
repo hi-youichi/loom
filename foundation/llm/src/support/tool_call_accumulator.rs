@@ -78,7 +78,7 @@ impl ToolCallAccumulator {
                 }
             })
             .collect();
-        tool_calls.sort_by(|a, b| a.name.cmp(&b.name));
+        tool_calls.sort_by_key(|a| a.name.clone());
         tool_calls
     }
 

@@ -295,7 +295,7 @@ impl CuratorBackup {
             }
         }
 
-        snapshots.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        snapshots.sort_by_key(|a| std::cmp::Reverse(a.timestamp.clone()));
         Ok(snapshots)
     }
 
