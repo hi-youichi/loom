@@ -305,6 +305,7 @@ impl CodexAgent {
                 goal_mode: false,
                 acp_mcp_servers: None,
                 effort: None,
+                tier: None,
             };
 
             if let Some(sp) = system_prompt {

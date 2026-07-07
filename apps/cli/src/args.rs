@@ -9,7 +9,7 @@ use crate::session::SessionArgs;
 /// Config directory: ~/.loom (or $LOOM_HOME). config.toml [env] is applied as env vars; project .env overrides.
 pub(crate) const CONFIG_DIR_HELP: &str = "\nConfiguration:\n  Config directory: ~/.loom (override with $LOOM_HOME).\n  File: config.toml with [env] table; values are applied as environment variables.\n  Project .env in working directory overrides config.toml.";
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Default)]
 #[command(name = "loom")]
 #[command(about = "Loom — run ReAct or DUP agent from CLI", after_help = CONFIG_DIR_HELP)]
 pub(crate) struct Args {
@@ -41,6 +41,11 @@ pub(crate) struct Args {
     /// (e.g. "zhipuai-coding-plan/glm-5.1") to auto-select provider from [[providers]] in config.toml.
     #[arg(short('M'), long, value_name = "MODEL")]
     pub(crate) model: Option<String>,
+
+    /// Override model tier for this run. Supports: light, standard, strong
+    /// Resolves to the best available model in the specified tier from configured providers
+    #[arg(long, value_name = "TIER")]
+    pub(crate) tier: Option<String>,
 
     /// Override LLM provider name from [[providers]] in config.toml (e.g. "openai", "zhipuai-coding-plan").
     /// When set, takes precedence over the provider/ prefix in --model.

@@ -139,6 +139,7 @@ pub struct LoomTool {
     provider_type: Option<String>,
     agent: Option<String>,
     effort: Option<String>,
+    tier: Option<String>,
     any_stream_event_sender: Option<Arc<dyn Fn(FullTypedAnyStreamEvent) + Send + Sync>>,
 }
 
@@ -161,6 +162,7 @@ impl LoomTool {
             provider_type: None,
             agent: None,
             effort: None,
+            tier: None,
             any_stream_event_sender: None,
         }
     }
@@ -257,6 +259,7 @@ worktree: false,
             goal_mode: true,
             acp_mcp_servers: None,
             effort: self.effort.clone(),
+            tier: self.tier.clone(),
         };
 
         let (config, _) = build_react_config(&opts);

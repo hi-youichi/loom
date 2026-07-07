@@ -60,6 +60,89 @@ worktree: args.worktree,
         goal_mode: false,
         acp_mcp_servers: None,
         effort: args.effort.clone(),
+        tier: args.tier.clone(),
+    }
+}
+
+pub fn validate_tier_arg(tier: &Option<String>) -> Result<(), String> {
+    if let Some(tier_str) = tier {
+        match tier_str.to_lowercase().as_str() {
+            "light" | "standard" | "strong" => Ok(()),
+            _ => Err(format!(
+                "Invalid tier value: '{}'. Valid values are: light, standard, strong",
+                tier_str
+            )),
+        }
+    } else {
+        Ok(())
+    }
+}
+
+pub fn check_model_tier_conflict(args: &Args) -> Result<(), String> {
+    if args.model.is_some() && args.tier.is_some() {
+        Err(
+            "Cannot specify both --model and --tier. Choose one method for model selection.".to_string()
+        )
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tier_tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_tier_valid_values() {
+        assert!(validate_tier_arg(&Some("light".to_string())).is_ok());
+        assert!(validate_tier_arg(&Some("standard".to_string())).is_ok());
+        assert!(validate_tier_arg(&Some("strong".to_string())).is_ok());
+        assert!(validate_tier_arg(&Some("LIGHT".to_string())).is_ok());
+        assert!(validate_tier_arg(&Some("Standard".to_string())).is_ok());
+        assert!(validate_tier_arg(&Some("STRONG".to_string())).is_ok());
+    }
+
+    #[test]
+    fn test_validate_tier_invalid_values() {
+        assert!(validate_tier_arg(&Some("invalid".to_string())).is_err());
+        assert!(validate_tier_arg(&Some("medium".to_string())).is_err());
+        assert!(validate_tier_arg(&Some("high".to_string())).is_err());
+        assert!(validate_tier_arg(&Some("low".to_string())).is_err());
+        assert!(validate_tier_arg(&Some("".to_string())).is_err());
+    }
+
+    #[test]
+    fn test_validate_tier_none() {
+        assert!(validate_tier_arg(&None).is_ok());
+    }
+
+    #[test]
+    fn test_check_model_tier_conflict() {
+        let mut args = Args {
+            model: Some("gpt-4o".to_string()),
+            tier: Some("light".to_string()),
+            // ... other required fields
+            ..Default::default()
+        };
+        assert!(check_model_tier_conflict(&args).is_err());
+
+        args.model = None;
+        assert!(check_model_tier_conflict(&args).is_ok());
+
+        args.model = Some("gpt-4o".to_string());
+        args.tier = None;
+        assert!(check_model_tier_conflict(&args).is_ok());
+    }
+
+    #[test]
+    fn test_check_model_tier_conflict_none() {
+        let args = Args {
+            model: None,
+            tier: None,
+            // ... other required fields
+            ..Default::default()
+        };
+        assert!(check_model_tier_conflict(&args).is_ok());
     }
 }
 
@@ -354,5 +437,30 @@ mod tests {
         let args = Args::parse_from(["loom", "hi"]);
         let opts = build_run_options(&args, "hi".to_string(), false);
         assert!(opts.effort.is_none());
+    }
+    
+    /// `--tier` on the top-level `Args` must be plumbed through `build_run_options`
+    /// into `RunOptions.tier` so the model tier resolution works correctly.
+    #[test]
+    fn build_run_options_propagates_tier_flag() {
+        let args = Args::parse_from(["loom", "--tier", "light", "hello"]);
+        let opts = build_run_options(&args, "hello".to_string(), false);
+        assert_eq!(opts.tier.as_deref(), Some("light"));
+    }
+
+    /// `--tier strong` variant test.
+    #[test]
+    fn build_run_options_propagates_tier_strong() {
+        let args = Args::parse_from(["loom", "--tier", "strong", "hi"]);
+        let opts = build_run_options(&args, "hi".to_string(), false);
+        assert_eq!(opts.tier.as_deref(), Some("strong"));
+    }
+
+    /// No `--tier` flag → `None` (default behaviour).
+    #[test]
+    fn build_run_options_default_tier_is_none() {
+        let args = Args::parse_from(["loom", "hi"]);
+        let opts = build_run_options(&args, "hi".to_string(), false);
+        assert!(opts.tier.is_none());
     }
 }

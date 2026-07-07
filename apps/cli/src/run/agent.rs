@@ -122,13 +122,17 @@ fn log_node_enter(from: Option<&str>, node_id: &str, verbose: bool) {
 }
 
 /// Prints current model name and context info to stderr at startup (structured panel format).
-async fn print_model_info(model: Option<&String>) {
+async fn print_model_info(model: Option<&String>, model_tier: Option<&model_spec_core::ModelTier>) {
     let model_name = match model {
         Some(m) if !m.is_empty() => m.as_str(),
         _ => {
+            let context = match model_tier {
+                Some(tier) => format!("tier: {:?}", tier),
+                None => "unknown context".to_string(),
+            };
             eprintln!(
                 "{}",
-                panel_format::format_model_line("(default)", "unknown context")
+                panel_format::format_model_line("(default)", &context)
             );
             return;
         }
@@ -203,7 +207,11 @@ pub async fn run_agent_wrapper(
     // caller-side async functions.
 
     let loom_opts = opts.clone();
-    let (config, resolved_agent) = build_react_config(&loom_opts);
+    let (mut config, resolved_agent) = build_react_config(&loom_opts);
+
+    if config.model.is_none() && config.model_tier.is_some() {
+        config = agent::resolve_tier_and_build_config(&config).await;
+    }
 
     print_loaded_tools(&config).await?;
     if !opts.output_json {
@@ -218,7 +226,7 @@ pub async fn run_agent_wrapper(
         if config.agents_md.is_some() {
             eprintln!("AGENTS.md loaded; included in system prompt.");
         }
-        print_model_info(config.model.as_ref()).await;
+        print_model_info(config.model.as_ref(), config.model_tier.as_ref()).await;
     }
 
     let display_max_len = opts.display_max_len;
@@ -1475,6 +1483,7 @@ use agent::run::RunCmd;
             acp_mcp_servers: None,
             debug_llm: false,
             effort: None,
+            tier: None,
         }
     }
 

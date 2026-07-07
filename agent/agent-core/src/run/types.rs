@@ -16,6 +16,7 @@ pub struct ResolvedModelConfig {
     pub api_key: Option<String>,
     pub provider_type: Option<String>,
     pub effort: Option<String>,
+    pub tier: Option<String>,
 }
 
 /// Options for running an agent.
@@ -49,6 +50,7 @@ pub struct RunOptions {
     pub goal_mode: bool,
     pub acp_mcp_servers: Option<Vec<env_config::McpServerDef>>,
     pub effort: Option<String>,
+    pub tier: Option<String>,
 }
 
 impl std::fmt::Debug for RunOptions {
@@ -61,6 +63,7 @@ impl std::fmt::Debug for RunOptions {
             .field("base_url", &self.base_url)
             .field("thread_id", &self.thread_id)
             .field("dry_run", &self.dry_run)
+            .field("tier", &self.tier)
             .finish_non_exhaustive()
     }
 }
@@ -97,6 +100,7 @@ impl Clone for RunOptions {
             goal_mode: self.goal_mode,
             acp_mcp_servers: self.acp_mcp_servers.clone(),
             effort: self.effort.clone(),
+            tier: self.tier.clone(),
         }
     }
 }

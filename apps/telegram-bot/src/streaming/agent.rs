@@ -75,10 +75,11 @@ pub async fn run_loom_agent_streaming(
             force_compact,
             chat_id: Some(chat_id),
             worktree: false,
-            goal_mode: false,
-            acp_mcp_servers: None,
-            effort: None,
-        };
+        goal_mode: false,
+        acp_mcp_servers: None,
+        effort: None,
+        tier: None,
+    };
 
 
     let mapper = StreamEventMapper::new(tx.clone());

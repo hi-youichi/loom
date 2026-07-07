@@ -167,7 +167,8 @@ fn parse_action(name: &str, result: &str) -> Option<ReviewActionSummary> {
     let kind = match name {
         "memory" => "memory",
         "skill_manage" => "skill",
-        n if n.starts_with("skill_") || n == "skill_list" => "skill",
+        "skill_list" | "skill_view" => return None,
+        n if n.starts_with("skill_") => "skill",
         _ => "other",
     };
 
@@ -206,9 +207,9 @@ fn parse_action(name: &str, result: &str) -> Option<ReviewActionSummary> {
         };
         (success, detail)
     } else {
-        // Fallback: heuristic string match for non-JSON results.
-        let success = !result.contains("\"success\": false") && !result.contains("error");
-        (success, result.to_string())
+        // Result is not valid JSON — likely truncated by display_limit or
+        // a non-JSON tool output. Skip rather than dump raw text to the user.
+        return None;
     };
 
     // UTF-8 safe truncation: previous code used `&message[..80]` which would panic
@@ -588,11 +589,19 @@ mod tests {
     }
 
     #[test]
-    fn parse_action_recognizes_skill_tools() {
-        for name in ["skill_list", "skill_view", "skill_manage"] {
-            let a = parse_action(name, r#"{"ok": true}"#).unwrap();
-            assert_eq!(a.kind, "skill", "name: {}", name);
-        }
+    fn parse_action_recognizes_skill_manage_as_skill() {
+        let a = parse_action("skill_manage", r#"{"ok": true}"#).unwrap();
+        assert_eq!(a.kind, "skill");
+    }
+
+    #[test]
+    fn parse_action_skill_list_returns_none() {
+        assert!(parse_action("skill_list", r#"{"success": true, "count": 8}"#).is_none());
+    }
+
+    #[test]
+    fn parse_action_skill_view_returns_none() {
+        assert!(parse_action("skill_view", r#"{"success": true, "count": 1}"#).is_none());
     }
 
     #[test]
@@ -651,27 +660,15 @@ mod tests {
     }
 
     #[test]
-    fn parse_action_skill_list_uses_count_fallback() {
-        // skill_list doesn't set `message` but reports `count`. The fallback
-        // chain should turn `{"success": true, "count": 8}` into "Listed 8 skills"
-        // instead of the generic "updated".
+    fn parse_action_count_fallback_for_generic_tool() {
+        // The count fallback still works for non-read-only tools.
         let a = parse_action(
-            "skill_list",
-            r#"{"success": true, "count": 8, "skills": ["a","b","c"]}"#,
+            "memory",
+            r#"{"success": true, "count": 3}"#,
         )
         .unwrap();
         assert!(a.succeeded);
-        assert_eq!(a.summary, "Listed 8 skills");
-    }
-
-    #[test]
-    fn parse_action_skill_view_uses_count_fallback() {
-        let a = parse_action(
-            "skill_view",
-            r#"{"success": true, "count": 1}"#,
-        )
-        .unwrap();
-        assert_eq!(a.summary, "Viewed 1 skill");
+        assert_eq!(a.summary, "Found 3 items");
     }
 
     #[test]
@@ -679,11 +676,11 @@ mod tests {
         // If both `message` and `count` are present, prefer `message` (more
         // specific). The count fallback only kicks in when message is absent.
         let a = parse_action(
-            "skill_list",
-            r#"{"success": true, "message": "Listed 8 skills", "count": 8}"#,
+            "memory",
+            r#"{"success": true, "message": "saved", "count": 8}"#,
         )
         .unwrap();
-        assert_eq!(a.summary, "Listed 8 skills");
+        assert_eq!(a.summary, "saved");
     }
 
     #[test]
@@ -691,12 +688,12 @@ mod tests {
         // For failures, the count fallback must NOT trigger — we need the error
         // reason, not "Found N items".
         let a = parse_action(
-            "skill_list",
-            r#"{"success": false, "error": "skills dir missing", "count": 0}"#,
+            "memory",
+            r#"{"success": false, "error": "dir missing", "count": 0}"#,
         )
         .unwrap();
         assert!(!a.succeeded);
-        assert_eq!(a.summary, "skills dir missing");
+        assert_eq!(a.summary, "dir missing");
     }
 
     #[test]
@@ -710,23 +707,27 @@ mod tests {
     }
 
     #[test]
-    fn parse_action_truncates_long_result() {
-        let long = "x".repeat(500);
-        let a = parse_action("memory", &long).unwrap();
-        // Truncated to MAX_DETAIL_CHARS (160) using UTF-8 safe chars().take().
+    fn parse_action_truncates_long_message() {
+        let long_msg = "x".repeat(500);
+        let json = format!(r#"{{"success": true, "message": "{}"}}"#, long_msg);
+        let a = parse_action("memory", &json).unwrap();
         assert_eq!(a.summary.chars().count(), 160);
     }
 
     #[test]
     fn parse_action_truncation_is_utf8_safe_chinese() {
-        // Regression: previous byte-slice implementation `&message[..80]` would
-        // panic on multibyte text. Now uses chars().take() which is safe.
-        let long = "用户偏好 Rust 2024 edition。".repeat(20);
-        let a = parse_action("memory", &long).unwrap();
-        // Must not panic. Truncation is at 160 chars.
+        let long_msg = "用户偏好 Rust 2024 edition。".repeat(20);
+        let json = format!(r#"{{"success": true, "message": "{}"}}"#, long_msg);
+        let a = parse_action("memory", &json).unwrap();
         assert_eq!(a.summary.chars().count(), 160);
-        // Round-trips: each char is intact (no half-character from byte slicing).
         assert!(a.summary.chars().all(|c| c.is_alphanumeric() || c == ' ' || c == '。' || c == '，' || c == '\''));
+    }
+
+    #[test]
+    fn parse_action_truncated_json_returns_none() {
+        // Simulates display_text truncation cutting JSON mid-stream.
+        assert!(parse_action("skill_manage", r#"{"success": true, "skills": [{"name": "#).is_none());
+        assert!(parse_action("memory", "not json at all").is_none());
     }
 
     #[test]
@@ -1047,9 +1048,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_action_skill_view_mapped_to_skill_kind() {
-        let a = parse_action("skill_view", r#"{"success": true}"#).unwrap();
-        assert_eq!(a.kind, "skill");
+    fn parse_action_skill_view_returns_none_not_tracked() {
+        assert!(parse_action("skill_view", r#"{"success": true}"#).is_none());
     }
 
     #[tokio::test]

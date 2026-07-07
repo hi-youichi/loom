@@ -243,6 +243,7 @@ impl LoomAcpAgent {
                             api_key: resolved_config.openai_api_key.clone(),
                             provider_type: resolved_config.llm_provider.clone(),
                             effort: None,
+                            tier: None,
                         };
 
                         tracing::info!(
@@ -298,6 +299,7 @@ impl LoomAcpAgent {
                         api_key: p.api_key.clone(),
                         provider_type: p.provider_type.clone(),
                         effort: None,
+                        tier: None,
                     };
                 }
             }
@@ -953,6 +955,7 @@ impl LoomAcpAgent {
                 Some(entry.mcp_servers.clone())
             },
             effort: resolved.effort,
+            tier: resolved.tier,
         };
 
         let session_id = args.session_id.clone();

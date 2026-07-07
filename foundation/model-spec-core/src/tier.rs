@@ -24,6 +24,20 @@ impl std::fmt::Display for ModelTier {
     }
 }
 
+impl std::str::FromStr for ModelTier {
+    type Err = String;
+    
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "none" => Ok(ModelTier::None),
+            "light" => Ok(ModelTier::Light),
+            "standard" => Ok(ModelTier::Standard),
+            "strong" => Ok(ModelTier::Strong),
+            _ => Err(format!("Invalid tier value: '{}'. Valid values are: none, light, standard, strong", s)),
+        }
+    }
+}
+
 impl ModelTier {
     pub const fn variants() -> [&'static str; 4] {
         ["none", "light", "standard", "strong"]

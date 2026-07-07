@@ -54,6 +54,18 @@ use skill_usage_cmd::handle_skill_usage_command;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
+    // Validate tier argument before proceeding
+    if let Err(e) = run_flow::validate_tier_arg(&args.tier) {
+        eprintln!("loom: {}", e);
+        std::process::exit(1);
+    }
+
+    // Check for model/tier conflict
+    if let Err(e) = run_flow::check_model_tier_conflict(&args) {
+        eprintln!("loom: {}", e);
+        std::process::exit(1);
+    }
+
     // ACP path: must branch before any stdout output (config report, logging).
     // The ACP protocol uses stdout for JSON-RPC; any extra output corrupts it.
     if let Some(Cmd::Acp(acp_args)) = &args.cmd {

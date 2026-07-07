@@ -88,6 +88,57 @@ pub fn build_react_config(
     if let Some(ref key) = effective_opts.api_key {
         base.openai_api_key = Some(key.clone());
     }
+    
+    // CLI tier parameter processing (highest priority)
+    if let Some(ref tier_str) = effective_opts.tier {
+                match tier_str.parse::<model_spec_core::ModelTier>() {
+            Ok(tier) => {
+                base.model_tier = Some(tier);
+                tracing::info!(
+                    tier = ?tier,
+                    "CLI tier override applied"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    tier_str = %tier_str,
+                    error = %e,
+                    "Failed to parse CLI tier, using tier from other sources"
+                );
+            }
+        }
+    }
+    
+    if let Some(ref prof) = profile {
+        if let Some(t) = prof.model.as_ref().and_then(|m| m.temperature) {
+            base.openai_temperature = Some(t.to_string());
+        }
+        let model_explicitly_set = effective_opts.model.is_some() || opts.model.is_some();
+        if !model_explicitly_set {
+            // Only apply profile tier if CLI tier is not set
+            if base.model_tier.is_none() {
+                if let Some(tier) = prof.model.as_ref().and_then(|m| m.tier) {
+                    base.model_tier = Some(tier);
+                    tracing::debug!(
+                        tier = ?tier,
+                        "No explicit model specified, applying profile tier configuration"
+                    );
+                }
+            } else {
+                tracing::debug!(
+                    "CLI tier is set, skipping profile tier configuration"
+                );
+            }
+        } else {
+            tracing::debug!(
+                model = ?effective_opts.model,
+                "Model explicitly specified, skipping tier configuration"
+            );
+        }
+    }
+    if let Some(ref key) = effective_opts.api_key {
+        base.openai_api_key = Some(key.clone());
+    }
 if let Some(ref t) = effective_opts.provider_type {
         base.llm_provider = Some(t.clone());
     }
@@ -372,6 +423,7 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
             api_key: entry.api_key,
             provider_type: entry.provider_type,
             effort: None,
+            tier: None,
         };
     }
 
@@ -405,6 +457,7 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
                 api_key: p.api_key,
                 provider_type: p.provider_type,
                 effort: None,
+                tier: None,
             };
         } else {
             tracing::warn!(

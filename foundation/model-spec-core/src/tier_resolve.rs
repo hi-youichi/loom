@@ -202,19 +202,70 @@ pub(crate) async fn resolve_from_provider_api(
 }
 
 /// Resolve a model from the embedded tier plans.
+///
+/// Plans are stored with compound keys (`provider_id/family/version`), but the
+/// caller passes a config provider name (e.g. `zhipuai-coding-plan`).  We match
+/// by checking whether the config name starts with the plan's `provider_id`
+/// followed by `-` or `_`, then pick the highest-version matching plan.
 pub fn resolve_from_plan(
     provider: &str,
     tier: ModelTier,
     providers: &[ProviderConfig],
 ) -> Option<ModelEntry> {
     let plans = tier_plans();
-    let plan = plans.get(provider)?;
-    let model_id = plan.tiers.get(&tier)?;
     let provider_cfg = providers.iter().find(|p| p.name == provider)?;
+
+    let matching: Vec<&crate::tier_plan::TierPlan> = plans
+        .values()
+        .filter(|p| provider_id_matches(&p.provider_id, provider))
+        .collect();
+
+    if matching.is_empty() {
+        return None;
+    }
+
+    let best = matching.into_iter().max_by(|a, b| {
+        compare_versions(
+            a.version.as_deref().unwrap_or("0"),
+            b.version.as_deref().unwrap_or("0"),
+        )
+    })?;
+
+    let model_id = best.tiers.get(&tier)?;
     let mut entry = ModelEntry::from_provider_config(provider_cfg, model_id);
-    entry.family = plan.family.clone();
-    entry.version = plan.version.clone();
+    entry.family = best.family.clone();
+    entry.version = best.version.clone();
     Some(entry)
+}
+
+/// Check if a plan `provider_id` matches a config provider name.
+///
+/// `zhipuai` matches `zhipuai`, `zhipuai-coding-plan`, `zhipuai_plan`,
+/// but NOT `zhipuaiai` (no separator after the prefix).
+fn provider_id_matches(plan_id: &str, config_name: &str) -> bool {
+    if plan_id == config_name {
+        return true;
+    }
+    let plan_lower = plan_id.to_ascii_lowercase();
+    let config_lower = config_name.to_ascii_lowercase();
+    config_lower.starts_with(&format!("{plan_lower}-"))
+        || config_lower.starts_with(&format!("{plan_lower}_"))
+}
+
+/// Compare two dotted version strings (e.g. "5.2" > "5.1" > "5").
+fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
+    let pa: Vec<u32> = a.split('.').filter_map(|s| s.parse().ok()).collect();
+    let pb: Vec<u32> = b.split('.').filter_map(|s| s.parse().ok()).collect();
+    let len = pa.len().max(pb.len());
+    for i in 0..len {
+        let va = pa.get(i).copied().unwrap_or(0);
+        let vb = pb.get(i).copied().unwrap_or(0);
+        match va.cmp(&vb) {
+            std::cmp::Ordering::Equal => continue,
+            ord => return ord,
+        }
+    }
+    std::cmp::Ordering::Equal
 }
 
 /// Resolve a tier using all available strategies (plan → spec → provider API → local).
@@ -493,5 +544,117 @@ mod tests {
     fn test_model_entry_parse_id_empty_model() {
         let result = ModelEntry::parse_id("provider/");
         assert_eq!(result, Some(("provider", "")));
+    }
+
+    #[test]
+    fn test_provider_id_matches_exact() {
+        assert!(provider_id_matches("zhipuai", "zhipuai"));
+        assert!(provider_id_matches("openai", "openai"));
+    }
+
+    #[test]
+    fn test_provider_id_matches_dash_suffix() {
+        assert!(provider_id_matches("zhipuai", "zhipuai-coding-plan"));
+        assert!(provider_id_matches("deepseek", "deepseek-cn"));
+    }
+
+    #[test]
+    fn test_provider_id_matches_underscore_suffix() {
+        assert!(provider_id_matches("zhipuai", "zhipuai_plan"));
+    }
+
+    #[test]
+    fn test_provider_id_matches_no_separator() {
+        assert!(!provider_id_matches("zhipuai", "zhipuaiai"));
+        assert!(!provider_id_matches("deep", "deepseek"));
+    }
+
+    #[test]
+    fn test_provider_id_matches_case_insensitive() {
+        assert!(provider_id_matches("ZhipuAI", "zhipuai-coding-plan"));
+        assert!(provider_id_matches("zhipuai", "ZHIPUAI-Coding-Plan"));
+    }
+
+    #[test]
+    fn test_provider_id_matches_unrelated() {
+        assert!(!provider_id_matches("zhipuai", "openai"));
+        assert!(!provider_id_matches("zhipuai", "anthropic"));
+    }
+
+    #[test]
+    fn test_compare_versions_basic() {
+        use std::cmp::Ordering;
+        assert_eq!(compare_versions("5.2", "5.1"), Ordering::Greater);
+        assert_eq!(compare_versions("5.1", "5.2"), Ordering::Less);
+        assert_eq!(compare_versions("5", "5"), Ordering::Equal);
+        assert_eq!(compare_versions("5.2", "5"), Ordering::Greater);
+        assert_eq!(compare_versions("5", "5.2"), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_versions_three_parts() {
+        use std::cmp::Ordering;
+        assert_eq!(compare_versions("5.2.1", "5.2.0"), Ordering::Greater);
+        assert_eq!(compare_versions("5.2.0", "5.2.1"), Ordering::Less);
+        assert_eq!(compare_versions("5.2.1", "5.2"), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_resolve_from_plan_prefix_match() {
+        let provider = ProviderConfig {
+            name: "zhipuai-coding-plan".to_string(),
+            base_url: Some("https://api.modelgate.dev/v1".to_string()),
+            api_key: Some("test_key".to_string()),
+            provider_type: Some("openai_compat".to_string()),
+            fetch_models: false,
+            cache_ttl: None,
+            enable_tier_resolution: true,
+            declared_models: Vec::new(),
+        };
+        let providers = vec![provider];
+
+        let entry = resolve_from_plan("zhipuai-coding-plan", ModelTier::Light, &providers);
+        assert!(entry.is_some(), "Should match zhipuai plan via prefix");
+        let entry = entry.unwrap();
+        assert_eq!(entry.name, "glm-4.7", "Version 5.2 plan should be selected (highest)");
+        assert_eq!(entry.family.as_deref(), Some("glm"));
+        assert_eq!(entry.version.as_deref(), Some("5.2"));
+    }
+
+    #[test]
+    fn test_resolve_from_plan_no_match() {
+        let provider = ProviderConfig {
+            name: "unknown-provider".to_string(),
+            base_url: Some("https://api.unknown.com".to_string()),
+            api_key: Some("key".to_string()),
+            provider_type: None,
+            fetch_models: false,
+            cache_ttl: None,
+            enable_tier_resolution: true,
+            declared_models: Vec::new(),
+        };
+        let providers = vec![provider];
+
+        let entry = resolve_from_plan("unknown-provider", ModelTier::Light, &providers);
+        assert!(entry.is_none(), "Should not match any plan");
+    }
+
+    #[test]
+    fn test_resolve_from_plan_strong_tier() {
+        let provider = ProviderConfig {
+            name: "zhipuai".to_string(),
+            base_url: Some("https://api.test.com".to_string()),
+            api_key: Some("key".to_string()),
+            provider_type: None,
+            fetch_models: false,
+            cache_ttl: None,
+            enable_tier_resolution: true,
+            declared_models: Vec::new(),
+        };
+        let providers = vec![provider];
+
+        let entry = resolve_from_plan("zhipuai", ModelTier::Strong, &providers);
+        assert!(entry.is_some());
+        assert_eq!(entry.unwrap().name, "glm-5.2");
     }
 }
