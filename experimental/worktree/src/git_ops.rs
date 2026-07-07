@@ -216,10 +216,18 @@ pub fn enable_sparse_checkout(worktree_path: &Path, paths: &[String]) -> Result<
     Ok(())
 }
 
-/// Add `.loom/worktrees/` to `.gitignore` if not already present.
-pub fn ensure_gitignore_entry(repo_root: &Path) -> Result<()> {
+/// Add a relative `storage_path` entry to `.gitignore` if not already present.
+///
+/// No-op when `storage_path` is outside `repo_root` (e.g. the default
+/// `<repo_parent>/trees/<repo_name>/` location), since git cannot see those
+/// directories anyway and an entry would be confusing.
+pub fn ensure_gitignore_entry(repo_root: &Path, storage_path: &Path) -> Result<()> {
+    let rel = match storage_path.strip_prefix(repo_root) {
+        Ok(r) => r,
+        Err(_) => return Ok(()),
+    };
+    let entry = format!("{}/", rel.display());
     let gitignore = repo_root.join(".gitignore");
-    let entry = ".loom/worktrees/";
     if gitignore.exists() {
         let content = std::fs::read_to_string(&gitignore)?;
         if content.lines().any(|l| l.trim() == entry) {
@@ -230,7 +238,7 @@ pub fn ensure_gitignore_entry(repo_root: &Path) -> Result<()> {
         if !content.ends_with('\n') {
             content.push('\n');
         }
-        content.push_str(entry);
+        content.push_str(&entry);
         content.push('\n');
         std::fs::write(&gitignore, content)?;
     } else {

@@ -127,6 +127,9 @@
     /// invoke_agent — delegate work to a sub-agent by profile name.
     pub const TOOL_INVOKE_AGENT: &str = "invoke_agent";
 
+    /// git_worktree — manage git worktrees for isolated parallel execution.
+    pub const TOOL_GIT_WORKTREE: &str = "git_worktree";
+
     // ============================================================================
     // Todo tools
     // ============================================================================

@@ -48,11 +48,19 @@ impl WorktreeManager {
     }
 
     /// Get the default storage directory for worktrees.
+    ///
+    /// Default: `<repo_parent>/trees/<repo_name>/` (outside the repo, with per-repo
+    /// isolation so multiple repos can share a `trees/` parent without slug collisions).
     fn storage_path(&self) -> PathBuf {
-        self.config
-            .storage_dir
-            .clone()
-            .unwrap_or_else(|| self.repo_root.join(".loom/worktrees"))
+        self.config.storage_dir.clone().unwrap_or_else(|| {
+            let repo_name = self
+                .repo_root
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "default".to_string());
+            let parent = self.repo_root.parent().unwrap_or(&self.repo_root);
+            parent.join("trees").join(repo_name)
+        })
     }
 
     /// Create an isolated worktree for a sub-agent.
@@ -110,8 +118,8 @@ impl WorktreeManager {
             }
         }
 
-        // Ensure .gitignore entry
-        let _ = git_ops::ensure_gitignore_entry(&self.repo_root);
+        // Ensure .gitignore entry (no-op when storage is outside repo)
+        let _ = git_ops::ensure_gitignore_entry(&self.repo_root, &storage);
 
         tracing::info!(
             agent = %agent_name,
@@ -400,7 +408,7 @@ impl WorktreeManager {
             }
         }
 
-        let _ = git_ops::ensure_gitignore_entry(&self.repo_root);
+        let _ = git_ops::ensure_gitignore_entry(&self.repo_root, &storage);
 
         Ok(WorktreeHandle {
             repo_root: self.repo_root.clone(),
@@ -501,7 +509,23 @@ mod tests {
         let config = WorktreeConfig::default();
         let manager = WorktreeManager::new(dir.path().to_path_buf(), config);
         let storage = manager.storage_path();
-        assert!(storage.ends_with(".loom/worktrees"));
+        // Default: <repo_parent>/trees/<repo_name>/
+        let parent_dir = storage
+            .parent()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_string());
+        assert_eq!(parent_dir.as_deref(), Some("trees"));
+        // repo_name = temp dir's basename
+        assert_eq!(
+            storage.file_name().map(|n| n.to_string_lossy().to_string()),
+            Some(
+                dir.path()
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
+            )
+        );
     }
 
     #[test]

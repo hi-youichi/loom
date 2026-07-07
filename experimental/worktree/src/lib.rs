@@ -192,12 +192,15 @@ pub fn sanitize_slug(name: &str) -> String {
         .collect()
 }
 
-/// Detect if the current working directory is already inside a Loom-managed worktree.
+/// Detect if the current working directory is already inside a git worktree.
+///
+/// A regular clone has `.git` as a directory. A worktree has `.git` as a file
+/// whose contents start with `gitdir:` pointing at the linked git metadata dir.
 pub fn detect_worktree_nesting(working_dir: &Path) -> bool {
     let git_path = working_dir.join(".git");
-    if git_path.exists() && git_path.is_file() {
+    if git_path.is_file() {
         if let Ok(gitdir) = std::fs::read_to_string(&git_path) {
-            return gitdir.contains(".loom/worktrees");
+            return gitdir.trim_start().starts_with("gitdir:");
         }
     }
     false
@@ -509,16 +512,17 @@ sparse_paths:
         assert!(detect_worktree_nesting(dir.path()));
     }
 
-    #[test]
-    fn detect_worktree_nesting_without_loom_path() {
+#[test]
+    fn detect_worktree_nesting_with_non_loom_git_file() {
         use tempfile::TempDir;
         let dir = TempDir::new().unwrap();
         let git_dir = dir.path().join(".git");
-        
-        // Create a .git file that doesn't point to a Loom worktree
+
+        // Any `.git` file (not directory) with `gitdir:` contents signals
+        // we are inside SOME worktree, even if not Loom-managed.
         std::fs::write(&git_dir, "gitdir: /other/path/.git").unwrap();
-        
-        assert!(!detect_worktree_nesting(dir.path()));
+
+        assert!(detect_worktree_nesting(dir.path()));
     }
 
     #[test]

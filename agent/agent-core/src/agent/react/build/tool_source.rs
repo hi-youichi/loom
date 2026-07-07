@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::tools::InvokeAgentTool;
+use crate::tools::{InvokeAgentTool, GitWorktreeTool};
 use loom_graph_core::GraphError;
 use memory_v2::MemoryStore;
 use skill::SkillUsageStore;
@@ -247,6 +247,11 @@ register_file_tools(
         .register_async(Box::new(InvokeAgentTool::new(
             Arc::new(config.clone()),
             config.max_sub_agent_depth,
+        )))
+        .await;
+    aggregate
+        .register_async(Box::new(GitWorktreeTool::new(
+            Arc::new(config.clone()),
         )))
         .await;
     // ListAgentsTool is not available in this build (depends on loom's profile system)
