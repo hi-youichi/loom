@@ -24,7 +24,10 @@ pub struct TerminalSession {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TerminalStatus {
     Running,
-    Completed { exit_code: Option<u32>, signal: Option<String> },
+    Completed {
+        exit_code: Option<u32>,
+        signal: Option<String>,
+    },
     Killed,
     Released,
 }
@@ -139,7 +142,10 @@ impl TerminalManager {
             exit_notify: exit_notify.clone(),
         };
 
-        self.terminals.write().await.insert(terminal_id.clone(), entry);
+        self.terminals
+            .write()
+            .await
+            .insert(terminal_id.clone(), entry);
 
         if let Some(stdout) = stdout {
             self.spawn_output_reader(terminal_id.clone(), stdout, output_byte_limit);
@@ -193,7 +199,7 @@ impl TerminalManager {
                             exit_code: None,
                             signal: None,
                         }
-                    },
+                    }
                     Err(_) => {
                         warn!(
                             terminal_id = %terminal_id,
@@ -266,9 +272,9 @@ impl TerminalManager {
         debug!(terminal_id = %terminal_id, "wait_for_exit called");
         let exit_notify = {
             let map = self.terminals.read().await;
-            let entry = map.get(terminal_id).ok_or_else(|| {
-                TerminalError::NotFound(terminal_id.to_string())
-            })?;
+            let entry = map
+                .get(terminal_id)
+                .ok_or_else(|| TerminalError::NotFound(terminal_id.to_string()))?;
             if matches!(entry.session.status, TerminalStatus::Released) {
                 return Err(TerminalError::AlreadyReleased(terminal_id.to_string()));
             }
@@ -293,9 +299,9 @@ impl TerminalManager {
         debug!(terminal_id = %terminal_id, "wait_for_exit notified");
 
         let map = self.terminals.read().await;
-        let entry = map.get(terminal_id).ok_or_else(|| {
-            TerminalError::NotFound(terminal_id.to_string())
-        })?;
+        let entry = map
+            .get(terminal_id)
+            .ok_or_else(|| TerminalError::NotFound(terminal_id.to_string()))?;
         let status = entry.session.status.clone();
         info!(terminal_id = %terminal_id, status = ?status, "wait_for_exit completed");
         Ok(status)
@@ -304,9 +310,9 @@ impl TerminalManager {
     pub async fn kill(&self, terminal_id: &str) -> Result<(), TerminalError> {
         info!(terminal_id = %terminal_id, "kill called");
         let mut map = self.terminals.write().await;
-        let entry = map.get_mut(terminal_id).ok_or_else(|| {
-            TerminalError::NotFound(terminal_id.to_string())
-        })?;
+        let entry = map
+            .get_mut(terminal_id)
+            .ok_or_else(|| TerminalError::NotFound(terminal_id.to_string()))?;
 
         if matches!(entry.session.status, TerminalStatus::Released) {
             return Err(TerminalError::AlreadyReleased(terminal_id.to_string()));
@@ -339,9 +345,9 @@ impl TerminalManager {
     pub async fn release(&self, terminal_id: &str) -> Result<(), TerminalError> {
         info!(terminal_id = %terminal_id, "release called");
         let mut map = self.terminals.write().await;
-        let entry = map.get_mut(terminal_id).ok_or_else(|| {
-            TerminalError::NotFound(terminal_id.to_string())
-        })?;
+        let entry = map
+            .get_mut(terminal_id)
+            .ok_or_else(|| TerminalError::NotFound(terminal_id.to_string()))?;
 
         if matches!(entry.session.status, TerminalStatus::Released) {
             return Err(TerminalError::AlreadyReleased(terminal_id.to_string()));
@@ -373,7 +379,11 @@ impl TerminalManager {
     }
 
     pub async fn get_terminal(&self, terminal_id: &str) -> Option<TerminalSession> {
-        self.terminals.read().await.get(terminal_id).map(|e| e.session.clone())
+        self.terminals
+            .read()
+            .await
+            .get(terminal_id)
+            .map(|e| e.session.clone())
     }
 
     pub async fn get_status(&self, terminal_id: &str) -> Option<TerminalStatus> {
@@ -384,7 +394,10 @@ impl TerminalManager {
             .map(|e| e.session.status.clone())
     }
 
-    pub async fn get_output(&self, terminal_id: &str) -> Option<(String, bool, Option<TerminalStatus>)> {
+    pub async fn get_output(
+        &self,
+        terminal_id: &str,
+    ) -> Option<(String, bool, Option<TerminalStatus>)> {
         let result = self.terminals.read().await.get(terminal_id).map(|e| {
             let output_len = e.session.output_buffer.len();
             let truncated = e.session.truncated;
@@ -400,11 +413,7 @@ impl TerminalManager {
                 has_exit_status = status.is_some(),
                 "get_output"
             );
-            (
-                e.session.output_buffer.clone(),
-                truncated,
-                status,
-            )
+            (e.session.output_buffer.clone(), truncated, status)
         });
         if result.is_none() {
             warn!(terminal_id = %terminal_id, "get_output: terminal not found");

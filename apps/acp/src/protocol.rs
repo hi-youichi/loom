@@ -52,6 +52,10 @@
 //! - **SessionNotification**: `session_id`, `session_update` (SessionUpdate union).
 //! - **SessionUpdate variants**: user_message_chunk, **agent_message_chunk**, **agent_thought_chunk**, **tool_call**, **tool_call_update**, plan, available_commands_update, current_mode_update, config_option_update, **session_info_update**.
 //! - Loom sources: think output -> agent_message_chunk/agent_thought_chunk; Act decides to call tool -> tool_call (Pending); during/after execution -> tool_call_update (Running/Success/Failure).
+//! - **Background review completion**: When `spawn_inprocess_review` finishes (post-prompt or `/review-skill`), two `session/update` notifications are emitted:
+//!   1. `agent_message_chunk` — human-readable summary ("Background review saved 2 memories + 1 skill (1.2s)." or "... skipped (...)"). Uses a random UUID `message_id`; per ACP spec the client renders a new `messageId` as a distinct assistant message.
+//!   2. `session_info_update` with `_meta.review = { status, reviewed_at, memory_count, skill_count, skip_reason?, duration_ms }` — fills the schema field declared in `session/list` above, enabling IDE session-list badges.
+//! - Both notifications are best-effort (`try_send` on the session mpsc channel); review failures never crash the ACP process.
 //!
 //! ## Tool call and SessionUpdate mapping (stream_bridge)
 //!
@@ -83,7 +87,7 @@
 //!
 //! - Only when capabilities.sessionCapabilities.list is present. Request: optional `cwd` (filter by working directory), optional `cursor` (pagination).
 //! - Agent queries SQLite checkpoints table to find all unique thread_ids; returns array of SessionInfo with sessionId, cwd, title (from summary), updatedAt, and optional _meta (checkpoint_count, latest_step, latest_source, review).
-//! - `_meta.review`: latest background-review status for the session (status: "reviewed"|"skipped", reviewed_at, memory/skill update counts). `None`/absent when the session has never been reviewed (implicitly "pending"). Updated on every prompt completion via `spawn_inprocess_review` and on `/review-skill`.
+//! - `_meta.review`: latest background-review status for the session (status: "reviewed"|"skipped", reviewed_at, memory/skill update counts). `None`/absent when the session has never been reviewed (implicitly "pending"). Updated on every prompt completion via `spawn_inprocess_review` and on `/review-skill`. Delivered via two channels: (a) persisted to SQLite for `session/list` queries; (b) pushed as a real-time `session_info_update` notification (see `session/update` section above).
 //! - Response includes `sessions` array and optional `nextCursor` for pagination. Currently pagination is not implemented (returns all sessions).
 //!
 //! ## Session mode and session config

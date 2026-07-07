@@ -11,8 +11,8 @@ mod fs_tools;
 mod terminal_executor;
 
 pub use client_bridge::{
-    clear_client_bridge, get_client_bridge, set_client_bridge, set_connection,
-    AcpClientBridge, ClientBridgeTrait, NoOpClientBridge, TerminalExitResult, TerminalOutput,
+    clear_client_bridge, get_client_bridge, set_client_bridge, set_connection, AcpClientBridge,
+    ClientBridgeTrait, NoOpClientBridge, TerminalExitResult, TerminalOutput,
 };
 pub use fs_tools::{ReadTextFileTool, WriteTextFileTool};
 pub use terminal_executor::{AcpBridgeCommandExecutor, TerminalCommandExecutor};
@@ -25,7 +25,7 @@ pub(crate) fn create_tool_spec(
     name: &str,
     description: &str,
     input_schema: serde_json::Value,
-    ) -> tool_core::ToolSpec {
+) -> tool_core::ToolSpec {
     tool_core::ToolSpec {
         name: name.to_string(),
         description: Some(description.to_string()),
@@ -94,7 +94,6 @@ mod tests {
         let tools = create_acp_tools(&caps);
         assert_eq!(tools.len(), 2);
     }
-
 
     #[test]
     fn test_tool_specs() {

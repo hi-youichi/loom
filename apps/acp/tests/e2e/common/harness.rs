@@ -123,16 +123,12 @@ impl AcpTestHarness {
                         let result = match method {
                             "session/request_permission" => {
                                 let params = &frame.raw["params"];
-                                let tool_call_id =
-                                    params["toolCallId"].as_str().unwrap_or("");
-                                let tool_name =
-                                    params["toolName"].as_str().unwrap_or("unknown");
+                                let tool_call_id = params["toolCallId"].as_str().unwrap_or("");
+                                let tool_name = params["toolName"].as_str().unwrap_or("unknown");
                                 responder_for_reader.answer_permission(tool_call_id, tool_name)
                             }
                             "fs/read_text_file" => {
-                                let path = frame.raw["params"]["path"]
-                                    .as_str()
-                                    .unwrap_or("");
+                                let path = frame.raw["params"]["path"].as_str().unwrap_or("");
                                 match responder_for_reader.read_file(std::path::Path::new(path)) {
                                     Some(content) => serde_json::json!({"content": content}),
                                     None => serde_json::json!({"content": ""}),
@@ -161,8 +157,7 @@ impl AcpTestHarness {
                     }
                 } else if frame.is_notification() {
                     if let Some(method) = frame.method() {
-                        let params =
-                            frame.raw.get("params").cloned().unwrap_or(Value::Null);
+                        let params = frame.raw.get("params").cloned().unwrap_or(Value::Null);
                         notifs.lock().await.push(SessionNotification {
                             method: method.to_string(),
                             params,
@@ -242,10 +237,7 @@ impl AcpTestHarness {
         if let Some(error) = response.get("error") {
             panic!("request '{method}' (id={id}) returned error: {error}");
         }
-        response
-            .get("result")
-            .cloned()
-            .unwrap_or(Value::Null)
+        response.get("result").cloned().unwrap_or(Value::Null)
     }
 
     /// Like `request` but returns the raw response Value (including errors).

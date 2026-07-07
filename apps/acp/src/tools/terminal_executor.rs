@@ -3,9 +3,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
-use tool_basic::shared::shell_output::format_terminal_timed_out_output;
 use tool_basic::bash::CommandExecutor;
+use tool_basic::shared::shell_output::format_terminal_timed_out_output;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tracing::{error, info, instrument, warn};
 
 use crate::terminal::TerminalManager;
@@ -32,10 +32,19 @@ impl CommandExecutor for TerminalCommandExecutor {
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         let (shell, args) = if cfg!(windows) {
-            let wrapped = format!("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {}", command);
-            ("powershell".to_string(), vec!["-NoProfile".to_string(), "-Command".to_string(), wrapped])
+            let wrapped = format!(
+                "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {}",
+                command
+            );
+            (
+                "powershell".to_string(),
+                vec!["-NoProfile".to_string(), "-Command".to_string(), wrapped],
+            )
         } else {
-            ("sh".to_string(), vec!["-c".to_string(), command.to_string()])
+            (
+                "sh".to_string(),
+                vec!["-c".to_string(), command.to_string()],
+            )
         };
 
         info!(
@@ -171,7 +180,10 @@ impl AcpBridgeCommandExecutor {
 
 #[async_trait]
 impl CommandExecutor for AcpBridgeCommandExecutor {
-    #[instrument(skip_all, fields(command, working_dir, timeout_ms, executor = "acp_bridge"))]
+    #[instrument(
+        skip_all,
+        fields(command, working_dir, timeout_ms, executor = "acp_bridge")
+    )]
     async fn execute(
         &self,
         command: &str,
@@ -192,10 +204,19 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
         }
 
         let (shell, args) = if cfg!(windows) {
-            let wrapped = format!("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {}", command);
-            ("powershell".to_string(), vec!["-NoProfile".to_string(), "-Command".to_string(), wrapped])
+            let wrapped = format!(
+                "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {}",
+                command
+            );
+            (
+                "powershell".to_string(),
+                vec!["-NoProfile".to_string(), "-Command".to_string(), wrapped],
+            )
         } else {
-            ("sh".to_string(), vec!["-c".to_string(), command.to_string()])
+            (
+                "sh".to_string(),
+                vec!["-c".to_string(), command.to_string()],
+            )
         };
 
         info!(
@@ -208,12 +229,10 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
             "bash execute called"
         );
 
-        let bridge = crate::tools::get_client_bridge()
-            .await
-            .map_err(|e| {
-                error!(error = %e, "failed to get client bridge");
-                ToolSourceError::Transport(e)
-            })?;
+        let bridge = crate::tools::get_client_bridge().await.map_err(|e| {
+            error!(error = %e, "failed to get client bridge");
+            ToolSourceError::Transport(e)
+        })?;
 
         info!("client bridge acquired");
 

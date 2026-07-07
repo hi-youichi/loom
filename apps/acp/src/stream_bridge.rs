@@ -29,23 +29,23 @@
 //! [`stream_update_to_session_notification`] converts this module's [`StreamUpdate`] into
 //! `agent_client_protocol::SessionNotification` for the upper layer to send via the connection.
 
+use crate::agent::TurnUsage;
 use crate::content::extract_locations;
-use loom_util::text::truncate::truncate_tail;
+use agent::run::TypedAnyStreamEvent;
 use agent_client_protocol::schema::v1::{
     ContentBlock, ContentChunk, CurrentModeUpdate, Diff, MessageId, Meta, Plan, PlanEntry,
     PlanEntryPriority, PlanEntryStatus, SessionId, SessionInfoUpdate, SessionModeId,
-    SessionNotification, SessionUpdate, Terminal, TerminalId, TextContent, ToolCall, ToolCallId,
-    ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
-    ToolCallContent, UsageUpdate,
+    SessionNotification, SessionUpdate, Terminal, TerminalId, TextContent, ToolCall,
+    ToolCallContent, ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate,
+    ToolCallUpdateFields, ToolKind, UsageUpdate,
 };
 use loom_llm::message::Message;
-use stream_event::{MessageChunkKind, StreamEvent};
-use agent::run::TypedAnyStreamEvent;
-use crate::agent::TurnUsage;
+use loom_util::text::truncate::truncate_tail;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::collections::HashMap;
+use stream_event::{MessageChunkKind, StreamEvent};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -111,13 +111,15 @@ pub enum StreamUpdate {
 
     /// Session metadata update (ACP `session_info_update`).
     /// Used to push title and related metadata changes to the client in real time.
-    SessionInfoUpdate { title: String },
+    /// When `meta` is `Some`, it is attached to the notification as `_meta`
+    /// (e.g. for background-review status sync to the session list).
+    SessionInfoUpdate { title: String, meta: Option<Meta> },
 
     /// Agent execution plan (ACP `plan`).
     /// Reports the agent's planned tasks with their priority and status.
     Plan { entries: Vec<PlanEntry> },
 
-/// Context window usage update (ACP `usage_update`).
+    /// Context window usage update (ACP `usage_update`).
     /// Reports current context token usage and total window size, plus optional
     /// billing-level token breakdown carried in ACP's `_meta` extension channel.
     UsageUpdate {
@@ -168,13 +170,16 @@ pub fn loom_event_to_updates(ev: &TypedAnyStreamEvent) -> Vec<StreamUpdate> {
     }
 }
 
-fn extract_title_from_react_event(ev: &StreamEvent<agent::state::ReActState>) -> Option<StreamUpdate> {
+fn extract_title_from_react_event(
+    ev: &StreamEvent<agent::state::ReActState>,
+) -> Option<StreamUpdate> {
     match ev {
         StreamEvent::Updates { node_id, state, .. } if node_id == "title" => state
             .summary
             .as_ref()
             .map(|title| StreamUpdate::SessionInfoUpdate {
                 title: title.clone(),
+                meta: None,
             }),
         _ => None,
     }
@@ -234,10 +239,13 @@ where
             call_id, content, ..
         } => {
             let id = resolve_tool_call_id(call_id);
-            
+
             // Try to deserialize content as ToolCallContent to check for Diff
-    if let Ok(tool_core::ToolCallContent::Diff { path, old_text, new_text }) =
-                serde_json::from_str::<tool_core::ToolCallContent>(content)
+            if let Ok(tool_core::ToolCallContent::Diff {
+                path,
+                old_text,
+                new_text,
+            }) = serde_json::from_str::<tool_core::ToolCallContent>(content)
             {
                 return vec![StreamUpdate::Diff {
                     tool_call_id: id,
@@ -246,7 +254,7 @@ where
                     new_text,
                 }];
             }
-            
+
             // Handle regular tool output
             vec![StreamUpdate::ToolCallUpdated {
                 tool_call_id: id,
@@ -279,7 +287,12 @@ where
 
                 let mut updates = Vec::new();
 
-                if let Some(tool_core::ToolCallContent::Diff { path, old_text, new_text }) = diff_content {
+                if let Some(tool_core::ToolCallContent::Diff {
+                    path,
+                    old_text,
+                    new_text,
+                }) = diff_content
+                {
                     updates.push(StreamUpdate::Diff {
                         tool_call_id: id.clone(),
                         path,
@@ -331,7 +344,7 @@ pub fn stream_update_to_session_notification(
     session_id: &SessionId,
     u: &StreamUpdate,
 ) -> Option<SessionNotification> {
-let update = match u {
+    let update = match u {
         StreamUpdate::UserMessageChunk { text, message_id } => {
             let mut chunk = ContentChunk::new(text.clone().into());
             chunk = chunk.message_id(message_id.clone().map(MessageId::new));
@@ -391,30 +404,33 @@ let update = match u {
                 fields,
             ))
         }
-        StreamUpdate::Diff { tool_call_id, path, old_text, new_text } => {
-            let mut fields = ToolCallUpdateFields::new()
-                .content(vec![
-                    ToolCallContent::Diff(
-                        Diff::new(path.clone(), new_text.clone())
-                            .old_text(old_text.clone()),
-                    )
-                ]);
-            
+        StreamUpdate::Diff {
+            tool_call_id,
+            path,
+            old_text,
+            new_text,
+        } => {
+            let mut fields = ToolCallUpdateFields::new().content(vec![ToolCallContent::Diff(
+                Diff::new(path.clone(), new_text.clone()).old_text(old_text.clone()),
+            )]);
+
             let status = ToolCallStatus::Completed;
             fields = fields.status(status);
-            
+
             SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
                 ToolCallId::new(tool_call_id.as_str()),
                 fields,
             ))
         }
-        StreamUpdate::SessionInfoUpdate { title } => {
-            SessionUpdate::SessionInfoUpdate(SessionInfoUpdate::new().title(title.clone()))
+        StreamUpdate::SessionInfoUpdate { title, meta } => {
+            let mut info = SessionInfoUpdate::new().title(title.clone());
+            if let Some(m) = meta {
+                info = info.meta(m.clone());
+            }
+            SessionUpdate::SessionInfoUpdate(info)
         }
-        StreamUpdate::Plan { entries } => {
-            SessionUpdate::Plan(Plan::new(entries.clone()))
-        }
-StreamUpdate::UsageUpdate { used, size, meta } => {
+        StreamUpdate::Plan { entries } => SessionUpdate::Plan(Plan::new(entries.clone())),
+        StreamUpdate::UsageUpdate { used, size, meta } => {
             let mut u = UsageUpdate::new(*used, *size);
             if let Some(m) = meta {
                 u = u.meta(m.clone());
@@ -623,28 +639,40 @@ impl SessionNotifier {
     fn inject_message_id(&self, update: StreamUpdate) -> StreamUpdate {
         match update {
             StreamUpdate::AgentMessageChunk { text, .. } => {
-                let id = self.current_message_id
+                let id = self
+                    .current_message_id
                     .lock()
                     .unwrap()
                     .get_or_insert_with(|| Uuid::new_v4().to_string())
                     .clone();
-                StreamUpdate::AgentMessageChunk { text, message_id: Some(id) }
+                StreamUpdate::AgentMessageChunk {
+                    text,
+                    message_id: Some(id),
+                }
             }
             StreamUpdate::AgentThoughtChunk { text, .. } => {
-                let id = self.current_message_id
+                let id = self
+                    .current_message_id
                     .lock()
                     .unwrap()
                     .get_or_insert_with(|| Uuid::new_v4().to_string())
                     .clone();
-                StreamUpdate::AgentThoughtChunk { text, message_id: Some(id) }
+                StreamUpdate::AgentThoughtChunk {
+                    text,
+                    message_id: Some(id),
+                }
             }
             StreamUpdate::UserMessageChunk { text, .. } => {
-                let id = self.current_message_id
+                let id = self
+                    .current_message_id
                     .lock()
                     .unwrap()
                     .get_or_insert_with(|| Uuid::new_v4().to_string())
                     .clone();
-                StreamUpdate::UserMessageChunk { text, message_id: Some(id) }
+                StreamUpdate::UserMessageChunk {
+                    text,
+                    message_id: Some(id),
+                }
             }
             other => {
                 *self.current_message_id.lock().unwrap() = None;
@@ -669,7 +697,7 @@ impl SessionNotifier {
         }
     }
 
-pub async fn send_history(&self, messages: &[Message]) {
+    pub async fn send_history(&self, messages: &[Message]) {
         tracing::debug!(
             session_id = %self.session_id,
             total_messages = messages.len(),
@@ -701,14 +729,12 @@ pub async fn send_history(&self, messages: &[Message]) {
                 Message::System(_) => "system",
             };
             let notifications = match message {
-Message::User(content) => vec![SessionNotification::new(
+                Message::User(content) => vec![SessionNotification::new(
                     self.session_id.clone(),
                     SessionUpdate::UserMessageChunk(
-                        ContentChunk::new(
-                            ContentBlock::Text(
-                                TextContent::new(content.as_text().to_string()),
-                            ),
-                        )
+                        ContentChunk::new(ContentBlock::Text(TextContent::new(
+                            content.as_text().to_string(),
+                        )))
                         .message_id(Some(MessageId::new(Uuid::new_v4().to_string()))),
                     ),
                 )],
@@ -734,10 +760,8 @@ Message::User(content) => vec![SessionNotification::new(
                     let mut notifs = vec![SessionNotification::new(
                         self.session_id.clone(),
                         SessionUpdate::AgentMessageChunk(
-                            ContentChunk::new(
-                                payload.content.clone().into(),
-                            )
-                            .message_id(Some(MessageId::new(msg_id))),
+                            ContentChunk::new(payload.content.clone().into())
+                                .message_id(Some(MessageId::new(msg_id))),
                         ),
                     )];
 
@@ -748,10 +772,8 @@ Message::User(content) => vec![SessionNotification::new(
                             notifs.push(SessionNotification::new(
                                 self.session_id.clone(),
                                 SessionUpdate::AgentThoughtChunk(
-                                    ContentChunk::new(
-                                        reasoning.clone().into(),
-                                    )
-                                    .message_id(Some(MessageId::new(reasoning_msg_id))),
+                                    ContentChunk::new(reasoning.clone().into())
+                                        .message_id(Some(MessageId::new(reasoning_msg_id))),
                                 ),
                             ));
                         }
@@ -775,24 +797,19 @@ Message::User(content) => vec![SessionNotification::new(
                     let id = ToolCallId::new(tool_call_id.clone());
                     let acp_content = match content {
                         tool_core::ToolCallContent::Text(t) => {
-                            ToolCallContent::from(
-                                ContentBlock::Text(
-                                    TextContent::new(t.clone()),
-                                ),
-                            )
+                            ToolCallContent::from(ContentBlock::Text(TextContent::new(t.clone())))
                         }
                         tool_core::ToolCallContent::Diff {
                             path,
                             old_text,
                             new_text,
                         } => ToolCallContent::Diff(
-                            Diff::new(path.clone(), new_text.clone())
-                                .old_text(old_text.clone()),
+                            Diff::new(path.clone(), new_text.clone()).old_text(old_text.clone()),
                         ),
                         tool_core::ToolCallContent::Terminal { terminal_id } => {
-                            ToolCallContent::Terminal(Terminal::new(
-                                TerminalId::new(terminal_id.clone()),
-                            ))
+                            ToolCallContent::Terminal(Terminal::new(TerminalId::new(
+                                terminal_id.clone(),
+                            )))
                         }
                     };
                     let fields = ToolCallUpdateFields::new()
@@ -866,6 +883,25 @@ Message::User(content) => vec![SessionNotification::new(
             SessionUpdate::SessionInfoUpdate(SessionInfoUpdate::new().title(title.to_string())),
         );
         let _ = self.tx.try_send(notif);
+    }
+
+    /// Send a session metadata update with an `_meta` payload (no title change).
+    /// Used by background-review completion to surface `_meta.review` to the
+    /// session list without disturbing the chat stream.
+    pub fn try_send_session_meta(&self, meta: Meta) {
+        let mut info = SessionInfoUpdate::new();
+        info = info.meta(meta);
+        let notif = SessionNotification::new(
+            self.session_id.clone(),
+            SessionUpdate::SessionInfoUpdate(info),
+        );
+        if let Err(e) = self.tx.try_send(notif) {
+            tracing::warn!(
+                session_id = %self.session_id,
+                error = %e,
+                "Failed to send session info update with _meta payload"
+            );
+        }
     }
 }
 
@@ -1030,7 +1066,7 @@ fn extract_target_from_input(name: &str, input: Option<&serde_json::Value>) -> O
                 let display = if key == "command" || key == "cmd" {
                     val.to_string()
                 } else {
-truncate_tail(val, 60)
+                    truncate_tail(val, 60)
                 };
                 return Some(display);
             }
@@ -1042,10 +1078,10 @@ truncate_tail(val, 60)
 #[cfg(test)]
 mod token_usage_meta_tests {
     use super::*;
-    use crate::agent::TurnUsage;
     use crate::agent::capture_turn_usage;
-    use stream_event::StreamEvent;
+    use crate::agent::TurnUsage;
     use std::collections::HashMap;
+    use stream_event::StreamEvent;
 
     /// Capture should leave the snapshot empty when no LLM usage has been observed.
     #[test]
@@ -1099,7 +1135,11 @@ mod token_usage_meta_tests {
             .with_context_window_size(8192)
             .with_usage_acc(acc.clone());
 
-        for (prompt, completion, cached) in [(100u32, 50, Some(20u32)), (200, 80, None), (50, 30, Some(10))] {
+        for (prompt, completion, cached) in [
+            (100u32, 50, Some(20u32)),
+            (200, 80, None),
+            (50, 30, Some(10)),
+        ] {
             let ev = TypedAnyStreamEvent::React(StreamEvent::Usage {
                 prompt_tokens: prompt,
                 completion_tokens: completion,
@@ -1151,14 +1191,15 @@ mod token_usage_meta_tests {
         assert_eq!(update["sessionUpdate"], "usage_update");
         assert_eq!(update["used"], 4096);
         assert_eq!(update["size"], 8192);
-        let meta = update["_meta"]
-            .as_object()
-            .expect("_meta is object");
+        let meta = update["_meta"].as_object().expect("_meta is object");
         assert!(meta.contains_key("token_usage"));
         assert_eq!(meta["token_usage"]["input_tokens"], serde_json::json!(4096));
         assert_eq!(meta["token_usage"]["output_tokens"], serde_json::json!(512));
         assert_eq!(meta["token_usage"]["total_tokens"], serde_json::json!(4608));
-        assert_eq!(meta["token_usage"]["cached_tokens"], serde_json::json!(1024));
+        assert_eq!(
+            meta["token_usage"]["cached_tokens"],
+            serde_json::json!(1024)
+        );
     }
 
     /// Without `with_usage_acc`, the notification should still go out but
@@ -1166,8 +1207,8 @@ mod token_usage_meta_tests {
     #[tokio::test]
     async fn notifier_without_acc_omits_token_usage_meta() {
         let (tx, mut rx) = mpsc::channel::<SessionNotification>(8);
-        let notifier = SessionNotifier::new(tx, SessionId::new("sess"))
-            .with_context_window_size(8192);
+        let notifier =
+            SessionNotifier::new(tx, SessionId::new("sess")).with_context_window_size(8192);
 
         let ev = TypedAnyStreamEvent::React(StreamEvent::Usage {
             prompt_tokens: 100,
@@ -1189,7 +1230,10 @@ mod token_usage_meta_tests {
         assert_eq!(update["used"], 100);
         // No _meta, or _meta present but no token_usage key — either is acceptable.
         let has_token_usage = update["_meta"]["token_usage"].is_object();
-        assert!(!has_token_usage, "_meta.token_usage must not be present without acc");
+        assert!(
+            !has_token_usage,
+            "_meta.token_usage must not be present without acc"
+        );
     }
 
     /// `HashMap` import used to silence unused-import warnings in test builds.
@@ -1200,5 +1244,3 @@ mod token_usage_meta_tests {
         assert_eq!(m.len(), 1);
     }
 }
-
-

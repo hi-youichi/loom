@@ -132,7 +132,11 @@ impl JsonRpcClient {
 
     pub async fn register_pending(&self, id: u64) -> Arc<Notify> {
         let notify = Arc::new(Notify::new());
-        self.pending.lock().await.map.insert(id, Arc::clone(&notify));
+        self.pending
+            .lock()
+            .await
+            .map
+            .insert(id, Arc::clone(&notify));
         notify
     }
 

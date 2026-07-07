@@ -101,13 +101,8 @@ pub fn init_logging(working_folder: Option<&Path>) {
     };
 
     // Load logging config from config.toml
-    let logging_config = config::load_full_config("loom")
-        .ok()
-        .map(|c| c.logging);
-    let log_file = resolve_acp_log_path(
-        config.file.as_deref(),
-        logging_config.as_ref(),
-    );
+    let logging_config = config::load_full_config("loom").ok().map(|c| c.logging);
+    let log_file = resolve_acp_log_path(config.file.as_deref(), logging_config.as_ref());
 
     let Some(log_file) = log_file else {
         return;

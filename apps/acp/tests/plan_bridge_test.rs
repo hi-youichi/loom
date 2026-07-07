@@ -1,9 +1,9 @@
 use agent_client_protocol::schema::v1::{PlanEntry, PlanEntryPriority, PlanEntryStatus};
 
-use loom_acp::stream_bridge::{loom_event_to_updates, StreamUpdate};
-    use agent::run::TypedAnyStreamEvent;
-use stream_event::StreamEvent;
+use agent::run::TypedAnyStreamEvent;
 use agent::state::ReActState;
+use loom_acp::stream_bridge::{loom_event_to_updates, StreamUpdate};
+use stream_event::StreamEvent;
 
 fn make_tool_end(name: &str, result: &str) -> StreamEvent<ReActState> {
     StreamEvent::ToolEnd {
@@ -16,10 +16,13 @@ fn make_tool_end(name: &str, result: &str) -> StreamEvent<ReActState> {
 }
 
 fn find_plan_updates(updates: &[StreamUpdate]) -> Vec<&Vec<PlanEntry>> {
-    updates.iter().filter_map(|u| match u {
-        StreamUpdate::Plan { entries } => Some(entries),
-        _ => None,
-    }).collect()
+    updates
+        .iter()
+        .filter_map(|u| match u {
+            StreamUpdate::Plan { entries } => Some(entries),
+            _ => None,
+        })
+        .collect()
 }
 
 fn todo_result_json() -> &'static str {
@@ -135,8 +138,12 @@ fn plan_not_emitted_for_other_tools() {
 fn plan_emitted_alongside_tool_update() {
     let ev = make_tool_end("todo_write", todo_result_json());
     let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
-    let has_tool_update = updates.iter().any(|u| matches!(u, StreamUpdate::ToolCallUpdated { .. }));
-    let has_plan = updates.iter().any(|u| matches!(u, StreamUpdate::Plan { .. }));
+    let has_tool_update = updates
+        .iter()
+        .any(|u| matches!(u, StreamUpdate::ToolCallUpdated { .. }));
+    let has_plan = updates
+        .iter()
+        .any(|u| matches!(u, StreamUpdate::Plan { .. }));
     assert!(has_tool_update, "should still emit ToolCallUpdated");
     assert!(has_plan, "should also emit Plan");
 }
@@ -198,7 +205,11 @@ fn sub_agent_any_stream_event_produces_plan_update() {
     let wrapped = TypedAnyStreamEvent::React(ev);
     let updates = loom_event_to_updates(&wrapped);
     let plans = find_plan_updates(&updates);
-    assert_eq!(plans.len(), 1, "TypedAnyStreamEvent::React wrapping sub-agent ToolEnd should produce exactly one plan");
+    assert_eq!(
+        plans.len(),
+        1,
+        "TypedAnyStreamEvent::React wrapping sub-agent ToolEnd should produce exactly one plan"
+    );
     assert_eq!(plans[0].len(), 3);
 }
 
@@ -229,15 +240,18 @@ fn sub_agent_plan_deduplicates_with_parent_plan() {
     let parent_ev = make_tool_end("todo_write", parent_result);
     let parent_updates = loom_event_to_updates(&TypedAnyStreamEvent::React(parent_ev));
     assert_eq!(find_plan_updates(&parent_updates).len(), 1);
-    assert_eq!(find_plan_updates(&parent_updates)[0][0].content, "Parent task");
+    assert_eq!(
+        find_plan_updates(&parent_updates)[0][0].content,
+        "Parent task"
+    );
 }
 
 mod session_notifier_tests {
-use agent::run::TypedAnyStreamEvent;
-    use stream_event::StreamEvent;
+    use agent::run::TypedAnyStreamEvent;
     use agent::state::ReActState;
     use loom_acp::stream_bridge::SessionNotifier;
     use serde_json::Value;
+    use stream_event::StreamEvent;
 
     fn sub_agent_todo_end() -> StreamEvent<ReActState> {
         StreamEvent::ToolEnd {
@@ -248,7 +262,8 @@ use agent::run::TypedAnyStreamEvent;
   { "id": "1", "content": "Sub task A", "status": "pending", "priority": "high" },
   { "id": "2", "content": "Sub task B", "status": "pending", "priority": "medium" },
   { "id": "3", "content": "Sub task C", "status": "pending", "priority": "low" }
-]"#.to_string(),
+]"#
+            .to_string(),
             is_error: false,
             raw_result: None,
         }
@@ -271,31 +286,40 @@ use agent::run::TypedAnyStreamEvent;
     fn sub_agent_tool_end_produces_plan_notification() {
         let ev = TypedAnyStreamEvent::React(sub_agent_todo_end());
         let notifs = send_and_collect(&ev);
-        let has_plan = notifs.iter().any(|n| {
-            n.pointer("/update/sessionUpdate")
-                .and_then(|v| v.as_str())
-                == Some("plan")
-        });
-        assert!(has_plan, "sub-agent ToolEnd via TypedAnyStreamEvent::React should produce plan notification");
+        let has_plan = notifs
+            .iter()
+            .any(|n| n.pointer("/update/sessionUpdate").and_then(|v| v.as_str()) == Some("plan"));
+        assert!(
+            has_plan,
+            "sub-agent ToolEnd via TypedAnyStreamEvent::React should produce plan notification"
+        );
     }
 
     #[test]
     fn sub_agent_plan_notification_has_correct_entries() {
         let ev = TypedAnyStreamEvent::React(sub_agent_todo_end());
         let notifs = send_and_collect(&ev);
-        let plan_notif = notifs.iter().find(|n| {
-            n.pointer("/update/sessionUpdate")
-                .and_then(|v| v.as_str())
-                == Some("plan")
-        }).expect("should have plan notification");
+        let plan_notif = notifs
+            .iter()
+            .find(|n| n.pointer("/update/sessionUpdate").and_then(|v| v.as_str()) == Some("plan"))
+            .expect("should have plan notification");
         let entries = plan_notif
             .pointer("/update/entries")
             .and_then(|v| v.as_array())
             .expect("plan should have entries array");
         assert_eq!(entries.len(), 3);
-        assert_eq!(entries[0].pointer("/content").and_then(|v| v.as_str()), Some("Sub task A"));
-        assert_eq!(entries[1].pointer("/content").and_then(|v| v.as_str()), Some("Sub task B"));
-        assert_eq!(entries[2].pointer("/content").and_then(|v| v.as_str()), Some("Sub task C"));
+        assert_eq!(
+            entries[0].pointer("/content").and_then(|v| v.as_str()),
+            Some("Sub task A")
+        );
+        assert_eq!(
+            entries[1].pointer("/content").and_then(|v| v.as_str()),
+            Some("Sub task B")
+        );
+        assert_eq!(
+            entries[2].pointer("/content").and_then(|v| v.as_str()),
+            Some("Sub task C")
+        );
     }
 
     #[test]
@@ -307,7 +331,8 @@ use agent::run::TypedAnyStreamEvent;
             result: r#"1 todos
 [
   { "id": "1", "content": "Parent task", "status": "pending", "priority": "high" }
-]"#.to_string(),
+]"#
+            .to_string(),
             is_error: false,
             raw_result: None,
         });
@@ -323,11 +348,13 @@ use agent::run::TypedAnyStreamEvent;
             }
         }
 
-        let plan_count = all_notifs.iter().filter(|n| {
-            n.pointer("/update/sessionUpdate")
-                .and_then(|v| v.as_str())
-                == Some("plan")
-        }).count();
-        assert_eq!(plan_count, 2, "should produce 2 plan notifications (sub + parent)");
+        let plan_count = all_notifs
+            .iter()
+            .filter(|n| n.pointer("/update/sessionUpdate").and_then(|v| v.as_str()) == Some("plan"))
+            .count();
+        assert_eq!(
+            plan_count, 2,
+            "should produce 2 plan notifications (sub + parent)"
+        );
     }
 }

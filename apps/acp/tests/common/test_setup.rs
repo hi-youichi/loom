@@ -1,17 +1,17 @@
+use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
-use std::fs;
 pub fn setup_test_home() -> TempDir {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    
+
     let loom_dir = temp_dir.path().join(".loom");
     fs::create_dir_all(&loom_dir).expect("Failed to create .loom dir");
-    
+
     let agents_dir = loom_dir.join("agents");
     fs::create_dir_all(&agents_dir).expect("Failed to create agents dir");
-    
+
     std::env::set_var("LOOM_HOME", temp_dir.path());
-    
+
     temp_dir
 }
 
@@ -30,8 +30,11 @@ impl TestEnvironment {
     pub fn new() -> Self {
         let temp_dir = setup_test_home();
         let loom_home = temp_dir.path().to_path_buf();
-        
-        Self { temp_dir, loom_home }
+
+        Self {
+            temp_dir,
+            loom_home,
+        }
     }
     #[allow(dead_code)]
     pub fn agents_dir(&self) -> PathBuf {

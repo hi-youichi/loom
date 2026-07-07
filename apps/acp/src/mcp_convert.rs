@@ -60,7 +60,9 @@ fn sse_to_def(s: &McpServerSse) -> McpServerDef {
     }
 }
 
-fn env_vars_to_map(vars: &[agent_client_protocol::schema::v1::EnvVariable]) -> HashMap<String, String> {
+fn env_vars_to_map(
+    vars: &[agent_client_protocol::schema::v1::EnvVariable],
+) -> HashMap<String, String> {
     vars.iter()
         .map(|v| (v.name.clone(), v.value.clone()))
         .collect()
@@ -76,7 +78,9 @@ fn http_headers_to_map(headers: &[HttpHeader]) -> HashMap<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_client_protocol::schema::v1::{EnvVariable, McpServerHttp, McpServerSse, McpServerStdio};
+    use agent_client_protocol::schema::v1::{
+        EnvVariable, McpServerHttp, McpServerSse, McpServerStdio,
+    };
 
     #[test]
     fn stdio_conversion() {
@@ -102,7 +106,10 @@ mod tests {
     #[test]
     fn stdio_conversion_with_env_and_args() {
         let mut stdio = McpServerStdio::new("fs", "npx");
-        stdio.args = vec!["-y".into(), "@modelcontextprotocol/server-filesystem".into()];
+        stdio.args = vec![
+            "-y".into(),
+            "@modelcontextprotocol/server-filesystem".into(),
+        ];
         stdio.env = vec![
             EnvVariable::new("API_KEY", "secret"),
             EnvVariable::new("NODE_ENV", "production"),
@@ -119,7 +126,10 @@ mod tests {
             } => {
                 assert_eq!(name, "fs");
                 assert_eq!(command, "npx");
-                assert_eq!(args.as_slice(), ["-y", "@modelcontextprotocol/server-filesystem"]);
+                assert_eq!(
+                    args.as_slice(),
+                    ["-y", "@modelcontextprotocol/server-filesystem"]
+                );
                 assert_eq!(env.get("API_KEY").map(|s| s.as_str()), Some("secret"));
                 assert_eq!(env.get("NODE_ENV").map(|s| s.as_str()), Some("production"));
             }

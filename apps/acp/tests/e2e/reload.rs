@@ -29,8 +29,7 @@ async fn show_log_dir_outputs_path() {
     // The output might go to stdout or stderr depending on the implementation.
     let combined = format!("{stdout}{stderr}");
     assert!(
-        combined.to_lowercase().contains("loom")
-            || combined.contains("log"),
+        combined.to_lowercase().contains("loom") || combined.contains("log"),
         "--show-log-dir output should contain a path, got: {combined}"
     );
 }
@@ -42,7 +41,10 @@ async fn reload_without_pid_does_not_crash() {
     let output = tokio::process::Command::new(binary_path())
         .arg("acp")
         .arg("reload")
-        .env("LOOM_HOME", std::env::temp_dir().join("loom-acp-e2e-no-pid"))
+        .env(
+            "LOOM_HOME",
+            std::env::temp_dir().join("loom-acp-e2e-no-pid"),
+        )
         .output()
         .await
         .expect("spawn loom acp reload");

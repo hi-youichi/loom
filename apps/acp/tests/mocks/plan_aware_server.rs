@@ -1,6 +1,6 @@
-use wiremock::{MockServer, Mock, ResponseTemplate};
-use wiremock::matchers::{method, path};
 use serde_json::{json, Value};
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 pub struct PlanAwareMockServer {
     pub server: MockServer,
@@ -31,10 +31,7 @@ impl PlanAwareMockServer {
     pub async fn with_plan_response(&self, entries: Vec<Value>) {
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(Self::plan_response(entries)),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(Self::plan_response(entries)))
             .mount(&self.server)
             .await;
     }
@@ -42,10 +39,7 @@ impl PlanAwareMockServer {
     pub async fn with_multi_step_response(&self) {
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(Self::multi_step_response()),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(Self::multi_step_response()))
             .mount(&self.server)
             .await;
     }

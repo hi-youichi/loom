@@ -9,10 +9,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use tool_core::{Tool, ToolCallContent};
-use serial_test::serial;
+use loom_acp::tools::{
+    clear_client_bridge, set_client_bridge, ClientBridgeTrait, ReadTextFileTool,
+    TerminalExitResult, TerminalOutput, WriteTextFileTool,
+};
 use serde_json::json;
-use loom_acp::tools::{clear_client_bridge, set_client_bridge, ClientBridgeTrait, ReadTextFileTool, TerminalExitResult, TerminalOutput, WriteTextFileTool};
+use serial_test::serial;
+use tool_core::{Tool, ToolCallContent};
 
 // ============================================================================
 // Mock ClientBridge
@@ -107,11 +110,19 @@ impl ClientBridgeTrait for MockBridge {
         Err("not implemented".to_string())
     }
 
-    async fn terminal_output(&self, _session_id: &str, _terminal_id: &str) -> Result<TerminalOutput, String> {
+    async fn terminal_output(
+        &self,
+        _session_id: &str,
+        _terminal_id: &str,
+    ) -> Result<TerminalOutput, String> {
         Err("not implemented".to_string())
     }
 
-    async fn terminal_wait_for_exit(&self, _session_id: &str, _terminal_id: &str) -> Result<TerminalExitResult, String> {
+    async fn terminal_wait_for_exit(
+        &self,
+        _session_id: &str,
+        _terminal_id: &str,
+    ) -> Result<TerminalExitResult, String> {
         Err("not implemented".to_string())
     }
 
@@ -162,10 +173,7 @@ async fn test_write_new_file_returns_diff_with_no_old_text() {
             new_text,
         } => {
             assert_eq!(path, "src/new_module.rs");
-            assert!(
-                old_text.is_none(),
-                "new file should have no old_text"
-            );
+            assert!(old_text.is_none(), "new file should have no old_text");
             assert_eq!(new_text, "fn hello() {}\n");
         }
         other => panic!("expected Diff, got: {:?}", other),
@@ -181,10 +189,7 @@ async fn test_write_new_file_returns_diff_with_no_old_text() {
 #[tokio::test]
 #[serial]
 async fn test_write_existing_file_returns_diff_with_old_text() {
-    let bridge = Arc::new(MockBridge::with_file(
-        "src/lib.rs",
-        "fn old() {}\n",
-    ));
+    let bridge = Arc::new(MockBridge::with_file("src/lib.rs", "fn old() {}\n"));
     setup_bridge(bridge.clone()).await;
 
     let tool = WriteTextFileTool::new();
@@ -236,9 +241,7 @@ async fn test_write_preserves_multiline_content() {
 
     match result {
         ToolCallContent::Diff {
-            old_text,
-            new_text,
-            ..
+            old_text, new_text, ..
         } => {
             assert_eq!(old_text, Some(old.to_string()));
             assert_eq!(new_text, new);
@@ -254,10 +257,7 @@ async fn test_write_preserves_multiline_content() {
 #[tokio::test]
 #[serial]
 async fn test_read_existing_file_returns_text_content() {
-    let bridge = Arc::new(MockBridge::with_file(
-        "README.md",
-        "# Hello\nWorld\n",
-    ));
+    let bridge = Arc::new(MockBridge::with_file("README.md", "# Hello\nWorld\n"));
     setup_bridge(bridge.clone()).await;
 
     let tool = ReadTextFileTool::new();
@@ -352,7 +352,9 @@ async fn test_write_then_update_diff_chain() {
         .await
         .expect("first write");
     match r1 {
-        ToolCallContent::Diff { old_text, new_text, .. } => {
+        ToolCallContent::Diff {
+            old_text, new_text, ..
+        } => {
             assert!(old_text.is_none());
             assert_eq!(new_text, "v1");
         }
@@ -364,7 +366,9 @@ async fn test_write_then_update_diff_chain() {
         .await
         .expect("second write");
     match r2 {
-        ToolCallContent::Diff { old_text, new_text, .. } => {
+        ToolCallContent::Diff {
+            old_text, new_text, ..
+        } => {
             assert_eq!(old_text, Some("v1".to_string()));
             assert_eq!(new_text, "v2");
         }
@@ -376,7 +380,9 @@ async fn test_write_then_update_diff_chain() {
         .await;
     let r3 = r3.expect("third write");
     match r3 {
-        ToolCallContent::Diff { old_text, new_text, .. } => {
+        ToolCallContent::Diff {
+            old_text, new_text, ..
+        } => {
             assert_eq!(old_text, Some("v2".to_string()));
             assert_eq!(new_text, "v3");
         }

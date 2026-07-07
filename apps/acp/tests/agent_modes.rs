@@ -1,6 +1,5 @@
 use agent_client_protocol::schema::v1::{
-    LoadSessionRequest, NewSessionRequest, SetSessionConfigOptionRequest,
-    SetSessionModeRequest,
+    LoadSessionRequest, NewSessionRequest, SetSessionConfigOptionRequest, SetSessionModeRequest,
 };
 use loom_acp::{LoomAcpAgent, ModelOption, ModelProvider};
 use std::path::PathBuf;

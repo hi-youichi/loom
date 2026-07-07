@@ -4,11 +4,11 @@
 //! allowing access to unsaved buffer contents and IDE workspace files.
 
 use async_trait::async_trait;
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
-use tool_core::Tool;
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
+use tool_core::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
 use super::{create_tool_spec, get_client_bridge, ClientBridgeTrait};
 

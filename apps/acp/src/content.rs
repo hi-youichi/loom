@@ -353,10 +353,12 @@ pub fn content_blocks_to_user_content(
                 });
             }
 
-            agent_client_protocol::schema::v1::ContentBlock::Resource(EmbeddedResource { resource, .. }) => {
-                match resource {
-                    EmbeddedResourceResource::TextResourceContents(text_res) => {
-                        parts.push(ContentPart::Text {
+            agent_client_protocol::schema::v1::ContentBlock::Resource(EmbeddedResource {
+                resource,
+                ..
+            }) => match resource {
+                EmbeddedResourceResource::TextResourceContents(text_res) => {
+                    parts.push(ContentPart::Text {
                             text: format!(
                                 "--- Embedded Resource ---\nURI: {}\nMIME: {}\n\n{}\n--- End Resource ---",
                                 text_res.uri,
@@ -364,21 +366,21 @@ pub fn content_blocks_to_user_content(
                                 text_res.text
                             ),
                         });
-                    }
-                    EmbeddedResourceResource::BlobResourceContents(blob_res) => {
-                        let mime = blob_res.mime_type.as_deref().unwrap_or("");
-                        if mime.starts_with("image/") {
-                            parts.push(ContentPart::ImageBase64 {
-                                media_type: mime.to_string(),
-                                data: blob_res.blob.clone(),
-                            });
-                        } else if mime.starts_with("audio/") {
-                            parts.push(ContentPart::AudioBase64 {
-                                media_type: mime.to_string(),
-                                data: blob_res.blob.clone(),
-                            });
-                        } else {
-                            parts.push(ContentPart::Text {
+                }
+                EmbeddedResourceResource::BlobResourceContents(blob_res) => {
+                    let mime = blob_res.mime_type.as_deref().unwrap_or("");
+                    if mime.starts_with("image/") {
+                        parts.push(ContentPart::ImageBase64 {
+                            media_type: mime.to_string(),
+                            data: blob_res.blob.clone(),
+                        });
+                    } else if mime.starts_with("audio/") {
+                        parts.push(ContentPart::AudioBase64 {
+                            media_type: mime.to_string(),
+                            data: blob_res.blob.clone(),
+                        });
+                    } else {
+                        parts.push(ContentPart::Text {
                                 text: format!(
                                     "--- Binary Resource ---\nURI: {}\nMIME: {}\nSize: {} bytes\n--- End Resource ---",
                                     blob_res.uri,
@@ -386,13 +388,12 @@ pub fn content_blocks_to_user_content(
                                     blob_res.blob.len()
                                 ),
                             });
-                        }
-                    }
-                    _ => {
-                        tracing::debug!("Unknown embedded resource type, skipping");
                     }
                 }
-            }
+                _ => {
+                    tracing::debug!("Unknown embedded resource type, skipping");
+                }
+            },
 
             agent_client_protocol::schema::v1::ContentBlock::ResourceLink(rl) => {
                 let mut text = format!("Reference: {} ({})", rl.name, rl.uri);

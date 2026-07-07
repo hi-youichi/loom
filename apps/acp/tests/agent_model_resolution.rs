@@ -2,10 +2,10 @@
 //!
 //! Tests the priority: ACP explicit model > agent model name > agent tier > default config
 
-use loom_acp::LoomAcpAgent;
-use loom_acp::{ModelOption, ModelProvider};
 use loom_acp::agent_registry::AgentRegistry;
 use loom_acp::session::SessionConfig;
+use loom_acp::LoomAcpAgent;
+use loom_acp::{ModelOption, ModelProvider};
 use std::sync::Arc;
 
 struct MockModelProvider;

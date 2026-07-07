@@ -16,11 +16,11 @@
 //!
 //! When integrated with ACP, session_id can use `agent_client_protocol::SessionId`; this module's [`SessionId`] is a placeholder type for unit tests without the ACP dependency.
 
-use tool_core::active_operation::RunCancellation;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use tool_core::active_operation::RunCancellation;
 use uuid::Uuid;
 
 fn recover_read<T>(lock: &std::sync::RwLock<T>) -> std::sync::RwLockReadGuard<'_, T> {
@@ -219,7 +219,6 @@ impl SessionStore {
         }
     }
 
-
     pub fn finish_prompt(&self, session_id: &SessionId, generation: u64) {
         if let Some(entry) = recover_read(&self.inner).get(session_id) {
             if let Ok(mut current_turn) = entry.cancellation.current_turn.write() {
@@ -257,11 +256,7 @@ impl SessionStore {
     }
 
     /// Update MCP servers for the given session. No-op if session_id is not in the store.
-    pub fn update_mcp_servers(
-        &self,
-        session_id: &SessionId,
-        servers: Vec<config::McpServerDef>,
-    ) {
+    pub fn update_mcp_servers(&self, session_id: &SessionId, servers: Vec<config::McpServerDef>) {
         if let Ok(mut guard) = self.inner.write() {
             if let Some(entry) = guard.get_mut(session_id) {
                 entry.mcp_servers = servers;

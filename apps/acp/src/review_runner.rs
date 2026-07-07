@@ -7,13 +7,17 @@
 
 use std::path::PathBuf;
 
-use loom_curator::{run_review, ReviewConfig, ReviewHistory, ReviewRecord};
-use loom_curator::workflow::global_registry;
 use agent::run::ResolvedModelConfig;
-use loom_llm::message::Message;
-use agent::ReactBuildConfig;
 use agent::state::ReActState;
+use agent::ReactBuildConfig;
+use agent_client_protocol::schema::v1::{Meta, SessionId, SessionNotification};
+use loom_curator::workflow::global_registry;
+use loom_curator::{run_review, ReviewConfig, ReviewHistory, ReviewOutcome, ReviewRecord};
+use loom_llm::message::Message;
+use tokio::sync::mpsc;
 use tracing::{error, info, warn};
+
+use crate::stream_bridge::SessionNotifier;
 
 /// Map `/review-skill` scope to `(review_memory, review_skills)` booleans.
 pub fn scope_to_review_config(scope: &Option<String>) -> (bool, bool) {
@@ -46,7 +50,9 @@ fn extract_session_text(thread_id: &str) -> Result<String, String> {
     let conn = rusqlite::Connection::open(&db_path)
         .map_err(|e| format!("Failed to open database: {e}"))?;
     let mut stmt = conn
-        .prepare("SELECT payload FROM checkpoints WHERE thread_id = ?1 ORDER BY metadata_created_at ASC")
+        .prepare(
+            "SELECT payload FROM checkpoints WHERE thread_id = ?1 ORDER BY metadata_created_at ASC",
+        )
         .map_err(|e| format!("Failed to prepare statement: {e}"))?;
     let payloads: Vec<Vec<u8>> = stmt
         .query_map([thread_id], |row| row.get(0))
@@ -86,7 +92,9 @@ fn extract_session_text(thread_id: &str) -> Result<String, String> {
     // instructions back into the LLM context. Hermes `hermes_state.py`
     // #10 parity.
     let assembled = parts.join("\n");
-    Ok(loom_llm::message::strip_background_review_harness(&assembled))
+    Ok(loom_llm::message::strip_background_review_harness(
+        &assembled,
+    ))
 }
 
 /// Spawn an in-process background review thread.
@@ -96,12 +104,25 @@ fn extract_session_text(thread_id: &str) -> Result<String, String> {
 /// - The ACP prompt is not blocked.
 /// - Review failures are logged but never crash the ACP process.
 /// - Short sessions are auto-skipped by `run_review`'s `min_session_chars` gate.
+///
+/// When `tx` and `session_id` are provided (the normal ACP path), the runner
+/// also emits two follow-up notifications once review completes:
+///   1. An `AgentMessageChunk` summarizing what was saved / why review was
+///      skipped (so the chat stream gets a human-readable nudge).
+///   2. A `SessionInfoUpdate` carrying `_meta.review` (status + counts) so the
+///      IDE session list can badge the row as reviewed/pending without
+///      polling the SQLite history table.
+///
+/// Pass `None` for `tx` to disable both notifications (used by tests and any
+/// future non-ACP embedding that doesn't have a session channel wired).
 pub fn spawn_inprocess_review(
     thread_id: String,
     resolved: ResolvedModelConfig,
     review_memory: bool,
     review_skills: bool,
     trigger: String,
+    tx: Option<mpsc::Sender<SessionNotification>>,
+    session_id: Option<SessionId>,
 ) {
     // Per-session dedup: skip if a review is already in flight for this
     // thread. The returned guard is moved into the spawned thread below
@@ -145,14 +166,10 @@ pub fn spawn_inprocess_review(
         };
 
         let start = std::time::Instant::now();
-        let result = rt.block_on(run_review(
-            react_config,
-            checkpoint_id,
-            &text,
-            &config,
-        ));
+        let result = rt.block_on(run_review(react_config, checkpoint_id, &text, &config));
 
-        let history = ReviewHistory::with_db_path(checkpoint_sqlite_store::default_memory_db_path());
+        let history =
+            ReviewHistory::with_db_path(checkpoint_sqlite_store::default_memory_db_path());
 
         match result {
             Ok(outcome) => {
@@ -178,6 +195,13 @@ pub fn spawn_inprocess_review(
                     duration_ms = start.elapsed().as_millis() as u64,
                     "ACP in-process review completed"
                 );
+                notify_completion(
+                    tx.as_ref(),
+                    session_id.as_ref(),
+                    &thread_id,
+                    Ok(&outcome),
+                    start.elapsed().as_millis() as u64,
+                );
             }
             Err(e) => {
                 let record = ReviewRecord {
@@ -200,9 +224,137 @@ pub fn spawn_inprocess_review(
                     duration_ms = start.elapsed().as_millis() as u64,
                     "ACP in-process review failed"
                 );
+                let skip_reason = format!("llm_error: {}", e);
+                let synthetic = ReviewOutcome::skipped(skip_reason);
+                notify_completion(
+                    tx.as_ref(),
+                    session_id.as_ref(),
+                    &thread_id,
+                    Ok(&synthetic),
+                    start.elapsed().as_millis() as u64,
+                );
             }
         }
     });
+}
+
+/// Push review-completion notifications to the ACP client, if a channel is wired.
+///
+/// Emits two notifications on success or skip:
+///   - `AgentMessageChunk` with a human-readable one-liner so the chat pane
+///     shows what the reviewer did.
+///   - `SessionInfoUpdate` with `_meta.review = { status, reviewed_at,
+///     memory_count, skill_count, skip_reason? }` so the session list can
+///     display a reviewed/pending badge.
+///
+/// No-op when either `tx` or `session_id` is `None` (non-ACP embedding).
+fn notify_completion(
+    tx: Option<&mpsc::Sender<SessionNotification>>,
+    session_id: Option<&SessionId>,
+    thread_id: &str,
+    outcome: Result<&ReviewOutcome, ()>,
+    duration_ms: u64,
+) {
+    let (Some(tx), Some(session_id)) = (tx, session_id) else {
+        return;
+    };
+    let outcome = match outcome {
+        Ok(o) => o,
+        Err(()) => return,
+    };
+
+    let notifier = SessionNotifier::new(tx.clone(), session_id.clone());
+
+    let summary_line = build_summary_line(outcome);
+    let msg_id = uuid::Uuid::new_v4().to_string();
+    let chunk = agent_client_protocol::schema::v1::ContentChunk::new(
+        agent_client_protocol::schema::v1::ContentBlock::Text(
+            agent_client_protocol::schema::v1::TextContent::new(summary_line),
+        ),
+    )
+    .message_id(Some(agent_client_protocol::schema::v1::MessageId::new(
+        msg_id,
+    )));
+    let msg_notif = SessionNotification::new(
+        session_id.clone(),
+        agent_client_protocol::schema::v1::SessionUpdate::AgentMessageChunk(chunk),
+    );
+    if let Err(e) = tx.try_send(msg_notif) {
+        warn!(thread_id = %thread_id, error = %e, "Failed to send review summary chunk");
+    }
+
+    let meta = build_review_meta(outcome, duration_ms);
+    notifier.try_send_session_meta(meta);
+}
+
+/// Render the human-readable one-liner for the chat pane.
+///
+/// Examples:
+///   "Background review saved 2 memory + 1 skill (1.2s)."
+///   "Background review: nothing to save."
+///   "Background review skipped (session too short)."
+fn build_summary_line(outcome: &ReviewOutcome) -> String {
+    let secs = outcome.duration_ms as f64 / 1000.0;
+    if outcome.skipped {
+        let reason = outcome.skip_reason.as_deref().unwrap_or("skipped");
+        return format!("Background review skipped ({}).", reason);
+    }
+    let parts: Vec<String> = [
+        (outcome.memory_count > 0).then(|| {
+            if outcome.memory_count == 1 {
+                "1 memory".to_string()
+            } else {
+                format!("{} memories", outcome.memory_count)
+            }
+        }),
+        (outcome.skill_count > 0).then(|| {
+            if outcome.skill_count == 1 {
+                "1 skill".to_string()
+            } else {
+                format!("{} skills", outcome.skill_count)
+            }
+        }),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if parts.is_empty() {
+        return format!("Background review: nothing to save ({:.1}s).", secs);
+    }
+    let joined = parts.join(" + ");
+    format!("Background review saved {} ({:.1}s).", joined, secs)
+}
+
+/// Build the `_meta.review` payload for `SessionInfoUpdate`.
+///
+/// Mirrors `apps/acp/src/protocol.rs` schema note for `_meta.review`:
+///   status: "reviewed" | "skipped"
+///   reviewed_at: RFC3339
+///   memory_count / skill_count: usize
+///   skip_reason?: string (when status == "skipped")
+///   duration_ms: u64
+fn build_review_meta(outcome: &ReviewOutcome, duration_ms: u64) -> Meta {
+    let mut meta = Meta::new();
+    let status = if outcome.skipped {
+        "skipped"
+    } else {
+        "reviewed"
+    };
+    let mut payload = serde_json::json!({
+        "status": status,
+        "reviewed_at": chrono::Utc::now().to_rfc3339(),
+        "memory_count": outcome.memory_count,
+        "skill_count": outcome.skill_count,
+        "duration_ms": duration_ms,
+    });
+    if let Some(reason) = &outcome.skip_reason {
+        payload.as_object_mut().unwrap().insert(
+            "skip_reason".to_string(),
+            serde_json::Value::String(reason.clone()),
+        );
+    }
+    meta.insert("review".to_string(), payload);
+    meta
 }
 
 #[cfg(test)]
@@ -211,12 +363,18 @@ mod tests {
 
     #[test]
     fn scope_memory_only() {
-        assert_eq!(scope_to_review_config(&Some("memory".into())), (true, false));
+        assert_eq!(
+            scope_to_review_config(&Some("memory".into())),
+            (true, false)
+        );
     }
 
     #[test]
     fn scope_skills_only() {
-        assert_eq!(scope_to_review_config(&Some("skills".into())), (false, true));
+        assert_eq!(
+            scope_to_review_config(&Some("skills".into())),
+            (false, true)
+        );
         assert_eq!(scope_to_review_config(&Some("skill".into())), (false, true));
     }
 
@@ -225,9 +383,12 @@ mod tests {
         assert_eq!(scope_to_review_config(&None), (true, true));
     }
 
-#[test]
+    #[test]
     fn scope_unknown_defaults_to_both() {
-        assert_eq!(scope_to_review_config(&Some("unknown".into())), (true, true));
+        assert_eq!(
+            scope_to_review_config(&Some("unknown".into())),
+            (true, true)
+        );
     }
 
     #[test]
@@ -242,11 +403,196 @@ mod tests {
         let first = registry.try_acquire(session.clone()).expect("first");
         assert!(registry.active_sessions() >= 1);
         let second = registry.try_acquire(session.clone());
-        assert!(second.is_none(), "second acquire for the same session must fail");
+        assert!(
+            second.is_none(),
+            "second acquire for the same session must fail"
+        );
         drop(first);
         assert!(
             registry.try_acquire(session).is_some(),
             "slot must be released after drop"
         );
+    }
+
+    #[test]
+    fn summary_line_for_reviewed_with_both_kinds() {
+        let outcome = ReviewOutcome {
+            summary: "memory(x) · skill(y)".into(),
+            reply: "ok".into(),
+            actions: vec![],
+            tool_violations: vec![],
+            memory_count: 2,
+            skill_count: 1,
+            duration_ms: 1234,
+            skipped: false,
+            skip_reason: None,
+            tokens: Default::default(),
+        };
+        let s = build_summary_line(&outcome);
+        assert!(s.contains("2 memories"), "got: {s}");
+        assert!(s.contains("1 skill"), "got: {s}");
+        assert!(s.contains("1.2s"), "got: {s}");
+    }
+
+    #[test]
+    fn summary_line_for_reviewed_with_no_actions() {
+        let outcome = ReviewOutcome {
+            summary: "".into(),
+            reply: "nothing".into(),
+            actions: vec![],
+            tool_violations: vec![],
+            memory_count: 0,
+            skill_count: 0,
+            duration_ms: 500,
+            skipped: false,
+            skip_reason: None,
+            tokens: Default::default(),
+        };
+        let s = build_summary_line(&outcome);
+        assert!(s.contains("nothing to save"), "got: {s}");
+    }
+
+    #[test]
+    fn summary_line_for_skipped() {
+        let outcome = ReviewOutcome {
+            summary: "".into(),
+            reply: "".into(),
+            actions: vec![],
+            tool_violations: vec![],
+            memory_count: 0,
+            skill_count: 0,
+            duration_ms: 0,
+            skipped: true,
+            skip_reason: Some("session_too_short".into()),
+            tokens: Default::default(),
+        };
+        let s = build_summary_line(&outcome);
+        assert!(s.contains("skipped"), "got: {s}");
+        assert!(s.contains("session_too_short"), "got: {s}");
+    }
+
+    #[test]
+    fn review_meta_marked_reviewed_when_actions_present() {
+        let outcome = ReviewOutcome {
+            summary: "".into(),
+            reply: "".into(),
+            actions: vec![],
+            tool_violations: vec![],
+            memory_count: 3,
+            skill_count: 0,
+            duration_ms: 2000,
+            skipped: false,
+            skip_reason: None,
+            tokens: Default::default(),
+        };
+        let meta = build_review_meta(&outcome, 2000);
+        let v = meta.get("review").expect("review key");
+        assert_eq!(v["status"], "reviewed");
+        assert_eq!(v["memory_count"], 3);
+        assert_eq!(v["skill_count"], 0);
+        assert_eq!(v["duration_ms"], 2000);
+        assert!(
+            v.get("skip_reason").is_none(),
+            "skip_reason absent on success"
+        );
+    }
+
+    #[test]
+    fn review_meta_marked_skipped_carries_reason() {
+        let outcome = ReviewOutcome {
+            summary: "".into(),
+            reply: "".into(),
+            actions: vec![],
+            tool_violations: vec![],
+            memory_count: 0,
+            skill_count: 0,
+            duration_ms: 0,
+            skipped: true,
+            skip_reason: Some("llm_error: rate_limited".into()),
+            tokens: Default::default(),
+        };
+        let meta = build_review_meta(&outcome, 0);
+        let v = meta.get("review").expect("review key");
+        assert_eq!(v["status"], "skipped");
+        assert_eq!(v["skip_reason"], "llm_error: rate_limited");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn notify_completion_emits_chunk_and_session_info_with_meta() {
+        use agent_client_protocol::schema::v1::{SessionId, SessionNotification, SessionUpdate};
+
+        let (tx, mut rx) = mpsc::channel::<SessionNotification>(4);
+        let session_id = SessionId::new("test-session-1");
+
+        let outcome = ReviewOutcome {
+            summary: "".into(),
+            reply: "ok".into(),
+            actions: vec![],
+            tool_violations: vec![],
+            memory_count: 1,
+            skill_count: 2,
+            duration_ms: 750,
+            skipped: false,
+            skip_reason: None,
+            tokens: Default::default(),
+        };
+
+        notify_completion(Some(&tx), Some(&session_id), "thread-1", Ok(&outcome), 750);
+
+        // First notification: AgentMessageChunk with the summary line.
+        let first = rx.recv().await.expect("chunk notification");
+        match first.update {
+            SessionUpdate::AgentMessageChunk(chunk) => {
+                let text = match chunk.content {
+                    agent_client_protocol::schema::v1::ContentBlock::Text(t) => t.text,
+                    other => panic!("expected TextContent, got {other:?}"),
+                };
+                assert!(text.contains("1 memory"), "chunk text: {text}");
+                assert!(text.contains("2 skills"), "chunk text: {text}");
+                assert!(
+                    chunk.message_id.is_some(),
+                    "message_id must be set so the client treats it as a discrete turn"
+                );
+            }
+            other => panic!("expected AgentMessageChunk, got {other:?}"),
+        }
+
+        // Second notification: SessionInfoUpdate with _meta.review.
+        let second = rx.recv().await.expect("session_info notification");
+        match second.update {
+            SessionUpdate::SessionInfoUpdate(info) => {
+                let m = info.meta.expect("meta must be present");
+                let v = m.get("review").expect("_meta.review");
+                assert_eq!(v["status"], "reviewed");
+                assert_eq!(v["memory_count"], 1);
+                assert_eq!(v["skill_count"], 2);
+                assert_eq!(v["duration_ms"], 750);
+            }
+            other => panic!("expected SessionInfoUpdate, got {other:?}"),
+        }
+
+        // Drain: nothing else should have been emitted.
+        assert!(rx.try_recv().is_err(), "exactly two notifications expected");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn notify_completion_noop_without_channel() {
+        let outcome = ReviewOutcome {
+            summary: "".into(),
+            reply: "".into(),
+            actions: vec![],
+            tool_violations: vec![],
+            memory_count: 0,
+            skill_count: 0,
+            duration_ms: 0,
+            skipped: true,
+            skip_reason: Some("noop".into()),
+            tokens: Default::default(),
+        };
+        // Both args None → must not panic.
+        notify_completion(None, None, "thread-2", Ok(&outcome), 0);
+        // tx without session_id → also a no-op (we don't know who to address).
+        let (tx, _rx) = mpsc::channel::<SessionNotification>(1);
+        notify_completion(Some(&tx), None, "thread-2", Ok(&outcome), 0);
     }
 }

@@ -323,4 +323,4 @@ async fn e2e_mega_full_protocol_flow() {
     tokio::time::sleep(Duration::from_millis(20)).await;
 }
 
-                // ── Step 9: session/list ──────────────────────────────────────
+// ── Step 9: session/list ──────────────────────────────────────

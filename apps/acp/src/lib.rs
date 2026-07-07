@@ -198,18 +198,18 @@ pub mod review_runner;
 pub mod server;
 pub mod session;
 pub mod session_config_store;
+pub mod stdio_loop;
 pub mod stream_bridge;
 pub mod terminal;
-pub mod stdio_loop;
 pub mod tools;
 
 pub use agent::{LoomAcpAgent, ModelOption, ModelProvider};
 pub use content::{content_blocks_to_message, ContentBlockLike, ContentError};
 pub use session::{SessionConfig, SessionEntry, SessionId, SessionStore};
+pub use stdio_loop::{run_stdio_loop, StdioLoopResult};
 pub use stream_bridge::{
     loom_event_to_updates, stream_update_to_session_notification, StreamUpdate,
 };
-pub use stdio_loop::{run_stdio_loop, StdioLoopResult};
 
 static LOG_CONFIG: OnceLock<logging::LogConfig> = OnceLock::new();
 

@@ -3,32 +3,31 @@
 //! [`LoomAcpAgent`] implements `agent_client_protocol::Agent` and maps ACP requests
 //! to Loom sessions and execution. See [`crate::protocol`] for protocol and behavior details.
 
-use crate::client_capabilities::ClientCapabilitiesInfo;
 use crate::agent_registry::AgentRegistry;
+use crate::client_capabilities::ClientCapabilitiesInfo;
 use crate::content::content_blocks_to_user_content;
 use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::session_config_store::SessionConfigStore;
 use crate::stream_bridge::SessionNotifier;
 use crate::tools::create_acp_tools;
-use tool_basic::bash::LocalCommandExecutor;
+use agent::state::ReActState;
 use agent_client_protocol::schema::v1::{
     AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
     ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
     ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
-    NewSessionResponse, PromptRequest, PromptResponse, SessionConfigOptionValue,
-    SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
-    SetSessionModeRequest, SetSessionModeResponse, StopReason, SessionId, SessionNotification,
-    Usage,
+    NewSessionResponse, PromptRequest, PromptResponse, SessionConfigOptionValue, SessionId,
+    SessionNotification, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
+    SetSessionModeRequest, SetSessionModeResponse, StopReason, Usage,
 };
 use checkpoint::{Checkpointer, JsonSerializer, RunnableConfig};
 use checkpoint_sqlite_store::SqliteSaver;
-use agent::state::ReActState;
+use tool_basic::bash::LocalCommandExecutor;
 
+use agent::run::TypedAnyStreamEvent;
+use agent::run::{build_react_config, run_agent_from_config, RunCmd, RunError, RunParams};
+use agent::run::{RunCompletion, RunOptions};
 use chrono::DateTime;
 use config::load_full_config;
-use agent::run::{build_react_config, run_agent_from_config, RunCmd, RunParams, RunError};
-use agent::run::{RunCompletion, RunOptions};
-use agent::run::TypedAnyStreamEvent;
 use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -132,7 +131,9 @@ impl LoomAcpAgent {
         })
     }
 
-    pub fn with_session_update_tx(tx: mpsc::Sender<SessionNotification>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn with_session_update_tx(
+        tx: mpsc::Sender<SessionNotification>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let db_path = checkpoint_sqlite_store::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
             .map_err(|e| format!("session config store init failed: {e}"))?;
@@ -360,7 +361,10 @@ impl LoomAcpAgent {
         );
         // Build base response using the standard builder
         let base_response = InitializeResponse::new(args.protocol_version).agent_info(
-            agent_client_protocol::schema::v1::Implementation::new("loom", env!("CARGO_PKG_VERSION")),
+            agent_client_protocol::schema::v1::Implementation::new(
+                "loom",
+                env!("CARGO_PKG_VERSION"),
+            ),
         );
 
         // Add loadSession capability by serializing, modifying, and deserializing
@@ -477,14 +481,14 @@ impl LoomAcpAgent {
             let cfg = loom_curator::CuratorConfig::default();
             let base_config = agent::ReactBuildConfig::from_env();
             let _ = cwd_for_curator; // reserved for future path resolution
-            // Priority #17 (Hermes `agent/curator.py` #13): source the
-            // idle gate from session-state so the auto-spawned path
-            // honors the same idle threshold as a manual `curator run`.
-            // Round-2 left this as `default()` with no `idle_for_seconds`
-            // threading — the curator ran regardless of recent
-            // activity. We resolve the idle window from the
-            // `LOOM_CURATOR_IDLE_SECS` env var (default 300s) so
-            // operators can tune it without a recompile.
+                                     // Priority #17 (Hermes `agent/curator.py` #13): source the
+                                     // idle gate from session-state so the auto-spawned path
+                                     // honors the same idle threshold as a manual `curator run`.
+                                     // Round-2 left this as `default()` with no `idle_for_seconds`
+                                     // threading — the curator ran regardless of recent
+                                     // activity. We resolve the idle window from the
+                                     // `LOOM_CURATOR_IDLE_SECS` env var (default 300s) so
+                                     // operators can tune it without a recompile.
             let idle_for_seconds = std::env::var("LOOM_CURATOR_IDLE_SECS")
                 .ok()
                 .and_then(|s| s.parse::<u64>().ok())
@@ -558,8 +562,10 @@ impl LoomAcpAgent {
                 }
             }
             "effort" => {
-                let valid = matches!(value_str.as_str(),
-                    "auto" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh");
+                let valid = matches!(
+                    value_str.as_str(),
+                    "auto" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
+                );
                 if !valid {
                     return Err(agent_client_protocol::Error::new(
                         -32602,
@@ -633,7 +639,7 @@ impl LoomAcpAgent {
             tracing::warn!(session_id = %args.session_id, error = %e, "Failed to persist mode config");
         }
 
-Ok(SetSessionModeResponse::new())
+        Ok(SetSessionModeResponse::new())
     }
 
     pub async fn fork_session(
@@ -660,7 +666,8 @@ Ok(SetSessionModeResponse::new())
         });
 
         // Inherit MCP servers from source session
-        self.sessions.update_mcp_servers(&new_our_id, source_entry.mcp_servers.clone());
+        self.sessions
+            .update_mcp_servers(&new_our_id, source_entry.mcp_servers.clone());
 
         // Copy persistent config from source to target
         if let Err(e) = self.config_store.copy_config(&source_key, &new_our_id) {
@@ -725,7 +732,10 @@ Ok(SetSessionModeResponse::new())
             .config_options(config_options))
     }
 
-    pub async fn prompt(&self, args: PromptRequest) -> agent_client_protocol::Result<PromptResponse> {
+    pub async fn prompt(
+        &self,
+        args: PromptRequest,
+    ) -> agent_client_protocol::Result<PromptResponse> {
         tracing::debug!(session_id = %args.session_id, prompt_blocks = args.prompt.len(), "prompt called");
         let key = OurSessionId::new(args.session_id.to_string());
         let entry = self
@@ -761,18 +771,26 @@ Ok(SetSessionModeResponse::new())
                             .clone()
                             .unwrap_or_else(|| PathBuf::from(agent::run::DEFAULT_WORKING_FOLDER));
 
-                        let resolved_goal = self.resolve_model_with_tier_awareness(&entry.session_config).await;
-                        let goal_ctx_window = resolve_context_window_size(resolved_goal.model.as_deref()).await;
+                        let resolved_goal = self
+                            .resolve_model_with_tier_awareness(&entry.session_config)
+                            .await;
+                        let goal_ctx_window =
+                            resolve_context_window_size(resolved_goal.model.as_deref()).await;
 
-                        let event_sender: Option<std::sync::Arc<dyn Fn(agent::run::TypedAnyStreamEvent) + Send + Sync>> =
-                            self.session_update_tx.clone().map(|sender| {
-                                let session_id = args.session_id.clone();
-                                std::sync::Arc::new(move |ev: agent::run::TypedAnyStreamEvent| {
-                                    let notifier = SessionNotifier::new(sender.clone(), session_id.clone())
+                        let event_sender: Option<
+                            std::sync::Arc<dyn Fn(agent::run::TypedAnyStreamEvent) + Send + Sync>,
+                        > = self.session_update_tx.clone().map(|sender| {
+                            let session_id = args.session_id.clone();
+                            std::sync::Arc::new(move |ev: agent::run::TypedAnyStreamEvent| {
+                                let notifier =
+                                    SessionNotifier::new(sender.clone(), session_id.clone())
                                         .with_context_window_size(goal_ctx_window);
-                                    notifier.try_send_stream_event(&ev);
-                                }) as std::sync::Arc<dyn Fn(agent::run::TypedAnyStreamEvent) + Send + Sync>
-                            });
+                                notifier.try_send_stream_event(&ev);
+                            })
+                                as std::sync::Arc<
+                                    dyn Fn(agent::run::TypedAnyStreamEvent) + Send + Sync,
+                                >
+                        });
 
                         let cancel = tokio_util::sync::CancellationToken::new();
 
@@ -782,7 +800,8 @@ Ok(SetSessionModeResponse::new())
                             cancel,
                             event_sender,
                             Some(cancellation.clone()),
-                        ).await;
+                        )
+                        .await;
 
                         match result {
                             Ok(goal_result) => {
@@ -821,6 +840,8 @@ Ok(SetSessionModeResponse::new())
                             review_memory,
                             review_skills,
                             "review-skill".to_string(),
+                            self.session_update_tx.clone(),
+                            Some(args.session_id.clone()),
                         );
                         return Ok(PromptResponse::new(StopReason::EndTurn));
                     }
@@ -904,13 +925,21 @@ Ok(SetSessionModeResponse::new())
                 Some(Arc::new(LocalCommandExecutor) as Arc<dyn tool_basic::bash::CommandExecutor>)
             },
             extra_tools: {
-                let caps = self.client_capabilities.read().unwrap_or_else(|e| e.into_inner());
+                let caps = self
+                    .client_capabilities
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner());
                 let tools = create_acp_tools(&caps);
                 if tools.is_empty() {
                     None
                 } else {
                     tracing::info!(count = tools.len(), "Registering ACP tools");
-                    Some(Arc::new(tools.into_iter().map(|t| Arc::from(t) as Arc<dyn tool_core::Tool>).collect()))
+                    Some(Arc::new(
+                        tools
+                            .into_iter()
+                            .map(|t| Arc::from(t) as Arc<dyn tool_core::Tool>)
+                            .collect(),
+                    ))
                 }
             },
             force_compact: false,
@@ -925,14 +954,14 @@ Ok(SetSessionModeResponse::new())
             effort: resolved.effort,
         };
 
-let session_id = args.session_id.clone();
+        let session_id = args.session_id.clone();
         let tx = self.session_update_tx.clone();
         let usage_acc: Arc<Mutex<TurnUsage>> = Arc::new(Mutex::new(TurnUsage::default()));
         let on_event: Option<Box<dyn FnMut(TypedAnyStreamEvent) + Send>> = {
             let acc = usage_acc.clone();
             match tx {
                 Some(sender) => {
-                    let notifier = SessionNotifier::new(sender, session_id)
+                    let notifier = SessionNotifier::new(sender, session_id.clone())
                         .with_context_window_size(context_window_size)
                         .with_usage_acc(acc.clone());
                     let closure = move |ev: TypedAnyStreamEvent| {
@@ -961,8 +990,9 @@ let session_id = args.session_id.clone();
                 any_stream_event_sender: opts.any_stream_event_sender.clone(),
                 llm_override: None,
             },
-            on_event
-        ).await;
+            on_event,
+        )
+        .await;
         self.sessions.finish_prompt(&key, cancellation.generation());
 
         match result {
@@ -973,6 +1003,8 @@ let session_id = args.session_id.clone();
                     true,
                     true,
                     "background".to_string(),
+                    self.session_update_tx.clone(),
+                    Some(session_id),
                 );
                 let mut resp = PromptResponse::new(StopReason::EndTurn);
                 if let Some(usage) = build_acp_usage(&usage_acc) {
@@ -999,38 +1031,39 @@ let session_id = args.session_id.clone();
         let our_session_id = OurSessionId::new(session_id.to_string());
         let working_directory = Some(args.cwd.clone());
 
-        let entry =
-            if let Some(existing) = self.sessions.get(&our_session_id) {
-                tracing::info!(
-                    session_id = %session_id,
-                    thread_id = %existing.thread_id,
-                    "Reusing existing session entry from memory"
-                );
-                existing
-            } else {
-                let thread_id = session_id.to_string();
-                tracing::info!(
-                    session_id = %session_id,
-                    thread_id = %thread_id,
-                    "Creating new session entry for load"
-                );
-                self.sessions.create_with_id(
-                    our_session_id.clone(),
-                    working_directory,
-                    thread_id.clone(),
-                );
-                let default_mode = self.agent_registry.default_mode_id();
-                self.sessions.update_session_config(&our_session_id, |c| {
-                    if c.current_agent.is_empty() {
-                        c.current_agent = default_mode.to_string();
-                    }
-                });
-                self.sessions.get(&our_session_id).ok_or_else(|| {
-                    tracing::error!(session_id = %our_session_id, "Session not found after creation");
-                    agent_client_protocol::Error::internal_error()
-                        .data(format!("Session {} not found after creation", our_session_id))
-                })?
-            };
+        let entry = if let Some(existing) = self.sessions.get(&our_session_id) {
+            tracing::info!(
+                session_id = %session_id,
+                thread_id = %existing.thread_id,
+                "Reusing existing session entry from memory"
+            );
+            existing
+        } else {
+            let thread_id = session_id.to_string();
+            tracing::info!(
+                session_id = %session_id,
+                thread_id = %thread_id,
+                "Creating new session entry for load"
+            );
+            self.sessions.create_with_id(
+                our_session_id.clone(),
+                working_directory,
+                thread_id.clone(),
+            );
+            let default_mode = self.agent_registry.default_mode_id();
+            self.sessions.update_session_config(&our_session_id, |c| {
+                if c.current_agent.is_empty() {
+                    c.current_agent = default_mode.to_string();
+                }
+            });
+            self.sessions.get(&our_session_id).ok_or_else(|| {
+                tracing::error!(session_id = %our_session_id, "Session not found after creation");
+                agent_client_protocol::Error::internal_error().data(format!(
+                    "Session {} not found after creation",
+                    our_session_id
+                ))
+            })?
+        };
 
         let db_path = checkpoint_sqlite_store::default_memory_db_path();
         tracing::debug!(
@@ -1063,10 +1096,26 @@ let session_id = args.session_id.clone();
         match checkpointer.get_tuple(&config).await {
             Ok(Some((checkpoint, _metadata))) => {
                 let state: ReActState = checkpoint.channel_values;
-                let user_count = state.messages.iter().filter(|m| matches!(m, loom_llm::message::Message::User(_))).count();
-                let assistant_count = state.messages.iter().filter(|m| matches!(m, loom_llm::message::Message::Assistant(_))).count();
-                let tool_count = state.messages.iter().filter(|m| matches!(m, loom_llm::message::Message::Tool { .. })).count();
-                let system_count = state.messages.iter().filter(|m| matches!(m, loom_llm::message::Message::System(_))).count();
+                let user_count = state
+                    .messages
+                    .iter()
+                    .filter(|m| matches!(m, loom_llm::message::Message::User(_)))
+                    .count();
+                let assistant_count = state
+                    .messages
+                    .iter()
+                    .filter(|m| matches!(m, loom_llm::message::Message::Assistant(_)))
+                    .count();
+                let tool_count = state
+                    .messages
+                    .iter()
+                    .filter(|m| matches!(m, loom_llm::message::Message::Tool { .. }))
+                    .count();
+                let system_count = state
+                    .messages
+                    .iter()
+                    .filter(|m| matches!(m, loom_llm::message::Message::System(_)))
+                    .count();
 
                 tracing::info!(
                     session_id = %session_id,
@@ -1161,10 +1210,9 @@ let session_id = args.session_id.clone();
             self.sessions
                 .update_session_config(&our_session_id, |c| c.effort = None);
         } else {
-            self.sessions
-                .update_session_config(&our_session_id, |c| {
-                    c.effort = Some(current_effort.clone())
-                });
+            self.sessions.update_session_config(&our_session_id, |c| {
+                c.effort = Some(current_effort.clone())
+            });
         }
 
         let model_options = self.get_available_models().await;
@@ -1495,7 +1543,12 @@ where
             total_tokens,
             cached_tokens,
             ..
-        } => Some((*prompt_tokens, *completion_tokens, *total_tokens, *cached_tokens)),
+        } => Some((
+            *prompt_tokens,
+            *completion_tokens,
+            *total_tokens,
+            *cached_tokens,
+        )),
         _ => None,
     }
 }
@@ -1595,8 +1648,7 @@ fn build_session_config_options(
     let effort_options: Vec<_> = all_efforts
         .iter()
         .filter(|(v, _, _)| {
-            *v == "auto"
-                || model_reasoning_efforts.is_none_or(|r| r.iter().any(|e| e == v))
+            *v == "auto" || model_reasoning_efforts.is_none_or(|r| r.iter().any(|e| e == v))
         })
         .map(|(v, n, d)| serde_json::json!({"value": v, "name": n, "description": d}))
         .collect();
@@ -1756,7 +1808,8 @@ mod tests {
         ];
 
         // Bare MODEL= id normalizes to the unique provider/model match
-        let result = build_session_config_options("ask", "gpt-4o", "auto", &modes, &model_options, None);
+        let result =
+            build_session_config_options("ask", "gpt-4o", "auto", &modes, &model_options, None);
         assert!(result.is_ok(), "Expected Ok, got Err: {:?}", result.err());
 
         let config_options = result.unwrap();
@@ -1858,8 +1911,14 @@ mod tests {
             provider: "openai".to_string(),
         }];
 
-        let result =
-            build_set_session_config_option_response("ask", "gpt-4o", "auto", &modes, &model_options, None);
+        let result = build_set_session_config_option_response(
+            "ask",
+            "gpt-4o",
+            "auto",
+            &modes,
+            &model_options,
+            None,
+        );
         assert!(result.is_ok());
 
         let response = result.unwrap();
@@ -1932,7 +1991,8 @@ mod tests {
             },
         ];
 
-        let result = build_session_config_options("ask", "default", "auto", &modes, &model_options, None);
+        let result =
+            build_session_config_options("ask", "default", "auto", &modes, &model_options, None);
         assert!(result.is_ok());
 
         let config_options = result.unwrap();
@@ -1975,8 +2035,8 @@ mod tests {
 
     #[test]
     fn test_capture_turn_usage_accumulates() {
-        use ReActState;
         use stream_event::StreamEvent;
+        use ReActState;
 
         let acc = Arc::new(Mutex::new(TurnUsage::default()));
 
@@ -2009,8 +2069,8 @@ mod tests {
 
     #[test]
     fn test_capture_turn_usage_ignores_non_usage() {
-        use ReActState;
         use stream_event::StreamEvent;
+        use ReActState;
 
         let acc = Arc::new(Mutex::new(TurnUsage::default()));
 

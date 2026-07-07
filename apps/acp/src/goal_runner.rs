@@ -12,8 +12,8 @@ use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
 
-use tool_core::active_operation::RunCancellation;
 use agent::goal_runner::GoalOutcome;
+use tool_core::active_operation::RunCancellation;
 
 /// Result of a goal run.
 #[derive(Debug)]

@@ -43,7 +43,8 @@ fn find_usage_update(notifs: &[common::jsonrpc::SessionNotification]) -> Option<
         .iter()
         .rev()
         .find(|n| {
-            n.params.get("update")
+            n.params
+                .get("update")
                 .and_then(|u| u.get("sessionUpdate"))
                 .and_then(Value::as_str)
                 == Some("usage_update")
@@ -99,8 +100,8 @@ async fn e2e_usage_update_carries_token_usage_meta() {
 
         // Drain notifications and find the usage_update.
         let notifs = h.drain_notifications().await;
-        let usage_update = find_usage_update(&notifs)
-            .expect("expected at least one usage_update notification");
+        let usage_update =
+            find_usage_update(&notifs).expect("expected at least one usage_update notification");
 
         // Standard ACP fields
         assert_eq!(usage_update["sessionUpdate"], "usage_update");
@@ -153,11 +154,8 @@ async fn e2e_usage_update_omits_meta_when_cached_tokens_absent() {
     // SSE without cached_tokens — cached_tokens field should still be present in _meta
     // but with value 0 (Loom normalizes missing cached tokens to 0).
     let sse = MockLlmServer::sse_text_chunks_with_usage(
-        "ok",
-        /* prompt_tokens */ 50,
-        /* completion_tokens */ 10,
-        /* total_tokens */ 60,
-        /* cached_tokens */ None,
+        "ok", /* prompt_tokens */ 50, /* completion_tokens */ 10,
+        /* total_tokens */ 60, /* cached_tokens */ None,
     );
     llm.expect_chat_completion_sse(&sse, 1, None).await;
 
@@ -185,8 +183,7 @@ async fn e2e_usage_update_omits_meta_when_cached_tokens_absent() {
             .await;
 
         let notifs = h.drain_notifications().await;
-        let usage_update = find_usage_update(&notifs)
-            .expect("expected usage_update notification");
+        let usage_update = find_usage_update(&notifs).expect("expected usage_update notification");
         let token_usage = usage_update["_meta"]["token_usage"]
             .as_object()
             .expect("_meta.token_usage must be present");
@@ -244,8 +241,8 @@ async fn e2e_usage_update_token_usage_grows_across_multiple_prompts() {
         }
 
         let notifs = h.drain_notifications().await;
-        let usage_update = find_usage_update(&notifs)
-            .expect("expected usage_update after final prompt");
+        let usage_update =
+            find_usage_update(&notifs).expect("expected usage_update after final prompt");
         let token_usage = usage_update["_meta"]["token_usage"]
             .as_object()
             .expect("_meta.token_usage present");

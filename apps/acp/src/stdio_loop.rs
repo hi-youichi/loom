@@ -26,25 +26,38 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use agent_client_protocol::schema::v1::{
-    AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
-    ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
-    ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
-    NewSessionResponse, PromptRequest, PromptResponse, SessionNotification,
-    SetSessionConfigOptionRequest, SetSessionConfigOptionResponse, SetSessionModeRequest,
+    AuthenticateRequest,
+    AuthenticateResponse,
+    CancelNotification,
+    ForkSessionRequest,
+    ForkSessionResponse,
+    InitializeRequest,
+    InitializeResponse,
+    ListSessionsRequest,
+    ListSessionsResponse,
+    LoadSessionRequest,
+    LoadSessionResponse,
+    NewSessionRequest,
+    NewSessionResponse,
+    PromptRequest,
+    PromptResponse,
+    SessionNotification,
+    SetSessionConfigOptionRequest,
+    SetSessionConfigOptionResponse,
+    SetSessionModeRequest,
     SetSessionModeResponse,
     // SetSessionModelRequest/Response: removed in agent-client-protocol-schema 0.14.0.
     // Model selection is now routed via SetSessionConfigOptionRequest (configId="model").
 };
 use agent_client_protocol::{
-    Agent, Client, ConnectionTo, Lines, Responder, on_receive_notification,
-    on_receive_request,
+    on_receive_notification, on_receive_request, Agent, Client, ConnectionTo, Lines, Responder,
 };
 use futures::channel::mpsc;
 use futures::sink::unfold;
 use tokio::sync::mpsc as tokio_mpsc;
 
-use crate::LoomAcpAgent;
 use crate::logging;
+use crate::LoomAcpAgent;
 
 // ---------------------------------------------------------------------------
 // Error helpers
@@ -61,8 +74,7 @@ fn is_connection_closed_error_str(s: &str) -> bool {
 fn is_connection_closed_error(e: &agent_client_protocol::Error) -> bool {
     let msg = &e.message;
     is_connection_closed_error_str(msg)
-        || e
-            .data
+        || e.data
             .as_ref()
             .is_some_and(|d| d.as_str().is_some_and(is_connection_closed_error_str))
 }
@@ -93,8 +105,7 @@ pub struct StdioLoopResult {
 ///
 /// Returns `Err` on I/O or protocol errors that are not related to normal
 /// connection closure.
-pub async fn run_stdio_loop() -> Result<StdioLoopResult, Box<dyn std::error::Error + Send + Sync>>
-{
+pub async fn run_stdio_loop() -> Result<StdioLoopResult, Box<dyn std::error::Error + Send + Sync>> {
     logging::init_logging(None);
     tracing::info!("run_stdio_loop starting");
 

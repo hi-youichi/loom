@@ -4,25 +4,55 @@ mod tests {
 
     fn echo_cmd(msg: &str) -> (String, Vec<String>) {
         if cfg!(windows) {
-            ("powershell".to_string(), vec!["-NoProfile".to_string(), "-Command".to_string(), format!("echo {}", msg)])
+            (
+                "powershell".to_string(),
+                vec![
+                    "-NoProfile".to_string(),
+                    "-Command".to_string(),
+                    format!("echo {}", msg),
+                ],
+            )
         } else {
-            ("/bin/sh".to_string(), vec!["-c".to_string(), format!("echo {}", msg)])
+            (
+                "/bin/sh".to_string(),
+                vec!["-c".to_string(), format!("echo {}", msg)],
+            )
         }
     }
 
     fn long_running_cmd() -> (String, Vec<String>) {
         if cfg!(windows) {
-            ("powershell".to_string(), vec!["-NoProfile".to_string(), "-Command".to_string(), "Start-Sleep -Seconds 60".to_string()])
+            (
+                "powershell".to_string(),
+                vec![
+                    "-NoProfile".to_string(),
+                    "-Command".to_string(),
+                    "Start-Sleep -Seconds 60".to_string(),
+                ],
+            )
         } else {
-            ("/bin/sh".to_string(), vec!["-c".to_string(), "sleep 60".to_string()])
+            (
+                "/bin/sh".to_string(),
+                vec!["-c".to_string(), "sleep 60".to_string()],
+            )
         }
     }
 
     fn env_echo_cmd() -> (String, Vec<String>) {
         if cfg!(windows) {
-            ("powershell".to_string(), vec!["-NoProfile".to_string(), "-Command".to_string(), "Write-Output $env:MY_VAR".to_string()])
+            (
+                "powershell".to_string(),
+                vec![
+                    "-NoProfile".to_string(),
+                    "-Command".to_string(),
+                    "Write-Output $env:MY_VAR".to_string(),
+                ],
+            )
         } else {
-            ("/bin/sh".to_string(), vec!["-c".to_string(), "echo $MY_VAR".to_string()])
+            (
+                "/bin/sh".to_string(),
+                vec!["-c".to_string(), "echo $MY_VAR".to_string()],
+            )
         }
     }
 
@@ -38,9 +68,8 @@ mod tests {
 
         assert!(term_id.starts_with("term-"));
 
-        let (_output, _truncated, status) = tokio::time::timeout(
-            std::time::Duration::from_secs(3),
-            async {
+        let (_output, _truncated, status) =
+            tokio::time::timeout(std::time::Duration::from_secs(3), async {
                 loop {
                     if let Some((output, truncated, status)) = manager.get_output(&term_id).await {
                         if output.contains("hello") {
@@ -49,10 +78,9 @@ mod tests {
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 }
-            },
-        )
-        .await
-        .expect("timed out waiting for output");
+            })
+            .await
+            .expect("timed out waiting for output");
 
         if let Some(TerminalStatus::Completed { exit_code, .. }) = status {
             assert_eq!(exit_code, Some(0));
@@ -75,17 +103,14 @@ mod tests {
 
         manager.kill(&term_id).await.unwrap();
 
-        let _status = tokio::time::timeout(
-            std::time::Duration::from_secs(3),
-            async {
-                loop {
-                    if let Some(TerminalStatus::Killed) = manager.get_status(&term_id).await {
-                        return TerminalStatus::Killed;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let _status = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            loop {
+                if let Some(TerminalStatus::Killed) = manager.get_status(&term_id).await {
+                    return TerminalStatus::Killed;
                 }
-            },
-        )
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        })
         .await
         .expect("timed out waiting for kill");
     }
@@ -169,19 +194,16 @@ mod tests {
             .await
             .unwrap();
 
-        let (_output, _, _) = tokio::time::timeout(
-            std::time::Duration::from_secs(3),
-            async {
-                loop {
-                    if let Some((output, truncated, status)) = manager.get_output(&term_id).await {
-                        if output.contains("test_value") {
-                            return (output, truncated, status);
-                        }
+        let (_output, _, _) = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            loop {
+                if let Some((output, truncated, status)) = manager.get_output(&term_id).await {
+                    if output.contains("test_value") {
+                        return (output, truncated, status);
                     }
-                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 }
-            },
-        )
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        })
         .await
         .expect("timed out waiting for output");
     }
@@ -204,21 +226,18 @@ mod tests {
 
         assert_ne!(term1, term2);
 
-        let (_output1, _output2) = tokio::time::timeout(
-            std::time::Duration::from_secs(3),
-            async {
-                loop {
-                    let r1 = manager.get_output(&term1).await;
-                    let r2 = manager.get_output(&term2).await;
-                    if let (Some((o1, _, _)), Some((o2, _, _))) = (r1, r2) {
-                        if o1.contains("one") && o2.contains("two") {
-                            return (o1, o2);
-                        }
+        let (_output1, _output2) = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            loop {
+                let r1 = manager.get_output(&term1).await;
+                let r2 = manager.get_output(&term2).await;
+                if let (Some((o1, _, _)), Some((o2, _, _))) = (r1, r2) {
+                    if o1.contains("one") && o2.contains("two") {
+                        return (o1, o2);
                     }
-                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 }
-            },
-        )
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        })
         .await
         .expect("timed out waiting for output");
     }
@@ -233,19 +252,16 @@ mod tests {
             .await
             .unwrap();
 
-        let (_, _truncated, _) = tokio::time::timeout(
-            std::time::Duration::from_secs(3),
-            async {
-                loop {
-                    if let Some((output, truncated, status)) = manager.get_output(&term_id).await {
-                        if truncated {
-                            return (output, truncated, status);
-                        }
+        let (_, _truncated, _) = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            loop {
+                if let Some((output, truncated, status)) = manager.get_output(&term_id).await {
+                    if truncated {
+                        return (output, truncated, status);
                     }
-                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 }
-            },
-        )
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        })
         .await
         .expect("timed out waiting for output");
     }

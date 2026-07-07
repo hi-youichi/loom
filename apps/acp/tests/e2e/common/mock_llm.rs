@@ -104,21 +104,31 @@ impl MockLlmServer {
             "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": null}]
         })).ok();
         out.push('\n');
-        writeln!(out, "data: {}", serde_json::json!({
-            "id": "chatcmpl-mock",
-            "object": "chat.completion.chunk",
-            "created": 1_700_000_000_u64,
-            "model": "mock-model",
-            "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": null}]
-        })).ok();
+        writeln!(
+            out,
+            "data: {}",
+            serde_json::json!({
+                "id": "chatcmpl-mock",
+                "object": "chat.completion.chunk",
+                "created": 1_700_000_000_u64,
+                "model": "mock-model",
+                "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": null}]
+            })
+        )
+        .ok();
         out.push('\n');
-        writeln!(out, "data: {}", serde_json::json!({
-            "id": "chatcmpl-mock",
-            "object": "chat.completion.chunk",
-            "created": 1_700_000_000_u64,
-            "model": "mock-model",
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
-        })).ok();
+        writeln!(
+            out,
+            "data: {}",
+            serde_json::json!({
+                "id": "chatcmpl-mock",
+                "object": "chat.completion.chunk",
+                "created": 1_700_000_000_u64,
+                "model": "mock-model",
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+            })
+        )
+        .ok();
         out.push('\n');
         writeln!(out, "data: [DONE]").ok();
         out
@@ -144,13 +154,18 @@ impl MockLlmServer {
             "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": null}]
         })).ok();
         out.push('\n');
-        writeln!(out, "data: {}", serde_json::json!({
-            "id": "chatcmpl-mock",
-            "object": "chat.completion.chunk",
-            "created": 1_700_000_000_u64,
-            "model": "mock-model",
-            "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": null}]
-        })).ok();
+        writeln!(
+            out,
+            "data: {}",
+            serde_json::json!({
+                "id": "chatcmpl-mock",
+                "object": "chat.completion.chunk",
+                "created": 1_700_000_000_u64,
+                "model": "mock-model",
+                "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": null}]
+            })
+        )
+        .ok();
         out.push('\n');
         let mut usage_obj = serde_json::json!({
             "prompt_tokens": prompt_tokens,
@@ -162,14 +177,19 @@ impl MockLlmServer {
             details.insert("cached_tokens".to_string(), serde_json::json!(c));
             usage_obj["prompt_tokens_details"] = serde_json::Value::Object(details);
         }
-        writeln!(out, "data: {}", serde_json::json!({
-            "id": "chatcmpl-mock",
-            "object": "chat.completion.chunk",
-            "created": 1_700_000_000_u64,
-            "model": "mock-model",
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-            "usage": usage_obj,
-        })).ok();
+        writeln!(
+            out,
+            "data: {}",
+            serde_json::json!({
+                "id": "chatcmpl-mock",
+                "object": "chat.completion.chunk",
+                "created": 1_700_000_000_u64,
+                "model": "mock-model",
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                "usage": usage_obj,
+            })
+        )
+        .ok();
         out.push('\n');
         writeln!(out, "data: [DONE]").ok();
         out
@@ -190,13 +210,18 @@ impl MockLlmServer {
             }, "finish_reason": null}]
         })).ok();
         out.push('\n');
-        writeln!(out, "data: {}", serde_json::json!({
-            "id": "chatcmpl-mock",
-            "object": "chat.completion.chunk",
-            "created": 1_700_000_000_u64,
-            "model": "mock-model",
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]
-        })).ok();
+        writeln!(
+            out,
+            "data: {}",
+            serde_json::json!({
+                "id": "chatcmpl-mock",
+                "object": "chat.completion.chunk",
+                "created": 1_700_000_000_u64,
+                "model": "mock-model",
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]
+            })
+        )
+        .ok();
         out.push('\n');
         writeln!(out, "data: [DONE]").ok();
         out

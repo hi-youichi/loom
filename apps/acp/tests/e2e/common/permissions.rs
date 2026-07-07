@@ -71,16 +71,16 @@ impl ReverseRpcResponder {
     }
 
     pub fn terminal_output(&self, terminal_id: &str) -> Option<String> {
-        self.terminal_outputs.lock().unwrap().get(terminal_id).cloned()
+        self.terminal_outputs
+            .lock()
+            .unwrap()
+            .get(terminal_id)
+            .cloned()
     }
 
     /// Build the JSON-RPC `result` value to send back to the agent for a
     /// permission request. Records the decision for later assertions.
-    pub fn answer_permission(
-        &self,
-        tool_call_id: &str,
-        tool_name: &str,
-    ) -> serde_json::Value {
+    pub fn answer_permission(&self, tool_call_id: &str, tool_name: &str) -> serde_json::Value {
         let policy = self.current_permission_policy();
         self.permission_decisions
             .lock()

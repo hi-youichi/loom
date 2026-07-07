@@ -1,15 +1,12 @@
-use agent_client_protocol::{Client, ConnectionTo};
 use agent_client_protocol::schema::v1::{
-    CreateTerminalRequest, KillTerminalRequest, ReadTextFileRequest,
-    ReleaseTerminalRequest, SessionId, TerminalId, TerminalOutputRequest,
-    TerminalExitStatus, EnvVariable, WaitForTerminalExitRequest,
-    WriteTextFileRequest,
+    CreateTerminalRequest, EnvVariable, KillTerminalRequest, ReadTextFileRequest,
+    ReleaseTerminalRequest, SessionId, TerminalExitStatus, TerminalId, TerminalOutputRequest,
+    WaitForTerminalExitRequest, WriteTextFileRequest,
 };
+use agent_client_protocol::{Client, ConnectionTo};
 use tracing::{debug, info, instrument};
 
 use crate::tools::{TerminalExitResult, TerminalOutput};
-
-
 
 pub async fn read_text_file(
     conn: &ConnectionTo<Client>,
@@ -51,8 +48,7 @@ pub async fn write_text_file(
 
     debug!(?request, "Sending fs/write_text_file request");
 
-    conn
-        .send_request(request)
+    conn.send_request(request)
         .block_task()
         .await
         .map_err(|e| e.to_string())?;
@@ -121,10 +117,7 @@ pub async fn terminal_output(
 ) -> Result<TerminalOutput, String> {
     info!(terminal_id = %terminal_id, "sending terminal/output request");
 
-    let request = TerminalOutputRequest::new(
-        session_id.clone(),
-        TerminalId::new(terminal_id),
-    );
+    let request = TerminalOutputRequest::new(session_id.clone(), TerminalId::new(terminal_id));
 
     let response = conn
         .send_request(request)
@@ -161,10 +154,7 @@ pub async fn terminal_wait_for_exit(
 ) -> Result<TerminalExitResult, String> {
     info!(terminal_id = %terminal_id, "sending terminal/wait_for_exit request");
 
-    let request = WaitForTerminalExitRequest::new(
-        session_id.clone(),
-        TerminalId::new(terminal_id),
-    );
+    let request = WaitForTerminalExitRequest::new(session_id.clone(), TerminalId::new(terminal_id));
 
     let response = conn
         .send_request(request)
@@ -182,10 +172,7 @@ pub async fn terminal_wait_for_exit(
         "terminal/wait_for_exit completed"
     );
 
-    Ok(TerminalExitResult {
-        exit_code,
-        signal,
-    })
+    Ok(TerminalExitResult { exit_code, signal })
 }
 
 pub async fn terminal_kill(
@@ -193,15 +180,11 @@ pub async fn terminal_kill(
     session_id: &SessionId,
     terminal_id: &str,
 ) -> Result<(), String> {
-    let request = KillTerminalRequest::new(
-        session_id.clone(),
-        TerminalId::new(terminal_id),
-    );
+    let request = KillTerminalRequest::new(session_id.clone(), TerminalId::new(terminal_id));
 
     debug!(?request, "Sending terminal/kill request");
 
-    conn
-        .send_request(request)
+    conn.send_request(request)
         .block_task()
         .await
         .map_err(|e| e.to_string())?;
@@ -218,13 +201,9 @@ pub async fn terminal_release(
 ) -> Result<(), String> {
     info!(terminal_id = %terminal_id, "sending terminal/release request");
 
-    let request = ReleaseTerminalRequest::new(
-        session_id.clone(),
-        TerminalId::new(terminal_id),
-    );
+    let request = ReleaseTerminalRequest::new(session_id.clone(), TerminalId::new(terminal_id));
 
-    conn
-        .send_request(request)
+    conn.send_request(request)
         .block_task()
         .await
         .map_err(|e| e.to_string())?;

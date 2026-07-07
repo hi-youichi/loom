@@ -219,9 +219,7 @@ fn handle_stdio_result(
         }
         Err(e) => {
             eprintln!("loom acp fatal error: {}", e);
-            eprintln!(
-                "Hint: check logs at ~/.loom/acp/loom-acp.log or run with --log-level debug"
-            );
+            eprintln!("Hint: check logs at ~/.loom/acp/loom-acp.log or run with --log-level debug");
             Err(e)
         }
     }
@@ -362,10 +360,7 @@ fn is_pid_alive(pid: u32) -> bool {
             dwProcessId: u32,
         ) -> *mut core::ffi::c_void;
         fn CloseHandle(h: *mut core::ffi::c_void) -> i32;
-        fn GetExitCodeProcess(
-            h: *mut core::ffi::c_void,
-            lp_exit_code: *mut u32,
-        ) -> i32;
+        fn GetExitCodeProcess(h: *mut core::ffi::c_void, lp_exit_code: *mut u32) -> i32;
     }
     // Win32 STILL_ACTIVE (STATUS_PENDING) sentinel.
     const STILL_ACTIVE: u32 = 259;
