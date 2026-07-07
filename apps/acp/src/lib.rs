@@ -190,6 +190,7 @@ pub mod client_capabilities;
 pub mod client_methods;
 pub mod content;
 pub mod goal_runner;
+pub mod high_freq_usage;
 pub mod last_model;
 pub mod logging;
 pub mod mcp_convert;
@@ -205,6 +206,7 @@ pub mod tools;
 
 pub use agent::{LoomAcpAgent, ModelOption, ModelProvider};
 pub use content::{content_blocks_to_message, ContentBlockLike, ContentError};
+pub use high_freq_usage::{HighFreqUsageTracker, UsageUpdateInfo};
 pub use session::{SessionConfig, SessionEntry, SessionId, SessionStore};
 pub use stdio_loop::{run_stdio_loop, StdioLoopResult};
 pub use stream_bridge::{

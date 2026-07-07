@@ -32,6 +32,7 @@ use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
+use loom_llm::message::UserContent;
 
 #[async_trait::async_trait]
 pub trait ModelProvider: Send + Sync {
@@ -960,22 +961,33 @@ impl LoomAcpAgent {
         let on_event: Option<Box<dyn FnMut(TypedAnyStreamEvent) + Send>> = {
             let acc = usage_acc.clone();
             match tx {
-                Some(sender) => {
-                    let notifier = SessionNotifier::new(sender, session_id.clone())
+                Some(ref sender) => {
+                    let notifier = SessionNotifier::new(sender.clone(), session_id.clone())
                         .with_context_window_size(context_window_size)
                         .with_usage_acc(acc.clone());
+                    
+                    // Enable high-frequency tracking with estimated base usage
+                    // Base usage estimated from prompt message (rough approximation)
+                    let estimated_base_tokens = match &opts.message {
+                        UserContent::Text(text) => text.len() / 4, // Approx 4 chars per token
+                        UserContent::Multimodal(parts) => {
+                            parts.iter().map(|p| {
+                                match p {
+                                    loom_llm::message::ContentPart::Text { text } => text.len() / 4,
+                                    _ => 0, // Non-text parts estimated as 0 tokens
+                                }
+                            }).sum::<usize>()
+                        }
+                    };
+                    notifier.enable_high_freq_tracking(estimated_base_tokens as u64, context_window_size);
+                    
                     let closure = move |ev: TypedAnyStreamEvent| {
                         capture_turn_usage(&ev, &acc);
                         notifier.try_send_event(&ev);
                     };
                     Some(Box::new(closure) as Box<dyn FnMut(TypedAnyStreamEvent) + Send>)
                 }
-                None => {
-                    let closure = move |ev: TypedAnyStreamEvent| {
-                        capture_turn_usage(&ev, &acc);
-                    };
-                    Some(Box::new(closure) as Box<dyn FnMut(TypedAnyStreamEvent) + Send>)
-                }
+                None => None,
             }
         };
 
@@ -993,6 +1005,16 @@ impl LoomAcpAgent {
             on_event,
         )
         .await;
+        
+        // Disable high-frequency tracking after agent execution
+        if let Some(ref tx) = tx {
+            let notifier = SessionNotifier::new(tx.clone(), session_id.clone());
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                notifier.disable_high_freq_tracking().await;
+            });
+        }
+        
         self.sessions.finish_prompt(&key, cancellation.generation());
 
         match result {
