@@ -287,42 +287,81 @@ fn notify_completion(
     notifier.try_send_session_meta(meta);
 }
 
-/// Render the human-readable one-liner for the chat pane.
+/// Render the human-readable multi-line summary for the chat pane.
 ///
 /// Examples:
-///   "Background review saved 2 memory + 1 skill (1.2s)."
-///   "Background review: nothing to save."
-///   "Background review skipped (session too short)."
+///   Success with both kinds:
+///   ```
+///   Background review completed (1.2s):
+///     📝 2 memories saved:
+///        • Memory "debug-logging" created (345 chars)
+///        • Memory "api-patterns" updated (+120 chars)
+///     🔧 1 skill updated:
+///        • Skill "react-testing" updated (+567 chars)
+///   ```
+///   Skipped:
+///   ```
+///   Background review skipped (session too short).
+///   ```
+///   No actions:
+///   ```
+///   Background review: nothing to save (0.5s).
+///   ```
 fn build_summary_line(outcome: &ReviewOutcome) -> String {
     let secs = outcome.duration_ms as f64 / 1000.0;
+
+    // Skip scenario: keep it concise
     if outcome.skipped {
         let reason = outcome.skip_reason.as_deref().unwrap_or("skipped");
         return format!("Background review skipped ({}).", reason);
     }
-    let parts: Vec<String> = [
-        (outcome.memory_count > 0).then(|| {
-            if outcome.memory_count == 1 {
-                "1 memory".to_string()
-            } else {
-                format!("{} memories", outcome.memory_count)
-            }
-        }),
-        (outcome.skill_count > 0).then(|| {
-            if outcome.skill_count == 1 {
-                "1 skill".to_string()
-            } else {
-                format!("{} skills", outcome.skill_count)
-            }
-        }),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
-    if parts.is_empty() {
-        return format!("Background review: nothing to save ({:.1}s).", secs);
+
+    // Main header line
+    let mut lines = vec![format!("Background review completed ({:.1}s):", secs)];
+
+    // Group actions by type
+    let memory_actions: Vec<_> = outcome
+        .actions
+        .iter()
+        .filter(|a| a.kind.contains("memory") && a.succeeded)
+        .collect();
+    let skill_actions: Vec<_> = outcome
+        .actions
+        .iter()
+        .filter(|a| a.kind.contains("skill") && a.succeeded)
+        .collect();
+
+    // Memory operations details
+    if !memory_actions.is_empty() {
+        lines.push(format!("  📝 {} memories saved:", memory_actions.len()));
+        for action in &memory_actions {
+            let action_summary = format_action_summary(action);
+            lines.push(format!("     • {}", action_summary));
+        }
     }
-    let joined = parts.join(" + ");
-    format!("Background review saved {} ({:.1}s).", joined, secs)
+
+    // Skill operations details
+    if !skill_actions.is_empty() {
+        lines.push(format!("  🔧 {} skills updated:", skill_actions.len()));
+        for action in &skill_actions {
+            let action_summary = format_action_summary(action);
+            lines.push(format!("     • {}", action_summary));
+        }
+    }
+
+    // No actions scenario
+    if memory_actions.is_empty() && skill_actions.is_empty() {
+        lines.push("  • nothing to save".to_string());
+    }
+
+    lines.join("\n")
+}
+
+/// Format a single action's detailed summary.
+/// Uses the curator-provided summary which already contains
+/// create/update/delete info and character counts.
+fn format_action_summary(action: &loom_curator::ReviewActionSummary) -> String {
+    action.summary.clone()
 }
 
 /// Build the `_meta.review` payload for `SessionInfoUpdate`.
@@ -419,9 +458,22 @@ mod tests {
         let outcome = ReviewOutcome {
             summary: "memory(x) · skill(y)".into(),
             reply: "ok".into(),
-            actions: vec![],
+            actions: vec![
+                loom_curator::ReviewActionSummary {
+                    kind: "memory_create".to_string(),
+                    target: "debug-logging".to_string(),
+                    summary: "Memory 'debug-logging' created (345 chars)".to_string(),
+                    succeeded: true,
+                },
+                loom_curator::ReviewActionSummary {
+                    kind: "skill_update".to_string(),
+                    target: "react-testing".to_string(),
+                    summary: "Skill 'react-testing' updated (+567 chars)".to_string(),
+                    succeeded: true,
+                },
+            ],
             tool_violations: vec![],
-            memory_count: 2,
+            memory_count: 1,
             skill_count: 1,
             duration_ms: 1234,
             skipped: false,
@@ -429,9 +481,20 @@ mod tests {
             tokens: Default::default(),
         };
         let s = build_summary_line(&outcome);
-        assert!(s.contains("2 memories"), "got: {s}");
-        assert!(s.contains("1 skill"), "got: {s}");
-        assert!(s.contains("1.2s"), "got: {s}");
+        assert!(
+            s.contains("Background review completed (1.2s):"),
+            "header line: {s}"
+        );
+        assert!(s.contains("📝 1 memories saved:"), "memory section: {s}");
+        assert!(
+            s.contains("Memory 'debug-logging' created (345 chars)"),
+            "memory details: {s}"
+        );
+        assert!(s.contains("🔧 1 skills updated:"), "skill section: {s}");
+        assert!(
+            s.contains("Skill 'react-testing' updated (+567 chars)"),
+            "skill details: {s}"
+        );
     }
 
     #[test]
@@ -527,10 +590,23 @@ mod tests {
         let outcome = ReviewOutcome {
             summary: "".into(),
             reply: "ok".into(),
-            actions: vec![],
+            actions: vec![
+                loom_curator::ReviewActionSummary {
+                    kind: "memory_create".to_string(),
+                    target: "debug-logging".to_string(),
+                    summary: "Memory 'debug-logging' created (345 chars)".to_string(),
+                    succeeded: true,
+                },
+                loom_curator::ReviewActionSummary {
+                    kind: "skill_update".to_string(),
+                    target: "react-testing".to_string(),
+                    summary: "Skill 'react-testing' updated (+567 chars)".to_string(),
+                    succeeded: true,
+                },
+            ],
             tool_violations: vec![],
             memory_count: 1,
-            skill_count: 2,
+            skill_count: 1,
             duration_ms: 750,
             skipped: false,
             skip_reason: None,
@@ -547,8 +623,26 @@ mod tests {
                     agent_client_protocol::schema::v1::ContentBlock::Text(t) => t.text,
                     other => panic!("expected TextContent, got {other:?}"),
                 };
-                assert!(text.contains("1 memory"), "chunk text: {text}");
-                assert!(text.contains("2 skills"), "chunk text: {text}");
+                assert!(
+                    text.contains("Background review completed (0.8s):"),
+                    "header line: {text}"
+                );
+                assert!(
+                    text.contains("📝 1 memories saved:"),
+                    "memory section: {text}"
+                );
+                assert!(
+                    text.contains("Memory 'debug-logging' created (345 chars)"),
+                    "memory details: {text}"
+                );
+                assert!(
+                    text.contains("🔧 1 skills updated:"),
+                    "skill section: {text}"
+                );
+                assert!(
+                    text.contains("Skill 'react-testing' updated (+567 chars)"),
+                    "skill details: {text}"
+                );
                 assert!(
                     chunk.message_id.is_some(),
                     "message_id must be set so the client treats it as a discrete turn"
@@ -565,7 +659,7 @@ mod tests {
                 let v = m.get("review").expect("_meta.review");
                 assert_eq!(v["status"], "reviewed");
                 assert_eq!(v["memory_count"], 1);
-                assert_eq!(v["skill_count"], 2);
+                assert_eq!(v["skill_count"], 1);
                 assert_eq!(v["duration_ms"], 750);
             }
             other => panic!("expected SessionInfoUpdate, got {other:?}"),
