@@ -34,7 +34,7 @@ impl GitWorktreeTool {
             .as_deref()
             .unwrap_or_else(|| std::path::Path::new("."));
         // Always resolve to the actual git repo root so storage_path() can
-        // derive a sane `<repo_parent>/trees/<repo_name>/` layout.
+        // derive a sane `<repo_parent>/worktrees/<repo_name>/` layout.
         // Using `working_folder` directly yields `.` or a relative path whose
         // `.file_name()` is None, falling back to `default`.
         let repo_root = worktree::git_ops::resolve_repo_root(working_folder)

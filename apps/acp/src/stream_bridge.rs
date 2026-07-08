@@ -588,16 +588,19 @@ impl SessionNotifier {
         // 处理高频更新
         if let Some(size) = self.context_window_size {
             if let Some(usage_delta) = extract_usage_delta(event) {
-                let mut tracker = self.high_freq_tracker.lock().unwrap();
-                if let Some(tracker) = tracker.as_mut() {
-                    if let Some(update_info) = tracker.update_tokens(usage_delta) {
-                        // 发送高频更新
-                        self.send_usage_update(
-                            update_info.used,
-                            update_info.size,
-                            update_info.increment,
-                        ).await;
-                    }
+                // 在 await 之前释放锁
+                let update_info_opt = {
+                    let mut tracker = self.high_freq_tracker.lock().unwrap();
+                    tracker.as_mut().and_then(|t| t.update_tokens(usage_delta))
+                };
+
+                if let Some(update_info) = update_info_opt {
+                    // 发送高频更新
+                    self.send_usage_update(
+                        update_info.used,
+                        update_info.size,
+                        update_info.increment,
+                    ).await;
                 } else {
                     // 降级到原始逻辑
                     if let Some(used) = extract_usage_tokens(event) {
@@ -1031,13 +1034,12 @@ fn extract_usage_tokens(ev: &TypedAnyStreamEvent) -> Option<u64> {
 
 /// Extract token usage delta from a Loom stream event for high-frequency tracking.
 fn extract_usage_delta(ev: &TypedAnyStreamEvent) -> Option<u64> {
-    let delta = match ev {
+    match ev {
         TypedAnyStreamEvent::React(e) => extract_usage_delta_inner(e),
         TypedAnyStreamEvent::Dup(e) => extract_usage_delta_inner(e),
         TypedAnyStreamEvent::Tot(e) => extract_usage_delta_inner(e),
         TypedAnyStreamEvent::Got(e) => extract_usage_delta_inner(e),
-    };
-    delta
+    }
 }
 
 fn extract_usage_delta_inner<S>(ev: &StreamEvent<S>) -> Option<u64>

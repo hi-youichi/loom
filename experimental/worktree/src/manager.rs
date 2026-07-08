@@ -49,8 +49,8 @@ impl WorktreeManager {
 
     /// Get the default storage directory for worktrees.
     ///
-    /// Default: `<repo_parent>/trees/<repo_name>/` (outside the repo, with per-repo
-    /// isolation so multiple repos can share a `trees/` parent without slug collisions).
+    /// Default: `<repo_parent>/worktrees/<repo_name>/` (outside the repo, with per-repo
+    /// isolation so multiple repos can share a `worktrees/` parent without slug collisions).
     fn storage_path(&self) -> PathBuf {
         self.config.storage_dir.clone().unwrap_or_else(|| {
             let repo_name = self
@@ -59,7 +59,7 @@ impl WorktreeManager {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "default".to_string());
             let parent = self.repo_root.parent().unwrap_or(&self.repo_root);
-            parent.join("trees").join(repo_name)
+            parent.join("worktrees").join(repo_name)
         })
     }
 
@@ -509,12 +509,12 @@ mod tests {
         let config = WorktreeConfig::default();
         let manager = WorktreeManager::new(dir.path().to_path_buf(), config);
         let storage = manager.storage_path();
-        // Default: <repo_parent>/trees/<repo_name>/
+        // Default: <repo_parent>/worktrees/<repo_name>/
         let parent_dir = storage
             .parent()
             .and_then(|p| p.file_name())
             .map(|n| n.to_string_lossy().to_string());
-        assert_eq!(parent_dir.as_deref(), Some("trees"));
+        assert_eq!(parent_dir.as_deref(), Some("worktrees"));
         // repo_name = temp dir's basename
         assert_eq!(
             storage.file_name().map(|n| n.to_string_lossy().to_string()),

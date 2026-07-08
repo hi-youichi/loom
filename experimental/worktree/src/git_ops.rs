@@ -219,7 +219,7 @@ pub fn enable_sparse_checkout(worktree_path: &Path, paths: &[String]) -> Result<
 /// Add a relative `storage_path` entry to `.gitignore` if not already present.
 ///
 /// No-op when `storage_path` is outside `repo_root` (e.g. the default
-/// `<repo_parent>/trees/<repo_name>/` location), since git cannot see those
+/// `<repo_parent>/worktrees/<repo_name>/` location), since git cannot see those
 /// directories anyway and an entry would be confusing.
 pub fn ensure_gitignore_entry(repo_root: &Path, storage_path: &Path) -> Result<()> {
     let rel = match storage_path.strip_prefix(repo_root) {
