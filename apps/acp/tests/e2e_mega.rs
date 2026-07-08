@@ -38,15 +38,37 @@ async fn e2e_mega_full_protocol_flow() {
 
         // ── Step 1: initialize ─────────────────────────────────────────
         let init = h
-            .request("initialize", json!({"protocolVersion": 1}))
+            .request("initialize", json!({
+                "protocolVersion": 1,
+                "clientInfo": {"name": "mega-test", "version": "0.1.0"},
+                "capabilities": {
+                    "mcp": {"http": true, "stdio": false, "sse": false},
+                    "session": {"list": {}}
+                }
+            }))
             .await;
         let pv = init["protocolVersion"].as_u64().unwrap_or(0);
         assert!(pv >= 1, "protocolVersion should be ≥ 1, got {pv}");
-        assert!(
-            init["agentCapabilities"]
-                .get("promptCapabilities")
-                .is_some(),
-            "capabilities should include promptCapabilities"
+        let caps = init["agentCapabilities"].get("agentCapabilities").unwrap_or(&init["agentCapabilities"]);
+        assert_eq!(
+            caps.get("mcpCapabilities").and_then(|m| m.get("http")).and_then(Value::as_bool),
+            Some(true),
+            "mcpCapabilities.http must be true"
+        );
+        assert_eq!(
+            caps.get("promptCapabilities").and_then(|p| p.get("image")).and_then(Value::as_bool),
+            Some(true),
+            "promptCapabilities.image must be true"
+        );
+        assert_eq!(
+            caps.get("promptCapabilities").and_then(|p| p.get("audio")).and_then(Value::as_bool),
+            Some(true),
+            "promptCapabilities.audio must be true"
+        );
+        assert_eq!(
+            caps.get("promptCapabilities").and_then(|p| p.get("embeddedContext")).and_then(Value::as_bool),
+            Some(true),
+            "promptCapabilities.embeddedContext must be true"
         );
         eprintln!("Step 1: initialize ✓ (protocolVersion={pv})");
 
@@ -323,4 +345,4 @@ async fn e2e_mega_full_protocol_flow() {
     tokio::time::sleep(Duration::from_millis(20)).await;
 }
 
-// ── Step 9: session/list ──────────────────────────────────────
+

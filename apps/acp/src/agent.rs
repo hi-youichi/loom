@@ -19,6 +19,10 @@ use agent_client_protocol::schema::v1::{
     SessionNotification, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
     SetSessionModeRequest, SetSessionModeResponse, StopReason, Usage,
 };
+use agent_client_protocol::schema::v1::{
+    AgentCapabilities, McpCapabilities, PromptCapabilities, SessionCapabilities,
+    SessionListCapabilities, SessionResumeCapabilities,
+};
 use checkpoint::{Checkpointer, JsonSerializer, RunnableConfig};
 use checkpoint_sqlite_store::SqliteSaver;
 use tool_basic::bash::LocalCommandExecutor;
@@ -360,42 +364,42 @@ impl LoomAcpAgent {
             terminal = caps.supports_terminal(),
             fs_read = caps.can_read_text_file(),
             fs_write = caps.can_write_text_file(),
+            mcp_http = caps.supports_mcp_http(),
+            prompt_image = caps.supports_prompt_image(),
             "Client capabilities saved"
         );
-        // Build base response using the standard builder
-        let base_response = InitializeResponse::new(args.protocol_version).agent_info(
-            agent_client_protocol::schema::v1::Implementation::new(
+
+        // Build base response with proper schema types (Gap 1, Gap 2, Gap 3 fix).
+        // Uses builder API to avoid JSON roundtrip that drops unknown fields.
+        //
+        // v0.14.0 schema fields actually available:
+        //   McpCapabilities       { http, sse, acp(unstable) }    — NO stdio
+        //   PromptCapabilities    { image, audio, embedded_context } — NO text, NO resource_link
+        //   SessionCapabilities   { list, delete, resume, close }
+        //   AgentCapabilities     { load_session, mcp_capabilities, prompt_capabilities,
+        //                            session_capabilities, auth }
+        let mcp = McpCapabilities::new().http(true).sse(false);
+        let prompts = PromptCapabilities::new()
+            .image(true)
+            .audio(true)
+            .embedded_context(true);
+        let session = SessionCapabilities::new()
+            .list(SessionListCapabilities::new())
+            .resume(SessionResumeCapabilities::new());
+
+        let agent_caps = AgentCapabilities::new()
+            .load_session(true)
+            .mcp_capabilities(mcp)
+            .prompt_capabilities(prompts)
+            .session_capabilities(session);
+
+        let response = InitializeResponse::new(args.protocol_version)
+            .agent_info(agent_client_protocol::schema::v1::Implementation::new(
                 "loom",
                 env!("CARGO_PKG_VERSION"),
-            ),
-        );
+            ))
+            .agent_capabilities(agent_caps);
 
-        // Add loadSession capability by serializing, modifying, and deserializing
-        // This is necessary because agent_client_protocol types are non_exhaustive
-        let mut json = serde_json::to_value(&base_response)
-            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
-
-        // Add agentCapabilities with loadSession, sessionCapabilities.list, and promptCapabilities
-        if let Some(obj) = json.as_object_mut() {
-            obj.insert(
-                "agentCapabilities".to_string(),
-                serde_json::json!({
-                    "loadSession": true,
-                    "sessionCapabilities": {
-                        "list": {},
-                        "fork": {}
-                    },
-                    "promptCapabilities": {
-                        "embeddedContext": true,
-                        "image": true,
-                        "audio": true
-                    }
-                }),
-            );
-        }
-
-        let response: InitializeResponse = serde_json::from_value(json)
-            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
         tracing::info!("initialize completed");
         Ok(response)
     }
@@ -2106,5 +2110,92 @@ mod tests {
         capture_turn_usage(&ev, &acc);
 
         assert!(build_acp_usage(&acc).is_none());
+    }
+
+    // ── initialize capability unit tests ──────────────────────────────
+    //
+    // These tests exercise the `initialize` handler directly (no process
+    // spawn) and assert the returned `agentCapabilities` structure.
+    // The corresponding e2e smoke test in `tests/e2e_mega.rs` only verifies
+    // that the binary spawns and returns a valid initialize response.
+
+    fn assert_mcp_caps(resp: &InitializeResponse) {
+        let json = serde_json::to_value(&resp.agent_capabilities).expect("serialize");
+        let mcp = json
+            .get("mcpCapabilities")
+            .expect("agentCapabilities.mcpCapabilities must be present");
+        assert_eq!(
+            mcp.get("http").and_then(serde_json::Value::as_bool),
+            Some(true),
+            "mcpCapabilities.http must be true"
+        );
+        assert_eq!(
+            mcp.get("sse").and_then(serde_json::Value::as_bool),
+            Some(false),
+            "mcpCapabilities.sse must be false"
+        );
+    }
+
+    fn assert_prompt_caps(resp: &InitializeResponse) {
+        let json = serde_json::to_value(&resp.agent_capabilities).expect("serialize");
+        let prompts = json
+            .get("promptCapabilities")
+            .expect("agentCapabilities.promptCapabilities must be present");
+        assert_eq!(
+            prompts.get("image").and_then(serde_json::Value::as_bool),
+            Some(true),
+            "promptCapabilities.image must be true"
+        );
+        assert_eq!(
+            prompts.get("audio").and_then(serde_json::Value::as_bool),
+            Some(true),
+            "promptCapabilities.audio must be true"
+        );
+        assert_eq!(
+            prompts.get("embeddedContext").and_then(serde_json::Value::as_bool),
+            Some(true),
+            "promptCapabilities.embeddedContext must be true"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_initialize_returns_mcp_capabilities() {
+        let agent = LoomAcpAgent::new().expect("agent");
+        let req = InitializeRequest::new(1.into());
+        let resp = agent.initialize(req).await.expect("initialize");
+        assert!(resp.protocol_version >= 1.into());
+        assert_mcp_caps(&resp);
+    }
+
+    #[tokio::test]
+    async fn test_initialize_returns_prompt_capabilities() {
+        let agent = LoomAcpAgent::new().expect("agent");
+        let req = InitializeRequest::new(1.into());
+        let resp = agent.initialize(req).await.expect("initialize");
+        assert_prompt_caps(&resp);
+    }
+
+    #[tokio::test]
+    async fn test_initialize_accepts_client_mcp_capabilities() {
+        let agent = LoomAcpAgent::new().expect("agent");
+        let req = InitializeRequest::new(1.into())
+            .client_info(agent_client_protocol::schema::v1::Implementation::new(
+                "test-client".to_string(),
+                "0.1.0".to_string(),
+            ));
+        let resp = agent.initialize(req).await.expect("initialize");
+        assert_mcp_caps(&resp);
+    }
+
+    #[tokio::test]
+    async fn test_initialize_accepts_client_prompt_capabilities() {
+        let agent = LoomAcpAgent::new().expect("agent");
+        let req = InitializeRequest::new(1.into())
+            .client_info(agent_client_protocol::schema::v1::Implementation::new(
+                "test-client".to_string(),
+                "0.1.0".to_string(),
+            ));
+        let resp = agent.initialize(req).await.expect("initialize");
+        assert_prompt_caps(&resp);
     }
 }
