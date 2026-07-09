@@ -235,6 +235,7 @@ impl LlmClient for ChatOpenAICompat {
         })?;
 
         let msg = choice.message;
+        let finish_reason = choice.finish_reason;
         let content = msg.content.unwrap_or_default();
         let reasoning_content =
             msg.reasoning_content
@@ -270,6 +271,7 @@ impl LlmClient for ChatOpenAICompat {
             reasoning_content,
             tool_calls,
             usage,
+            finish_reason,
             ..Default::default()
         };
         let audit_response = Self::build_audit_response(&llm_response);
@@ -324,6 +326,7 @@ impl LlmClient for ChatOpenAICompat {
         let mut stream_usage: Option<LlmUsage> = None;
         let mut thinking_parser = self.parse_thinking_tags.then(ThinkingTagParser::new);
         let mut first_chunk_at: Option<std::time::Instant> = None;
+        let mut stream_finish_reason: Option<String> = None;
 
         'sse: loop {
             let bytes = match res.chunk().await {
@@ -372,6 +375,12 @@ impl LlmClient for ChatOpenAICompat {
 
                 for choice in choices {
                     let mut delta = choice.delta;
+
+                    if let Some(fr) = choice.finish_reason {
+                        if stream_finish_reason.is_none() {
+                            stream_finish_reason = Some(fr);
+                        }
+                    }
 
                     // Move fields out of delta to avoid cloning — delta is
                     // consumed by the for loop, so we own it.
@@ -529,6 +538,7 @@ impl LlmClient for ChatOpenAICompat {
             tool_calls,
             usage: stream_usage,
             first_chunk_at,
+            finish_reason: stream_finish_reason,
         };
         let audit_response = Self::build_audit_response(&response);
         self.record_success(&ctx, 200, audit_response);

@@ -88,6 +88,10 @@ pub curator_base_url: Option<String>,
     pub memory_prompt: Option<String>,
     pub env_context: Option<EnvContext>,
     pub reasoning_effort: Option<String>,
+
+    /// When true, the `llm` tool is registered, giving the agent direct
+    /// LLM invocation with provider/model discovery.
+    pub llm_tool_enabled: bool,
 }
 
 impl std::fmt::Debug for ReactBuildConfig {
@@ -164,6 +168,7 @@ impl Default for ReactBuildConfig {
             memory_prompt: None,
             env_context: None,
             reasoning_effort: None,
+            llm_tool_enabled: false,
         }
     }
 }
@@ -264,6 +269,10 @@ impl ReactBuildConfig {
             memory_prompt: None,
             env_context: None,
             reasoning_effort: None,
+            llm_tool_enabled: std::env::var("LOOM_LLM_TOOL_ENABLED")
+                .ok()
+                .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
+                .unwrap_or(false),
         }
     }
 

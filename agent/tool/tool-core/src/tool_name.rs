@@ -139,3 +139,11 @@
 
     /// todo_write — create and manage a structured task list.
     pub const TOOL_TODO_WRITE: &str = "todo_write";
+
+    // ============================================================================
+    // Experimental tools
+    // ============================================================================
+
+    /// llm — direct LLM invocation with multimodal inputs and provider/model
+    /// discovery (queries models.dev for pricing and capabilities).
+    pub const TOOL_LLM: &str = "llm";

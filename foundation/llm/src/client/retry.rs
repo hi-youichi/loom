@@ -159,6 +159,7 @@ mod tests {
             tool_calls: vec![],
             usage: None,
             first_chunk_at: None,
+            finish_reason: None,
         };
         assert!(!is_empty_response(&resp));
     }
@@ -175,6 +176,7 @@ mod tests {
             }],
             usage: None,
             first_chunk_at: None,
+            finish_reason: None,
         };
         assert!(!is_empty_response(&resp));
     }
@@ -187,6 +189,7 @@ mod tests {
             tool_calls: vec![],
             usage: None,
             first_chunk_at: None,
+            finish_reason: None,
         };
         assert!(is_empty_response(&resp));
     }

@@ -52,6 +52,10 @@ pub struct ChatOpenAICompat {
     pub(super) headers: Option<crate::traits::LlmHeaders>,
     pub(super) audit_log: Option<Arc<dyn LlmAuditLog>>,
     pub(super) reasoning_effort: Option<String>,
+    pub(super) max_tokens: Option<u32>,
+    pub(super) top_p: Option<f32>,
+    pub(super) response_format: Option<serde_json::Value>,
+    pub(super) seed: Option<u32>,
 }
 
 impl ChatOpenAICompat {
@@ -89,6 +93,10 @@ impl ChatOpenAICompat {
             headers: None,
             audit_log: None,
             reasoning_effort: None,
+            max_tokens: None,
+            top_p: None,
+            response_format: None,
+            seed: None,
         }
     }
 
@@ -111,6 +119,10 @@ impl ChatOpenAICompat {
             headers: None,
             audit_log: None,
             reasoning_effort: None,
+            max_tokens: None,
+            top_p: None,
+            response_format: None,
+            seed: None,
         }
     }
 
@@ -136,6 +148,26 @@ impl ChatOpenAICompat {
 
     pub fn with_reasoning_effort(mut self, effort: impl Into<String>) -> Self {
         self.reasoning_effort = Some(effort.into());
+        self
+    }
+
+    pub fn with_max_tokens(mut self, max_tokens: u32) -> Self {
+        self.max_tokens = Some(max_tokens);
+        self
+    }
+
+    pub fn with_top_p(mut self, top_p: f32) -> Self {
+        self.top_p = Some(top_p.clamp(0.0, 1.0));
+        self
+    }
+
+    pub fn with_response_format(mut self, format: serde_json::Value) -> Self {
+        self.response_format = Some(format);
+        self
+    }
+
+    pub fn with_seed(mut self, seed: u32) -> Self {
+        self.seed = Some(seed);
         self
     }
 
@@ -183,7 +215,7 @@ impl ChatOpenAICompat {
         messages: &[crate::message::Message],
         stream: bool,
     ) -> ChatCompletionRequest {
-        build_request_dto(
+        let mut req = build_request_dto(
             &self.model,
             messages,
             self.tools.as_deref(),
@@ -191,7 +223,12 @@ impl ChatOpenAICompat {
             self.tool_choice,
             self.reasoning_effort.as_deref(),
             stream,
-        )
+        );
+        req.max_tokens = self.max_tokens;
+        req.top_p = self.top_p;
+        req.response_format = self.response_format.clone();
+        req.seed = self.seed;
+        req
     }
 }
 
