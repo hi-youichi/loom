@@ -193,6 +193,10 @@ pub struct LlmResponse {
     /// `None` when streaming was disabled (sink is `None`), the LLM does not stream
     /// by character, or no chunks were emitted (e.g. cached / prebuilt responses).
     pub first_chunk_at: Option<std::time::Instant>,
+    /// Why the model stopped generating.
+    /// Common values: `"stop"` (natural end), `"length"` (truncated by max_tokens),
+    /// `"tool_calls"`, `"content_filter"`. `None` when the provider doesn't report it.
+    pub finish_reason: Option<String>,
 }
 
 impl LlmResponse {
@@ -204,6 +208,7 @@ impl LlmResponse {
             tool_calls: vec![],
             usage: None,
             first_chunk_at: None,
+            finish_reason: None,
         }
     }
 
@@ -525,6 +530,7 @@ mod tests {
             tool_calls: vec![crate::tool::ToolCall::new("test_tool", "{}")],
             usage: None,
             first_chunk_at: None,
+            finish_reason: None,
         };
         assert!(!response.is_empty());
     }

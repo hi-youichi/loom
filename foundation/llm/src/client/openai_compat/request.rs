@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use crate::message::{assistant_content_for_chat_api, AssistantToolCall, ContentPart, Message, UserContent};
 use crate::tool::ToolSpec;
 use crate::traits::ToolChoiceMode;
-
+use serde_json::json;
 // ---------------------------------------------------------------------------
 // Request DTOs
 // ---------------------------------------------------------------------------
@@ -63,6 +63,14 @@ pub(super) struct ChatCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<ToolSpecRequest>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<String>,
@@ -105,6 +113,8 @@ pub(super) struct ResponseMessage {
 #[derive(serde::Deserialize)]
 pub(super) struct ResponseChoice {
     pub message: ResponseMessage,
+    #[serde(default)]
+    pub finish_reason: Option<String>,
 }
 
 #[derive(serde::Deserialize, Clone)]
@@ -195,17 +205,51 @@ pub(super) fn messages_to_request(
                                         }
                                     })
                                 }
-                                _ => {
-                                    let modality = crate::message::content_part_modality(p);
-                                    tracing::warn!(
-                                        modality = ?modality,
-                                        "Modality not supported by OpenAI-compatible API, converting to placeholder. \
-                                        The original content will NOT be sent to the model."
-                                    );
-                                    serde_json::json!({
-                                        "type": "text",
-                                        "text": format!("[[[{:?} 未被当前模型支持，内容已省略]]]", modality)
+                                ContentPart::AudioBase64 { media_type, data } => {
+                                    json!({
+                                        "type": "input_audio",
+                                        "input_audio": {
+                                            "data": data,
+                                            "format": audio_format_from_media_type(media_type)
+                                        }
                                     })
+                                }
+                                ContentPart::VideoUrl { url } => {
+                                    json!({
+                                        "type": "video_url",
+                                        "video_url": { "url": url }
+                                    })
+                                }
+                                ContentPart::VideoBase64 { media_type, data } => {
+                                    json!({
+                                        "type": "input_video",
+                                        "input_video": {
+                                            "data": data,
+                                            "format": media_type
+                                        }
+                                    })
+                                }
+                                ContentPart::PdfUrl { url } => {
+                                    json!({
+                                        "type": "file",
+                                        "file": { "url": url }
+                                    })
+                                }
+                                ContentPart::PdfBase64 { data } => {
+                                    json!({
+                                        "type": "file",
+                                        "file": {
+                                            "data": data,
+                                            "format": "pdf"
+                                        }
+                                    })
+                                }
+                                ContentPart::File { file_id, file_data, filename } => {
+                                    let mut file_obj = serde_json::Map::new();
+                                    if let Some(id) = file_id { file_obj.insert("file_id".into(), json!(id)); }
+                                    if let Some(d) = file_data { file_obj.insert("data".into(), json!(d)); }
+                                    if let Some(n) = filename { file_obj.insert("filename".into(), json!(n)); }
+                                    json!({ "type": "file", "file": file_obj })
                                 }
                             })
                             .collect::<Vec<_>>())
@@ -337,6 +381,10 @@ pub(super) fn build_request(
         stream,
         stream_options,
         temperature,
+        max_tokens: None,
+        top_p: None,
+        response_format: None,
+        seed: None,
         tools: None,
         tool_choice: None,
         reasoning_effort: reasoning_effort
@@ -449,6 +497,15 @@ mod tests {
         let json = serde_json::to_value(&req[0]).unwrap();
         assert_eq!(json["role"], "assistant");
         assert_eq!(json["content"], "I can help");
+    }
+}
+
+fn audio_format_from_media_type(media_type: &str) -> &str {
+    match media_type {
+        "audio/mpeg" => "mp3",
+        "audio/wav" => "wav",
+        "audio/mp4" => "m4a",
+        _ => media_type.rsplit_once('/').map(|(_, f)| f).unwrap_or(media_type)
     }
 }
 

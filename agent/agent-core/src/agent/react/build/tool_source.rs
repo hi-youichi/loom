@@ -117,6 +117,12 @@ register_file_tools(
             .await;
         }
     }
+
+    if config.llm_tool_enabled {
+        if let Err(e) = register_llm_tool(&aggregate, config, working_folder_arc.as_ref()).await {
+            tracing::warn!("llm tool registration failed: {}", e);
+        }
+    }
     if let Some(ref wf) = config.working_folder {
         aggregate.register_sync(Box::new(BatchTool::new(Arc::new(wf.clone()))));
     }
@@ -281,5 +287,91 @@ async fn apply_registry_config(
     if config.dry_run {
         aggregate.set_dry_run(true).await;
     }
+    Ok(())
+}
+
+/// Pre-load provider + models.dev catalog and register the `LlmTool`.
+///
+/// Steps:
+/// 1. Load `Vec<ProviderConfig>` from XDG config.
+/// 2. Ask the global `ModelRegistry` for the combined model catalog.
+/// 3. Group the catalog by `provider` field, attach each group's
+///    connection info from the matching `ProviderConfig`.
+/// 4. Build `LlmToolData` and register `LlmTool` on the aggregate.
+///
+/// Returns an error string if any step fails (the caller logs it and
+/// continues without the LLM tool, rather than aborting the whole build).
+async fn register_llm_tool(
+    aggregate: &Arc<ToolRegistryLocked>,
+    config: &ReactBuildConfig,
+    working_folder: Option<&Arc<std::path::PathBuf>>,
+) -> Result<(), String> {
+    use model_spec_core::resolver::ModelsDevResolver;
+    use tool_experimental::{LlmProviderData, LlmTool, LlmToolData};
+
+    let providers: Vec<model_spec_core::ProviderConfig> =
+        env_config::load_provider_configs_from_xdg().unwrap_or_default();
+
+    if providers.is_empty() {
+        return Err("no providers configured in XDG config".to_string());
+    }
+
+    // Fetch the full models.dev catalog: provider_id → Provider (with nested models).
+    // Non-fatal: if the fetch fails, we register the tool with empty model lists
+    // so that `invoke` still works — only discovery actions return empty results.
+    let catalog: std::collections::HashMap<String, model_spec_core::Provider> =
+        match ModelsDevResolver::new().fetch_all_providers().await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "models.dev fetch failed; llm tool will have empty model catalogs"
+                );
+                std::collections::HashMap::new()
+            }
+        };
+
+    let default_provider = config
+        .llm_provider_name
+        .clone()
+        .or_else(|| providers.first().map(|p| p.name.clone()))
+        .unwrap_or_default();
+    let default_model = config
+        .model
+        .clone()
+        .or_else(|| config.aux_model.clone())
+        .unwrap_or_default();
+
+    let mut provider_data: Vec<LlmProviderData> = Vec::with_capacity(providers.len());
+    for p in &providers {
+        // Match XDG provider name to models.dev provider_id (direct name match only).
+        let models: Vec<model_spec_core::Model> = catalog
+            .get(&p.name)
+            .map(|provider| provider.models.values().cloned().collect())
+            .unwrap_or_default();
+
+        if models.is_empty() {
+            tracing::debug!(
+                provider = %p.name,
+                "no models.dev catalog entry, provider will have empty model list"
+            );
+        }
+
+        provider_data.push(LlmProviderData {
+            name: p.name.clone(),
+            base_url: p.base_url.clone().unwrap_or_default(),
+            api_key: p.api_key.clone().unwrap_or_default(),
+            models,
+        });
+    }
+
+    let data = Arc::new(LlmToolData {
+        default_provider,
+        default_model,
+        providers: provider_data,
+    });
+
+    let tool = LlmTool::new(data, working_folder.cloned(), Default::default());
+    aggregate.register_async(Box::new(tool)).await;
     Ok(())
 }

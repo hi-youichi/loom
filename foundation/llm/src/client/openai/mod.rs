@@ -597,6 +597,7 @@ async fn invoke_stream(
             tool_calls: result.tool_calls,
             usage: result.usage,
             first_chunk_at,
+            finish_reason: None,
         })
     }
 

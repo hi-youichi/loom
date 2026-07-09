@@ -266,6 +266,8 @@ impl Node<ReActState> for ThinkNode {
             tool_calls,
             usage,
             first_chunk_at: _,
+            finish_reason: _,
+            ..
         } = response;
 
         let content = if !resp_content.is_empty() {

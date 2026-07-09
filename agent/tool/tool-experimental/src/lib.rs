@@ -2,6 +2,7 @@ pub mod file_memory;
 pub mod memory;
 pub mod conversation;
 pub mod task;
+pub mod llm;
 mod help;
 
 pub use file_memory::{MemoryTool, TOOL_MEMORY};
@@ -9,6 +10,7 @@ pub use memory::*;
 pub use conversation::*;
 pub use task::*;
 pub use help::{HelpTool, TOOL_HELP};
+pub use llm::{LlmTool, LlmToolConfig, LlmToolData, LlmProviderData};
 
 use std::sync::Arc;
 use tool_core::ToolRegistryLocked;
