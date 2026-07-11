@@ -18,7 +18,7 @@ const AGENTS_MD_FILE: &str = "AGENTS.md";
 /// Build a sub-agent's `ReactBuildConfig` by overlaying profile settings on
 /// top of a parent config.
 ///
-/// This is the core logic for `invoke_agent` sub-agent configuration:
+/// This is the core logic for `agent` tool sub-agent configuration:
 /// it inherits most fields from `parent_config`, then applies profile-specific
 /// overrides for model, tools, skills, and working folder.
 ///

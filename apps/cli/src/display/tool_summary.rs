@@ -212,22 +212,27 @@ pub fn format_call_summary(tool_name: &str, args_json: &str) -> String {
             format!("#{}", id)
         }
 
-        "invoke_agent" => {
-            let agents = args.get("agents").and_then(|v| v.as_array());
-            if let Some(arr) = agents {
-                if let Some(first) = arr.first() {
-                    let agent = first.get("agent").and_then(|v| v.as_str()).unwrap_or("?");
-                    let task = first.get("task").and_then(|v| v.as_str()).unwrap_or("");
-                    format!("{}: {}", agent, truncate(task, 50))
+        "agent" => {
+            let action = json_str(&args, "action").unwrap_or("invoke");
+            if action == "get" {
+                if let Some(agent_id) = json_str(&args, "agent_id") {
+                    format!("get {}", agent_id)
                 } else {
-                    "invoke_agent".to_string()
+                    "list running".to_string()
                 }
             } else {
                 let agent = json_str(&args, "agent").unwrap_or("?");
                 let task = json_str(&args, "task").unwrap_or("");
-                format!("{}: {}", agent, truncate(task, 50))
+                let async_flag = args.get("async").and_then(|v| v.as_bool()).unwrap_or(false);
+                if async_flag {
+                    format!("async {}", agent)
+                } else {
+                    format!("{}: {}", agent, truncate(task, 50))
+                }
             }
         }
+
+        // Legacy tool name alias
 
         "list_agents" => "list_agents".to_string(),
 
@@ -431,7 +436,7 @@ pub fn format_done_summary(tool_name: &str, result: &str, is_error: bool) -> Str
             }
         }
 
-        "invoke_agent" => "completed".to_string(),
+        "agent" => "completed".to_string(),
         "list_agents" => {
             let count = result.lines().filter(|l| !l.trim().is_empty()).count();
             format!("{} agents", count)
@@ -614,10 +619,23 @@ mod tests {
     }
 
     #[test]
-    fn call_invoke_agent() {
-        let result = format_call_summary("invoke_agent", r#"{"agents":[{"agent":"explore","task":"find format_tool usage"}]}"#);
+    fn call_agent_invoke() {
+        let result = format_call_summary("agent", r#"{"action":"invoke","agent":"explore","task":"find format_tool usage"}"#);
         assert!(result.contains("explore"));
         assert!(result.contains("format_tool"));
+    }
+
+    #[test]
+    fn call_agent_async() {
+        let result = format_call_summary("agent", r#"{"action":"invoke","agent":"dev","task":"bg","async":true}"#);
+        assert!(result.contains("async"));
+        assert!(result.contains("dev"));
+    }
+
+    #[test]
+    fn call_agent_get() {
+        let result = format_call_summary("agent", r#"{"action":"get","agent_id":"sub-root-dev-0"}"#);
+        assert!(result.contains("sub-root-dev-0"));
     }
 
     #[test]

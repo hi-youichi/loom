@@ -187,7 +187,7 @@ pub struct BehaviorConfig {
     pub max_iterations: Option<u32>,
     #[serde(default)]
     pub timeout: Option<u32>,
-    /// Maximum nesting depth for `invoke_agent` calls (default 3).
+    /// Maximum nesting depth for `agent` calls (default 3).
     #[serde(default)]
     pub max_sub_agent_depth: Option<u32>,
 }
@@ -463,7 +463,7 @@ const BUILTIN_AGENT_NAMES: &[&str] = &["dev", "ask", "agent-builder", "explore",
 /// Resolve an agent profile by name at runtime. Tries built-in agents first,
 /// then project-level `.loom/agents/<name>/`, then user-level `~/.loom/agents/<name>/`.
 ///
-/// This is the primary API for `InvokeAgentTool` to load a sub-agent profile
+/// This is the primary API for `AgentTool` to load a sub-agent profile
 /// without depending on `RunOptions`.
 pub fn resolve_profile(name: &str) -> Result<AgentProfile, ProfileError> {
     if let Some(mut profile) = load_builtin_profile(name) {

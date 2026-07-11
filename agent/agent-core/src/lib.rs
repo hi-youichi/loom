@@ -3,7 +3,7 @@
 //! This crate contains:
 //! - ReAct agent pattern (Think, Act, Observe nodes)
 //! - DUP/ToT/GoT agent patterns (merged from agent-extensions)
-//! - Agent tools (invoke_agent, bash, read, edit, etc.)
+//! - Agent tools (agent, bash, read, edit, etc.)
 //! - Run orchestration (config building + runner execution, merged from loom crate)
 //! - Profile loading, tier resolution, prompt assembly
 
@@ -38,7 +38,7 @@ pub use agent::react::tier_apply::{
     extract_provider_hint, resolve_tier_and_build_config,
     resolve_tier_and_build_config_with_resolver,
 };
-pub use tools::invoke_agent::build_config::{build_config_from_profile, load_agents_md};
+pub use tools::agent::build_config::{build_config_from_profile, load_agents_md};
 
 // Agent pattern runners (merged from agent-extensions)
 pub use agent::{dup, tot, got};

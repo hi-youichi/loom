@@ -5,8 +5,8 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
-use crate::tools::invoke_agent::build_config::build_config_from_profile;
-use crate::profile::resolve_profile;
+use crate::tools::agent::build_config::build_config_from_profile;
+use crate::profile::AgentProfile;
 use crate::agent::ReactBuildConfig;
 use crate::agent::react::tier_apply::resolve_tier_and_build_config;
 use crate::agent::react::build::build_react_runner;
@@ -18,18 +18,21 @@ use crate::agent::react::build::build_react_runner;
 /// pass the resolved `working_folder` here.
 pub(super) async fn build_and_run_sub_agent(
     base_config: &Arc<ReactBuildConfig>,
-    agent_name: &str,
+    profile: &AgentProfile,
     task: &str,
     args: &Value,
     working_folder_override: Option<&std::path::Path>,
     ctx: Option<&ToolCallContext>,
-) -> Result<ToolCallContent, ToolSourceError> {
+) -> Result<(ToolCallContent, super::registry::AgentCompletionStats), ToolSourceError> {
     tracing::info!(
-        agent = %agent_name,
+        agent = %profile.name,
         task_length = task.len(),
         depth = ctx.map(|c| c.depth).unwrap_or(0),
         "Starting execution of agent task"
     );
+    // Note: depth check is performed by the caller (mod.rs).
+
+    let agent_name = &profile.name;
 
     if let Some(folder) = working_folder_override {
         tracing::debug!(
@@ -39,13 +42,6 @@ pub(super) async fn build_and_run_sub_agent(
         );
     }
 
-    // --- resolve profile ---
-    tracing::debug!(agent = %agent_name, "Resolving agent profile");
-    let profile = resolve_profile(agent_name).map_err(|e| {
-        tracing::error!(agent = %agent_name, error = %e, "Failed to resolve agent profile");
-        ToolSourceError::InvalidInput(format!("failed to resolve agent '{}': {}", agent_name, e))
-    })?;
-
     // --- build sub config ---
     tracing::debug!(
         agent = %agent_name,
@@ -53,7 +49,7 @@ pub(super) async fn build_and_run_sub_agent(
         "Building sub-agent configuration"
     );
     let mut sub_config =
-        build_config_from_profile(&profile, base_config, working_folder_override);
+        build_config_from_profile(profile, base_config, working_folder_override);
 
     tracing::debug!(
         agent = %agent_name,
@@ -83,7 +79,7 @@ pub(super) async fn build_and_run_sub_agent(
                     old_tier = ?sub_config.model_tier,
                     new_tier = ?tier,
                     old_model = ?sub_config.model,
-                    "Overriding model_tier from invoke_agent arguments"
+                    "Overriding model_tier from agent tool arguments"
                 );
                 sub_config.model_tier = Some(tier);
             }
@@ -191,23 +187,37 @@ pub(super) async fn build_and_run_sub_agent(
             ToolSourceError::Transport(format!("sub-agent '{}' failed: {}", agent_name, e))
         })?;
 
-    let reply = match outcome {
+    let (reply, stats) = match outcome {
         crate::runner_common::StreamRunOutcome::Finished(final_state) => {
             let reply = final_state
                 .last_assistant_reply()
                 .unwrap_or_else(|| "(no reply from sub-agent)".to_string());
+            let stats = super::registry::AgentCompletionStats {
+                turn_count: final_state.turn_count,
+                total_tokens: final_state
+                    .total_usage
+                    .as_ref()
+                    .map(|u| u.total_tokens)
+                    .unwrap_or(0),
+                tool_calls_count: final_state.tool_calls.len() as u32,
+            };
             tracing::info!(
                 agent = %agent_name,
                 reply_length = reply.len(),
+                turn_count = stats.turn_count,
+                total_tokens = stats.total_tokens,
+                tool_calls_count = stats.tool_calls_count,
                 "Sub-agent completed successfully"
             );
-            reply
+            (reply, stats)
         }
         crate::runner_common::StreamRunOutcome::Cancelled => {
             tracing::warn!(agent = %agent_name, "Sub-agent was cancelled");
-            "(sub-agent cancelled)".to_string()
+            return Err(ToolSourceError::Transport(format!(
+                "sub-agent '{}' was cancelled", agent_name
+            )));
         }
     };
 
-    Ok(ToolCallContent::text(reply))
+    Ok((ToolCallContent::text(reply), stats))
 }

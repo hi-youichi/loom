@@ -18,7 +18,6 @@ pub struct ReactBuildConfig {
     pub system_prompt: Option<String>,
     pub exa_api_key: Option<String>,
     pub exa_codesearch_enabled: bool,
-    pub twitter_api_key: Option<String>,
     pub mcp_exa_url: String,
     pub mcp_remote_cmd: String,
     pub mcp_remote_args: String,
@@ -116,7 +115,6 @@ impl Default for ReactBuildConfig {
             system_prompt: None,
             exa_api_key: None,
             exa_codesearch_enabled: false,
-            twitter_api_key: None,
             mcp_exa_url: String::new(),
             mcp_remote_cmd: String::new(),
             mcp_remote_args: String::new(),
@@ -186,7 +184,6 @@ impl ReactBuildConfig {
                 .ok()
                 .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
                 .unwrap_or(false),
-            twitter_api_key: std::env::var("TWITTER_API_KEY").ok(),
             mcp_exa_url: std::env::var("MCP_EXA_URL")
                 .unwrap_or_else(|_| "https://exa-cp.backend.mcp.dev".to_string()),
             mcp_remote_cmd: std::env::var("MCP_REMOTE_CMD").unwrap_or_else(|_| "npx".to_string()),

@@ -7,7 +7,7 @@
 //!
 //! # Trigger paths (priority order)
 //!
-//! 1. `invoke_agent` parameter `isolation: "worktree"` — LLM specifies at call time
+//! 1. `agent` tool parameter `isolation: "worktree"` — LLM specifies at call time
 //! 2. Agent profile `config.yaml` field `isolation: worktree` — admin preset
 //! 3. CLI flag `--worktree` / `-w` — user starts top-level session in worktree
 //!

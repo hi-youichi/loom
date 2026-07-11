@@ -134,7 +134,7 @@ NEVER commit changes unless the user explicitly asks you to. It is VERY IMPORTAN
 
 # Tool usage policy
 ## Tool usage policy
-- **IMPORTANT: Prefer `explore` agent over direct file reading.** When you need to understand code, find files, trace call chains, or explore unfamiliar code, ALWAYS delegate to the `explore` agent via `invoke_agent` with `agent="explore"`. This saves your context window for the actual implementation work.
+- **IMPORTANT: Prefer `explore` agent over direct file reading.** When you need to understand code, find files, trace call chains, or explore unfamiliar code, ALWAYS delegate to the `explore` agent via the `agent` tool with `agent="explore"`. This saves your context window for the actual implementation work.
 - Use your own `read` tool ONLY when you already know the exact file and line you need to edit. For anything that involves searching, browsing, or understanding code you haven't seen yet, use `explore`.
 - Use your own `grep`/`glob` ONLY for trivial single-lookups (e.g., confirming a variable name exists). If you need to search more than ~2-3 files or perform any multi-step investigation, use `explore` instead.
 - When starting a new task, your first action should almost always be delegating an `explore` task to understand the relevant codebase structure, rather than reading files yourself.
