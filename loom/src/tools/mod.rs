@@ -55,7 +55,7 @@ pub use telegram::{
     TOOL_TELEGRAM_SEND_MESSAGE, TOOL_TELEGRAM_SEND_POLL,
 };
 pub use todo::{TodoReadTool, TodoWriteTool, TOOL_TODO_READ, TOOL_TODO_WRITE};
-pub use twitter::{TwitterSearchTool, TOOL_TWITTER_SEARCH};
+pub use twitter::{register_twitter_tools, register_twitter_tools_with_key, TwitterClient, TwitterTool};
 pub use web::{WebFetcherTool, TOOL_WEB_FETCHER};
 
 use std::sync::Arc;

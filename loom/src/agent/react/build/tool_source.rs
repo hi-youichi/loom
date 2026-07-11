@@ -12,7 +12,7 @@ use crate::tools::BashTool;
 use crate::tools::{
     register_mcp_tools, register_mcp_tools_with_specs, AggregateToolSource, BatchTool,
     ExaCodesearchTool, ExaWebsearchTool, InvokeAgentTool, ListAgentsTool, LspTool,
-    TwitterSearchTool, WebFetcherTool,
+    WebFetcherTool,
 };
 
 use env_config::McpServerDef;
@@ -284,9 +284,7 @@ pub(crate) async fn build_tool_source(
     }
 
     if let Some(ref key) = config.twitter_api_key {
-        aggregate
-            .register_async(Box::new(TwitterSearchTool::new(key.clone())))
-            .await;
+        crate::tools::register_twitter_tools_with_key(&aggregate, key.clone());
     }
     if let Some(ref key) = config.exa_api_key {
         aggregate

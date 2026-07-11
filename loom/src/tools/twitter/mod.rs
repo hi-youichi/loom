@@ -1,8 +1,14 @@
-//! Twitter tools: search tweets via twitterapi.io.
+//! Twitter/X API tools — native Loom implementations calling GetXAPI.
+//!
+//! These tools call the GetXAPI HTTP endpoints directly, without requiring
+//! an MCP server. All tools share a single connection-pooled HTTP client.
 //!
 //! Requires `TWITTER_API_KEY` environment variable when used with ReactBuildConfig.
-//! API docs: https://docs.twitterapi.io/api-reference/endpoint/tweet_advanced_search
 
-mod search;
+mod client;
+mod tools;
 
-pub use search::{TwitterSearchTool, TOOL_TWITTER_SEARCH};
+pub use client::{TwitterClient, TwitterClientError};
+pub use tools::{
+    register_twitter_tools, register_twitter_tools_with_key, TwitterTool,
+};

@@ -118,6 +118,7 @@ where
             final_state = Some(s);
         }
     }
+    tracing::debug!("finish");
     let completion = graph_stream.completion.await.map_err(|e| {
         StreamRunError::Execution(AgentError::ExecutionFailed(format!(
             "graph stream task failed: {}",
