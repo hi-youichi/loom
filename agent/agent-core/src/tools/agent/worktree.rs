@@ -1,4 +1,4 @@
-//! Batch invocation helper: worktree isolation lifecycle management.
+//! Worktree isolation lifecycle management for sub-agent invocations.
 
 use std::sync::Arc;
 
@@ -12,39 +12,17 @@ use super::runner::build_and_run_sub_agent;
 
 /// Invoke a single agent in batch context.
 ///
-/// Handles depth checking, worktree isolation, then delegates to
+/// Handles worktree isolation, then delegates to
 /// [`build_and_run_sub_agent`] for the shared execution path.
 pub(super) async fn invoke_single_agent(
     base_config: &Arc<ReactBuildConfig>,
     args: Value,
     ctx: Option<&ToolCallContext>,
-    max_depth: u32,
-) -> Result<ToolCallContent, ToolSourceError> {
-    let current_depth = ctx.map(|c| c.depth).unwrap_or(0);
+) -> Result<(ToolCallContent, super::registry::AgentCompletionStats), ToolSourceError> {
     let agent_name = args
         .get("agent")
         .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
-
-    tracing::debug!(
-        agent = %agent_name,
-        current_depth = current_depth,
-        max_depth = max_depth,
-        "invoke_single_agent called"
-    );
-
-    if current_depth >= max_depth {
-        tracing::warn!(
-            agent = %agent_name,
-            current_depth = current_depth,
-            max_depth = max_depth,
-            "Max depth reached in invoke_single_agent"
-        );
-        return Err(ToolSourceError::InvalidInput(format!(
-            "max sub-agent depth ({}) reached; cannot invoke further agents",
-            max_depth,
-        )));
-    }
+        .unwrap_or("default");
 
     let task = args
         .get("task")
@@ -66,6 +44,8 @@ pub(super) async fn invoke_single_agent(
         })
         .unwrap_or_default();
 
+    let current_depth = ctx.map(|c| c.depth).unwrap_or(0);
+
     tracing::info!(
         agent = %agent_name,
         task_length = task.len(),
@@ -74,11 +54,6 @@ pub(super) async fn invoke_single_agent(
         estimated_paths_count = estimated_paths.len(),
         "Starting single agent invocation"
     );
-
-    let working_folder_override = args
-        .get("working_folder")
-        .and_then(|v| v.as_str())
-        .map(std::path::PathBuf::from);
 
     // --- resolve profile (needed for worktree config) ---
     tracing::debug!(agent = %agent_name, "Resolving agent profile");
@@ -91,7 +66,7 @@ pub(super) async fn invoke_single_agent(
     let use_worktree = isolation_arg.as_deref() == Some("worktree")
         || (isolation_arg.is_none() && profile.isolation.as_deref() == Some("worktree"));
 
-    let worktree_handle = if use_worktree && working_folder_override.is_none() {
+    let worktree_handle = if use_worktree {
         let worktree_config = profile
             .worktree
             .as_ref()
@@ -150,19 +125,18 @@ pub(super) async fn invoke_single_agent(
 
     let effective_working_folder = worktree_handle
         .as_ref()
-        .map(|h| h.path.clone())
-        .or(working_folder_override);
+        .map(|h| h.path.clone());
 
     // --- delegate to shared execution ---
-    let result = build_and_run_sub_agent(
+    let (content, stats) = build_and_run_sub_agent(
         base_config,
-        agent_name,
+        &profile,
         task,
         &args,
         effective_working_folder.as_deref(),
         ctx,
     )
-    .await;
+    .await?;
 
     // --- worktree cleanup ---
     if let Some(handle) = worktree_handle {
@@ -193,5 +167,5 @@ pub(super) async fn invoke_single_agent(
         }
     }
 
-    result
+    Ok((content, stats))
 }

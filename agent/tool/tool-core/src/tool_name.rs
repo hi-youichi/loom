@@ -99,9 +99,6 @@
     /// codesearch — search code using Exa.
     pub const TOOL_CODESEARCH: &str = "codesearch";
 
-    /// twitter_search — search Twitter/X.
-    pub const TOOL_TWITTER_SEARCH: &str = "twitter_search";
-
     // ============================================================================
     // Other tools
     // ============================================================================
@@ -124,8 +121,20 @@
     /// batch — execute multiple independent tool calls in parallel.
     pub const TOOL_BATCH: &str = "batch";
 
-    /// invoke_agent — delegate work to a sub-agent by profile name.
-    pub const TOOL_INVOKE_AGENT: &str = "invoke_agent";
+    /// agent — delegate work to a sub-agent, or query async agent results.
+    pub const TOOL_AGENT: &str = "agent";
+
+    /// Legacy alias kept for backward compatibility during migration.
+    pub const TOOL_INVOKE_AGENT: &str = TOOL_AGENT;
+
+    /// agent_get — query async agent status or list all agents.
+    pub const TOOL_AGENT_GET: &str = "agent_get";
+
+    /// agent_cancel — cancel a running or background agent.
+    pub const TOOL_AGENT_CANCEL: &str = "agent_cancel";
+
+    /// thread_get — query thread information and agents.
+    pub const TOOL_THREAD_GET: &str = "thread_get";
 
     /// git_worktree — manage git worktrees for isolated parallel execution.
     pub const TOOL_GIT_WORKTREE: &str = "git_worktree";

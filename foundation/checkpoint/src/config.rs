@@ -22,7 +22,7 @@ pub struct RunnableConfig {
     pub user_id: Option<String>,
     /// When set, the graph starts from this node instead of the first (e.g. resume after Interrupt at "act").
     pub resume_from_node_id: Option<String>,
-    /// Current sub-agent nesting depth. Used by `InvokeAgentTool` to prevent
+    /// Current sub-agent nesting depth. Used by `AgentTool` to prevent
     /// infinite recursion. `None` or `Some(0)` means top-level.
     pub depth: Option<u32>,
     /// ACP session_id from the IDE client.

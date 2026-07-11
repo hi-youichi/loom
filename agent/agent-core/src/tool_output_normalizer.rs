@@ -963,10 +963,10 @@ mod tests {
     }
 
     #[test]
-    fn b4_invoke_agent_large_output_inline() {
+    fn b4_agent_large_output_inline() {
         let text = "x".repeat(20_000);
         let result = normalize_tool_output(
-            "invoke_agent",
+            "agent",
             &json!({}),
             &text,
             false,

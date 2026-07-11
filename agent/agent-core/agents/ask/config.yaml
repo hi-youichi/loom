@@ -29,7 +29,7 @@ tools:
         move_file,
         create_dir,
         bash,
-        invoke_agent,
+        agent,
         remember,
         lsp,
       ]

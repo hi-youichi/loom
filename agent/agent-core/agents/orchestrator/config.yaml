@@ -4,7 +4,7 @@ tools:
   builtin:
     enabled:
       [
-        invoke_agent,
+        agent,
         todo_write,
         todo_read,
         read,

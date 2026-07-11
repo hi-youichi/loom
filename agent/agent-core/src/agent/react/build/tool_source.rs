@@ -1,18 +1,20 @@
 use std::sync::Arc;
 
-use crate::tools::{InvokeAgentTool, GitWorktreeTool};
+use crate::tools::{AgentTool, AgentGetTool, AgentCancelTool, ThreadGetTool, GitWorktreeTool};
 use loom_graph_core::GraphError;
 use memory_v2::MemoryStore;
 use skill::SkillUsageStore;
 use tool_basic::{
     bash::BashTool, batch::BatchTool, exa::ExaCodesearchTool, exa::ExaWebsearchTool,
-    mcp::McpToolSource, powershell::PowerShellTool, register_file_tools, register_mcp_tools,
+    mcp::McpToolSource, register_file_tools, register_mcp_tools,
     web::WebFetcherTool,
 };
+#[cfg(windows)]
+use tool_basic::powershell::PowerShellTool;
 use tool_core::{ArcTool, ToolRegistryLocked, YamlSpecError};
 use tool_experimental::{register_file_memory_tool_guarded, register_task_tools};
 use lsp::LspManager;
-use tool_extensions::{twitter::TwitterSearchTool, LspTool};
+use tool_extensions::LspTool;
 
 use env_config::McpServerDef;
 
@@ -67,11 +69,6 @@ pub(crate) async fn build_tool_source(
         aggregate.register_async(Box::new(ps_tool)).await;
     }
 
-    if let Some(ref key) = config.twitter_api_key {
-        aggregate
-            .register_async(Box::new(TwitterSearchTool::new(key.clone())))
-            .await;
-    }
     if let Some(ref key) = config.exa_api_key {
         aggregate
             .register_async(Box::new(ExaWebsearchTool::new(key.clone())))
@@ -249,11 +246,24 @@ register_file_tools(
         }
     }
 
+    // Create shared registry for async agents
+    let registry = crate::tools::AsyncAgentRegistry::new();
+
     aggregate
-        .register_async(Box::new(InvokeAgentTool::new(
+        .register_async(Box::new(AgentTool::new(
             Arc::new(config.clone()),
             config.max_sub_agent_depth,
+            registry.clone(),
         )))
+        .await;
+    aggregate
+        .register_async(Box::new(AgentGetTool::new(registry.clone())))
+        .await;
+    aggregate
+        .register_async(Box::new(AgentCancelTool::new(registry.clone())))
+        .await;
+    aggregate
+        .register_async(Box::new(ThreadGetTool::new(registry)))
         .await;
     aggregate
         .register_async(Box::new(GitWorktreeTool::new(
