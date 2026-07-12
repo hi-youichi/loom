@@ -33,6 +33,18 @@ use crate::display as panel_format;
 
 use agent::run::RunError;
 
+pub fn register_extra_tools(config: &mut agent::ReactBuildConfig) {
+    let luft_tool: Arc<dyn tool_core::Tool> = Arc::new(
+        tool_luft::LuftTool::new(config.clone()),
+    );
+    let mut tools = config.extra_tools
+        .as_ref()
+        .map(|t| t.as_ref().clone())
+        .unwrap_or_default();
+    tools.push(luft_tool);
+    config.extra_tools = Some(Arc::new(tools));
+}
+
 fn load_config_providers() -> Vec<ConfigProviderEntry> {
     let full = config::load_full_config("loom").ok();
     full.map(|f| {
@@ -212,6 +224,8 @@ pub async fn run_agent_wrapper(
     if config.model.is_none() && config.model_tier.is_some() {
         config = agent::resolve_tier_and_build_config(&config).await;
     }
+
+    register_extra_tools(&mut config);
 
     print_loaded_tools(&config).await?;
     if !opts.output_json {

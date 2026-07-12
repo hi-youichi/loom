@@ -14,7 +14,7 @@ use loom_graph_core::GraphError;
 use agent::{build_react_run_context, BuildRunnerError};
 use serde::{Deserialize, Serialize};
 
-use crate::run::{build_react_config, RunError};
+use crate::run::{build_react_config, register_extra_tools, RunError};
 use agent::RunOptions;
 
 /// Tool show response: either `tool` (JSON) or `tool_yaml` (YAML string).
@@ -46,7 +46,8 @@ pub enum ToolShowFormat {
 /// [`build_react_run_context`](loom::build_react_run_context).
 pub async fn list_tools(opts: &RunOptions) -> Result<(), RunError> {
     let loom_opts = opts.clone();
-    let (config, _resolved_agent) = build_react_config(&loom_opts);
+    let (mut config, _resolved_agent) = build_react_config(&loom_opts);
+    register_extra_tools(&mut config);
     let ctx = build_react_run_context(&config)
         .await
         .map_err(|e| RunError::Build(BuildRunnerError::Context(e)))?;
@@ -107,7 +108,8 @@ fn draw_tools_table(tools: &[ToolSpec]) -> String {
 /// to get the tool spec from the context.
 pub async fn show_tool(name: &str, format: ToolShowFormat, opts: &RunOptions) -> Result<(), RunError> {
     let loom_opts = opts.clone();
-    let (config, _resolved_agent) = build_react_config(&loom_opts);
+    let (mut config, _resolved_agent) = build_react_config(&loom_opts);
+    register_extra_tools(&mut config);
     let ctx = build_react_run_context(&config)
         .await
         .map_err(|e| RunError::Build(BuildRunnerError::Context(e)))?;

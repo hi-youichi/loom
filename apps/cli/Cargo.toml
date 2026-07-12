@@ -20,6 +20,7 @@ loom-llm = { path = "../../foundation/llm" }
 loom-graph-core = { path = "../../foundation/graph-core" }
 
 tool-core = { path = "../../agent/tool/tool-core" }
+tool-luft = { path = "../../agent/tool/tool-luft" }
 loom-curator = { path = "../../experimental/curator" }
 tool-experimental = { path = "../../agent/tool/tool-experimental" }
 memory-v2 = { path = "../../experimental/memory-v2" }

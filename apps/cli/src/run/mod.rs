@@ -16,7 +16,8 @@ mod spinner;
 
 
 pub use agent::{
-    print_reply_timestamp, run_agent_wrapper, RunAgentOutput, RunAgentResult, RunStopReason,
+    print_reply_timestamp, register_extra_tools, run_agent_wrapper, RunAgentOutput, RunAgentResult,
+    RunStopReason,
 };
 pub use contract::{
     cli_list_models, cli_list_tools, cli_show_tool, run_cli_turn, RunOutput, StreamOut,
