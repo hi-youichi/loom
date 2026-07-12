@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use crate::profile::AgentProfile;
 use crate::agent::ReactBuildConfig;
+use crate::run::config_builder::inject_builtin_skills;
 use tool_core::BuiltinToolFilter;
 use skill::discovery::SkillRegistry;
 
@@ -167,11 +168,13 @@ pub fn build_config_from_profile(
         .and_then(|s| s.dirs.as_ref())
         .map(|dirs| dirs.iter().map(PathBuf::from).collect())
         .unwrap_or_default();
-    let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs)
+let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs)
         .unwrap_or_else(|e| {
             tracing::warn!("skill discovery failed: {e}");
             SkillRegistry::empty()
         });
+
+    inject_builtin_skills(&mut registry, config.extra_tools.as_deref());
     if let Some(ref src) = profile.source_dir {
         if let Err(e) = registry.add_agent_skills(&src.join("skills")) {
             tracing::warn!("agent skills scan failed: {e}");

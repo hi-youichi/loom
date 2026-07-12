@@ -6,9 +6,14 @@ use std::path::{Path, PathBuf};
 use tokio_util::sync::CancellationToken;
 
 use tool_core::{
-    Tool, ToolCallContent, ToolCallContext, ToolOutputHint, ToolOutputStrategy, ToolSourceError,
-    ToolSpec,
+    BuiltinSkill, Tool, ToolCallContent, ToolCallContext, ToolOutputHint, ToolOutputStrategy,
+    ToolSourceError, ToolSpec,
 };
+
+const LUFT_WORKFLOW_DSL: &str = include_str!("luft_workflow_dsl.md");
+
+const DEFAULT_CONCURRENCY: usize = 4;
+const MAX_CONCURRENCY: usize = 64;
 
 use crate::backend::LoomAgentBackend;
 use crate::event_bridge::luft_event_to_json;
@@ -16,6 +21,37 @@ use crate::workflow_resolver::resolve_workflow;
 
 pub struct LuftTool {
     config_template: agent::agent::AgentConfig,
+}
+
+fn parse_concurrency(args: &Value) -> Result<usize, ToolSourceError> {
+    let Some(v) = args.get("concurrency") else {
+        return Ok(DEFAULT_CONCURRENCY);
+    };
+    let n = v.as_u64().ok_or_else(|| {
+        ToolSourceError::InvalidInput(format!("'concurrency' must be a positive integer, got {v}"))
+    })?;
+    if !(1..=MAX_CONCURRENCY as u64).contains(&n) {
+        return Err(ToolSourceError::InvalidInput(format!(
+            "'concurrency' must be between 1 and {MAX_CONCURRENCY}, got {n}"
+        )));
+    }
+    Ok(n as usize)
+}
+
+fn extract_user_args(args: &Value) -> Option<Value> {
+    let v = args.get("args")?;
+    if v.is_null() {
+        return None;
+    }
+    Some(v.clone())
+}
+
+fn inject_args_globals(lua_source: &str, user_args: Option<&Value>) -> String {
+    let Some(args) = user_args else {
+        return lua_source.to_string();
+    };
+    let lua_expr = crate::json_to_lua::json_to_lua(args);
+    format!("_G._args = {lua_expr}\n{lua_source}")
 }
 
 impl LuftTool {
@@ -121,9 +157,7 @@ impl LuftTool {
                         .and_then(|v| v.as_str())
                         .unwrap_or("unknown")
                         .to_string();
-                    let created_at = checkpoint
-                        .get("created_at")
-                        .and_then(|v| v.as_u64());
+                    let created_at = checkpoint.get("created_at").and_then(|v| v.as_u64());
                     let total_tokens = checkpoint
                         .get("total_tokens")
                         .and_then(|v| v.as_u64())
@@ -166,10 +200,7 @@ impl LuftTool {
         ))
     }
 
-    async fn handle_run_status(
-        &self,
-        run_dir: &str,
-    ) -> Result<ToolCallContent, ToolSourceError> {
+    async fn handle_run_status(&self, run_dir: &str) -> Result<ToolCallContent, ToolSourceError> {
         let path = self.runs_dir().join(run_dir);
 
         if !path.exists() {
@@ -182,8 +213,9 @@ impl LuftTool {
         let checkpoint: Value = std::fs::read_to_string(path.join("checkpoint.json"))
             .map_err(|e| ToolSourceError::ToolError(format!("Failed to read checkpoint: {e}")))
             .and_then(|s| {
-                serde_json::from_str(&s)
-                    .map_err(|e| ToolSourceError::ToolError(format!("Invalid checkpoint JSON: {e}")))
+                serde_json::from_str(&s).map_err(|e| {
+                    ToolSourceError::ToolError(format!("Invalid checkpoint JSON: {e}"))
+                })
             })?;
 
         let events: Vec<Value> = std::fs::read_to_string(path.join("events.jsonl"))
@@ -233,8 +265,9 @@ impl LuftTool {
                 let path =
                     resolve_workflow(w, working_folder).map_err(ToolSourceError::InvalidInput)?;
 
-                let source = std::fs::read_to_string(&path)
-                    .map_err(|e| ToolSourceError::ToolError(format!("Failed to read workflow: {e}")))?;
+                let source = std::fs::read_to_string(&path).map_err(|e| {
+                    ToolSourceError::ToolError(format!("Failed to read workflow: {e}"))
+                })?;
 
                 (source, path.display().to_string())
             }
@@ -245,13 +278,17 @@ impl LuftTool {
             }
         };
 
+        let concurrency = parse_concurrency(args)?;
+        let user_args = extract_user_args(args);
+        let lua_source = inject_args_globals(&lua_source, user_args.as_ref());
+
         let base_dir = self.runs_dir();
         let backend = LoomAgentBackend::new(self.config_template.clone());
 
         let luft = LuftBuilder::new()
             .backend(backend)
             .base_dir(&base_dir)
-            .concurrency(4)
+            .concurrency(concurrency)
             .build()
             .map_err(|e| ToolSourceError::ToolError(format!("Luft build failed: {e}")))?;
 
@@ -355,7 +392,9 @@ impl Tool for LuftTool {
                  pipeline{items=, stages=, max_inflight=}, phase(name, planned?), \
                  phase_begin(name), phase_end(span), workflow(path, args?), \
                  report(value), log(msg, level?), budget(time_ms, rounds), \
-                 json.encode(value), json.decode(string)."
+                 json.encode(value), json.decode(string).\n\
+                 For the full DSL reference (required structure, rules, examples), \
+                 load the `luft-workflow-dsl` skill."
                     .to_string(),
             ),
             input_schema: json!({
@@ -377,8 +416,15 @@ impl Tool for LuftTool {
                     },
                     "args": {
                         "type": "object",
-                        "description": "(action=run) Arguments passed to the workflow's main(args) function.",
+                        "description": "(action=run) Arguments exposed to the workflow as the Lua global `_G._args`. Read with `_G._args` inside the script; declare `function main()` (no parameters) because Luft's `main(args)` form is reported to crash the VM.",
                         "additionalProperties": true
+                    },
+                    "concurrency": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 64,
+                        "default": 4,
+                        "description": "(action=run) Maximum number of concurrent agents for this run. Overrides the global Luft default (4)."
                     },
                     "run_dir": {
                         "type": "string",
@@ -397,10 +443,7 @@ impl Tool for LuftTool {
         args: Value,
         ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let action = args
-            .get("action")
-            .and_then(|v| v.as_str())
-            .unwrap_or("run");
+        let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("run");
 
         match action {
             "run" => self.handle_run(&args, ctx).await,
@@ -421,5 +464,131 @@ impl Tool for LuftTool {
                 "Unknown action '{other}'. Valid: run, list-workflows, list-runs, run-status."
             ))),
         }
+    }
+
+    fn builtin_skill(&self) -> Option<BuiltinSkill> {
+        Some(BuiltinSkill {
+            name: "luft-workflow-dsl".to_string(),
+            description: "Lua DSL reference for writing Luft multi-agent workflows".to_string(),
+            content: LUFT_WORKFLOW_DSL.to_string(),
+            triggers: vec![
+                "luft".to_string(),
+                "workflow".to_string(),
+                "multi-agent".to_string(),
+                "lua script".to_string(),
+            ],
+            requires_tools: vec!["luft".to_string()],
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn concurrency_default_when_missing() {
+        let args = json!({"action": "run"});
+        assert_eq!(parse_concurrency(&args).unwrap(), DEFAULT_CONCURRENCY);
+    }
+
+    #[test]
+    fn concurrency_explicit_value() {
+        let args = json!({"action": "run", "concurrency": 8});
+        assert_eq!(parse_concurrency(&args).unwrap(), 8);
+    }
+
+    #[test]
+    fn concurrency_at_bounds() {
+        assert_eq!(parse_concurrency(&json!({"concurrency": 1})).unwrap(), 1);
+        assert_eq!(parse_concurrency(&json!({"concurrency": 64})).unwrap(), 64);
+    }
+
+    #[test]
+    fn concurrency_rejects_zero() {
+        assert!(parse_concurrency(&json!({"concurrency": 0})).is_err());
+    }
+
+    #[test]
+    fn concurrency_rejects_over_max() {
+        assert!(parse_concurrency(&json!({"concurrency": 65})).is_err());
+    }
+
+    #[test]
+    fn concurrency_rejects_non_integer() {
+        assert!(parse_concurrency(&json!({"concurrency": "fast"})).is_err());
+        assert!(parse_concurrency(&json!({"concurrency": 4.5})).is_err());
+        assert!(parse_concurrency(&json!({"concurrency": -1})).is_err());
+    }
+
+    #[test]
+    fn extract_user_args_missing() {
+        let args = json!({"action": "run"});
+        assert!(extract_user_args(&args).is_none());
+    }
+
+    #[test]
+    fn extract_user_args_null_treated_as_missing() {
+        let args = json!({"args": null});
+        assert!(extract_user_args(&args).is_none());
+    }
+
+    #[test]
+    fn extract_user_args_object() {
+        let args = json!({"args": {"topic": "rust", "n": 5}});
+        let v = extract_user_args(&args).unwrap();
+        assert_eq!(v["topic"], "rust");
+        assert_eq!(v["n"], 5);
+    }
+
+    #[test]
+    fn inject_no_args_returns_source_unchanged() {
+        let src = "function main() report({ok=true}) end";
+        assert_eq!(inject_args_globals(src, None), src);
+    }
+
+    #[test]
+    fn inject_prepends_global_assignment() {
+        let src = "function main() report({ok=true}) end";
+        let args = json!({"topic": "rust"});
+        let out = inject_args_globals(src, Some(&args));
+        assert!(out.starts_with("_G._args = {topic = \"rust\"}\n"));
+        assert!(out.ends_with(src));
+    }
+
+    #[test]
+    fn inject_with_complex_args() {
+        let src = "local _ = _G._args";
+        let args = json!({
+            "items": [1, 2, 3],
+            "opts": {"depth": 2, "recursive": false},
+            "note": "hi\nthere"
+        });
+        let out = inject_args_globals(src, Some(&args));
+        assert!(out.contains("items = {1, 2, 3}"));
+        assert!(out.contains("recursive = false"));
+        assert!(out.contains(r#"note = "hi\nthere""#));
+        assert!(out.ends_with(src));
+    }
+
+    #[test]
+    fn inject_real_workflow_with_args() {
+        // Mimics a realistic Lua workflow reading its args via _G._args
+        let src = r#"
+local args = _G._args
+local topic = args.topic
+local tags = args.tags
+report({topic = topic, tag_count = #tags})
+"#;
+        let args = json!({
+            "topic": "rust async",
+            "tags": ["tokio", "async-trait"]
+        });
+        let out = inject_args_globals(src, Some(&args));
+        assert!(out.starts_with("_G._args = "));
+        assert!(out.contains(r#"topic = "rust async""#));
+        assert!(out.contains(r#"tags = {"tokio", "async-trait"}"#));
+        assert!(out.ends_with(src.trim_start()));
     }
 }

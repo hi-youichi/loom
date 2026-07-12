@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use luft_core::contract::backend::{
-    AgentBackend, AgentCapabilities, AgentResult, AgentStatus, BackendError, AgentTask, LogRef,
+    AgentBackend, AgentCapabilities, AgentResult, AgentStatus, AgentTask, BackendError, LogRef,
     RunContext,
 };
 use luft_core::contract::event::AgentEvent as LuftAgentEvent;
@@ -40,11 +40,7 @@ impl AgentBackend for LoomAgentBackend {
         }
     }
 
-    async fn run(
-        &self,
-        task: AgentTask,
-        ctx: RunContext,
-    ) -> Result<AgentResult, BackendError> {
+    async fn run(&self, task: AgentTask, ctx: RunContext) -> Result<AgentResult, BackendError> {
         let mut config = self.config_template.clone();
 
         if let Some(ref model) = task.model {
@@ -137,8 +133,7 @@ impl AgentBackend for LoomAgentBackend {
             }
         };
 
-        let result =
-            run.map_err(|e| BackendError::Execution(format!("agent run failed: {e}")))?;
+        let result = run.map_err(|e| BackendError::Execution(format!("agent run failed: {e}")))?;
 
         let output = slot
             .lock()

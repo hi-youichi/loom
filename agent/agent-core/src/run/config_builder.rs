@@ -258,11 +258,13 @@ if let Some(ref t) = effective_opts.provider_type {
             .and_then(|s| s.dirs.as_ref())
             .map(|dirs| dirs.iter().map(PathBuf::from).collect())
             .unwrap_or_default();
-        let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs)
+let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs)
             .unwrap_or_else(|e| {
                 tracing::warn!("skill discovery failed: {e}");
                 SkillRegistry::empty()
             });
+
+        inject_builtin_skills(&mut registry, effective_opts.extra_tools.as_deref());
         if let Some(ref p) = profile {
             if let Some(ref src) = p.source_dir {
                 if let Err(e) = registry.add_agent_skills(&src.join("skills")) {
@@ -595,6 +597,31 @@ fn resolve_provider_fields_into_opts(provider_name: Option<&str>, opts: &mut Run
         if let Some(ref t) = provider.provider_type {
             opts.provider_type = Some(t.clone());
         }
+    }
+}
+
+/// Pull `Tool::builtin_skill()` from every extra tool, and inject it into the
+/// skill registry. User-supplied skills take precedence: builtin injection is
+/// skipped when a skill with the same name was already discovered from disk.
+pub fn inject_builtin_skills(
+    registry: &mut SkillRegistry,
+    extra_tools: Option<&Vec<Arc<dyn tool_core::Tool>>>,
+) {
+    let Some(tools) = extra_tools else { return };
+    for tool in tools {
+        let Some(skill) = tool.builtin_skill() else { continue };
+        tracing::debug!(
+            skill = %skill.name,
+            requires_tools = ?skill.requires_tools,
+            "registering builtin skill from tool"
+        );
+        registry.add_builtin(
+            &skill.name,
+            &skill.description,
+            &skill.content,
+            skill.triggers,
+            skill.requires_tools,
+        );
     }
 }
 

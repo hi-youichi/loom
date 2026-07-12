@@ -31,3 +31,4 @@ luft-core = { path = "../../../../luft/crates/luft-core" }
 tempfile = "3"
 luft = { path = "../../../../luft/crates/luft", features = ["testing"] }
 luft-core = { path = "../../../../luft/crates/luft-core", features = ["testing"] }
+skill = { path = "../../skill" }

@@ -9,8 +9,15 @@ pub fn resolve_workflow(name: &str, working_folder: &Path) -> Result<PathBuf, St
     }
 
     let candidates = [
-        working_folder.join(".luft").join("workflows").join(format!("{name}.lua")),
-        dirs_home().join(".config").join("luft").join("workflows").join(format!("{name}.lua")),
+        working_folder
+            .join(".luft")
+            .join("workflows")
+            .join(format!("{name}.lua")),
+        dirs_home()
+            .join(".config")
+            .join("luft")
+            .join("workflows")
+            .join(format!("{name}.lua")),
         working_folder.join(format!("{name}.lua")),
         PathBuf::from(name),
     ];

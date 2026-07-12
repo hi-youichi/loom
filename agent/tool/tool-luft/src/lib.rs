@@ -1,5 +1,6 @@
 mod backend;
 mod event_bridge;
+mod json_to_lua;
 mod structured_output;
 mod tool;
 mod workflow_resolver;

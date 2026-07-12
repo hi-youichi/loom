@@ -86,7 +86,7 @@ impl SkillCache {
             return None;
         }
 
-        Some(
+Some(
             snapshot
                 .entries
                 .into_iter()
@@ -101,6 +101,7 @@ impl SkillCache {
                     base_path: c.base_path,
                     skill_file: c.skill_file,
                     source: c.source,
+                    embedded_content: None,
                 })
                 .collect(),
         )
@@ -202,7 +203,7 @@ mod tests {
     use crate::utils::SkillMetadata;
     use std::fs;
 
-    fn make_entry(name: &str, dir: &std::path::Path) -> SkillEntry {
+fn make_entry(name: &str, dir: &std::path::Path) -> SkillEntry {
         SkillEntry {
             metadata: SkillMetadata {
                 name: name.to_string(),
@@ -213,6 +214,7 @@ mod tests {
             base_path: dir.to_path_buf(),
             skill_file: dir.join("SKILL.md"),
             source: SkillSource::Project,
+            embedded_content: None,
         }
     }
 

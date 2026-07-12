@@ -14,7 +14,7 @@ pub use filter::BuiltinToolFilter;
 pub use context::ToolCallContext;
 pub use mock::{mock_registry, MockTool};
 pub use registry::{ArcTool, ToolRegistry, ToolRegistryLocked};
-pub use tool::Tool;
+pub use tool::{BuiltinSkill, Tool};
 pub use yaml_specs::{load_tool_specs, YamlSpecError};
 
 pub use loom_llm::tool::{ToolOutputHint, ToolOutputStrategy, ToolSourceError, ToolSpec};

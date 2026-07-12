@@ -14,7 +14,10 @@ pub struct StructuredOutputTool {
 
 impl StructuredOutputTool {
     pub fn new(schema: Value, output_slot: Arc<Mutex<Option<Value>>>) -> Self {
-        Self { schema, output_slot }
+        Self {
+            schema,
+            output_slot,
+        }
     }
 }
 
@@ -147,10 +150,7 @@ mod tests {
 
     #[test]
     fn structured_output_spec() {
-        let tool = StructuredOutputTool::new(
-            json!({"type": "object"}),
-            Arc::new(Mutex::new(None)),
-        );
+        let tool = StructuredOutputTool::new(json!({"type": "object"}), Arc::new(Mutex::new(None)));
 
         assert_eq!(tool.name(), "structured_output");
         let spec = tool.spec();
