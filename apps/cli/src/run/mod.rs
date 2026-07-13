@@ -17,7 +17,7 @@ pub use ::agent::build_react_config;
 pub use ::agent::RunOptions;
 pub use ::agent::{RunCmd, RunError};
 pub use agent::{
-    print_reply_timestamp, default_workflow_tool_provider, run_agent_wrapper, RunAgentOutput,
+    default_workflow_tool_provider, print_reply_timestamp, run_agent_wrapper, RunAgentOutput,
     RunAgentResult, RunStopReason,
 };
 pub use contract::{

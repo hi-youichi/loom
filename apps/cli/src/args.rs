@@ -554,15 +554,9 @@ pub(crate) enum CuratorCommand {
         /// Force LLM pass even if interval gating would skip it
         #[arg(long)]
         force: bool,
-        /// Force the LLM consolidation pass regardless of interval/idle
-        /// gating. Defaults to OFF so LLM cost is opt-in. Hermes-aligned
-        /// (`agent/curator.py`): without this flag, automatic phases
-        /// (stale → archive / reactivation) still run, but the LLM
-        /// consolidation step is skipped.
-        ///
-        /// Tri-state via clap: `--consolidate` enables,
-        /// `--no-consolidate` disables, omitting both leaves it unset.
-        #[arg(long, overrides_with = "no_consolidate")]
+        /// Compatibility flag; the LLM consolidation pass now runs by default.
+        /// Use `--no-consolidate` to skip it.
+        #[arg(long)]
         consolidate: bool,
         #[arg(long, hide = true, conflicts_with = "consolidate")]
         no_consolidate: bool,

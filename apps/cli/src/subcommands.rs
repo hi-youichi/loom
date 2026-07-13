@@ -587,20 +587,7 @@ pub(crate) async fn handle_curator_command(
             no_consolidate,
             background,
         } => {
-            // Resolve the `--consolidate` tri-state into a single bool
-            // (default OFF). Hermes-aligned (`agent/curator.py`): without
-            // explicit consent, automatic phases run but LLM consolidation
-            // is skipped to keep curator LLM-cost opt-in.
-            let run_llm_pass: bool = if *no_consolidate {
-                false
-            } else if *consolidate {
-                true
-            } else {
-                // OFF by default — preserve previous `loom curator run`
-                // behaviour where Phase 0 (auto-transitions) still ran
-                // but Phase 1 (LLM consolidation) did not.
-                false
-            };
+            let run_llm_pass = *consolidate || !*no_consolidate;
 
             // Background / fire-and-forget mode (Hermes
             // `hermes_cli/curator.py:_cmd_run` synchronous=False path,
@@ -660,9 +647,7 @@ pub(crate) async fn handle_curator_command(
             //
             // Aligns with Hermes `run_curator_review()` which always runs
             // both phases. Only attempted when LLM credentials are available
-            // and not in dry-run mode. Default OFF (opt-in via
-            // `--consolidate`) so curator LLM-cost stays under user
-            // control.
+            // and not in dry-run mode. Use `--no-consolidate` to skip it.
             if run_llm_pass && !curator_args.dry_run {
                 if let Some((base_url, api_key, model)) = resolve_curator_llm_credentials() {
                     eprintln!("Curator LLM pass: starting (model: {})", model);
@@ -696,6 +681,7 @@ pub(crate) async fn handle_curator_command(
                                 outcome.turns,
                                 outcome.elapsed_seconds,
                             );
+                            println!("Summary: {}", outcome.summary);
                             for c in &outcome.classification.consolidated {
                                 println!("  - consolidated: {} -> {}", c.source, c.into);
                             }

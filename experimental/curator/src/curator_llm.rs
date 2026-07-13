@@ -231,6 +231,25 @@ pub async fn run_curator_llm_pass(
         active_skills.len()
     );
 
+    if active_skills.is_empty() {
+        return Ok(CuratorLlmPassOutcome {
+            final_reply: String::new(),
+            summary: "skipped (no agent-created candidates)".to_string(),
+            model,
+            provider,
+            run_error: None,
+            all_tool_calls: vec![],
+            llm_result: LlMReviewResult::default(),
+            classification: ClassificationResult::default(),
+            before_names: before_names.clone(),
+            after_names: before_names,
+            before_snapshots: before_snapshots.clone(),
+            after_snapshots: before_snapshots,
+            elapsed_seconds: start.elapsed().as_secs_f64(),
+            turns: 0,
+        });
+    }
+
     // Build prompt (includes CURATOR_REVIEW_PROMPT + skill list).
     // `dry_run` (Hermes parity: `agent/curator.py:run_curator_review(..., dry_run=True)`)
     // prepends a "## Mode: DRY RUN" banner so the LLM produces an analysis
@@ -405,7 +424,7 @@ pub async fn run_curator_llm_pass(
     let llm_result = parse_llm_review_response(&result.reply);
 
     // Build summary (aligns Hermes curator.py:1780 — ≤240 chars, Unicode-safe)
-    let summary = truncate_summary(&result.reply);
+    let summary = summarize_review(&llm_result, &result.reply);
 
     // Snapshot after-state
     let after_names = snapshot_skill_names(registry)?;
@@ -487,6 +506,19 @@ fn truncate_summary(final_reply: &str) -> String {
     }
 }
 
+fn summarize_review(review: &LlMReviewResult, final_reply: &str) -> String {
+    if review.summary.trim().is_empty() {
+        return truncate_summary(final_reply);
+    }
+
+    let summary = review
+        .summary
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    truncate_summary(&summary)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -554,6 +586,19 @@ mod tests {
         let cjk: String = "你".repeat(121); // 121 chars = 121 * 3 bytes
         let summary = truncate_summary(&cjk);
         assert_eq!(summary.chars().count(), 121); // not truncated (< 240)
+    }
+
+    #[test]
+    fn test_summarize_review_prefers_structured_summary() {
+        let review = LlMReviewResult {
+            summary: "One candidate exists.\nNo consolidation needed.".to_string(),
+            ..LlMReviewResult::default()
+        };
+        let raw = "```yaml\nsummary: One candidate exists.\n```";
+        assert_eq!(
+            summarize_review(&review, raw),
+            "One candidate exists. No consolidation needed."
+        );
     }
 
     #[test]
@@ -681,7 +726,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_curator_llm_pass_returns_outcome_on_agent_build_error() {
+    async fn run_curator_llm_pass_skips_agent_build_without_candidates() {
         let dir = tempfile::tempdir().unwrap();
         let registry = SkillRegistry::new(dir.path());
         let usage = SkillUsageStore::new(dir.path());
@@ -691,7 +736,8 @@ mod tests {
                 .await
                 .unwrap();
 
-        // Agent::from_config with default config should fail, returning a degraded outcome
-        assert!(outcome.run_error.is_some() || !outcome.final_reply.is_empty());
+        assert_eq!(outcome.summary, "skipped (no agent-created candidates)");
+        assert!(outcome.run_error.is_none());
+        assert_eq!(outcome.turns, 0);
     }
 }
