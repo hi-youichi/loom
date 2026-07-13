@@ -1,11 +1,29 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::agent::ReactBuildConfig;
 use crate::run::TypedAnyStreamEvent;
 use tool_core::active_operation::RunCancellation;
 
 /// Default working folder when not set (current directory).
 pub const DEFAULT_WORKING_FOLDER: &str = ".";
+
+/// Provider for default extra tools (e.g. the workflow tool) that should be
+/// registered with every agent invocation.
+///
+/// `build_react_config` calls the provider with the resolved `ReactBuildConfig`
+/// (after profile + env merging) so the tool factory can bind itself to the
+/// working folder, model, and other derived settings. The returned tools are
+/// merged into the agent's `extra_tools` slot and — critically — their
+/// `builtin_skill()` hooks run *before* the skill registry is finalized, so
+/// the workflow tool's `workflow` skill lands in the registry.
+///
+/// Without this provider, a tool that ships a builtin skill cannot make the
+/// skill visible to the LLM: `build_react_config` is the single point that
+/// assembles both the tool source and the skill registry, and any tool added
+/// after it returns is invisible to the skill layer.
+pub type ExtraToolsProvider =
+    Arc<dyn Fn(&ReactBuildConfig) -> Vec<Arc<dyn tool_core::Tool>> + Send + Sync>;
 
 /// Resolved model + provider configuration from a model string like "openai/gpt-4o".
 #[derive(Debug, Clone, Default)]
@@ -28,6 +46,10 @@ pub struct RunOptions {
     pub thread_id: Option<String>,
     pub agent: Option<String>,
     pub verbose: bool,
+    /// Raw `-v` / `-vv` count from CLI. Level 0 = minimal, 1 = +skills one-liner
+    /// + runtime details, 2+ = also multiline tools/skills with sources. Only the
+    /// CLI startup banner uses this; downstream runtime stays on `verbose: bool`.
+    pub verbose_level: u8,
     pub got_adaptive: bool,
     pub display_max_len: usize,
     pub output_json: bool,
@@ -43,6 +65,10 @@ pub struct RunOptions {
     pub any_stream_event_sender: Option<Arc<dyn Fn(TypedAnyStreamEvent) + Send + Sync>>,
     pub bash_executor: Option<Arc<dyn tool_basic::bash::CommandExecutor>>,
     pub extra_tools: Option<Arc<Vec<Arc<dyn tool_core::Tool>>>>,
+    /// Provider for default extra tools (e.g. the workflow tool) that ship
+    /// with Loom. See [`ExtraToolsProvider`] for the design rationale. CLI
+    /// entry points set this once; `build_react_config` consumes it.
+    pub default_extra_tools_provider: Option<ExtraToolsProvider>,
     pub acp_session_id: Option<String>,
     pub force_compact: bool,
     pub chat_id: Option<i64>,
@@ -78,6 +104,7 @@ impl Clone for RunOptions {
             thread_id: self.thread_id.clone(),
             agent: self.agent.clone(),
             verbose: self.verbose,
+            verbose_level: self.verbose_level,
             got_adaptive: self.got_adaptive,
             display_max_len: self.display_max_len,
             output_json: self.output_json,
@@ -93,6 +120,7 @@ impl Clone for RunOptions {
             any_stream_event_sender: self.any_stream_event_sender.clone(),
             bash_executor: self.bash_executor.clone(),
             extra_tools: self.extra_tools.clone(),
+            default_extra_tools_provider: self.default_extra_tools_provider.clone(),
             acp_session_id: self.acp_session_id.clone(),
             force_compact: self.force_compact,
             chat_id: self.chat_id,
@@ -118,5 +146,3 @@ pub struct AgentRunResult {
     pub reply: String,
     pub reasoning_content: Option<String>,
 }
-
-

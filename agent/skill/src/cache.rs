@@ -47,7 +47,9 @@ impl Default for SkillCache {
 
 impl SkillCache {
     pub fn new() -> Self {
-        Self { lru: Vec::with_capacity(MAX_LRU_ENTRIES) }
+        Self {
+            lru: Vec::with_capacity(MAX_LRU_ENTRIES),
+        }
     }
 
     pub fn get_lru(&mut self, key: &str) -> Option<Vec<SkillEntry>> {
@@ -86,7 +88,7 @@ impl SkillCache {
             return None;
         }
 
-Some(
+        Some(
             snapshot
                 .entries
                 .into_iter()
@@ -102,6 +104,7 @@ Some(
                     skill_file: c.skill_file,
                     source: c.source,
                     embedded_content: None,
+                    embedded_files: None,
                 })
                 .collect(),
         )
@@ -159,11 +162,7 @@ fn file_content_hash(path: &Path) -> Option<String> {
     Some(format!("{:016x}", hasher.finish()))
 }
 
-fn collect_manifest_entries(
-    dir: &Path,
-    root: &Path,
-    manifest: &mut HashMap<String, String>,
-) {
+fn collect_manifest_entries(dir: &Path, root: &Path, manifest: &mut HashMap<String, String>) {
     if crate::utils::is_excluded_path(dir) {
         return;
     }
@@ -175,7 +174,9 @@ fn collect_manifest_entries(
             } else {
                 let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 if name == "SKILL.md" || name == "DESCRIPTION.md" {
-                    if let (Some(hash), Ok(rel)) = (file_content_hash(&path), path.strip_prefix(root)) {
+                    if let (Some(hash), Ok(rel)) =
+                        (file_content_hash(&path), path.strip_prefix(root))
+                    {
                         manifest.insert(rel.to_string_lossy().to_string(), hash);
                     }
                 }
@@ -203,7 +204,7 @@ mod tests {
     use crate::utils::SkillMetadata;
     use std::fs;
 
-fn make_entry(name: &str, dir: &std::path::Path) -> SkillEntry {
+    fn make_entry(name: &str, dir: &std::path::Path) -> SkillEntry {
         SkillEntry {
             metadata: SkillMetadata {
                 name: name.to_string(),
@@ -215,6 +216,7 @@ fn make_entry(name: &str, dir: &std::path::Path) -> SkillEntry {
             skill_file: dir.join("SKILL.md"),
             source: SkillSource::Project,
             embedded_content: None,
+            embedded_files: None,
         }
     }
 
@@ -321,7 +323,11 @@ fn make_entry(name: &str, dir: &std::path::Path) -> SkillEntry {
 
         SkillCache::save_disk_snapshot(&skills_dir, &[make_entry("s1", &skill_dir)]);
 
-        fs::write(skill_dir.join("SKILL.md"), "---\nname: s1\n---\nChanged body").unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: s1\n---\nChanged body",
+        )
+        .unwrap();
 
         assert!(SkillCache::load_disk_snapshot(&skills_dir).is_none());
     }

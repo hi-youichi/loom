@@ -6,21 +6,17 @@
 //! - `load_agents_md` → `crate::load_agents_md`
 //! - `build_config_from_profile` → `crate::build_config_from_profile`
 
-
-
-
-use crate::agent::react::config::prompt_assembly::{assemble_system_prompt, SystemPromptInputs};
-pub use super::types::{
-    AgentRunResult, DEFAULT_WORKING_FOLDER, ResolvedModelConfig,
-    RunCompletion, RunOptions,
-};
 pub use super::runner::{RunCmd, RunError};
+pub use super::types::{
+    AgentRunResult, ResolvedModelConfig, RunCompletion, RunOptions, DEFAULT_WORKING_FOLDER,
+};
+use crate::agent::react::config::prompt_assembly::{assemble_system_prompt, SystemPromptInputs};
 
-use crate::ResolvedAgent;
 use crate::agent::ReactBuildConfig;
+use crate::ResolvedAgent;
+use crate::{EnvContext, ProjectInfo};
 use skill::discovery::SkillRegistry;
 use skill::usage::SkillUsageStore;
-use crate::{EnvContext, ProjectInfo};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -50,10 +46,20 @@ fn role_content_from_profile(profile_role: Option<String>) -> Option<String> {
 }
 
 /// Builds ReactBuildConfig from RunOptions.
-/// Returns the config and an optional `ResolvedAgent` describing which agent profile was loaded.
+/// Returns `(config, resolved_agent, skill_registry)`:
+/// - `config`: the ReactBuildConfig ready to run.
+/// - `resolved_agent`: which agent profile was loaded, if any.
+/// - `skill_registry`: the discovered SkillRegistry (with builtin + agent skills
+///   already injected and filters applied). `None` only if discovery was
+///   short-circuited by callers using a different path. The CLI startup banner
+///   uses this to print the loaded skills list at `-v` / `-vv`.
 pub fn build_react_config(
     opts: &RunOptions,
-) -> (ReactBuildConfig, Option<ResolvedAgent>) {
+) -> (
+    ReactBuildConfig,
+    Option<ResolvedAgent>,
+    Option<Arc<SkillRegistry>>,
+) {
     let loaded = load_profile_from_options(opts);
     let resolved_agent = loaded.as_ref().map(|(p, source)| ResolvedAgent {
         name: p.name.clone(),
@@ -88,10 +94,10 @@ pub fn build_react_config(
     if let Some(ref key) = effective_opts.api_key {
         base.openai_api_key = Some(key.clone());
     }
-    
+
     // CLI tier parameter processing (highest priority)
     if let Some(ref tier_str) = effective_opts.tier {
-                match tier_str.parse::<model_spec_core::ModelTier>() {
+        match tier_str.parse::<model_spec_core::ModelTier>() {
             Ok(tier) => {
                 base.model_tier = Some(tier);
                 tracing::info!(
@@ -108,7 +114,7 @@ pub fn build_react_config(
             }
         }
     }
-    
+
     if let Some(ref prof) = profile {
         if let Some(t) = prof.model.as_ref().and_then(|m| m.temperature) {
             base.openai_temperature = Some(t.to_string());
@@ -125,9 +131,7 @@ pub fn build_react_config(
                     );
                 }
             } else {
-                tracing::debug!(
-                    "CLI tier is set, skipping profile tier configuration"
-                );
+                tracing::debug!("CLI tier is set, skipping profile tier configuration");
             }
         } else {
             tracing::debug!(
@@ -139,7 +143,7 @@ pub fn build_react_config(
     if let Some(ref key) = effective_opts.api_key {
         base.openai_api_key = Some(key.clone());
     }
-if let Some(ref t) = effective_opts.provider_type {
+    if let Some(ref t) = effective_opts.provider_type {
         base.llm_provider = Some(t.clone());
     }
     if let Some(ref effort) = effective_opts.effort {
@@ -158,25 +162,27 @@ if let Some(ref t) = effective_opts.provider_type {
     // On subsequent calls the cached handle is returned without
     // touching `ReactBuildConfig::from_env()` or `load_profile_from_options`.
     use std::sync::OnceLock;
-    static AGENT_CACHE: OnceLock<
-        std::sync::Arc<crate::agent_cache::AgentCache<ReactBuildConfig>>,
-    > = OnceLock::new();
-    let cache = AGENT_CACHE.get_or_init(|| {
-        std::sync::Arc::new(crate::agent_cache::AgentCache::new())
-    });
+    static AGENT_CACHE: OnceLock<std::sync::Arc<crate::agent_cache::AgentCache<ReactBuildConfig>>> =
+        OnceLock::new();
+    let cache =
+        AGENT_CACHE.get_or_init(|| std::sync::Arc::new(crate::agent_cache::AgentCache::new()));
     let wf = effective_opts
         .working_folder
         .as_ref()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
     let key = crate::agent_cache::AgentKey::new(
-        effective_opts.agent.clone().unwrap_or_else(|| "default".to_string()),
-        effective_opts.model.clone().unwrap_or_else(|| "default".to_string()),
+        effective_opts
+            .agent
+            .clone()
+            .unwrap_or_else(|| "default".to_string()),
+        effective_opts
+            .model
+            .clone()
+            .unwrap_or_else(|| "default".to_string()),
         wf,
     );
-    let _cached = cache.get_or_build(key.clone(), || {
-        std::sync::Arc::new(base.clone())
-    });
+    let _cached = cache.get_or_build(key.clone(), || std::sync::Arc::new(base.clone()));
     // Refresh `last_used` so the idle sweeper doesn't evict an active
     // session's handle while the user is idle but still working.
     let _ = cache.sweep_idle();
@@ -208,6 +214,27 @@ if let Some(ref t) = effective_opts.provider_type {
         .unwrap_or_else(|| PathBuf::from(DEFAULT_WORKING_FOLDER));
     base.working_folder = Some(working_folder.clone());
     base.thread_id = effective_opts.thread_id.clone().or(base.thread_id.clone());
+
+    // Resolve default extra tools (e.g. the workflow tool) BEFORE the skill
+    // registry is built. Their `builtin_skill()` hooks are picked up by
+    // `inject_builtin_skills` below — see [`run::types::ExtraToolsProvider`]
+    // for the design rationale. Putting this AFTER `build_react_config`
+    // returns (the old `register_extra_tools` pattern) silently dropped the
+    // builtin skills.
+    if let Some(provider) = effective_opts.default_extra_tools_provider.as_ref() {
+        let default_tools = provider(&base);
+        if !default_tools.is_empty() {
+            let mut tools = base
+                .extra_tools
+                .as_ref()
+                .map(|v| v.as_ref().clone())
+                .unwrap_or_default();
+            for t in default_tools {
+                tools.push(t);
+            }
+            base.extra_tools = Some(Arc::new(tools));
+        }
+    }
 
     let profile_role = profile
         .as_ref()
@@ -250,7 +277,6 @@ if let Some(ref t) = effective_opts.provider_type {
         }
     }
 
-
     let skill_registry = {
         let extra_dirs: Vec<PathBuf> = profile
             .as_ref()
@@ -258,13 +284,13 @@ if let Some(ref t) = effective_opts.provider_type {
             .and_then(|s| s.dirs.as_ref())
             .map(|dirs| dirs.iter().map(PathBuf::from).collect())
             .unwrap_or_default();
-let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs)
-            .unwrap_or_else(|e| {
+        let mut registry =
+            SkillRegistry::discover(&working_folder, &extra_dirs).unwrap_or_else(|e| {
                 tracing::warn!("skill discovery failed: {e}");
                 SkillRegistry::empty()
             });
 
-        inject_builtin_skills(&mut registry, effective_opts.extra_tools.as_deref());
+        inject_builtin_skills(&mut registry, base.extra_tools.as_deref());
         if let Some(ref p) = profile {
             if let Some(ref src) = p.source_dir {
                 if let Err(e) = registry.add_agent_skills(&src.join("skills")) {
@@ -273,7 +299,9 @@ let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs)
             }
             if let Some(ref sc) = p.skills {
                 let platform = Some(std::env::consts::OS);
-                let platform_disabled: Vec<String> = sc.platform_disabled.as_ref()
+                let platform_disabled: Vec<String> = sc
+                    .platform_disabled
+                    .as_ref()
                     .and_then(|m| m.get(std::env::consts::OS))
                     .cloned()
                     .unwrap_or_default();
@@ -308,10 +336,7 @@ let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs)
                 for name in preload {
                     if let Ok(content) = skill_registry.0.load_skill(name) {
                         usage_store.bump_use(name);
-                        buf.push_str(&format!(
-                            "<skill name=\"{}\">\n{}</skill>\n",
-                            name, content
-                        ));
+                        buf.push_str(&format!("<skill name=\"{}\">\n{}</skill>\n", name, content));
                     }
                 }
                 if !buf.is_empty() {
@@ -342,9 +367,7 @@ let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs)
     config.skills_prompt = skills_prompt;
     config.memory_prompt = load_memory_prompt();
     config.env_context = Some({
-        let mut ctx = EnvContext::detect().with_project(
-            ProjectInfo::detect(&working_folder),
-        );
+        let mut ctx = EnvContext::detect().with_project(ProjectInfo::detect(&working_folder));
         if let Some(cid) = effective_opts.chat_id {
             ctx = ctx.with_chat_id(cid);
         }
@@ -365,7 +388,8 @@ let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs)
     };
     config.system_prompt = Some(assemble_system_prompt(&inputs));
 
-    config.skill_registry = Some(skill_registry.0);
+    let skill_registry_arc = skill_registry.0.clone();
+    config.skill_registry = Some(skill_registry_arc.clone());
     config.max_sub_agent_depth = profile
         .as_ref()
         .and_then(|p| p.behavior.as_ref())
@@ -386,10 +410,8 @@ let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs)
         }
     }
 
-    (config, resolved_agent)
+    (config, resolved_agent, Some(skill_registry_arc))
 }
-
-
 
 /// Resolve a model string (e.g. "openai/gpt-4o", "gpt-4o") into model id + provider config.
 pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfig {
@@ -609,10 +631,13 @@ pub fn inject_builtin_skills(
 ) {
     let Some(tools) = extra_tools else { return };
     for tool in tools {
-        let Some(skill) = tool.builtin_skill() else { continue };
+        let Some(skill) = tool.builtin_skill() else {
+            continue;
+        };
         tracing::debug!(
             skill = %skill.name,
             requires_tools = ?skill.requires_tools,
+            references = skill.references.len(),
             "registering builtin skill from tool"
         );
         registry.add_builtin(
@@ -621,6 +646,7 @@ pub fn inject_builtin_skills(
             &skill.content,
             skill.triggers,
             skill.requires_tools,
+            skill.references,
         );
     }
 }
