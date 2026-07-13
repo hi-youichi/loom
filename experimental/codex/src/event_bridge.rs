@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use stream_event::codex::{
-    CodexEvent, agent_message_item, command_execution_item, mcp_tool_call_item,
-    McpToolCallItemError, reasoning_item,
+    agent_message_item, command_execution_item, mcp_tool_call_item, reasoning_item, CodexEvent,
+    McpToolCallItemError,
 };
 use stream_event::{MessageChunkKind, StreamEvent};
 
@@ -68,7 +68,6 @@ fn convert_stream_event_inner(
 ) -> Vec<CodexEvent> {
     match ev_kind {
         // ── Text / Thinking message chunks ──────────────────────────────────
-
         StreamEventKind::Messages { content, kind } => {
             let mut out = Vec::new();
             match kind {
@@ -103,7 +102,6 @@ fn convert_stream_event_inner(
         }
 
         // ── Tool decided by LLM (Think node emits complete arguments) ───────
-
         StreamEventKind::ToolCall {
             call_id,
             name,
@@ -121,7 +119,9 @@ fn convert_stream_event_inner(
             if is_shell_tool(&name) {
                 // Render the arguments as a command string.
                 let command = extract_command_string(&name, &arguments);
-                tracker.tool_command.insert(item_id.clone(), command.clone());
+                tracker
+                    .tool_command
+                    .insert(item_id.clone(), command.clone());
                 tracker.tool_output.insert(item_id.clone(), String::new());
                 out.push(CodexEvent::ItemStarted {
                     item: command_execution_item(&item_id, &command, "", None, "pending"),
@@ -133,19 +133,15 @@ fn convert_stream_event_inner(
                 );
                 out.push(CodexEvent::ItemStarted {
                     item: mcp_tool_call_item(
-                        &item_id,
-                        server,
-                        tool,
-                        arguments,
-                        None,
-                        None,
-                        "pending",
+                        &item_id, server, tool, arguments, None, None, "pending",
                     ),
                 });
             } else {
                 // Unknown tool — treat as a generic command_execution.
                 let command = format!("{name}({})", arguments);
-                tracker.tool_command.insert(item_id.clone(), command.clone());
+                tracker
+                    .tool_command
+                    .insert(item_id.clone(), command.clone());
                 tracker.tool_output.insert(item_id.clone(), String::new());
                 out.push(CodexEvent::ItemStarted {
                     item: command_execution_item(&item_id, &command, "", None, "pending"),
@@ -156,7 +152,6 @@ fn convert_stream_event_inner(
         }
 
         // ── Tool execution started (Act node) ────────────────────────────────
-
         StreamEventKind::ToolStart { call_id, name } => {
             let key = call_id.as_deref().unwrap_or(&name);
             if let Some(item_id) = tracker.tool_item_ids.get(key).cloned() {
@@ -174,9 +169,7 @@ fn convert_stream_event_inner(
                         .cloned()
                         .unwrap_or_default();
                     return vec![CodexEvent::ItemUpdated {
-                        item: command_execution_item(
-                            &item_id, &command, &output, None, "running",
-                        ),
+                        item: command_execution_item(&item_id, &command, &output, None, "running"),
                     }];
                 }
             }
@@ -184,7 +177,6 @@ fn convert_stream_event_inner(
         }
 
         // ── Tool incremental output (Act node) ───────────────────────────────
-
         StreamEventKind::ToolOutput {
             call_id,
             name,
@@ -215,7 +207,6 @@ fn convert_stream_event_inner(
         }
 
         // ── Tool execution finished (Act node) ───────────────────────────────
-
         StreamEventKind::ToolEnd {
             call_id,
             name,
@@ -265,11 +256,7 @@ fn convert_stream_event_inner(
                     let status = if is_error { "failed" } else { "completed" };
                     return vec![CodexEvent::ItemCompleted {
                         item: command_execution_item(
-                            &item_id,
-                            &command,
-                            &output,
-                            exit_code,
-                            status,
+                            &item_id, &command, &output, exit_code, status,
                         ),
                     }];
                 }

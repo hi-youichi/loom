@@ -6,10 +6,13 @@ use std::sync::Arc;
 use serde_json::json;
 use tokio::sync::{mpsc, Mutex};
 
-use agent::run::{build_react_config, run_agent_from_config, RunCmd, RunParams, RunOptions, RunCompletion, RunError};
-use tool_core::active_operation::RunCancellation;
+use agent::run::{
+    build_react_config, run_agent_from_config, RunCmd, RunCompletion, RunError, RunOptions,
+    RunParams,
+};
 use loom_llm::message::UserContent;
 use stream_event::codex::{CodexErrorInfo, CodexEvent, CodexUsage};
+use tool_core::active_operation::RunCancellation;
 
 use crate::stdio_loop::CodexNotification;
 
@@ -17,8 +20,15 @@ use crate::stdio_loop::CodexNotification;
 
 pub enum OutputEvent {
     Notification(CodexNotification),
-    Response { id: serde_json::Value, result: serde_json::Value },
-    ErrorResponse { id: serde_json::Value, code: i32, message: String },
+    Response {
+        id: serde_json::Value,
+        result: serde_json::Value,
+    },
+    ErrorResponse {
+        id: serde_json::Value,
+        code: i32,
+        message: String,
+    },
 }
 
 // ── Per-thread session state ──────────────────────────────────────────────────
@@ -75,9 +85,7 @@ impl CodexAgent {
             "thread/commandExecution/approve" => {
                 self.handle_command_approval(id, params, true).await
             }
-            "thread/commandExecution/deny" => {
-                self.handle_command_approval(id, params, false).await
-            }
+            "thread/commandExecution/deny" => self.handle_command_approval(id, params, false).await,
             other => {
                 tracing::warn!("Unknown method: {other}");
                 let _ = self
@@ -168,9 +176,7 @@ impl CodexAgent {
                 .and_then(|v| v.as_str())
                 .map(PathBuf::from)
                 .or_else(|| self.args.cwd.clone())
-                .unwrap_or_else(|| {
-                    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-                });
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
             let system_prompt = params
                 .get("systemPrompt")
                 .and_then(|v| v.as_str())
@@ -281,6 +287,7 @@ impl CodexAgent {
                 session_id: Some(thread_id.clone()),
                 agent: None,
                 verbose: false,
+                verbose_level: 0,
                 got_adaptive: false,
                 display_max_len: 4096,
                 output_json: false,
@@ -298,6 +305,7 @@ impl CodexAgent {
                 any_stream_event_sender: None,
                 bash_executor: None,
                 extra_tools: None,
+                default_extra_tools_provider: Some(tool_workflow::default_workflow_tool_provider()),
                 acp_session_id: None,
                 force_compact: false,
                 chat_id: None,
@@ -381,15 +389,13 @@ impl CodexAgent {
                             }
                             // Emit as notification
                             let notif = codex_event_to_notification(codex_ev);
-                            let _ = output_tx_ev
-                                .send(OutputEvent::Notification(notif))
-                                .await;
+                            let _ = output_tx_ev.send(OutputEvent::Notification(notif)).await;
                         }
                     });
                 })
             };
 
-            let (config, _) = build_react_config(&run_opts);
+            let (config, _, _) = build_react_config(&run_opts);
             let result: Result<RunCompletion, RunError> = run_agent_from_config(
                 &config,
                 &RunCmd::React,
@@ -400,14 +406,14 @@ impl CodexAgent {
                     any_stream_event_sender: run_opts.any_stream_event_sender.clone(),
                     llm_override: None,
                 },
-                Some(on_event)
-            ).await;
+                Some(on_event),
+            )
+            .await;
 
             match result {
                 Ok(RunCompletion::Finished(_run_result)) => {
                     let usage = CodexUsage::zero();
-                    let notif =
-                        codex_event_to_notification(&CodexEvent::TurnCompleted { usage });
+                    let notif = codex_event_to_notification(&CodexEvent::TurnCompleted { usage });
                     let _ = output_tx.send(OutputEvent::Notification(notif)).await;
                 }
                 Ok(RunCompletion::Cancelled) => {

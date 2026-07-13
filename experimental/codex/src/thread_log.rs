@@ -1,7 +1,7 @@
 use std::path::PathBuf;
+use stream_event::codex::CodexEvent;
 use tokio::fs::{self, File, OpenOptions};
 use tokio::io::AsyncWriteExt;
-use stream_event::codex::CodexEvent;
 
 pub struct ThreadLog {
     file: File,

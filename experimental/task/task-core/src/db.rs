@@ -88,7 +88,10 @@ impl TaskDb {
             1 => Ok(tasks.into_iter().next().unwrap()),
             _ => Err(ShowError::Ambiguous {
                 prefix: id_prefix.to_string(),
-                matches: tasks.into_iter().map(|t| (t.id.clone(), t.name.clone())).collect(),
+                matches: tasks
+                    .into_iter()
+                    .map(|t| (t.id.clone(), t.name.clone()))
+                    .collect(),
             }),
         }
     }
@@ -131,17 +134,24 @@ impl TaskDb {
         };
 
         let count_sql = format!("SELECT COUNT(*) as count FROM tasks {}", where_sql);
-        let total: i64 = if status_filter.is_some() || assignee_filter.is_some() || name_filter.is_some() {
-            let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
-            if let Some(ref v) = status_filter { q = q.bind(v); }
-            if let Some(ref v) = assignee_filter { q = q.bind(v); }
-            if let Some(ref v) = name_filter { q = q.bind(v); }
-            q.fetch_one(&self.pool).await?
-        } else {
-            sqlx::query_scalar::<_, i64>(&count_sql)
-                .fetch_one(&self.pool)
-                .await?
-        };
+        let total: i64 =
+            if status_filter.is_some() || assignee_filter.is_some() || name_filter.is_some() {
+                let mut q = sqlx::query_scalar::<_, i64>(&count_sql);
+                if let Some(ref v) = status_filter {
+                    q = q.bind(v);
+                }
+                if let Some(ref v) = assignee_filter {
+                    q = q.bind(v);
+                }
+                if let Some(ref v) = name_filter {
+                    q = q.bind(v);
+                }
+                q.fetch_one(&self.pool).await?
+            } else {
+                sqlx::query_scalar::<_, i64>(&count_sql)
+                    .fetch_one(&self.pool)
+                    .await?
+            };
         let total = total as u32;
 
         let sort_field = match p.sort_by.as_str() {
@@ -162,9 +172,15 @@ impl TaskDb {
         );
 
         let mut q = sqlx::query_as::<_, Task>(&data_sql);
-        if let Some(ref v) = status_filter { q = q.bind(v); }
-        if let Some(ref v) = assignee_filter { q = q.bind(v); }
-        if let Some(ref v) = name_filter { q = q.bind(v); }
+        if let Some(ref v) = status_filter {
+            q = q.bind(v);
+        }
+        if let Some(ref v) = assignee_filter {
+            q = q.bind(v);
+        }
+        if let Some(ref v) = name_filter {
+            q = q.bind(v);
+        }
         q = q.bind(p.limit);
         q = q.bind(offset);
 
@@ -179,8 +195,14 @@ impl TaskDb {
         })
     }
 
-    pub async fn update_task(&self, p: &UpdateParams) -> Result<Task, Box<dyn std::error::Error + Send + Sync>> {
-        let existing = self.show_task(&p.id).await.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
+    pub async fn update_task(
+        &self,
+        p: &UpdateParams,
+    ) -> Result<Task, Box<dyn std::error::Error + Send + Sync>> {
+        let existing = self
+            .show_task(&p.id)
+            .await
+            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
         let mut set_clauses = Vec::new();
         let mut param_idx = 1usize;
 
@@ -241,16 +263,28 @@ impl TaskDb {
         );
 
         let mut q = sqlx::query(&sql);
-        if let Some(ref v) = name_val { q = q.bind(v); }
-        if let Some(ref v) = desc_val { q = q.bind(v); }
-        if let Some(ref v) = assignee_val { q = q.bind(v); }
-        if let Some(ref v) = start_time_val { q = q.bind(v); }
-        if let Some(ref v) = status_val { q = q.bind(v); }
+        if let Some(ref v) = name_val {
+            q = q.bind(v);
+        }
+        if let Some(ref v) = desc_val {
+            q = q.bind(v);
+        }
+        if let Some(ref v) = assignee_val {
+            q = q.bind(v);
+        }
+        if let Some(ref v) = start_time_val {
+            q = q.bind(v);
+        }
+        if let Some(ref v) = status_val {
+            q = q.bind(v);
+        }
         q = q.bind(&existing.id);
 
         q.execute(&self.pool).await?;
 
-        self.show_task(&existing.id).await.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        self.show_task(&existing.id)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
     }
 
     pub async fn delete_task(&self, id_prefix: &str) -> Result<Task, ShowError> {
@@ -420,13 +454,16 @@ mod tests {
     #[tokio::test]
     async fn test_create_and_show() {
         let db = test_db().await;
-        let task = db.create_task(&CreateParams {
-            name: "test".into(),
-            description: "desc".into(),
-            assignee: "alice".into(),
-            start_time: None,
-            status: TaskStatus::Pending,
-        }).await.unwrap();
+        let task = db
+            .create_task(&CreateParams {
+                name: "test".into(),
+                description: "desc".into(),
+                assignee: "alice".into(),
+                start_time: None,
+                status: TaskStatus::Pending,
+            })
+            .await
+            .unwrap();
 
         let found = db.show_task(&task.id[..8]).await.unwrap();
         assert_eq!(found.name, "test");
@@ -443,7 +480,9 @@ mod tests {
                 assignee: String::new(),
                 start_time: None,
                 status: TaskStatus::Pending,
-            }).await.unwrap();
+            })
+            .await
+            .unwrap();
         }
 
         let list = db.list_tasks(&ListParams::default()).await.unwrap();
@@ -453,22 +492,28 @@ mod tests {
     #[tokio::test]
     async fn test_update_task() {
         let db = test_db().await;
-        let task = db.create_task(&CreateParams {
-            name: "before".into(),
-            description: String::new(),
-            assignee: String::new(),
-            start_time: None,
-            status: TaskStatus::Pending,
-        }).await.unwrap();
+        let task = db
+            .create_task(&CreateParams {
+                name: "before".into(),
+                description: String::new(),
+                assignee: String::new(),
+                start_time: None,
+                status: TaskStatus::Pending,
+            })
+            .await
+            .unwrap();
 
-        let updated = db.update_task(&UpdateParams {
-            id: task.id.clone(),
-            name: Some("after".into()),
-            description: None,
-            assignee: None,
-            start_time: None,
-            status: Some(TaskStatus::InProgress),
-        }).await.unwrap();
+        let updated = db
+            .update_task(&UpdateParams {
+                id: task.id.clone(),
+                name: Some("after".into()),
+                description: None,
+                assignee: None,
+                start_time: None,
+                status: Some(TaskStatus::InProgress),
+            })
+            .await
+            .unwrap();
 
         assert_eq!(updated.name, "after");
         assert_eq!(updated.status, TaskStatus::InProgress);
@@ -477,13 +522,16 @@ mod tests {
     #[tokio::test]
     async fn test_delete_task() {
         let db = test_db().await;
-        let task = db.create_task(&CreateParams {
-            name: "to-delete".into(),
-            description: String::new(),
-            assignee: String::new(),
-            start_time: None,
-            status: TaskStatus::Pending,
-        }).await.unwrap();
+        let task = db
+            .create_task(&CreateParams {
+                name: "to-delete".into(),
+                description: String::new(),
+                assignee: String::new(),
+                start_time: None,
+                status: TaskStatus::Pending,
+            })
+            .await
+            .unwrap();
 
         let deleted = db.delete_task(&task.id).await.unwrap();
         assert_eq!(deleted.name, "to-delete");
@@ -494,13 +542,16 @@ mod tests {
     #[tokio::test]
     async fn test_get_set_meta() {
         let db = test_db().await;
-        let task = db.create_task(&CreateParams {
-            name: "meta-test".into(),
-            description: String::new(),
-            assignee: String::new(),
-            start_time: None,
-            status: TaskStatus::InProgress,
-        }).await.unwrap();
+        let task = db
+            .create_task(&CreateParams {
+                name: "meta-test".into(),
+                description: String::new(),
+                assignee: String::new(),
+                start_time: None,
+                status: TaskStatus::InProgress,
+            })
+            .await
+            .unwrap();
 
         let val = serde_json::json!({"iteration": 5, "tool": "loom"});
         db.set_meta(&task.id, "goal", &val).await.unwrap();
@@ -513,18 +564,27 @@ mod tests {
     #[tokio::test]
     async fn test_atomic_update_status() {
         let db = test_db().await;
-        let task = db.create_task(&CreateParams {
-            name: "atomic".into(),
-            description: String::new(),
-            assignee: String::new(),
-            start_time: None,
-            status: TaskStatus::Pending,
-        }).await.unwrap();
+        let task = db
+            .create_task(&CreateParams {
+                name: "atomic".into(),
+                description: String::new(),
+                assignee: String::new(),
+                start_time: None,
+                status: TaskStatus::Pending,
+            })
+            .await
+            .unwrap();
 
-        let ok = db.atomic_update_status(&task.id, TaskStatus::Pending, TaskStatus::InProgress).await.unwrap();
+        let ok = db
+            .atomic_update_status(&task.id, TaskStatus::Pending, TaskStatus::InProgress)
+            .await
+            .unwrap();
         assert!(ok);
 
-        let ok = db.atomic_update_status(&task.id, TaskStatus::Pending, TaskStatus::InProgress).await.unwrap();
+        let ok = db
+            .atomic_update_status(&task.id, TaskStatus::Pending, TaskStatus::InProgress)
+            .await
+            .unwrap();
         assert!(!ok);
 
         let found = db.show_task(&task.id).await.unwrap();
@@ -635,20 +695,26 @@ mod tests {
     async fn test_show_task_ambiguous_prefix() {
         let db = test_db().await;
         // Create two tasks with known IDs
-        let _t1 = db.create_task(&CreateParams {
-            name: "Task 1".into(),
-            description: String::new(),
-            assignee: String::new(),
-            start_time: None,
-            status: TaskStatus::Pending,
-        }).await.unwrap();
-        let _t2 = db.create_task(&CreateParams {
-            name: "Task 2".into(),
-            description: String::new(),
-            assignee: String::new(),
-            start_time: None,
-            status: TaskStatus::Pending,
-        }).await.unwrap();
+        let _t1 = db
+            .create_task(&CreateParams {
+                name: "Task 1".into(),
+                description: String::new(),
+                assignee: String::new(),
+                start_time: None,
+                status: TaskStatus::Pending,
+            })
+            .await
+            .unwrap();
+        let _t2 = db
+            .create_task(&CreateParams {
+                name: "Task 2".into(),
+                description: String::new(),
+                assignee: String::new(),
+                start_time: None,
+                status: TaskStatus::Pending,
+            })
+            .await
+            .unwrap();
 
         // Use empty prefix which matches both
         let result = db.show_task("").await;
@@ -664,19 +730,26 @@ mod tests {
             assignee: String::new(),
             start_time: None,
             status: TaskStatus::Pending,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         db.create_task(&CreateParams {
             name: "done-task".into(),
             description: String::new(),
             assignee: String::new(),
             start_time: None,
             status: TaskStatus::Completed,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
 
-        let list = db.list_tasks(&ListParams {
-            status: Some(TaskStatus::Completed),
-            ..Default::default()
-        }).await.unwrap();
+        let list = db
+            .list_tasks(&ListParams {
+                status: Some(TaskStatus::Completed),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
         assert_eq!(list.total, 1);
         assert_eq!(list.tasks[0].name, "done-task");
     }
@@ -690,19 +763,26 @@ mod tests {
             assignee: "alice".into(),
             start_time: None,
             status: TaskStatus::Pending,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         db.create_task(&CreateParams {
             name: "bob-task".into(),
             description: String::new(),
             assignee: "bob".into(),
             start_time: None,
             status: TaskStatus::Pending,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
 
-        let list = db.list_tasks(&ListParams {
-            assignee: Some("alice".into()),
-            ..Default::default()
-        }).await.unwrap();
+        let list = db
+            .list_tasks(&ListParams {
+                assignee: Some("alice".into()),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
         assert_eq!(list.total, 1);
         assert_eq!(list.tasks[0].name, "alice-task");
     }
@@ -716,19 +796,26 @@ mod tests {
             assignee: String::new(),
             start_time: None,
             status: TaskStatus::Pending,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         db.create_task(&CreateParams {
             name: "beta-task".into(),
             description: String::new(),
             assignee: String::new(),
             start_time: None,
             status: TaskStatus::Pending,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
 
-        let list = db.list_tasks(&ListParams {
-            name: Some("alpha".into()),
-            ..Default::default()
-        }).await.unwrap();
+        let list = db
+            .list_tasks(&ListParams {
+                name: Some("alpha".into()),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
         assert_eq!(list.total, 1);
         assert_eq!(list.tasks[0].name, "alpha-task");
     }
@@ -743,25 +830,33 @@ mod tests {
                 assignee: String::new(),
                 start_time: None,
                 status: TaskStatus::Pending,
-            }).await.unwrap();
+            })
+            .await
+            .unwrap();
         }
 
         // Page 1, limit 2
-        let page1 = db.list_tasks(&ListParams {
-            limit: 2,
-            page: 1,
-            ..Default::default()
-        }).await.unwrap();
+        let page1 = db
+            .list_tasks(&ListParams {
+                limit: 2,
+                page: 1,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
         assert_eq!(page1.tasks.len(), 2);
         assert_eq!(page1.total, 5);
         assert!(page1.has_more);
 
         // Page 3, limit 2
-        let page3 = db.list_tasks(&ListParams {
-            limit: 2,
-            page: 3,
-            ..Default::default()
-        }).await.unwrap();
+        let page3 = db
+            .list_tasks(&ListParams {
+                limit: 2,
+                page: 3,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
         assert_eq!(page3.tasks.len(), 1);
         assert!(!page3.has_more);
     }
@@ -775,20 +870,27 @@ mod tests {
             assignee: String::new(),
             start_time: None,
             status: TaskStatus::Pending,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         db.create_task(&CreateParams {
             name: "alpha".into(),
             description: String::new(),
             assignee: String::new(),
             start_time: None,
             status: TaskStatus::Pending,
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
 
-        let list = db.list_tasks(&ListParams {
-            sort_by: "name".into(),
-            sort_order: "asc".into(),
-            ..Default::default()
-        }).await.unwrap();
+        let list = db
+            .list_tasks(&ListParams {
+                sort_by: "name".into(),
+                sort_order: "asc".into(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
         assert_eq!(list.tasks[0].name, "alpha");
         assert_eq!(list.tasks[1].name, "charlie");
     }
@@ -796,22 +898,28 @@ mod tests {
     #[tokio::test]
     async fn test_update_task_no_changes_returns_existing() {
         let db = test_db().await;
-        let task = db.create_task(&CreateParams {
-            name: "unchanged".into(),
-            description: "original".into(),
-            assignee: String::new(),
-            start_time: None,
-            status: TaskStatus::Pending,
-        }).await.unwrap();
+        let task = db
+            .create_task(&CreateParams {
+                name: "unchanged".into(),
+                description: "original".into(),
+                assignee: String::new(),
+                start_time: None,
+                status: TaskStatus::Pending,
+            })
+            .await
+            .unwrap();
 
-        let updated = db.update_task(&UpdateParams {
-            id: task.id.clone(),
-            name: None,
-            description: None,
-            assignee: None,
-            start_time: None,
-            status: None,
-        }).await.unwrap();
+        let updated = db
+            .update_task(&UpdateParams {
+                id: task.id.clone(),
+                name: None,
+                description: None,
+                assignee: None,
+                start_time: None,
+                status: None,
+            })
+            .await
+            .unwrap();
 
         assert_eq!(updated.name, "unchanged");
         assert_eq!(updated.description, "original");
@@ -827,13 +935,16 @@ mod tests {
     #[tokio::test]
     async fn test_get_meta_nonexistent_key() {
         let db = test_db().await;
-        let task = db.create_task(&CreateParams {
-            name: "meta".into(),
-            description: String::new(),
-            assignee: String::new(),
-            start_time: None,
-            status: TaskStatus::Pending,
-        }).await.unwrap();
+        let task = db
+            .create_task(&CreateParams {
+                name: "meta".into(),
+                description: String::new(),
+                assignee: String::new(),
+                start_time: None,
+                status: TaskStatus::Pending,
+            })
+            .await
+            .unwrap();
 
         let result = db.get_meta(&task.id, "nonexistent").await.unwrap();
         assert!(result.is_none());
@@ -848,26 +959,31 @@ mod tests {
     #[tokio::test]
     async fn test_create_task_with_start_time() {
         let db = test_db().await;
-        let task = db.create_task(&CreateParams {
-            name: "scheduled".into(),
-            description: String::new(),
-            assignee: String::new(),
-            start_time: Some("2025-08-20T10:00:00Z".to_string()),
-            status: TaskStatus::Pending,
-        }).await.unwrap();
+        let task = db
+            .create_task(&CreateParams {
+                name: "scheduled".into(),
+                description: String::new(),
+                assignee: String::new(),
+                start_time: Some("2025-08-20T10:00:00Z".to_string()),
+                status: TaskStatus::Pending,
+            })
+            .await
+            .unwrap();
         assert!(task.start_time.contains("2025-08-20"));
     }
 
     #[tokio::test]
     async fn test_create_task_with_invalid_start_time() {
         let db = test_db().await;
-        let result = db.create_task(&CreateParams {
-            name: "bad-time".into(),
-            description: String::new(),
-            assignee: String::new(),
-            start_time: Some("not-a-valid-time".to_string()),
-            status: TaskStatus::Pending,
-        }).await;
+        let result = db
+            .create_task(&CreateParams {
+                name: "bad-time".into(),
+                description: String::new(),
+                assignee: String::new(),
+                start_time: Some("not-a-valid-time".to_string()),
+                status: TaskStatus::Pending,
+            })
+            .await;
         assert!(result.is_err());
     }
 }

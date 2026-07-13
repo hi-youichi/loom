@@ -1,5 +1,5 @@
-use tool_core::BuiltinToolFilter;
 use std::collections::HashSet;
+use tool_core::BuiltinToolFilter;
 
 /// Tool whitelist for background review agents.
 ///
@@ -11,12 +11,7 @@ use std::collections::HashSet;
 /// (singular) to match the rest of the `skill_*` family (`skill_view`,
 /// `skill_manage`). See `tool_core::tool_name::TOOL_SKILL_LIST`. The
 /// other three names are identical between Python and Rust.
-pub const REVIEW_ALLOWED_TOOLS: &[&str] = &[
-    "memory",
-    "skill_list",
-    "skill_view",
-    "skill_manage",
-];
+pub const REVIEW_ALLOWED_TOOLS: &[&str] = &["memory", "skill_list", "skill_view", "skill_manage"];
 
 #[derive(Clone)]
 pub struct ReviewToolGate {

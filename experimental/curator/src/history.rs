@@ -69,7 +69,8 @@ impl ReviewHistory {
 
     fn open(&self) -> Result<Connection, String> {
         if let Some(parent) = self.db_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create db dir: {}", e))?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create db dir: {}", e))?;
         }
         let conn = checkpoint_sqlite_store::sqlite_util::open_sqlite_with_wal(&self.db_path)?;
         self.init_schema(&conn)?;
@@ -85,7 +86,10 @@ impl ReviewHistory {
             return Ok(());
         };
         let jsonl_path = loom_home.join("data").join("review").join("history.jsonl");
-        let bak_path = loom_home.join("data").join("review").join("history.jsonl.bak");
+        let bak_path = loom_home
+            .join("data")
+            .join("review")
+            .join("history.jsonl.bak");
 
         // Already migrated (.bak exists) or nothing to migrate (.jsonl absent)
         if bak_path.exists() || !jsonl_path.exists() {
@@ -567,7 +571,11 @@ mod tests {
         let jsonl_path = review_dir.join("history.jsonl");
 
         let r1 = make_record("s1", false);
-        std::fs::write(&jsonl_path, format!("{}\n", serde_json::to_string(&r1).unwrap())).unwrap();
+        std::fs::write(
+            &jsonl_path,
+            format!("{}\n", serde_json::to_string(&r1).unwrap()),
+        )
+        .unwrap();
 
         // First open migrates
         history.list(10).unwrap();
@@ -575,7 +583,14 @@ mod tests {
 
         // Recreate a stale jsonl to simulate "leftover" — migration should NOT re-run
         // because .bak already exists (migration marker).
-        std::fs::write(&jsonl_path, format!("{}\n", serde_json::to_string(&make_record("s2", false)).unwrap())).unwrap();
+        std::fs::write(
+            &jsonl_path,
+            format!(
+                "{}\n",
+                serde_json::to_string(&make_record("s2", false)).unwrap()
+            ),
+        )
+        .unwrap();
         history.list(10).unwrap();
         // Still only s1, not s2
         assert_eq!(history.review_status_map().unwrap().len(), 1);

@@ -53,7 +53,9 @@ impl ObservabilityStore {
     }
 
     pub fn default_path() -> PathBuf {
-        env_config::home::loom_home().join("data").join("observability")
+        env_config::home::loom_home()
+            .join("data")
+            .join("observability")
     }
 
     pub fn record(&self, entry: &EvolutionTrackerEntry) -> Result<(), String> {
@@ -69,7 +71,13 @@ impl ObservabilityStore {
         Ok(())
     }
 
-    pub fn record_review(&self, skill_name: &str, memory_updates: usize, skill_updates: usize, duration_ms: u64) {
+    pub fn record_review(
+        &self,
+        skill_name: &str,
+        memory_updates: usize,
+        skill_updates: usize,
+        duration_ms: u64,
+    ) {
         let entry = EvolutionTrackerEntry {
             skill_name: skill_name.to_string(),
             timestamp: Utc::now(),
@@ -152,10 +160,27 @@ impl ObservabilityStore {
 
     pub fn generate_report(&self) -> String {
         let entries = self.load_recent(1000).unwrap_or_default();
-        let total_reviews = entries.iter().filter(|e| matches!(e.event, EvolutionEvent::ReviewCompleted { .. })).count();
-        let total_curator = entries.iter().filter(|e| matches!(e.event, EvolutionEvent::CuratorRun { .. })).count();
-        let total_evolutions = entries.iter().filter(|e| matches!(e.event, EvolutionEvent::EvolutionAttempted { .. })).count();
-        let accepted = entries.iter().filter(|e| matches!(e.event, EvolutionEvent::EvolutionAttempted { accepted: true, .. })).count();
+        let total_reviews = entries
+            .iter()
+            .filter(|e| matches!(e.event, EvolutionEvent::ReviewCompleted { .. }))
+            .count();
+        let total_curator = entries
+            .iter()
+            .filter(|e| matches!(e.event, EvolutionEvent::CuratorRun { .. }))
+            .count();
+        let total_evolutions = entries
+            .iter()
+            .filter(|e| matches!(e.event, EvolutionEvent::EvolutionAttempted { .. }))
+            .count();
+        let accepted = entries
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e.event,
+                    EvolutionEvent::EvolutionAttempted { accepted: true, .. }
+                )
+            })
+            .count();
 
         let mut skills_created = 0usize;
         let mut skills_deleted = 0usize;
@@ -175,8 +200,13 @@ impl ObservabilityStore {
             Evolution attempts: {} (accepted: {})\n\
             Skills created: {}, deleted: {}\n\
             Total events: {}",
-            total_reviews, total_curator, total_evolutions, accepted,
-            skills_created, skills_deleted, entries.len()
+            total_reviews,
+            total_curator,
+            total_evolutions,
+            accepted,
+            skills_created,
+            skills_deleted,
+            entries.len()
         )
     }
 }
@@ -279,7 +309,12 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert!(matches!(
             entries[0].event,
-            EvolutionEvent::CuratorRun { active: 5, stale: 2, archived: 1, overlapping: 0 }
+            EvolutionEvent::CuratorRun {
+                active: 5,
+                stale: 2,
+                archived: 1,
+                overlapping: 0
+            }
         ));
         assert_eq!(entries[0].skill_name, "__curator__");
     }
@@ -303,7 +338,11 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert!(matches!(
             entries[0].event,
-            EvolutionEvent::EvolutionAttempted { baseline_score: 0.1, evolved_score: 0.9, accepted: true }
+            EvolutionEvent::EvolutionAttempted {
+                baseline_score: 0.1,
+                evolved_score: 0.9,
+                accepted: true
+            }
         ));
     }
 
@@ -402,7 +441,9 @@ mod tests {
         store
             .record(&fixed_entry(
                 "d",
-                EvolutionEvent::SkillCreated { source: "review".into() },
+                EvolutionEvent::SkillCreated {
+                    source: "review".into(),
+                },
             ))
             .unwrap();
         store
@@ -433,12 +474,30 @@ mod tests {
     #[test]
     fn evolution_events_serialize_deserialize_roundtrip() {
         let events = vec![
-            EvolutionEvent::ReviewCompleted { memory_updates: 1, skill_updates: 2, duration_ms: 50 },
-            EvolutionEvent::CuratorRun { active: 1, stale: 0, archived: 0, overlapping: 0 },
-            EvolutionEvent::EvolutionAttempted { baseline_score: 0.0, evolved_score: 1.0, accepted: true },
-            EvolutionEvent::SkillCreated { source: "test".into() },
+            EvolutionEvent::ReviewCompleted {
+                memory_updates: 1,
+                skill_updates: 2,
+                duration_ms: 50,
+            },
+            EvolutionEvent::CuratorRun {
+                active: 1,
+                stale: 0,
+                archived: 0,
+                overlapping: 0,
+            },
+            EvolutionEvent::EvolutionAttempted {
+                baseline_score: 0.0,
+                evolved_score: 1.0,
+                accepted: true,
+            },
+            EvolutionEvent::SkillCreated {
+                source: "test".into(),
+            },
             EvolutionEvent::SkillDeleted,
-            EvolutionEvent::MemoryUpdated { file: "mem.md".into(), action: "upsert".into() },
+            EvolutionEvent::MemoryUpdated {
+                file: "mem.md".into(),
+                action: "upsert".into(),
+            },
         ];
         for ev in events {
             let entry = fixed_entry("rt", ev);

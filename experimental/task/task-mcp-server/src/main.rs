@@ -6,12 +6,11 @@ use rmcp::{
     ErrorData as McpError, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
-    schemars,
-    tool, tool_handler, tool_router,
+    schemars, tool, tool_handler, tool_router,
     transport::stdio,
 };
 use serde::Deserialize;
-use task_core::{parse_status, CreateParams, ListParams, TaskDb, TaskStatus, UpdateParams};
+use task_core::{CreateParams, ListParams, TaskDb, TaskStatus, UpdateParams, parse_status};
 
 #[derive(Parser)]
 #[command(name = "task-mcp-server")]
@@ -176,7 +175,11 @@ impl TaskServer {
         &self,
         Parameters(args): Parameters<TaskDeleteArgs>,
     ) -> Result<String, McpError> {
-        let deleted = self.db.delete_task(&args.id).await.map_err(internal_error)?;
+        let deleted = self
+            .db
+            .delete_task(&args.id)
+            .await
+            .map_err(internal_error)?;
         serde_json::to_string_pretty(&serde_json::json!({
             "id": deleted.id,
             "name": deleted.name,
@@ -191,9 +194,7 @@ impl ServerHandler for TaskServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             server_info: Implementation::from_build_env(),
-            capabilities: ServerCapabilities::builder()
-                .enable_tools()
-                .build(),
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
         }
     }
@@ -206,8 +207,5 @@ async fn main() {
         .await
         .expect("failed to open tasks.db");
     let server = TaskServer::new(Arc::new(db));
-    server
-        .serve(stdio())
-        .await
-        .expect("task-mcp-server error");
+    server.serve(stdio()).await.expect("task-mcp-server error");
 }

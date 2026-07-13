@@ -251,7 +251,10 @@ shared_cache:
         assert!(matches!(cfg.base_ref, BaseRef::Head));
         assert!(!cfg.auto_cleanup);
         assert!(matches!(cfg.cleanup_strategy, CleanupStrategy::AsyncTrash));
-        assert!(matches!(cfg.conflict_detection, ConflictDetection::FilePath));
+        assert!(matches!(
+            cfg.conflict_detection,
+            ConflictDetection::FilePath
+        ));
         assert_eq!(cfg.include_patterns, vec![".env"]);
         assert_eq!(cfg.shared_cache_dirs, vec!["target/"]);
     }
@@ -272,8 +275,14 @@ shared_cache:
     #[test]
     fn conflict_detection_variants() {
         assert!(matches!(ConflictDetection::None, ConflictDetection::None));
-        assert!(matches!(ConflictDetection::FilePath, ConflictDetection::FilePath));
-        assert!(matches!(ConflictDetection::HunkLevel, ConflictDetection::HunkLevel));
+        assert!(matches!(
+            ConflictDetection::FilePath,
+            ConflictDetection::FilePath
+        ));
+        assert!(matches!(
+            ConflictDetection::HunkLevel,
+            ConflictDetection::HunkLevel
+        ));
     }
 
     #[test]
@@ -285,7 +294,10 @@ shared_cache:
     #[test]
     fn cleanup_strategy_variants() {
         assert!(matches!(CleanupStrategy::Sync, CleanupStrategy::Sync));
-        assert!(matches!(CleanupStrategy::AsyncTrash, CleanupStrategy::AsyncTrash));
+        assert!(matches!(
+            CleanupStrategy::AsyncTrash,
+            CleanupStrategy::AsyncTrash
+        ));
     }
 
     #[test]
@@ -310,8 +322,14 @@ shared_cache:
 
     #[test]
     fn conflict_severity_variants() {
-        assert!(matches!(ConflictSeverity::FileOverlap, ConflictSeverity::FileOverlap));
-        assert!(matches!(ConflictSeverity::HunkOverlap, ConflictSeverity::HunkOverlap));
+        assert!(matches!(
+            ConflictSeverity::FileOverlap,
+            ConflictSeverity::FileOverlap
+        ));
+        assert!(matches!(
+            ConflictSeverity::HunkOverlap,
+            ConflictSeverity::HunkOverlap
+        ));
     }
 
     #[test]
@@ -374,8 +392,14 @@ shared_cache:
         assert_eq!(config.symlink_patterns.len(), 1);
         assert_eq!(config.shared_cache_dirs.len(), 1);
         assert_eq!(config.sparse_paths.len(), 1);
-        assert!(matches!(config.conflict_detection, ConflictDetection::FilePath));
-        assert!(matches!(config.cleanup_strategy, CleanupStrategy::AsyncTrash));
+        assert!(matches!(
+            config.conflict_detection,
+            ConflictDetection::FilePath
+        ));
+        assert!(matches!(
+            config.cleanup_strategy,
+            CleanupStrategy::AsyncTrash
+        ));
     }
 
     #[test]
@@ -423,7 +447,7 @@ sparse_paths:
   - "tests/"
 "#;
         let profile: WorktreeProfileConfig = serde_yaml::from_str(yaml).unwrap();
-        
+
         assert_eq!(profile.base_ref, Some("origin/main".to_string()));
         assert_eq!(profile.auto_cleanup, Some(true));
         assert_eq!(profile.cleanup_strategy, Some("sync".to_string()));
@@ -469,7 +493,10 @@ sparse_paths:
         let test_cases = vec![
             ("conflict_detection: none", ConflictDetection::None),
             ("conflict_detection: file_path", ConflictDetection::FilePath),
-            ("conflict_detection: hunk_level", ConflictDetection::HunkLevel),
+            (
+                "conflict_detection: hunk_level",
+                ConflictDetection::HunkLevel,
+            ),
             ("conflict_detection: invalid", ConflictDetection::None), // defaults to none
         ];
 
@@ -505,14 +532,14 @@ sparse_paths:
         use tempfile::TempDir;
         let dir = TempDir::new().unwrap();
         let git_dir = dir.path().join(".git");
-        
+
         // Create a .git file that points to a Loom worktree
         std::fs::write(&git_dir, "gitdir: /path/to/.loom/worktrees/agent-123/.git").unwrap();
-        
+
         assert!(detect_worktree_nesting(dir.path()));
     }
 
-#[test]
+    #[test]
     fn detect_worktree_nesting_with_non_loom_git_file() {
         use tempfile::TempDir;
         let dir = TempDir::new().unwrap();
@@ -529,7 +556,7 @@ sparse_paths:
     fn detect_worktree_nesting_without_git_file() {
         use tempfile::TempDir;
         let dir = TempDir::new().unwrap();
-        
+
         // No .git file exists
         assert!(!detect_worktree_nesting(dir.path()));
     }
@@ -568,13 +595,19 @@ sparse_paths:
             "cleanup_strategy": "async_trash",
             "conflict_detection": "file_path"
         }"#;
-        
+
         let profile: WorktreeProfileConfig = serde_json::from_str(json).unwrap();
         let config = profile.to_worktree_config();
-        
+
         assert!(matches!(config.base_ref, BaseRef::Ref(_)));
         assert!(!config.auto_cleanup);
-        assert!(matches!(config.cleanup_strategy, CleanupStrategy::AsyncTrash));
-        assert!(matches!(config.conflict_detection, ConflictDetection::FilePath));
+        assert!(matches!(
+            config.cleanup_strategy,
+            CleanupStrategy::AsyncTrash
+        ));
+        assert!(matches!(
+            config.conflict_detection,
+            ConflictDetection::FilePath
+        ));
     }
 }

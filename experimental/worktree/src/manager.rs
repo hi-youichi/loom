@@ -134,9 +134,7 @@ impl WorktreeManager {
             branch: Some(branch_name),
             has_changes: false,
             agent_name: agent_name.to_string(),
-            estimated_paths: estimated_paths
-                .map(|p| p.to_vec())
-                .unwrap_or_default(),
+            estimated_paths: estimated_paths.map(|p| p.to_vec()).unwrap_or_default(),
             state: WorktreeState::Active,
         })
     }
@@ -156,10 +154,7 @@ impl WorktreeManager {
                 continue;
             }
             // Skip trash dir
-            if path
-                .file_name()
-                .is_some_and(|n| n == ".trash")
-            {
+            if path.file_name().is_some_and(|n| n == ".trash") {
                 continue;
             }
             let branch = git_ops::current_branch(&path).ok();
@@ -310,11 +305,11 @@ impl WorktreeManager {
     }
 
     /// Detect file-path level conflicts between worktree handles.
-    pub fn detect_parallel_conflicts(
-        &self,
-        handles: &[&WorktreeHandle],
-    ) -> Vec<ConflictInfo> {
-        if !matches!(self.config.conflict_detection, ConflictDetection::FilePath | ConflictDetection::HunkLevel) {
+    pub fn detect_parallel_conflicts(&self, handles: &[&WorktreeHandle]) -> Vec<ConflictInfo> {
+        if !matches!(
+            self.config.conflict_detection,
+            ConflictDetection::FilePath | ConflictDetection::HunkLevel
+        ) {
             return Vec::new();
         }
 
@@ -327,9 +322,9 @@ impl WorktreeManager {
                     .estimated_paths
                     .iter()
                     .filter(|p| {
-                        b.estimated_paths
-                            .iter()
-                            .any(|q: &String| p.starts_with(q.as_str()) || q.starts_with(p.as_str()))
+                        b.estimated_paths.iter().any(|q: &String| {
+                            p.starts_with(q.as_str()) || q.starts_with(p.as_str())
+                        })
                     })
                     .cloned()
                     .collect();
@@ -365,9 +360,7 @@ impl WorktreeManager {
                     branch: Some(branch),
                     has_changes,
                     agent_name: agent_name.to_string(),
-                    estimated_paths: estimated_paths
-                        .map(|p| p.to_vec())
-                        .unwrap_or_default(),
+                    estimated_paths: estimated_paths.map(|p| p.to_vec()).unwrap_or_default(),
                     state: WorktreeState::Active,
                 });
             }
@@ -416,9 +409,7 @@ impl WorktreeManager {
             branch: Some(branch_name),
             has_changes: false,
             agent_name: agent_name.to_string(),
-            estimated_paths: estimated_paths
-                .map(|p| p.to_vec())
-                .unwrap_or_default(),
+            estimated_paths: estimated_paths.map(|p| p.to_vec()).unwrap_or_default(),
             state: WorktreeState::Active,
         })
     }
@@ -688,7 +679,7 @@ mod tests {
     #[test]
     fn manager_base_ref_conversion() {
         let dir = TempDir::new().unwrap();
-        
+
         let config_fresh = WorktreeConfig {
             base_ref: BaseRef::Fresh,
             ..Default::default()
@@ -714,7 +705,7 @@ mod tests {
     #[test]
     fn manager_conflict_detection_strategies() {
         let dir = TempDir::new().unwrap();
-        
+
         for (strategy, expected_count) in [
             (ConflictDetection::None, 0),
             (ConflictDetection::FilePath, 1),

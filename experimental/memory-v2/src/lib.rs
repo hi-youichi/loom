@@ -397,14 +397,12 @@ impl MemoryStore {
             });
         }
 
-        let test_total = entries
-            .iter()
-            .map(|e| e.len())
-            .sum::<usize>()
-            + ENTRY_DELIMITER.len()
-            + trimmed.len();
+        let test_total =
+            entries.iter().map(|e| e.len()).sum::<usize>() + ENTRY_DELIMITER.len() + trimmed.len();
         if test_total > file.char_limit() {
-            return Err(MemoryError::CapacityExceeded(self.fmt_usage(file, &entries)));
+            return Err(MemoryError::CapacityExceeded(
+                self.fmt_usage(file, &entries),
+            ));
         }
 
         entries.push(trimmed.to_string());
@@ -448,9 +446,7 @@ impl MemoryStore {
                 entries[indices[0]] = new_trimmed.to_string();
             }
             _ => {
-                let all_same = indices
-                    .iter()
-                    .all(|&i| entries[i] == entries[indices[0]]);
+                let all_same = indices.iter().all(|&i| entries[i] == entries[indices[0]]);
                 if all_same {
                     entries[indices[0]] = new_trimmed.to_string();
                 } else {
@@ -461,7 +457,9 @@ impl MemoryStore {
 
         let joined = entries.join(ENTRY_DELIMITER);
         if joined.len() > file.char_limit() {
-            return Err(MemoryError::CapacityExceeded(self.fmt_usage(file, &entries)));
+            return Err(MemoryError::CapacityExceeded(
+                self.fmt_usage(file, &entries),
+            ));
         }
 
         self.write_file_entries_atomic(file, &entries)?;
@@ -500,9 +498,7 @@ impl MemoryStore {
             0 => return Err(MemoryError::NotFound),
             1 => entries.remove(indices[0]),
             _ => {
-                let all_same = indices
-                    .iter()
-                    .all(|&i| entries[i] == entries[indices[0]]);
+                let all_same = indices.iter().all(|&i| entries[i] == entries[indices[0]]);
                 if all_same {
                     entries.remove(indices[0])
                 } else {
@@ -662,7 +658,10 @@ impl MemoryStore {
         self.write_file_entries_atomic(MemoryFile::Project, &merged)?;
 
         let _ = fs::remove_file(&facts_path);
-        info!("Migrated FACTS.md into PROJECT.md ({} entries total)", merged.len());
+        info!(
+            "Migrated FACTS.md into PROJECT.md ({} entries total)",
+            merged.len()
+        );
 
         Ok(())
     }
@@ -681,9 +680,12 @@ impl Drop for FileLockGuard {
 // ── Atomic write ──────────────────────────────────────
 
 fn atomic_write(path: &Path, content: &str) -> Result<(), MemoryError> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| MemoryError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, "no parent directory")))?;
+    let parent = path.parent().ok_or_else(|| {
+        MemoryError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "no parent directory",
+        ))
+    })?;
 
     let temp_name = format!(".mem_{}.tmp", uuid::Uuid::new_v4());
     let temp_path = parent.join(&temp_name);
@@ -750,7 +752,9 @@ mod tests {
         store
             .add_entry(MemoryFile::User, "prefers Rust", &fg())
             .unwrap();
-        store.add_entry(MemoryFile::User, "uses vim", &fg()).unwrap();
+        store
+            .add_entry(MemoryFile::User, "uses vim", &fg())
+            .unwrap();
         let entries = store.read_entries(MemoryFile::User).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0], "prefers Rust");
@@ -803,15 +807,9 @@ mod tests {
     fn remove_entry() {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
-        store
-            .add_entry(MemoryFile::User, "entry A", &fg())
-            .unwrap();
-        store
-            .add_entry(MemoryFile::User, "entry B", &fg())
-            .unwrap();
-        store
-            .remove_entry(MemoryFile::User, "entry A")
-            .unwrap();
+        store.add_entry(MemoryFile::User, "entry A", &fg()).unwrap();
+        store.add_entry(MemoryFile::User, "entry B", &fg()).unwrap();
+        store.remove_entry(MemoryFile::User, "entry A").unwrap();
         let entries = store.read_entries(MemoryFile::User).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0], "entry B");
@@ -821,9 +819,7 @@ mod tests {
     fn remove_not_found() {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
-        store
-            .add_entry(MemoryFile::User, "exists", &fg())
-            .unwrap();
+        store.add_entry(MemoryFile::User, "exists", &fg()).unwrap();
         let result = store.remove_entry(MemoryFile::User, "nonexistent");
         assert!(matches!(result, Err(MemoryError::NotFound)));
     }
@@ -927,9 +923,7 @@ mod tests {
     fn load_backward_compat() {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
-        store
-            .add_entry(MemoryFile::User, "hello", &fg())
-            .unwrap();
+        store.add_entry(MemoryFile::User, "hello", &fg()).unwrap();
         let content = store.load(MemoryFile::User).unwrap();
         assert!(content.contains("hello"));
     }
@@ -986,8 +980,12 @@ mod tests {
     fn format_for_system_prompt_single_file() {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
-        store.add_entry(MemoryFile::User, "user pref", &fg()).unwrap();
-        store.add_entry(MemoryFile::Project, "proj fact", &fg()).unwrap();
+        store
+            .add_entry(MemoryFile::User, "user pref", &fg())
+            .unwrap();
+        store
+            .add_entry(MemoryFile::Project, "proj fact", &fg())
+            .unwrap();
 
         let user_block = store.format_for_system_prompt(MemoryFile::User).unwrap();
         assert!(user_block.contains("USER"));
@@ -1005,15 +1003,21 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
         assert!(store.format_for_system_prompt(MemoryFile::User).is_none());
-        assert!(store.format_for_system_prompt(MemoryFile::Project).is_none());
+        assert!(store
+            .format_for_system_prompt(MemoryFile::Project)
+            .is_none());
     }
 
     #[test]
     fn system_prompt_section_both_enabled() {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
-        store.add_entry(MemoryFile::User, "user data", &fg()).unwrap();
-        store.add_entry(MemoryFile::Project, "proj data", &fg()).unwrap();
+        store
+            .add_entry(MemoryFile::User, "user data", &fg())
+            .unwrap();
+        store
+            .add_entry(MemoryFile::Project, "proj data", &fg())
+            .unwrap();
 
         let section = store.system_prompt_section(true, true).unwrap();
         assert!(section.contains("user data"));
@@ -1024,8 +1028,12 @@ mod tests {
     fn system_prompt_section_memory_disabled_skips_project() {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
-        store.add_entry(MemoryFile::User, "user data", &fg()).unwrap();
-        store.add_entry(MemoryFile::Project, "proj data", &fg()).unwrap();
+        store
+            .add_entry(MemoryFile::User, "user data", &fg())
+            .unwrap();
+        store
+            .add_entry(MemoryFile::Project, "proj data", &fg())
+            .unwrap();
 
         let section = store.system_prompt_section(false, true).unwrap();
         assert!(section.contains("user data"));
@@ -1036,8 +1044,12 @@ mod tests {
     fn system_prompt_section_user_disabled_skips_user() {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
-        store.add_entry(MemoryFile::User, "user data", &fg()).unwrap();
-        store.add_entry(MemoryFile::Project, "proj data", &fg()).unwrap();
+        store
+            .add_entry(MemoryFile::User, "user data", &fg())
+            .unwrap();
+        store
+            .add_entry(MemoryFile::Project, "proj data", &fg())
+            .unwrap();
 
         let section = store.system_prompt_section(true, false).unwrap();
         assert!(!section.contains("user data")); // USER skipped
@@ -1048,8 +1060,12 @@ mod tests {
     fn system_prompt_section_both_disabled_returns_none() {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
-        store.add_entry(MemoryFile::User, "user data", &fg()).unwrap();
-        store.add_entry(MemoryFile::Project, "proj data", &fg()).unwrap();
+        store
+            .add_entry(MemoryFile::User, "user data", &fg())
+            .unwrap();
+        store
+            .add_entry(MemoryFile::Project, "proj data", &fg())
+            .unwrap();
 
         assert!(store.system_prompt_section(false, false).is_none());
     }
@@ -1105,7 +1121,9 @@ mod tests {
     fn replace_message_includes_preview() {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
-        store.add_entry(MemoryFile::User, "old text", &fg()).unwrap();
+        store
+            .add_entry(MemoryFile::User, "old text", &fg())
+            .unwrap();
         let r = store
             .replace_entry(MemoryFile::User, "old", "brand new text")
             .unwrap();
@@ -1116,9 +1134,10 @@ mod tests {
     fn remove_message_includes_preview() {
         let dir = tempfile::tempdir().unwrap();
         let store = MemoryStore::new(dir.path());
-        store.add_entry(MemoryFile::User, "doomed entry", &fg()).unwrap();
+        store
+            .add_entry(MemoryFile::User, "doomed entry", &fg())
+            .unwrap();
         let r = store.remove_entry(MemoryFile::User, "doomed").unwrap();
         assert!(r.message.contains("doomed entry"));
     }
 }
-

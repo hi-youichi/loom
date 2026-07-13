@@ -299,7 +299,7 @@ mod tests {
     async fn test_cache_eviction_when_full() {
         let config = DiagnosticCacheConfig {
             ttl: Duration::from_secs(10), // Long TTL
-            max_entries: 2, // Small cache
+            max_entries: 2,               // Small cache
         };
         let cache = DiagnosticCache::with_config(config);
 
@@ -441,8 +441,14 @@ mod tests {
         let diagnostics = vec![
             Diagnostic {
                 range: Range {
-                    start: Position { line: 0, character: 0 },
-                    end: Position { line: 0, character: 10 },
+                    start: Position {
+                        line: 0,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: 0,
+                        character: 10,
+                    },
                 },
                 severity: Some(DiagnosticSeverity::ERROR),
                 code: None,
@@ -455,8 +461,14 @@ mod tests {
             },
             Diagnostic {
                 range: Range {
-                    start: Position { line: 1, character: 0 },
-                    end: Position { line: 1, character: 10 },
+                    start: Position {
+                        line: 1,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: 1,
+                        character: 10,
+                    },
                 },
                 severity: Some(DiagnosticSeverity::WARNING),
                 code: None,
@@ -469,8 +481,14 @@ mod tests {
             },
             Diagnostic {
                 range: Range {
-                    start: Position { line: 2, character: 0 },
-                    end: Position { line: 2, character: 10 },
+                    start: Position {
+                        line: 2,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: 2,
+                        character: 10,
+                    },
                 },
                 severity: Some(DiagnosticSeverity::HINT),
                 code: None,
@@ -524,7 +542,10 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_diagnostic_cache_default() {
         let cache = DiagnosticCache::default();
-        assert!(cache.get(&Url::parse("file:///test.rs").unwrap(), 1).await.is_none());
+        assert!(cache
+            .get(&Url::parse("file:///test.rs").unwrap(), 1)
+            .await
+            .is_none());
     }
 
     #[tokio::test(flavor = "current_thread")]

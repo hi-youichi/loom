@@ -1,10 +1,10 @@
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::sync::mpsc;
+use crate::agent::{CodexAgent, OutputEvent};
+use crate::CodexServerArgs;
 use serde::Serialize;
 use serde_json::json;
 use std::sync::Arc;
-use crate::agent::{CodexAgent, OutputEvent};
-use crate::CodexServerArgs;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::mpsc;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct CodexNotification {
@@ -30,12 +30,10 @@ pub async fn run_codex_stdio_loop(args: CodexServerArgs) -> anyhow::Result<()> {
                 OutputEvent::Response { id, result } => {
                     serde_json::to_string(&json!({"jsonrpc":"2.0","id":id,"result":result}))
                 }
-                OutputEvent::ErrorResponse { id, code, message } => {
-                    serde_json::to_string(&json!({
-                        "jsonrpc":"2.0","id":id,
-                        "error":{"code":code,"message":message}
-                    }))
-                }
+                OutputEvent::ErrorResponse { id, code, message } => serde_json::to_string(&json!({
+                    "jsonrpc":"2.0","id":id,
+                    "error":{"code":code,"message":message}
+                })),
             };
             if let Ok(line) = line {
                 println!("{line}");
@@ -48,7 +46,9 @@ pub async fn run_codex_stdio_loop(args: CodexServerArgs) -> anyhow::Result<()> {
     let mut lines = stdin.lines();
     while let Some(line) = lines.next_line().await? {
         let line = line.trim().to_string();
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
         match serde_json::from_str::<serde_json::Value>(&line) {
             Ok(msg) => {
                 let agent = agent.clone();

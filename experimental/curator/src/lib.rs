@@ -25,35 +25,29 @@ pub mod workflow;
 
 // Re-export key types for convenience
 pub use review::{
-    REVIEW_INSTRUCTION, ReviewActionSummary, ReviewConfig, ReviewOutcome, TokenUsageSummary,
-    run_review, spawn_background_review, spawn_review_after_session,
+    run_review, spawn_background_review, spawn_review_after_session, ReviewActionSummary,
+    ReviewConfig, ReviewOutcome, TokenUsageSummary, REVIEW_INSTRUCTION,
 };
 pub use review_tool_gate::{ReviewToolGate, REVIEW_ALLOWED_TOOLS};
 
-pub use skill_registry::{SkillRegistry, SkillContent, SkillMeta, SkillError, Lifecycle, Source};
-pub use skill::{SkillUsage, SkillUsageStore};
-pub use skill::sync::{
-    sync_skills, BundledManifest, SyncResult, compute_hash, compute_content_hash,
-    compute_dir_hash,
-};
 pub use curator::{
-    Curator, CuratorConfig, CuratorReport,
-    CuratorState, CuratorStateStore, FileStateStore, MemoryStateStore,
-    AutoCounts, CuratorReviewResult, LlmPassResult,
-    LlMReviewResult, SkillCluster, PruningDecision, ConsolidationDecision,
-    CuratorToolCall, AbsorbedIntoDeclaration, ClassificationResult,
-    SkillSnapshot, StateTransition, CuratorRunReport,
-    parse_llm_review_response, build_llm_prompt, reconcile_classification,
+    build_llm_prompt, parse_llm_review_response, reconcile_classification, AbsorbedIntoDeclaration,
+    AutoCounts, ClassificationResult, ConsolidationDecision, Curator, CuratorConfig, CuratorReport,
+    CuratorReviewResult, CuratorRunReport, CuratorState, CuratorStateStore, CuratorToolCall,
+    FileStateStore, LlMReviewResult, LlmPassResult, MemoryStateStore, PruningDecision,
+    SkillCluster, SkillSnapshot, StateTransition,
 };
-pub use curator_backup::{CuratorBackup, BackupError, SnapshotMeta};
+pub use curator_backup::{BackupError, CuratorBackup, SnapshotMeta};
 pub use history::{ReviewHistory, ReviewRecord, ReviewStatus};
 pub use observability::ObservabilityStore;
-
-pub use backfill_triggers::{
-    run_backfill_triggers, BackfillTriggersOutcome, DEFAULT_BATCH_SIZE,
+pub use skill::sync::{
+    compute_content_hash, compute_dir_hash, compute_hash, sync_skills, BundledManifest, SyncResult,
 };
+pub use skill::{SkillUsage, SkillUsageStore};
+pub use skill_registry::{Lifecycle, SkillContent, SkillError, SkillMeta, SkillRegistry, Source};
+
+pub use backfill_triggers::{run_backfill_triggers, BackfillTriggersOutcome, DEFAULT_BATCH_SIZE};
 pub use workflow::{
-    run_curator_if_needed,
-    run_curator_llm_if_needed,
-    skills_default_path_public, wait_for_pending_reviews,
+    run_curator_if_needed, run_curator_llm_if_needed, skills_default_path_public,
+    wait_for_pending_reviews,
 };

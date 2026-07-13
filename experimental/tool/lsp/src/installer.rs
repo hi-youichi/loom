@@ -113,11 +113,15 @@ impl LspInstaller {
                     executable: "jdtls".to_string(),
                     check_args: vec!["--version".to_string()],
                     install_commands: vec![
-                        "brew install jdtls".to_string(),          // macOS
-                        "pip install jdtls".to_string(),           // 跨平台 Python 包
-                        "choco install jdtls".to_string(),         // Windows
+                        "brew install jdtls".to_string(),  // macOS
+                        "pip install jdtls".to_string(),   // 跨平台 Python 包
+                        "choco install jdtls".to_string(), // Windows
                     ],
-                    package_managers: vec!["brew".to_string(), "pip".to_string(), "choco".to_string()],
+                    package_managers: vec![
+                        "brew".to_string(),
+                        "pip".to_string(),
+                        "choco".to_string(),
+                    ],
                 },
             ],
         }
@@ -291,84 +295,126 @@ mod tests {
         assert!(languages.contains(&"python"));
         assert!(languages.contains(&"java")); // Java应该在支持的语言列表中
     }
-    
+
     #[test]
     fn test_java_installer_creation() {
         let installer = LspInstaller::new();
-        
+
         // 验证Java安装器定义存在
         let java_server = installer.servers.iter().find(|s| s.language == "java");
-        assert!(java_server.is_some(), "Java installer definition should exist");
-        
+        assert!(
+            java_server.is_some(),
+            "Java installer definition should exist"
+        );
+
         let java_server = java_server.unwrap();
         assert_eq!(java_server.language, "java");
         assert_eq!(java_server.executable, "jdtls");
         assert_eq!(java_server.server_name, "eclipse-jdtls");
     }
-    
+
     #[test]
     fn test_java_installation_check() {
         let installer = LspInstaller::new();
         let result = installer.check_installation("java");
-        
+
         // 验证Java安装检查功能正常工作
         assert!(result.is_ok(), "Java installation check should not error");
-        
+
         let installation = result.unwrap();
         assert_eq!(installation.language, "java");
         assert_eq!(installation.server_name, "eclipse-jdtls");
-        
+
         // 验证可执行文件路径或安装命令存在
         let has_executable = installation.executable_path.is_some();
         let has_install_command = installation.install_command.is_some();
-        assert!(has_executable || has_install_command,
-            "Java should have either executable path or install command");
-        
+        assert!(
+            has_executable || has_install_command,
+            "Java should have either executable path or install command"
+        );
+
         // 如果有可执行文件，验证它是jdtls
         if let Some(exec_path) = installation.executable_path {
-            assert!(exec_path.to_str().unwrap_or_default().contains("jdtls"),
-                "Executable path should contain 'jdtls', got: {:?}", exec_path);
+            assert!(
+                exec_path.to_str().unwrap_or_default().contains("jdtls"),
+                "Executable path should contain 'jdtls', got: {:?}",
+                exec_path
+            );
         }
     }
-    
+
     #[test]
     fn test_java_install_instructions() {
         let installer = LspInstaller::new();
-        
+
         let instructions = installer.get_install_instructions("java");
-        assert!(instructions.is_some(), "Java should have install instructions");
-        
+        assert!(
+            instructions.is_some(),
+            "Java should have install instructions"
+        );
+
         let instructions = instructions.unwrap();
         // 验证安装说明包含预期的包管理器
-        assert!(instructions.contains("brew") || instructions.contains("pip") || instructions.contains("choco"),
-                "Java install instructions should include package managers");
+        assert!(
+            instructions.contains("brew")
+                || instructions.contains("pip")
+                || instructions.contains("choco"),
+            "Java install instructions should include package managers"
+        );
     }
-    
+
     #[test]
     fn test_java_platform_support() {
         let installer = LspInstaller::new();
-        let java_server = installer.servers.iter().find(|s| s.language == "java").unwrap();
-        
+        let java_server = installer
+            .servers
+            .iter()
+            .find(|s| s.language == "java")
+            .unwrap();
+
         // 验证Java支持多个平台
-        assert!(!java_server.package_managers.is_empty(), "Java should support at least one package manager");
-        assert!(!java_server.install_commands.is_empty(), "Java should have install commands");
-        
+        assert!(
+            !java_server.package_managers.is_empty(),
+            "Java should support at least one package manager"
+        );
+        assert!(
+            !java_server.install_commands.is_empty(),
+            "Java should have install commands"
+        );
+
         // 验证预期的包管理器
-        let supported_managers: Vec<&str> = java_server.package_managers.iter().map(|s| s.as_str()).collect();
-        assert!(supported_managers.contains(&"brew") || supported_managers.contains(&"pip") || supported_managers.contains(&"choco"),
-                "Java should support common package managers");
+        let supported_managers: Vec<&str> = java_server
+            .package_managers
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        assert!(
+            supported_managers.contains(&"brew")
+                || supported_managers.contains(&"pip")
+                || supported_managers.contains(&"choco"),
+            "Java should support common package managers"
+        );
     }
-    
+
     #[test]
     fn test_java_check_args() {
         let installer = LspInstaller::new();
-        let java_server = installer.servers.iter().find(|s| s.language == "java").unwrap();
-        
+        let java_server = installer
+            .servers
+            .iter()
+            .find(|s| s.language == "java")
+            .unwrap();
+
         // 验证Java的检查参数正确
-        assert!(!java_server.check_args.is_empty(), "Java should have check arguments");
-        assert!(java_server.check_args.contains(&"--version".to_string()) ||
-                java_server.check_args.contains(&"version".to_string()),
-                "Java check args should include version check");
+        assert!(
+            !java_server.check_args.is_empty(),
+            "Java should have check arguments"
+        );
+        assert!(
+            java_server.check_args.contains(&"--version".to_string())
+                || java_server.check_args.contains(&"version".to_string()),
+            "Java check args should include version check"
+        );
     }
 
     #[test]
@@ -387,7 +433,10 @@ mod tests {
         assert!(installation.is_installed);
         assert!(installation.executable_path.is_some());
         assert_eq!(installation.version, Some("1.0.0".to_string()));
-        assert_eq!(installation.install_command, Some("test install".to_string()));
+        assert_eq!(
+            installation.install_command,
+            Some("test install".to_string())
+        );
     }
 
     #[test]
@@ -435,7 +484,11 @@ mod tests {
             languages.insert(&server.language);
         }
 
-        assert_eq!(languages.len(), installer.servers.len(), "All server languages should be unique");
+        assert_eq!(
+            languages.len(),
+            installer.servers.len(),
+            "All server languages should be unique"
+        );
     }
 
     #[test]
@@ -452,7 +505,10 @@ mod tests {
         });
 
         let instructions = custom_installer.get_install_instructions("empty_test");
-        assert!(instructions.is_none(), "Should return None when install_commands is empty");
+        assert!(
+            instructions.is_none(),
+            "Should return None when install_commands is empty"
+        );
     }
 
     #[test]
@@ -480,8 +536,11 @@ mod tests {
         let installer = LspInstaller::new();
 
         for server in &installer.servers {
-            assert!(!server.check_args.is_empty(), 
-                "{} should have check arguments", server.server_name);
+            assert!(
+                !server.check_args.is_empty(),
+                "{} should have check arguments",
+                server.server_name
+            );
         }
     }
 
@@ -490,8 +549,11 @@ mod tests {
         let installer = LspInstaller::new();
 
         for server in &installer.servers {
-            assert!(!server.install_commands.is_empty(),
-                "{} should have install commands", server.server_name);
+            assert!(
+                !server.install_commands.is_empty(),
+                "{} should have install commands",
+                server.server_name
+            );
         }
     }
 
@@ -500,18 +562,28 @@ mod tests {
         let installer = LspInstaller::new();
 
         for server in &installer.servers {
-            assert!(!server.package_managers.is_empty(),
-                "{} should have at least one package manager", server.server_name);
+            assert!(
+                !server.package_managers.is_empty(),
+                "{} should have at least one package manager",
+                server.server_name
+            );
         }
     }
 
     #[test]
     fn test_installer_configured_languages() {
         let installer = LspInstaller::new();
-        let languages: Vec<&str> = installer.servers.iter().map(|s| s.language.as_str()).collect();
+        let languages: Vec<&str> = installer
+            .servers
+            .iter()
+            .map(|s| s.language.as_str())
+            .collect();
 
         assert!(languages.contains(&"rust"), "Should support Rust");
-        assert!(languages.contains(&"typescript"), "Should support TypeScript");
+        assert!(
+            languages.contains(&"typescript"),
+            "Should support TypeScript"
+        );
         assert!(languages.contains(&"python"), "Should support Python");
         assert!(languages.contains(&"go"), "Should support Go");
         assert!(languages.contains(&"cpp"), "Should support C++");
@@ -538,11 +610,15 @@ mod tests {
     #[test]
     fn test_check_installation_various_languages() {
         let installer = LspInstaller::new();
-        
+
         for server in &installer.servers {
             let result = installer.check_installation(&server.language);
-            assert!(result.is_ok(), "Check installation should not error for {}", server.language);
-            
+            assert!(
+                result.is_ok(),
+                "Check installation should not error for {}",
+                server.language
+            );
+
             let installation = result.unwrap();
             assert_eq!(installation.language, server.language);
             assert_eq!(installation.server_name, server.server_name);

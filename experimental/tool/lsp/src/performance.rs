@@ -741,10 +741,28 @@ mod tests {
         // Add various operations
         let operations = vec![
             ("completion", "rust", Duration::from_millis(50), true, true),
-            ("completion", "typescript", Duration::from_millis(30), true, false),
+            (
+                "completion",
+                "typescript",
+                Duration::from_millis(30),
+                true,
+                false,
+            ),
             ("hover", "rust", Duration::from_millis(20), true, true),
-            ("definition", "python", Duration::from_millis(80), true, false),
-            ("completion", "rust", Duration::from_millis(40), false, false),
+            (
+                "definition",
+                "python",
+                Duration::from_millis(80),
+                true,
+                false,
+            ),
+            (
+                "completion",
+                "rust",
+                Duration::from_millis(40),
+                false,
+                false,
+            ),
         ];
 
         for (op_type, lang, duration, success, cache_hit) in operations {

@@ -258,7 +258,10 @@ mod tests {
             stdout: "test stdout".to_string(),
             stderr: "test stderr".to_string(),
         };
-        assert_eq!(err.to_string(), "git command failed: test error\nstdout: test stdout\nstderr: test stderr");
+        assert_eq!(
+            err.to_string(),
+            "git command failed: test error\nstdout: test stdout\nstderr: test stderr"
+        );
     }
 
     #[test]
@@ -283,7 +286,9 @@ mod tests {
 
     #[test]
     fn git_worktree_error_branch_exists() {
-        let err = GitWorktreeError::BranchExists { name: "test-branch".to_string() };
+        let err = GitWorktreeError::BranchExists {
+            name: "test-branch".to_string(),
+        };
         assert_eq!(err.to_string(), "branch already exists: test-branch");
     }
 
@@ -343,9 +348,11 @@ mod tests {
         let errors = vec![
             GitWorktreeError::GitNotFound,
             GitWorktreeError::IndexLockConflict,
-            GitWorktreeError::BranchExists { name: "main".to_string() },
+            GitWorktreeError::BranchExists {
+                name: "main".to_string(),
+            },
         ];
-        
+
         for err in errors {
             let display_str = err.to_string();
             assert!(!display_str.is_empty());

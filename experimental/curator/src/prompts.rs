@@ -8,7 +8,7 @@ pub const MEMORY_REVIEW_PROMPT: &str = "\
 Review the conversation above and consider saving to memory if appropriate.\n\
 \n\
 Focus on:\n\
-1. Has the user revealed things about themselves — their persona, desires, \
+1. Has the user revealed things about themselves - their persona, desires, \
 preferences, or personal details worth remembering?\n\
 2. Has the user expressed expectations about how you should behave, their work \
 style, or ways they want you to operate?\n\
@@ -18,7 +18,7 @@ If nothing is worth saving, just say 'Nothing to save.' and stop.";
 
 /// Skill-only review prompt.
 pub const SKILL_REVIEW_PROMPT: &str = "\
-Review the conversation above and update the skill library. Be ACTIVE — most \
+Review the conversation above and update the skill library. Be ACTIVE - most \
 sessions produce at least one skill update, even if small. A pass that does \
 nothing is a missed learning opportunity, not a neutral outcome.\n\
 \n\
@@ -44,7 +44,7 @@ from. Capture it.\n\
   • A skill that got loaded or consulted this session turned out \
 to be wrong, missing a step, or outdated. Patch it NOW.\n\
 \n\
-Preference order — prefer the earliest action that fits, but do \
+Preference order - prefer the earliest action that fits, but do \
 pick one when a signal above fired:\n\
   1. UPDATE A CURRENTLY-LOADED SKILL. Look back through the \
 conversation for skills the user loaded via /skill-name or you \
@@ -55,18 +55,18 @@ play, so it's the right one to extend.\n\
 If no loaded skill fits but an existing class-level skill does, \
 patch it. Add a subsection, a pitfall, or broaden a trigger.\n\
   3. ADD A SUPPORT FILE under an existing umbrella. Skills can be \
-packaged with three kinds of support files — use the right \
+packaged with three kinds of support files - use the right \
 directory per kind:\n\
-     • `references/<topic>.md` — session-specific detail (error \
+     • `references/<topic>.md` - session-specific detail (error \
 transcripts, reproduction recipes, provider quirks) AND \
 condensed knowledge banks: quoted research, API docs, external \
 authoritative excerpts, or domain notes you found while working \
 on the problem. Write it concise and for the value of the task, \
 not as a full mirror of upstream docs.\n\
-     • `templates/<name>.<ext>` — starter files meant to be \
+     • `templates/<name>.<ext>` - starter files meant to be \
 copied and modified (boilerplate configs, scaffolding, a \
 known-good example the agent can `reproduce with modifications`).\n\
-     • `scripts/<name>.<ext>` — statically re-runnable actions \
+     • `scripts/<name>.<ext>` - statically re-runnable actions \
 the skill can invoke directly (verification scripts, fixture \
 generators, deterministic probes, anything the agent should run \
 rather than hand-type each time).\n\
@@ -79,7 +79,7 @@ skill covers the class. The name MUST be at the class level. \
 The name MUST NOT be a specific PR number, error string, feature \
 codename, library-alone name, or 'fix-X / debug-Y / audit-Z-today' \
 session artifact. If the proposed name only makes sense for \
-today's task, it's wrong — fall back to (1), (2), or (3).\n\
+today's task, it's wrong - fall back to (1), (2), or (3).\n\
 \n\
 User-preference embedding (important): when the user expressed a \
 style/format/workflow preference, the update belongs in the \
@@ -90,12 +90,12 @@ user'. When they complain about how you handled a task, the \
 skill that governs that task needs to carry the lesson.\n\
 \n\
 If you notice two existing skills that overlap, note it in your \
-reply — the background curator handles consolidation at scale.\n\
+reply - the background curator handles consolidation at scale.\n\
 \n\
 Protected skills (DO NOT edit these):\n\
-  • Bundled skills (shipped with Hermes, e.g. 'hermes-agent').\n\
-  • Hub-installed skills (installed via 'hermes skills install').\n\
-Pinned skills (marked via 'hermes curator pin') CAN be improved — \
+  • Bundled skills (shipped with Hermes, e.g. 'loom-development').\n\
+  • Hub-installed skills (installed via 'loom skills install').\n\
+Pinned skills (marked via 'loom curator pin') CAN be improved - \
 pin only blocks deletion/archive/consolidation by the curator, not \
 content updates. Patch them when a pitfall or missing step turns up, \
 same as any other agent-created skill.\n\
@@ -107,7 +107,7 @@ that bite you later when the environment changes):\n\
   • Environment-dependent failures: missing binaries, fresh-install \
 errors, post-migration path mismatches, 'command not found', \
 unconfigured credentials, uninstalled packages. The user can fix \
-these — they are not durable rules.\n\
+these - they are not durable rules.\n\
   • Negative claims about tools or features ('browser tools do not \
 work', 'X tool is broken', 'cannot use Y from execute_code'). These \
 harden into refusals the agent cites against itself for months \
@@ -121,7 +121,7 @@ a skill.\n\
 \n\
 If a tool failed because of setup state, capture the FIX (install \
 command, config step, env var to set) under an existing setup or \
-troubleshooting skill — never 'this tool does not work' as a \
+troubleshooting skill - never 'this tool does not work' as a \
 standalone constraint.\n\
 \n\
 'Nothing to save.' is a real option but should NOT be the \
@@ -138,7 +138,7 @@ desires, preferences, personal details, or expectations about \
 how you should behave? Save facts about the user and durable \
 preferences with the memory tool.\n\
 \n\
-**Skills**: how to do this class of task. Be ACTIVE — most \
+**Skills**: how to do this class of task. Be ACTIVE - most \
 sessions produce at least one skill update. A pass that does \
 nothing is a missed learning opportunity, not a neutral outcome.\n\
 \n\
@@ -150,14 +150,14 @@ Signals that warrant a skill update (any one is enough):\n\
   • User corrected your style, tone, format, legibility, \
 verbosity, or approach. Frustration is a FIRST-CLASS skill \
 signal, not just a memory signal. 'stop doing X', 'don't format \
-like this', 'I hate when you Y' — embed the lesson in the skill \
+like this', 'I hate when you Y' - embed the lesson in the skill \
 that governs that task so the next session starts fixed.\n\
   • Non-trivial technique, fix, workaround, or debugging path \
 emerged.\n\
   • A skill that was loaded or consulted turned out wrong, \
-missing, or outdated — patch it now.\n\
+missing, or outdated - patch it now.\n\
 \n\
-Preference order for skills — pick the earliest that fits:\n\
+Preference order for skills - pick the earliest that fits:\n\
   1. UPDATE A CURRENTLY-LOADED SKILL. Check what skills were \
 loaded via /skill-name or skill_view in the conversation. If one \
 of them covers the learning, PATCH it first. It was in play; \
@@ -174,25 +174,25 @@ for starter files meant to be copied and modified; \
 (verification, fixture generators, probes). Add a one-line \
 pointer in SKILL.md so future agents find them.\n\
   4. CREATE A NEW CLASS-LEVEL UMBRELLA when nothing exists. \
-Name at the class level — NOT a PR number, error string, \
+Name at the class level - NOT a PR number, error string, \
 codename, library-alone name, or 'fix-X / debug-Y' session \
 artifact. If the name only fits today's task, fall back to \
 (1), (2), or (3).\n\
 \n\
 User-preference embedding: when the user complains about how \
-you handled a task, update the skill that governs that task — \
+you handled a task, update the skill that governs that task - \
 memory alone isn't enough. Memory says 'who the user is and \
 what the current situation and state of your operations are'; \
 skills say 'how to do this class of task for this user'. Both \
 should carry user-preference lessons when relevant.\n\
 \n\
-If you notice overlapping existing skills, mention it — the \
+If you notice overlapping existing skills, mention it - the \
 background curator handles consolidation.\n\
 \n\
 Protected skills (DO NOT edit these):\n\
-  • Bundled skills (shipped with Hermes, e.g. 'hermes-agent').\n\
-  • Hub-installed skills (installed via 'hermes skills install').\n\
-Pinned skills (marked via 'hermes curator pin') CAN be improved — \
+  • Bundled skills (shipped with Hermes, e.g. 'loom-development').\n\
+  • Hub-installed skills (installed via 'loom skills install').\n\
+Pinned skills (marked via 'loom curator pin') CAN be improved - \
 pin only blocks deletion/archive/consolidation by the curator, not \
 content updates. Patch them when a pitfall or missing step turns up, \
 same as any other agent-created skill.\n\
@@ -204,7 +204,7 @@ constraints that bite you later when the environment changes):\n\
   • Environment-dependent failures: missing binaries, fresh-install \
 errors, post-migration path mismatches, 'command not found', \
 unconfigured credentials, uninstalled packages. The user can fix \
-these — they are not durable rules.\n\
+these - they are not durable rules.\n\
   • Negative claims about tools or features ('browser tools do not \
 work', 'X tool is broken', 'cannot use Y from execute_code'). These \
 harden into refusals the agent cites against itself for months \
@@ -218,12 +218,12 @@ a skill.\n\
 \n\
 If a tool failed because of setup state, capture the FIX (install \
 command, config step, env var to set) under an existing setup or \
-troubleshooting skill — never 'this tool does not work' as a \
+troubleshooting skill - never 'this tool does not work' as a \
 standalone constraint.\n\
 \n\
 Act on whichever of the two dimensions has real signal. If \
 genuinely nothing stands out on either, say 'Nothing to save.' \
-and stop — but don't reach for that conclusion as a default.";
+and stop - but don't reach for that conclusion as a default.";
 
 /// System prompt for the curator ReAct agent.
 ///
@@ -257,7 +257,7 @@ pub const CURATOR_SYSTEM_PROMPT: &str = "You are Loom's background skill CURATOR
 /// --dry-run` return an LLM plan without committing changes.
 pub const CURATOR_DRY_RUN_BANNER: &str = r#"
 ────────────────────────────────────────────────────────────
-DRY-RUN MODE — read-only pass, no on-disk changes are allowed.
+DRY-RUN MODE - read-only pass, no on-disk changes are allowed.
 - `skill_manage action=create`   →  DO NOT CALL.  Describe what you would create.
 - `skill_manage action=edit`     →  DO NOT CALL.  Describe what you would edit.
 - `skill_manage action=patch`    →  DO NOT CALL.  Describe the patch.
@@ -276,7 +276,7 @@ duplicate-finder.
 The goal of the skill collection is a LIBRARY OF CLASS-LEVEL
 INSTRUCTIONS AND EXPERIENTIAL KNOWLEDGE. A collection of hundreds of
 narrow skills where each one captures one session's specific bug is
-a FAILURE of the library — not a feature. An agent searching skills
+a FAILURE of the library - not a feature. An agent searching skills
 matches on descriptions, not on exact names; one broad umbrella
 skill with labeled subsections beats twenty one-off entries every time.
 
@@ -289,15 +289,15 @@ skill with labeled subsections beats twenty one-off entries every time.
 2. Below is the current set of agent-created skills with usage metadata.
    Each skill's pinned/protected status is noted.
 
-3. Three ways to consolidate — use the right one per cluster:
-   a. MERGE INTO EXISTING UMBRELLA — one skill in the cluster is already
+3. Three ways to consolidate - use the right one per cluster:
+   a. MERGE INTO EXISTING UMBRELLA - one skill in the cluster is already
       broad enough to be the umbrella. Patch it to add a labeled section
       for each sibling's unique insight, then archive the siblings.
-   b. CREATE A NEW UMBRELLA SKILL — no existing member is broad enough.
+   b. CREATE A NEW UMBRELLA SKILL - no existing member is broad enough.
       Use skill_create to write a new class-level skill whose SKILL.md
       covers the shared workflow and has short labeled subsections.
       Archive the now-absorbed narrow siblings.
-   c. DEMOTE TO REFERENCES/TEMPLATES/SCRIPTS — a sibling has narrow-but-
+   c. DEMOTE TO REFERENCES/TEMPLATES/SCRIPTS - a sibling has narrow-but-
       valuable session-specific content. Move it into the umbrella's
       appropriate support directory:
         • references/<topic>.md for session-specific detail OR condensed
@@ -307,7 +307,7 @@ skill with labeled subsections beats twenty one-off entries every time.
         • scripts/<name>.<ext> for statically re-runnable actions
           (verification scripts, fixture generators, probes)
 
-## Hard rules — do not violate
+## Hard rules - do not violate
 
 1. DO NOT touch bundled or hub-installed skills. The candidate list below
    is already filtered to agent-created skills only.
@@ -319,7 +319,7 @@ skill with labeled subsections beats twenty one-off entries every time.
    distinct trigger'. The right bar is: 'would a human maintainer write
    this as N separate skills, or as one skill with N labeled subsections?'
 
-## Package integrity — not optional
+## Package integrity - not optional
 
 Before demoting or archiving a skill, inspect it as a COMPLETE directory
 package, not just SKILL.md. A skill root may include references/,
@@ -345,31 +345,31 @@ After one consolidation round, scan the remaining set and look for the
 NEXT umbrella opportunity. Don't stop after 3 merges.
 
 Expected output: real umbrella-ification. Process every obvious cluster.
-If you end the pass with fewer than 10 archives, you stopped too early —
+If you end the pass with fewer than 10 archives, you stopped too early -
 go back and look at the clusters you left alone.
 
 ## Tools available
 
   You have THREE tools for skill inspection and management:
 
-  - **skill_list** — list all skills with names, descriptions, and categories.
-  - **skill_view** — load a skill's full content by name (SKILL.md + sub-files).
+  - **skill_list** - list all skills with names, descriptions, and categories.
+  - **skill_view** - load a skill's full content by name (SKILL.md + sub-files).
     Use this to inspect skills before deciding how to consolidate.
-  - **skill_manage** — manage skills via an `action` parameter:
+  - **skill_manage** - manage skills via an `action` parameter:
 
-    - skill_manage action=patch   — patch an existing skill's SKILL.md
+    - skill_manage action=patch   - patch an existing skill's SKILL.md
                                      (requires: name, old_string, new_string)
-    - skill_manage action=create  — create a new class-level umbrella
+    - skill_manage action=create  - create a new class-level umbrella
                                      (requires: name, content = full SKILL.md)
-    - skill_manage action=delete  — archive a skill. MUST pass
+    - skill_manage action=delete  - archive a skill. MUST pass
                                      absorbed_into=<umbrella> when you've
                                      merged its content into another skill,
                                      or absorbed_into="" when you're truly
                                      pruning with no forwarding target. This
                                      drives cron-job skill-reference migration
-                                     — guessing from your YAML summary after
+                                     - guessing from your YAML summary after
                                      the fact is fragile.
-    - skill_manage action=write_file — write support files
+    - skill_manage action=write_file - write support files
                                         (references/, templates/, scripts/)
                                         (requires: name, file_path, content)
 
@@ -401,7 +401,7 @@ Rules:
 - If consolidated X into umbrella Y (patched Y, wrote a references file to Y,
   or created Y with X's content absorbed), X goes under `consolidations` with
   `into: Y`.
-- If archived X with no absorption — truly stale, irrelevant, or obsolete —
+- If archived X with no absorption - truly stale, irrelevant, or obsolete -
   X goes under `prunings`
 - Leave a list empty (`consolidations: []`) if none. Do not omit the block.
 - The block comes AFTER your human-readable summary of clusters processed,
@@ -426,12 +426,18 @@ mod tests {
 
     #[test]
     fn test_select_combined() {
-        assert_eq!(select_review_prompt(true, true), Some(COMBINED_REVIEW_PROMPT));
+        assert_eq!(
+            select_review_prompt(true, true),
+            Some(COMBINED_REVIEW_PROMPT)
+        );
     }
 
     #[test]
     fn test_select_memory_only() {
-        assert_eq!(select_review_prompt(true, false), Some(MEMORY_REVIEW_PROMPT));
+        assert_eq!(
+            select_review_prompt(true, false),
+            Some(MEMORY_REVIEW_PROMPT)
+        );
     }
 
     #[test]
@@ -506,7 +512,7 @@ mod tests {
         assert!(CURATOR_REVIEW_PROMPT.contains("absorbed_into"));
         // F. Iteration driving
         assert!(CURATOR_REVIEW_PROMPT.contains("NEXT umbrella opportunity"));
-        // G. Tool documentation — single skill_manage tool with actions
+        // G. Tool documentation - single skill_manage tool with actions
         assert!(CURATOR_REVIEW_PROMPT.contains("skill_manage action=patch"));
         assert!(CURATOR_REVIEW_PROMPT.contains("skill_manage action=create"));
         assert!(CURATOR_REVIEW_PROMPT.contains("skill_manage action=delete"));

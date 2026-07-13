@@ -155,17 +155,11 @@ async fn main() {
                     ShowError::Ambiguous { prefix, matches } => {
                         let candidates: Vec<serde_json::Value> = matches
                             .iter()
-                            .map(|(id, name)| {
-                                serde_json::json!({"id": id, "name": name})
-                            })
+                            .map(|(id, name)| serde_json::json!({"id": id, "name": name}))
                             .collect();
                         print_error_data(
                             "ambiguous_id",
-                            &format!(
-                                "ambiguous id '{}', matched {} tasks",
-                                prefix,
-                                matches.len()
-                            ),
+                            &format!("ambiguous id '{}', matched {} tasks", prefix, matches.len()),
                             &serde_json::json!({"candidates": candidates}),
                         );
                         std::process::exit(2);
@@ -204,11 +198,7 @@ async fn run(args: &Args, db: &TaskDb) -> Result<serde_json::Value, Box<dyn std:
         }
 
         TaskCommand::List(cli) => {
-            let status = cli
-                .status
-                .as_deref()
-                .map(parse_status)
-                .transpose()?;
+            let status = cli.status.as_deref().map(parse_status).transpose()?;
             let params = ListParams {
                 status,
                 assignee: cli.assignee.clone(),
@@ -223,11 +213,7 @@ async fn run(args: &Args, db: &TaskDb) -> Result<serde_json::Value, Box<dyn std:
         }
 
         TaskCommand::Update(cli) => {
-            let status = cli
-                .status
-                .as_deref()
-                .map(parse_status)
-                .transpose()?;
+            let status = cli.status.as_deref().map(parse_status).transpose()?;
             let params = UpdateParams {
                 id: cli.id.clone(),
                 name: cli.name.clone(),
@@ -236,7 +222,10 @@ async fn run(args: &Args, db: &TaskDb) -> Result<serde_json::Value, Box<dyn std:
                 start_time: cli.start_time.clone(),
                 status,
             };
-            let task = db.update_task(&params).await.map_err(|e| e as Box<dyn std::error::Error>)?;
+            let task = db
+                .update_task(&params)
+                .await
+                .map_err(|e| e as Box<dyn std::error::Error>)?;
             Ok(serde_json::to_value(&task)?)
         }
 

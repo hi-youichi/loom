@@ -415,5 +415,5 @@ mod tests {
         server.await.unwrap();
     }
 
-// NOTE: embed_returns_error_on_http_failure (>500ms, 2.9s) is deleted
+    // NOTE: embed_returns_error_on_http_failure (>500ms, 2.9s) is deleted
 }

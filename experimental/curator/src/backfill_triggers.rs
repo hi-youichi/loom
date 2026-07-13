@@ -171,10 +171,7 @@ pub async fn run_backfill_triggers(
             Ok(r) => r.reply,
             Err(e) => {
                 let names: Vec<String> = batch.iter().map(|c| c.name.clone()).collect();
-                warn!(
-                    "backfill: LLM call failed for batch {:?}: {}",
-                    names, e
-                );
+                warn!("backfill: LLM call failed for batch {:?}: {}", names, e);
                 for name in names {
                     outcome.failed.push((name, e.to_string()));
                 }
@@ -195,10 +192,7 @@ pub async fn run_backfill_triggers(
 
         for (name, triggers) in parsed {
             if dry_run {
-                info!(
-                    "backfill (dry-run): '{}' ← {:?}",
-                    name, triggers
-                );
+                info!("backfill (dry-run): '{}' ← {:?}", name, triggers);
                 outcome.updated.push(name);
                 continue;
             }

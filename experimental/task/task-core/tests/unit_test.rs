@@ -12,10 +12,22 @@ fn task_status_as_str() {
 
 #[test]
 fn task_status_parse_status() {
-    assert_eq!(models::TaskStatus::parse_status("pending"), Some(models::TaskStatus::Pending));
-    assert_eq!(models::TaskStatus::parse_status("in_progress"), Some(models::TaskStatus::InProgress));
-    assert_eq!(models::TaskStatus::parse_status("completed"), Some(models::TaskStatus::Completed));
-    assert_eq!(models::TaskStatus::parse_status("cancelled"), Some(models::TaskStatus::Cancelled));
+    assert_eq!(
+        models::TaskStatus::parse_status("pending"),
+        Some(models::TaskStatus::Pending)
+    );
+    assert_eq!(
+        models::TaskStatus::parse_status("in_progress"),
+        Some(models::TaskStatus::InProgress)
+    );
+    assert_eq!(
+        models::TaskStatus::parse_status("completed"),
+        Some(models::TaskStatus::Completed)
+    );
+    assert_eq!(
+        models::TaskStatus::parse_status("cancelled"),
+        Some(models::TaskStatus::Cancelled)
+    );
     assert_eq!(models::TaskStatus::parse_status("unknown"), None);
     assert_eq!(models::TaskStatus::parse_status(""), None);
 }
@@ -23,7 +35,10 @@ fn task_status_parse_status() {
 #[test]
 fn task_status_all_values() {
     let values = models::TaskStatus::all_values();
-    assert_eq!(values, &["pending", "in_progress", "completed", "cancelled"]);
+    assert_eq!(
+        values,
+        &["pending", "in_progress", "completed", "cancelled"]
+    );
 }
 
 #[test]
