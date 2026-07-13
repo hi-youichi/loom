@@ -57,7 +57,9 @@ pub struct AgentNode<A: Agent> {
 
 impl<A: Agent> AgentNode<A> {
     pub fn new(agent: A) -> Self {
-        Self { inner: Arc::new(agent) }
+        Self {
+            inner: Arc::new(agent),
+        }
     }
 
     pub fn from_arc(agent: Arc<A>) -> Self {

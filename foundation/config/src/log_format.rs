@@ -16,16 +16,20 @@ use std::thread;
 use tracing_core::Subscriber;
 use tracing_subscriber::fmt::format::{FormatEvent, FormatFields, Writer};
 // FormattedFields is re-exported at the fmt level in newer versions
-use tracing_subscriber::fmt::FormattedFields;
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::fmt::FmtContext;
+use tracing_subscriber::fmt::FormattedFields;
 use tracing_subscriber::registry::{LookupSpan, SpanRef};
 
 struct LocalTimer;
 
 impl FormatTime for LocalTimer {
     fn format_time(&self, w: &mut Writer<'_>) -> std::fmt::Result {
-        write!(w, "{}", chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%:z"))
+        write!(
+            w,
+            "{}",
+            chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%:z")
+        )
     }
 }
 
@@ -77,9 +81,7 @@ fn extract_thread_id_from_fields(fields: &str) -> Option<String> {
         let end = stripped.find('"')?;
         Some(stripped[..end].to_string())
     } else {
-        let end = rest
-            .find(|c: char| c.is_whitespace())
-            .unwrap_or(rest.len());
+        let end = rest.find(|c: char| c.is_whitespace()).unwrap_or(rest.len());
         if end > 0 {
             Some(rest[..end].to_string())
         } else {
@@ -194,9 +196,7 @@ pub struct JsonWithSpanIds {
 
 impl Default for JsonWithSpanIds {
     fn default() -> Self {
-        Self {
-            timer: LocalTimer,
-        }
+        Self { timer: LocalTimer }
     }
 }
 
@@ -217,7 +217,8 @@ impl<'a> tracing_subscriber::field::Visit for JsonFieldsCollector<'a> {
             self.buffer.push(',');
         }
         self.first = false;
-        self.buffer.push_str(&serde_json::to_string(field.name()).unwrap_or_default());
+        self.buffer
+            .push_str(&serde_json::to_string(field.name()).unwrap_or_default());
         self.buffer.push(':');
         self.buffer
             .push_str(&serde_json::to_string(&format!("{:?}", value)).unwrap_or_default());
@@ -228,7 +229,8 @@ impl<'a> tracing_subscriber::field::Visit for JsonFieldsCollector<'a> {
             self.buffer.push(',');
         }
         self.first = false;
-        self.buffer.push_str(&serde_json::to_string(field.name()).unwrap_or_default());
+        self.buffer
+            .push_str(&serde_json::to_string(field.name()).unwrap_or_default());
         self.buffer.push(':');
         self.buffer
             .push_str(&serde_json::to_string(value).unwrap_or_default());
@@ -239,7 +241,8 @@ impl<'a> tracing_subscriber::field::Visit for JsonFieldsCollector<'a> {
             self.buffer.push(',');
         }
         self.first = false;
-        self.buffer.push_str(&serde_json::to_string(field.name()).unwrap_or_default());
+        self.buffer
+            .push_str(&serde_json::to_string(field.name()).unwrap_or_default());
         self.buffer.push(':');
         self.buffer
             .push_str(&serde_json::to_string(&value).unwrap_or_default());
@@ -250,7 +253,8 @@ impl<'a> tracing_subscriber::field::Visit for JsonFieldsCollector<'a> {
             self.buffer.push(',');
         }
         self.first = false;
-        self.buffer.push_str(&serde_json::to_string(field.name()).unwrap_or_default());
+        self.buffer
+            .push_str(&serde_json::to_string(field.name()).unwrap_or_default());
         self.buffer.push(':');
         self.buffer.push_str(&value.to_string());
     }
@@ -260,7 +264,8 @@ impl<'a> tracing_subscriber::field::Visit for JsonFieldsCollector<'a> {
             self.buffer.push(',');
         }
         self.first = false;
-        self.buffer.push_str(&serde_json::to_string(field.name()).unwrap_or_default());
+        self.buffer
+            .push_str(&serde_json::to_string(field.name()).unwrap_or_default());
         self.buffer.push(':');
         self.buffer.push_str(&value.to_string());
     }
@@ -270,7 +275,8 @@ impl<'a> tracing_subscriber::field::Visit for JsonFieldsCollector<'a> {
             self.buffer.push(',');
         }
         self.first = false;
-        self.buffer.push_str(&serde_json::to_string(field.name()).unwrap_or_default());
+        self.buffer
+            .push_str(&serde_json::to_string(field.name()).unwrap_or_default());
         self.buffer.push(':');
         self.buffer.push_str(&value.to_string());
     }
@@ -328,17 +334,45 @@ where
         };
         event.record(&mut collector);
 
-        write!(writer, "{{\"timestamp\":{}", serde_json::to_string(&timestamp).unwrap_or_default())?;
-        write!(writer, ",\"level\":{}", serde_json::to_string(&level).unwrap_or_default())?;
-        write!(writer, ",\"target\":{}", serde_json::to_string(&target).unwrap_or_default())?;
-        write!(writer, ",\"thread_id\":{}", serde_json::to_string(&tid).unwrap_or_default())?;
+        write!(
+            writer,
+            "{{\"timestamp\":{}",
+            serde_json::to_string(&timestamp).unwrap_or_default()
+        )?;
+        write!(
+            writer,
+            ",\"level\":{}",
+            serde_json::to_string(&level).unwrap_or_default()
+        )?;
+        write!(
+            writer,
+            ",\"target\":{}",
+            serde_json::to_string(&target).unwrap_or_default()
+        )?;
+        write!(
+            writer,
+            ",\"thread_id\":{}",
+            serde_json::to_string(&tid).unwrap_or_default()
+        )?;
         if let Some(rsid) = root_span_id {
-            write!(writer, ",\"root_span_id\":{}", serde_json::to_string(&rsid).unwrap_or_default())?;
+            write!(
+                writer,
+                ",\"root_span_id\":{}",
+                serde_json::to_string(&rsid).unwrap_or_default()
+            )?;
         }
         if let Some(sid) = span_id {
-            write!(writer, ",\"span_id\":{}", serde_json::to_string(&sid).unwrap_or_default())?;
+            write!(
+                writer,
+                ",\"span_id\":{}",
+                serde_json::to_string(&sid).unwrap_or_default()
+            )?;
         }
-        write!(writer, ",\"module_path\":{}", serde_json::to_string(&module_path).unwrap_or_default())?;
+        write!(
+            writer,
+            ",\"module_path\":{}",
+            serde_json::to_string(&module_path).unwrap_or_default()
+        )?;
         if !fields_json.is_empty() {
             write!(writer, ",{}", fields_json)?;
         }
@@ -497,8 +531,14 @@ mod tests {
         });
 
         let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
-        assert!(output.contains("thread_id="), "missing thread_id in: {output}");
-        assert!(output.contains("root_span_id="), "missing root_span_id in: {output}");
+        assert!(
+            output.contains("thread_id="),
+            "missing thread_id in: {output}"
+        );
+        assert!(
+            output.contains("root_span_id="),
+            "missing root_span_id in: {output}"
+        );
         assert!(output.contains("span_id="), "missing span_id in: {output}");
         assert!(output.contains("INFO"), "missing INFO in: {output}");
         assert!(output.contains("hello"), "missing hello in: {output}");
@@ -527,7 +567,8 @@ mod tests {
         });
 
         let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(output.trim()).unwrap_or_else(|e| panic!("not valid JSON: {output}: {e}"));
+        let parsed: serde_json::Value = serde_json::from_str(output.trim())
+            .unwrap_or_else(|e| panic!("not valid JSON: {output}: {e}"));
         assert!(parsed.get("timestamp").is_some(), "missing timestamp");
         assert_eq!(parsed["level"], "INFO");
         assert!(parsed.get("target").is_some());
@@ -556,8 +597,12 @@ mod tests {
         });
 
         let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(output.trim()).unwrap_or_else(|e| panic!("not valid JSON: {output}: {e}"));
-        assert!(parsed.get("root_span_id").is_none(), "unexpected root_span_id");
+        let parsed: serde_json::Value = serde_json::from_str(output.trim())
+            .unwrap_or_else(|e| panic!("not valid JSON: {output}: {e}"));
+        assert!(
+            parsed.get("root_span_id").is_none(),
+            "unexpected root_span_id"
+        );
         assert!(parsed.get("span_id").is_none(), "unexpected span_id");
     }
 
@@ -581,9 +626,18 @@ mod tests {
         });
 
         let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
-        assert!(output.contains("thread_id="), "missing thread_id in: {output}");
-        assert!(!output.contains("root_span_id="), "unexpected root_span_id in: {output}");
-        assert!(!output.contains("span_id="), "unexpected span_id in: {output}");
+        assert!(
+            output.contains("thread_id="),
+            "missing thread_id in: {output}"
+        );
+        assert!(
+            !output.contains("root_span_id="),
+            "unexpected root_span_id in: {output}"
+        );
+        assert!(
+            !output.contains("span_id="),
+            "unexpected span_id in: {output}"
+        );
     }
 
     /// Regression test for thread_id inheritance from a parent span's fields.
@@ -649,7 +703,10 @@ mod tests {
 
         tracing::subscriber::with_default(subscriber, || {
             // No parent span; thread_id comes from the event itself.
-            tracing::info!(thread_id = "worker-event-id-456", "event with thread_id field");
+            tracing::info!(
+                thread_id = "worker-event-id-456",
+                "event with thread_id field"
+            );
         });
 
         let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();

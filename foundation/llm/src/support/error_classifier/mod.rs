@@ -17,15 +17,15 @@
 //! let decision = config.classify_http_error(400, "messages 参数非法 (code: 1214)");
 //! ```
 
-mod openai;
 mod bigmodel;
 mod minimax;
+mod openai;
 
 use std::sync::Arc;
 
-pub use openai::{OpenAiRetryPolicy, OpenAiApiParser};
-pub use bigmodel::{BigModelRetryPolicy, BigModelApiParser};
-pub use minimax::{MiniMaxRetryPolicy, MiniMaxApiParser};
+pub use bigmodel::{BigModelApiParser, BigModelRetryPolicy};
+pub use minimax::{MiniMaxApiParser, MiniMaxRetryPolicy};
+pub use openai::{OpenAiApiParser, OpenAiRetryPolicy};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RetryDecision {
@@ -161,8 +161,10 @@ impl LlmErrorClassifierConfig {
         if url_lower.contains("bigmodel.cn") || url_lower.contains("bigmodel.com") {
             return Self::bigmodel();
         }
-        if url_lower.contains("minimaxi.com") || url_lower.contains("minimax.chat")
-            || url_lower.contains("api.minimax") {
+        if url_lower.contains("minimaxi.com")
+            || url_lower.contains("minimax.chat")
+            || url_lower.contains("api.minimax")
+        {
             return Self::minimax();
         }
         Self::openai()
@@ -182,7 +184,9 @@ mod tests {
     #[test]
     fn bigmodel_code_1214_is_retryable() {
         let config = LlmErrorClassifierConfig::bigmodel();
-        assert!(config.classify_http_error(400, "messages 参数非法。请检查文档。 (code: 1214)").is_retryable());
+        assert!(config
+            .classify_http_error(400, "messages 参数非法。请检查文档。 (code: 1214)")
+            .is_retryable());
     }
 
     #[test]
@@ -195,26 +199,36 @@ mod tests {
     #[test]
     fn openai_429_is_retryable() {
         let config = LlmErrorClassifierConfig::openai();
-        assert!(config.classify_http_error(429, "Rate limit exceeded").is_retryable());
+        assert!(config
+            .classify_http_error(429, "Rate limit exceeded")
+            .is_retryable());
     }
 
     #[test]
     fn openai_500_is_retryable() {
         let config = LlmErrorClassifierConfig::openai();
-        assert!(config.classify_http_error(500, "Internal server error").is_retryable());
+        assert!(config
+            .classify_http_error(500, "Internal server error")
+            .is_retryable());
     }
 
     #[test]
     fn openai_400_is_not_retryable() {
         let config = LlmErrorClassifierConfig::openai();
-        assert!(!config.classify_http_error(400, "Bad request").is_retryable());
+        assert!(!config
+            .classify_http_error(400, "Bad request")
+            .is_retryable());
     }
 
     #[test]
     fn network_timeout_is_retryable() {
         let config = LlmErrorClassifierConfig::openai();
-        assert!(config.classify_network_error("request timeout").is_retryable());
-        assert!(config.classify_network_error("Connection reset by peer").is_retryable());
+        assert!(config
+            .classify_network_error("request timeout")
+            .is_retryable());
+        assert!(config
+            .classify_network_error("Connection reset by peer")
+            .is_retryable());
     }
 
     #[test]
@@ -227,7 +241,9 @@ mod tests {
     #[test]
     fn minimax_rate_limit_is_retryable() {
         let config = LlmErrorClassifierConfig::minimax();
-        assert!(config.classify_http_error(400, "请求频率超限 (code: 1002)").is_retryable());
+        assert!(config
+            .classify_http_error(400, "请求频率超限 (code: 1002)")
+            .is_retryable());
     }
 
     #[test]

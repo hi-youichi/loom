@@ -1,12 +1,12 @@
 //! OpenAI LlmProvider implementation.
 
-use async_trait::async_trait;
 use async_openai::config::OpenAIConfig;
+use async_trait::async_trait;
 
-use loom_graph_core::GraphError;
 use crate::client::ChatOpenAI;
-use crate::traits::{LlmClient, LlmProvider, LlmHeaders};
 use crate::registry::ModelEntry;
+use crate::traits::{LlmClient, LlmHeaders, LlmProvider};
+use loom_graph_core::GraphError;
 
 pub struct OpenAIProvider {
     config: OpenAIConfig,

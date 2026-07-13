@@ -4,28 +4,14 @@ use serde_json::Value;
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CodexEvent {
-    ThreadStarted {
-        thread_id: String,
-    },
+    ThreadStarted { thread_id: String },
     TurnStarted,
-    TurnCompleted {
-        usage: CodexUsage,
-    },
-    TurnFailed {
-        error: CodexErrorInfo,
-    },
-    ItemStarted {
-        item: Value,
-    },
-    ItemUpdated {
-        item: Value,
-    },
-    ItemCompleted {
-        item: Value,
-    },
-    Error {
-        message: String,
-    },
+    TurnCompleted { usage: CodexUsage },
+    TurnFailed { error: CodexErrorInfo },
+    ItemStarted { item: Value },
+    ItemUpdated { item: Value },
+    ItemCompleted { item: Value },
+    Error { message: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -53,9 +39,13 @@ impl std::ops::Sub for CodexUsage {
     fn sub(self, rhs: Self) -> Self {
         Self {
             input_tokens: self.input_tokens.saturating_sub(rhs.input_tokens),
-            cached_input_tokens: self.cached_input_tokens.saturating_sub(rhs.cached_input_tokens),
+            cached_input_tokens: self
+                .cached_input_tokens
+                .saturating_sub(rhs.cached_input_tokens),
             output_tokens: self.output_tokens.saturating_sub(rhs.output_tokens),
-            reasoning_output_tokens: self.reasoning_output_tokens.saturating_sub(rhs.reasoning_output_tokens),
+            reasoning_output_tokens: self
+                .reasoning_output_tokens
+                .saturating_sub(rhs.reasoning_output_tokens),
         }
     }
 }

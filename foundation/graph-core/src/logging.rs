@@ -67,7 +67,7 @@ mod tests {
     fn test_logging_with_state() {
         let state = vec![1, 2, 3];
         log_node_state("test_node", &state);
-        
+
         let complex_state = (String::from("test"), 42);
         log_node_state("complex_node", &complex_state);
     }

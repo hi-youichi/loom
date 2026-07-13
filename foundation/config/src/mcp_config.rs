@@ -370,7 +370,9 @@ mod tests {
         let list = parse_mcp_config(json).unwrap();
         assert_eq!(list.len(), 1);
         match &list[0] {
-            McpServerDef::Http { name, url, headers, .. } => {
+            McpServerDef::Http {
+                name, url, headers, ..
+            } => {
                 assert_eq!(name, "my-service");
                 assert_eq!(url, "https://mcp.example.com/sse");
                 assert!(headers.is_empty());
@@ -394,7 +396,9 @@ mod tests {
         let list = parse_mcp_config(json).unwrap();
         assert_eq!(list.len(), 1);
         match &list[0] {
-            McpServerDef::Http { name, url, headers, .. } => {
+            McpServerDef::Http {
+                name, url, headers, ..
+            } => {
                 assert_eq!(name, "my-service");
                 assert_eq!(url, "https://mcp.example.com/sse");
                 assert_eq!(

@@ -3,7 +3,6 @@
 use std::collections::{hash_map::DefaultHasher, BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
-use checkpoint::RunnableConfig;
 use crate::cache::TaskCacheKey;
 use crate::channel::{build_channel, BoxedChannel};
 use crate::node::PregelGraph;
@@ -11,6 +10,7 @@ use crate::types::{
     ChannelName, ChannelValue, ChannelVersion, InterruptRecord, ReservedWrite, SendPacket, TaskId,
     TaskKind, TASKS_CHANNEL,
 };
+use checkpoint::RunnableConfig;
 
 /// A task prepared for execution in the next Pregel step.
 #[derive(Debug, Clone)]
@@ -582,11 +582,11 @@ mod tests {
     use super::*;
     use crate::channel::{ChannelKind, ChannelSpec};
     use crate::node::PregelNode;
-    use std::collections::HashMap;
-    use std::sync::Arc;
+    use crate::node::{PregelNodeContext, PregelNodeInput, PregelNodeOutput};
     use async_trait::async_trait;
     use loom_graph_core::GraphError;
-    use crate::node::{PregelNodeInput, PregelNodeOutput, PregelNodeContext};
+    use std::collections::HashMap;
+    use std::sync::Arc;
 
     struct MockNode {
         name: String,
@@ -655,7 +655,8 @@ mod tests {
         let mut nodes = HashMap::new();
         nodes.insert(
             "node1".to_string(),
-            Arc::new(MockNode::new("node1", &["input1"], &["input1", "input2"])) as Arc<dyn PregelNode>,
+            Arc::new(MockNode::new("node1", &["input1"], &["input1", "input2"]))
+                as Arc<dyn PregelNode>,
         );
         nodes.insert(
             "node2".to_string(),
@@ -663,8 +664,14 @@ mod tests {
         );
 
         let mut channels = HashMap::new();
-        channels.insert("input1".to_string(), ChannelSpec::new(ChannelKind::LastValue));
-        channels.insert("input2".to_string(), ChannelSpec::new(ChannelKind::LastValue));
+        channels.insert(
+            "input1".to_string(),
+            ChannelSpec::new(ChannelKind::LastValue),
+        );
+        channels.insert(
+            "input2".to_string(),
+            ChannelSpec::new(ChannelKind::LastValue),
+        );
 
         PregelGraph {
             nodes,
@@ -677,8 +684,14 @@ mod tests {
 
     fn create_test_channels() -> HashMap<ChannelName, BoxedChannel> {
         let mut channels = HashMap::new();
-        channels.insert("input1".to_string(), build_channel(&ChannelSpec::new(ChannelKind::LastValue)));
-        channels.insert("input2".to_string(), build_channel(&ChannelSpec::new(ChannelKind::LastValue)));
+        channels.insert(
+            "input1".to_string(),
+            build_channel(&ChannelSpec::new(ChannelKind::LastValue)),
+        );
+        channels.insert(
+            "input2".to_string(),
+            build_channel(&ChannelSpec::new(ChannelKind::LastValue)),
+        );
         channels
     }
 
@@ -695,7 +708,7 @@ mod tests {
     #[test]
     fn test_snapshot_channels() {
         let mut channels = create_test_channels();
-        
+
         let input1_channel = channels.get_mut("input1").unwrap();
         input1_channel.update(&[serde_json::json!("value1")]);
 
@@ -736,13 +749,25 @@ mod tests {
         let channels = restore_channels_from_checkpoint(&checkpoint, &graph);
 
         assert_eq!(channels.len(), 2);
-        assert_eq!(channels.get("input1").unwrap().snapshot(), serde_json::json!("restored_value1"));
-        assert_eq!(channels.get("input2").unwrap().snapshot(), serde_json::json!("restored_value2"));
+        assert_eq!(
+            channels.get("input1").unwrap().snapshot(),
+            serde_json::json!("restored_value1")
+        );
+        assert_eq!(
+            channels.get("input2").unwrap().snapshot(),
+            serde_json::json!("restored_value2")
+        );
     }
 
     #[test]
     fn test_pending_send_packet_id() {
-        let packet = SendPacket::new("test-packet", "target-node", serde_json::json!("payload"), None, 5);
+        let packet = SendPacket::new(
+            "test-packet",
+            "target-node",
+            serde_json::json!("payload"),
+            None,
+            5,
+        );
         let packet_value = serde_json::to_value(packet).unwrap();
 
         let packet_id = pending_send_packet_id(&packet_value);
@@ -760,7 +785,7 @@ mod tests {
     #[test]
     fn test_prepare_resume_tasks_from_interrupts() {
         let mut checkpoint = create_test_checkpoint();
-        
+
         let interrupt_record = InterruptRecord {
             interrupt_id: "int-1".to_string(),
             namespace: "ns-1".to_string(),
@@ -769,17 +794,31 @@ mod tests {
             step: 3,
             value: serde_json::json!("interrupt-value"),
         };
-        
-        checkpoint.pending_interrupts.push(serde_json::to_value(interrupt_record).unwrap());
+
+        checkpoint
+            .pending_interrupts
+            .push(serde_json::to_value(interrupt_record).unwrap());
 
         let graph = create_test_graph();
         let mut channels = create_test_channels();
-        
-        channels.get_mut("input1").unwrap().update(&[serde_json::json!("input_value")]);
-        channels.get_mut("input2").unwrap().update(&[serde_json::json!("input2_value")]);
+
+        channels
+            .get_mut("input1")
+            .unwrap()
+            .update(&[serde_json::json!("input_value")]);
+        channels
+            .get_mut("input2")
+            .unwrap()
+            .update(&[serde_json::json!("input2_value")]);
 
         let resume_interrupt_ids = std::collections::HashSet::from(["int-1".to_string()]);
-        let tasks = prepare_resume_tasks_from_interrupts(&checkpoint, &channels, &graph, 5, &resume_interrupt_ids);
+        let tasks = prepare_resume_tasks_from_interrupts(
+            &checkpoint,
+            &channels,
+            &graph,
+            5,
+            &resume_interrupt_ids,
+        );
 
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].node_name, "node1");
@@ -790,7 +829,7 @@ mod tests {
     #[test]
     fn test_prepare_resume_tasks_from_interrupts_filters_by_interrupt_id() {
         let mut checkpoint = create_test_checkpoint();
-        
+
         let interrupt_record1 = InterruptRecord {
             interrupt_id: "int-1".to_string(),
             namespace: "ns-1".to_string(),
@@ -799,7 +838,7 @@ mod tests {
             step: 3,
             value: serde_json::json!("interrupt-value1"),
         };
-        
+
         let interrupt_record2 = InterruptRecord {
             interrupt_id: "int-2".to_string(),
             namespace: "ns-1".to_string(),
@@ -808,15 +847,25 @@ mod tests {
             step: 4,
             value: serde_json::json!("interrupt-value2"),
         };
-        
-        checkpoint.pending_interrupts.push(serde_json::to_value(interrupt_record1).unwrap());
-        checkpoint.pending_interrupts.push(serde_json::to_value(interrupt_record2).unwrap());
+
+        checkpoint
+            .pending_interrupts
+            .push(serde_json::to_value(interrupt_record1).unwrap());
+        checkpoint
+            .pending_interrupts
+            .push(serde_json::to_value(interrupt_record2).unwrap());
 
         let graph = create_test_graph();
         let channels = create_test_channels();
 
         let resume_interrupt_ids = std::collections::HashSet::from(["int-1".to_string()]);
-        let tasks = prepare_resume_tasks_from_interrupts(&checkpoint, &channels, &graph, 5, &resume_interrupt_ids);
+        let tasks = prepare_resume_tasks_from_interrupts(
+            &checkpoint,
+            &channels,
+            &graph,
+            5,
+            &resume_interrupt_ids,
+        );
 
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id, "task-1");
@@ -825,27 +874,51 @@ mod tests {
     #[test]
     fn test_normalize_pending_sends_filters_duplicate_packets() {
         let mut pending_sends = vec![
-            ("task1".to_string(), TASKS_CHANNEL.to_string(), serde_json::json!("duplicate1")),
-            ("task2".to_string(), TASKS_CHANNEL.to_string(), serde_json::json!("different")),
-            ("task3".to_string(), TASKS_CHANNEL.to_string(), serde_json::json!("duplicate1")),
+            (
+                "task1".to_string(),
+                TASKS_CHANNEL.to_string(),
+                serde_json::json!("duplicate1"),
+            ),
+            (
+                "task2".to_string(),
+                TASKS_CHANNEL.to_string(),
+                serde_json::json!("different"),
+            ),
+            (
+                "task3".to_string(),
+                TASKS_CHANNEL.to_string(),
+                serde_json::json!("duplicate1"),
+            ),
         ];
 
         let _initial_len = pending_sends.len();
         normalize_pending_sends(&mut pending_sends);
-        
+
         assert_eq!(pending_sends.len(), 3);
     }
 
     #[test]
     fn test_normalize_pending_writes_deduplicates() {
         let mut pending_writes = vec![
-            ("task1".to_string(), "channel1".to_string(), serde_json::json!("value1")),
-            ("task1".to_string(), "channel1".to_string(), serde_json::json!("value1")),
-            ("task2".to_string(), "channel2".to_string(), serde_json::json!("value2")),
+            (
+                "task1".to_string(),
+                "channel1".to_string(),
+                serde_json::json!("value1"),
+            ),
+            (
+                "task1".to_string(),
+                "channel1".to_string(),
+                serde_json::json!("value1"),
+            ),
+            (
+                "task2".to_string(),
+                "channel2".to_string(),
+                serde_json::json!("value2"),
+            ),
         ];
 
         normalize_pending_writes(&mut pending_writes);
-        
+
         assert_eq!(pending_writes.len(), 2);
     }
 

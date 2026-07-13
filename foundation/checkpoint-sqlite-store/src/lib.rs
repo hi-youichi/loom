@@ -11,9 +11,9 @@
 //! It also hosts the user-message history store ([`user_message`]) and shared
 //! SQLite helpers ([`sqlite_util`]).
 
+pub mod repair;
 mod sqlite_saver;
 mod sqlite_store;
-pub mod repair;
 pub mod sqlite_util;
 pub mod user_message;
 
@@ -21,8 +21,8 @@ pub use repair::{is_malformed_db_error, repair_state_db_schema};
 pub use sqlite_saver::SqliteSaver;
 pub use sqlite_store::SqliteStore;
 pub use sqlite_util::{
-    clear_last_init_error, format_session_db_unavailable, get_last_init_error,
-    set_last_init_error, execute_write, EXECUTE_WRITE_BUSY_RETRIES,
+    clear_last_init_error, execute_write, format_session_db_unavailable, get_last_init_error,
+    set_last_init_error, EXECUTE_WRITE_BUSY_RETRIES,
 };
 pub use user_message::{
     NoOpUserMessageStore, SqliteUserMessageStore, UserMessageStore, UserMessageStoreError,

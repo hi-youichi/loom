@@ -157,8 +157,9 @@ pub struct LogsModuleConfig {
     pub path: Option<PathBuf>,
 }
 
-fn default_true() -> bool { true }
-
+fn default_true() -> bool {
+    true
+}
 
 #[cfg(feature = "tracing-init")]
 impl LogsModuleConfig {
@@ -207,7 +208,10 @@ pub struct LlmSection {
 
 impl LlmSection {
     pub fn audit_path(&self) -> PathBuf {
-        self.audit.path.clone().unwrap_or_else(crate::home::llm_logs_dir)
+        self.audit
+            .path
+            .clone()
+            .unwrap_or_else(crate::home::llm_logs_dir)
     }
 }
 

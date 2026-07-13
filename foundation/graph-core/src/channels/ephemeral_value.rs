@@ -92,7 +92,7 @@ mod tests {
         let mut channel = EphemeralValue::new();
         channel.write(1).unwrap();
         assert_eq!(channel.read(), Some(1));
-        
+
         channel.write(2).unwrap();
         assert_eq!(channel.read(), Some(2));
     }

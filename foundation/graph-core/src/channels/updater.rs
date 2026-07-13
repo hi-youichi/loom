@@ -142,7 +142,7 @@ mod tests {
         let updater = ReplaceUpdater;
         let mut current = vec![1, 2, 3];
         let update = vec![4, 5, 6];
-        
+
         updater.apply_update(&mut current, &update);
         assert_eq!(current, vec![4, 5, 6]); // Replaced entirely
     }
@@ -152,7 +152,7 @@ mod tests {
         let updater = ReplaceUpdater;
         let mut current = 10;
         let update = 20;
-        
+
         updater.apply_update(&mut current, &update);
         assert_eq!(current, 20);
     }
@@ -162,7 +162,7 @@ mod tests {
         let updater = FieldBasedUpdater::<Vec<i32>>::default();
         let mut current = vec![1, 2, 3];
         let update = vec![4, 5, 6];
-        
+
         updater.apply_update(&mut current, &update);
         assert_eq!(current, vec![4, 5, 6]); // Default is replace
     }
@@ -171,17 +171,17 @@ mod tests {
     fn test_custom_updater() {
         #[derive(Debug)]
         struct AppendUpdater;
-        
+
         impl StateUpdater<Vec<i32>> for AppendUpdater {
             fn apply_update(&self, current: &mut Vec<i32>, update: &Vec<i32>) {
                 current.extend(update.iter().cloned());
             }
         }
-        
+
         let updater = AppendUpdater;
         let mut current = vec![1, 2, 3];
         let update = vec![4, 5, 6];
-        
+
         updater.apply_update(&mut current, &update);
         assert_eq!(current, vec![1, 2, 3, 4, 5, 6]); // Appended
     }
@@ -190,15 +190,15 @@ mod tests {
     fn test_boxed_updater() {
         let mut current = vec![1, 2, 3];
         let update = vec![4, 5, 6];
-        
+
         // Test with ReplaceUpdater
         let boxed_replacer: BoxedStateUpdater<Vec<i32>> = boxed_updater(ReplaceUpdater);
         boxed_replacer.apply_update(&mut current, &update);
         assert_eq!(current, vec![4, 5, 6]);
-        
+
         // Reset and test with custom updater
         current = vec![1, 2, 3];
-        
+
         #[derive(Debug)]
         struct AppendUpdater;
         impl StateUpdater<Vec<i32>> for AppendUpdater {
@@ -206,7 +206,7 @@ mod tests {
                 current.extend(update.iter().cloned());
             }
         }
-        
+
         let boxed_appender: BoxedStateUpdater<Vec<i32>> = boxed_updater(AppendUpdater);
         boxed_appender.apply_update(&mut current, &update);
         assert_eq!(current, vec![1, 2, 3, 4, 5, 6]);
@@ -219,17 +219,17 @@ mod tests {
             messages: Vec<String>,
             count: i32,
         }
-        
+
         #[derive(Debug)]
         struct ComplexStateUpdater;
-        
+
         impl StateUpdater<ComplexState> for ComplexStateUpdater {
             fn apply_update(&self, current: &mut ComplexState, update: &ComplexState) {
                 current.messages.extend(update.messages.iter().cloned());
                 current.count += update.count;
             }
         }
-        
+
         let updater = ComplexStateUpdater;
         let mut current = ComplexState {
             messages: vec!["hello".to_string()],
@@ -239,7 +239,7 @@ mod tests {
             messages: vec!["world".to_string()],
             count: 3,
         };
-        
+
         updater.apply_update(&mut current, &update);
         assert_eq!(current.messages, vec!["hello", "world"]);
         assert_eq!(current.count, 8); // 5 + 3

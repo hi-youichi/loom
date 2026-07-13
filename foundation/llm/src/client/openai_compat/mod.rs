@@ -27,8 +27,8 @@ use crate::support::audit::LlmAuditLog;
 use crate::tool::ToolSpec;
 use crate::traits::ToolChoiceMode;
 
-use request::ChatCompletionRequest;
 use request::build_request as build_request_dto;
+use request::ChatCompletionRequest;
 
 // ---------------------------------------------------------------------------
 // Struct + builder
@@ -66,8 +66,8 @@ impl ChatOpenAICompat {
     pub fn new(model: impl Into<String>) -> Result<Self, LlmError> {
         let api_key = std::env::var("OPENAI_API_KEY")
             .map_err(|_| LlmError::InvokeFailed("OPENAI_API_KEY is not set".to_string()))?;
-        let base_url =
-            std::env::var("OPENAI_BASE_URL").unwrap_or_else(|_| retry::DEFAULT_BASE_URL.to_string());
+        let base_url = std::env::var("OPENAI_BASE_URL")
+            .unwrap_or_else(|_| retry::DEFAULT_BASE_URL.to_string());
         let model = model.into();
         Ok(Self::with_config(base_url, api_key, model))
     }
@@ -239,12 +239,12 @@ impl ChatOpenAICompat {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_util::shared_client::test_client;
     use crate::traits::LlmClient;
     use crate::traits::LlmHeaders;
     use crate::Message;
-    use crate::test_util::shared_client::test_client;
-    use wiremock::{Mock, MockServer, ResponseTemplate};
     use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     const CHAT_COMPLETION_RESPONSE: &str = r#"{"id":"chatcmpl-test","object":"chat.completion","created":1234567890,"model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":"Hello!"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}"#;
 
@@ -260,17 +260,11 @@ mod tests {
     async fn test_chat_openai_compat_sends_request_id() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE))
             .mount(&server)
             .await;
-        let client = ChatOpenAICompat::with_test_client(
-            server.uri(),
-            "test-key",
-            "gpt-4",
-            test_client(),
-        );
+        let client =
+            ChatOpenAICompat::with_test_client(server.uri(), "test-key", "gpt-4", test_client());
         let messages = vec![Message::user("Hello!".to_string())];
         let _result = client.invoke(&messages).await.unwrap();
         let received = server.received_requests().await.unwrap();
@@ -281,18 +275,12 @@ mod tests {
     async fn test_chat_openai_compat_generates_unique_request_ids() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE))
             .expect(2)
             .mount(&server)
             .await;
-        let client = ChatOpenAICompat::with_test_client(
-            server.uri(),
-            "test-key",
-            "gpt-4",
-            test_client(),
-        );
+        let client =
+            ChatOpenAICompat::with_test_client(server.uri(), "test-key", "gpt-4", test_client());
         let messages = vec![Message::user("First request".to_string())];
         let _result1 = client.invoke(&messages).await.unwrap();
         let messages = vec![Message::user("Second request".to_string())];
@@ -308,9 +296,7 @@ mod tests {
     async fn test_chat_openai_compat_request_id_with_other_headers() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE))
             .mount(&server)
             .await;
 
@@ -345,8 +331,7 @@ mod tests {
 
         Mock::given(method("POST"))
             .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(CHAT_COMPLETION_RESPONSE_TRACING),
+                ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE_TRACING),
             )
             .expect(2)
             .mount(&server)
@@ -383,8 +368,7 @@ mod tests {
 
         Mock::given(method("POST"))
             .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(CHAT_COMPLETION_RESPONSE_TRACING),
+                ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE_TRACING),
             )
             .mount(&server)
             .await;
@@ -412,8 +396,7 @@ mod tests {
 
         Mock::given(method("POST"))
             .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(CHAT_COMPLETION_RESPONSE_TRACING),
+                ResponseTemplate::new(200).set_body_string(CHAT_COMPLETION_RESPONSE_TRACING),
             )
             .mount(&server)
             .await;

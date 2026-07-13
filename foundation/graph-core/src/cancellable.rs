@@ -2,9 +2,9 @@
 //!
 //! Provides functionality for running futures with cancellation support.
 
+use crate::error::GraphError;
 use futures_util::future::abortable;
 use tokio_util::sync::CancellationToken;
-use crate::error::GraphError;
 
 /// Runs a future with cancellation support.
 ///

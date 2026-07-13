@@ -1,7 +1,7 @@
+use crate::types::message::MessageChunk;
 use crate::types::metadata::{CheckpointEvent, StreamMetadata};
 use crate::types::stream_event::StreamEvent;
 use crate::types::stream_mode::StreamMode;
-use crate::types::message::MessageChunk;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::fmt::Debug;

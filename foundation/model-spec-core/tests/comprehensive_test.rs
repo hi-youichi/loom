@@ -513,6 +513,8 @@ fn cost_equality() {
 #[test]
 fn modality_type_hash_and_equality() {
     use std::collections::HashSet;
-    let set: HashSet<ModalityType> = vec![ModalityType::Text, ModalityType::Text].into_iter().collect();
+    let set: HashSet<ModalityType> = vec![ModalityType::Text, ModalityType::Text]
+        .into_iter()
+        .collect();
     assert_eq!(set.len(), 1);
 }

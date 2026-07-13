@@ -1,13 +1,13 @@
 //! Audit-log helper methods for [`super::ChatOpenAICompat`].
 
 use crate::support::audit::{
-    build_audit_entry, LlmAuditRequest, LlmAuditRequestParams, LlmAuditResponse,
-    LlmAuditToolCall, LlmAuditUsage,
+    build_audit_entry, LlmAuditRequest, LlmAuditRequestParams, LlmAuditResponse, LlmAuditToolCall,
+    LlmAuditUsage,
 };
 use crate::traits::LlmResponse;
 
-use super::ChatOpenAICompat;
 use super::request::ChatCompletionRequest;
+use super::ChatOpenAICompat;
 
 /// Per-request audit context, created once at the entry of `invoke` / `invoke_stream`.
 ///

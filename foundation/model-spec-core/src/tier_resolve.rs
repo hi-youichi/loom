@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 
 use crate::registry::{ModelEntry, ProviderConfig};
-use crate::{ModelTier, pick_best_for_tier};
+use crate::{pick_best_for_tier, ModelTier};
 
 use crate::model_registry::ModelRegistry;
 use crate::tier_plan::tier_plans;
@@ -79,8 +79,7 @@ impl TierResolver for DefaultTierResolver {
                 if let Some((provider, _model)) = ModelEntry::parse_id(model_id) {
                     if let Some(provider_cfg) = providers.iter().find(|p| p.name == provider) {
                         if provider_cfg.enable_tier_resolution {
-                            let entry =
-                                resolve_tier_intelligent(provider, tier, providers).await?;
+                            let entry = resolve_tier_intelligent(provider, tier, providers).await?;
                             return Some(ResolvedTierModel::from_entry(entry));
                         }
                     }
@@ -166,9 +165,7 @@ pub async fn resolve_from_spec(
     providers: &[ProviderConfig],
 ) -> Option<ModelEntry> {
     let registry = ModelRegistry::global();
-    let (provider_cfg, spec_provider) = registry
-        .find_provider_data(provider, providers)
-        .await?;
+    let (provider_cfg, spec_provider) = registry.find_provider_data(provider, providers).await?;
 
     let (model_id, _model) = pick_best_for_tier(&spec_provider.models, tier)?;
 
@@ -192,7 +189,10 @@ pub(crate) async fn resolve_from_provider_api(
     }
 
     let registry = ModelRegistry::global();
-    let model_list = registry.fetch_provider_models_cached(provider_cfg).await.ok()?;
+    let model_list = registry
+        .fetch_provider_models_cached(provider_cfg)
+        .await
+        .ok()?;
 
     if let Some(first_model) = model_list.first() {
         return Some(first_model.clone());
@@ -433,7 +433,10 @@ mod tests {
         let spec_api = Some("https://spec.api.com".to_string());
         let result = entry_with_spec_fallback(&provider_cfg, "test_model", spec_api.as_ref());
 
-        assert_eq!(result.base_url, Some("https://provider.url.com".to_string()));
+        assert_eq!(
+            result.base_url,
+            Some("https://provider.url.com".to_string())
+        );
     }
 
     #[test]
@@ -616,7 +619,10 @@ mod tests {
         let entry = resolve_from_plan("zhipuai-coding-plan", ModelTier::Light, &providers);
         assert!(entry.is_some(), "Should match zhipuai plan via prefix");
         let entry = entry.unwrap();
-        assert_eq!(entry.name, "glm-4.7", "Version 5.2 plan should be selected (highest)");
+        assert_eq!(
+            entry.name, "glm-4.7",
+            "Version 5.2 plan should be selected (highest)"
+        );
         assert_eq!(entry.family.as_deref(), Some("glm"));
         assert_eq!(entry.version.as_deref(), Some("5.2"));
     }

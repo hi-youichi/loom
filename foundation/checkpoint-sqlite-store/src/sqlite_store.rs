@@ -45,8 +45,8 @@ impl SqliteStore {
     /// Creates a new SQLite store and ensures the table exists.
     pub fn new(path: impl AsRef<Path>) -> Result<Self, StoreError> {
         let db_path = path.as_ref().to_path_buf();
-        let conn = crate::sqlite_util::open_sqlite_with_wal(&db_path)
-            .map_err(StoreError::Storage)?;
+        let conn =
+            crate::sqlite_util::open_sqlite_with_wal(&db_path).map_err(StoreError::Storage)?;
         conn.execute(
             r#"
             CREATE TABLE IF NOT EXISTS store_kv (

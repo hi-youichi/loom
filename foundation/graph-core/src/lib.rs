@@ -26,15 +26,22 @@ pub mod visualization;
 
 // Re-export public types from each module
 pub use cancellable::run_cancellable;
-pub use channels::{Channel, ChannelError, BinaryOperatorAggregate, EphemeralValue, LastValue, Topic, TopicSingleWrite, NamedBarrierValue, NamedBarrierUpdate, StateUpdater, BoxedStateUpdater, ReplaceUpdater, FieldBasedUpdater, boxed_updater};
+pub use channels::{
+    boxed_updater, BinaryOperatorAggregate, BoxedStateUpdater, Channel, ChannelError,
+    EphemeralValue, FieldBasedUpdater, LastValue, NamedBarrierUpdate, NamedBarrierValue,
+    ReplaceUpdater, StateUpdater, Topic, TopicSingleWrite,
+};
 pub use compile_error::CompilationError;
 pub use compiled::{CompiledStateGraph, GraphStream};
 pub use conditional::{ConditionalRouter, ConditionalRouterFn};
 pub use error::{GraphError, Interrupt};
-pub use interrupt::{InterruptHandler, DefaultInterruptHandler};
-pub use logging::{log_node_start, log_node_state, log_node_complete, log_state_update, log_graph_start, log_graph_complete, log_graph_error};
+pub use interrupt::{DefaultInterruptHandler, InterruptHandler};
+pub use logging::{
+    log_graph_complete, log_graph_error, log_graph_start, log_node_complete, log_node_start,
+    log_node_state, log_state_update,
+};
 pub use logging_middleware::LoggingNodeMiddleware;
-pub use managed::{ManagedValue, IsLastStep};
+pub use managed::{IsLastStep, ManagedValue};
 
 pub use name_node::NameNode;
 pub use next::Next;
@@ -43,7 +50,7 @@ pub use node_middleware::NodeMiddleware;
 pub use retry::RetryPolicy;
 pub use run_context::RunContext;
 pub use runtime::Runtime;
-pub use state_graph::{StateGraph, START, END, MetadataExtractorFn};
+pub use state_graph::{MetadataExtractorFn, StateGraph, END, START};
 pub use visualization::{generate_dot, generate_text};
 
 // Re-export Agent trait and AgentNode

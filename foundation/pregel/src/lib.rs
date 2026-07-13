@@ -20,8 +20,11 @@ pub mod types;
 pub mod validate;
 
 // Re-export key types for convenience
-pub use algo::{ExecutableTask, PreparedTask, TaskOutcome, apply_writes, finish_channels};
+pub use algo::{apply_writes, finish_channels, ExecutableTask, PreparedTask, TaskOutcome};
 pub use config::{PregelConfig, PregelDurability};
 pub use node::{PregelGraph, PregelNode, PregelNodeContext, PregelNodeInput, PregelNodeOutput};
 pub use runtime::PregelRuntime;
-pub use types::{ChannelName, ChannelValue, InterruptRecord, LoopStatus, ManagedValues, NodeName, PregelScratchpad, ReservedWrite, ResumeMap, TaskId, TaskKind, TASKS_CHANNEL};
+pub use types::{
+    ChannelName, ChannelValue, InterruptRecord, LoopStatus, ManagedValues, NodeName,
+    PregelScratchpad, ReservedWrite, ResumeMap, TaskId, TaskKind, TASKS_CHANNEL,
+};

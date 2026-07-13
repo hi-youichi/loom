@@ -12,16 +12,18 @@ use async_openai::types::chat::{
     ChatCompletionRequestMessageContentPartText, ChatCompletionRequestSystemMessage,
     ChatCompletionRequestToolMessage, ChatCompletionRequestToolMessageContent,
     ChatCompletionRequestUserMessage, ChatCompletionRequestUserMessageContent,
-    ChatCompletionRequestUserMessageContentPart, ChatCompletionStreamOptions,
-    ChatCompletionTool, ChatCompletionToolChoiceOption, ChatCompletionTools,
-    CreateChatCompletionRequestArgs, FunctionCall, FunctionObject, ImageDetail, ImageUrl,
-    ReasoningEffort, ToolChoiceOptions,
+    ChatCompletionRequestUserMessageContentPart, ChatCompletionStreamOptions, ChatCompletionTool,
+    ChatCompletionToolChoiceOption, ChatCompletionTools, CreateChatCompletionRequestArgs,
+    FunctionCall, FunctionObject, ImageDetail, ImageUrl, ReasoningEffort, ToolChoiceOptions,
 };
 
 use crate::error::LlmError;
-use crate::traits::ToolChoiceMode;
-use crate::message::{assistant_content_for_chat_api, check_orphan_tool_calls, message_summary, sanitize_tool_call_ids, Message};
+use crate::message::{
+    assistant_content_for_chat_api, check_orphan_tool_calls, message_summary,
+    sanitize_tool_call_ids, Message,
+};
 use crate::tool::ToolSpec;
+use crate::traits::ToolChoiceMode;
 use tracing::{debug, warn};
 
 /// Convert internal `Message` list to OpenAI request messages.
@@ -234,12 +236,24 @@ pub(super) fn build_chat_request(
 
     if let Some(effort) = reasoning_effort.filter(|&e| e != "auto") {
         match effort {
-            "none" => { args.reasoning_effort(ReasoningEffort::None); }
-            "minimal" => { args.reasoning_effort(ReasoningEffort::Minimal); }
-            "low" => { args.reasoning_effort(ReasoningEffort::Low); }
-            "medium" => { args.reasoning_effort(ReasoningEffort::Medium); }
-            "high" => { args.reasoning_effort(ReasoningEffort::High); }
-            "xhigh" => { args.reasoning_effort(ReasoningEffort::Xhigh); }
+            "none" => {
+                args.reasoning_effort(ReasoningEffort::None);
+            }
+            "minimal" => {
+                args.reasoning_effort(ReasoningEffort::Minimal);
+            }
+            "low" => {
+                args.reasoning_effort(ReasoningEffort::Low);
+            }
+            "medium" => {
+                args.reasoning_effort(ReasoningEffort::Medium);
+            }
+            "high" => {
+                args.reasoning_effort(ReasoningEffort::High);
+            }
+            "xhigh" => {
+                args.reasoning_effort(ReasoningEffort::Xhigh);
+            }
             _ => {
                 warn!(effort = %effort, "Unknown reasoning_effort value, ignoring");
             }
@@ -288,9 +302,9 @@ pub(super) fn build_chat_request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::traits::ToolChoiceMode;
     use crate::message::Message;
     use crate::tool::ToolSpec;
+    use crate::traits::ToolChoiceMode;
 
     #[test]
     fn messages_to_openai_maps_all_roles() {

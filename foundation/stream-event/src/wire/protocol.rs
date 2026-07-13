@@ -323,7 +323,6 @@ mod tests {
         assert_eq!(v["result"], "Error: command not found");
     }
 
-
     // ── Previously untested variants ──
 
     #[test]

@@ -26,14 +26,17 @@ impl std::fmt::Display for ModelTier {
 
 impl std::str::FromStr for ModelTier {
     type Err = String;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "none" => Ok(ModelTier::None),
             "light" => Ok(ModelTier::Light),
             "standard" => Ok(ModelTier::Standard),
             "strong" => Ok(ModelTier::Strong),
-            _ => Err(format!("Invalid tier value: '{}'. Valid values are: none, light, standard, strong", s)),
+            _ => Err(format!(
+                "Invalid tier value: '{}'. Valid values are: none, light, standard, strong",
+                s
+            )),
         }
     }
 }
@@ -55,10 +58,8 @@ pub fn pick_best_for_tier<'a>(
     if tier == ModelTier::None {
         return None;
     }
-    let mut candidates: Vec<(&'a String, &'a crate::model::Model)> = models
-        .iter()
-        .filter(|(_, m)| m.tier() == tier)
-        .collect();
+    let mut candidates: Vec<(&'a String, &'a crate::model::Model)> =
+        models.iter().filter(|(_, m)| m.tier() == tier).collect();
 
     if candidates.is_empty() {
         return None;
@@ -132,7 +133,9 @@ pub fn tier_of(id: &str, family: Option<&str>, cost: Option<&Cost>) -> ModelTier
 
     let id_lower = id.to_lowercase();
     let parts: Vec<&str> = id_lower.split('-').collect();
-    if parts.iter().any(|p| matches!(*p, "flash" | "flashx" | "air" | "airx"))
+    if parts
+        .iter()
+        .any(|p| matches!(*p, "flash" | "flashx" | "air" | "airx"))
         || parts.last() == Some(&"mini")
     {
         return ModelTier::Light;
@@ -166,21 +169,39 @@ mod tests {
 
     #[test]
     fn tier_anthropic_family() {
-        assert_eq!(tier("claude-haiku-3.5", Some("claude-haiku"), None), ModelTier::Light);
-        assert_eq!(tier("claude-sonnet-4", Some("claude-sonnet"), None), ModelTier::Standard);
-        assert_eq!(tier("claude-opus-4", Some("claude-opus"), None), ModelTier::Strong);
+        assert_eq!(
+            tier("claude-haiku-3.5", Some("claude-haiku"), None),
+            ModelTier::Light
+        );
+        assert_eq!(
+            tier("claude-sonnet-4", Some("claude-sonnet"), None),
+            ModelTier::Standard
+        );
+        assert_eq!(
+            tier("claude-opus-4", Some("claude-opus"), None),
+            ModelTier::Strong
+        );
     }
 
     #[test]
     fn tier_openai_family() {
-        assert_eq!(tier("gpt-4o-mini", Some("gpt-4o-mini"), None), ModelTier::Light);
+        assert_eq!(
+            tier("gpt-4o-mini", Some("gpt-4o-mini"), None),
+            ModelTier::Light
+        );
         assert_eq!(tier("gpt-4o", Some("gpt-4o"), None), ModelTier::Standard);
     }
 
     #[test]
     fn tier_google_family() {
-        assert_eq!(tier("gemini-2.5-flash", Some("gemini-2.5-flash"), None), ModelTier::Light);
-        assert_eq!(tier("gemini-2.5-pro", Some("gemini-2.5-pro"), None), ModelTier::Standard);
+        assert_eq!(
+            tier("gemini-2.5-flash", Some("gemini-2.5-flash"), None),
+            ModelTier::Light
+        );
+        assert_eq!(
+            tier("gemini-2.5-pro", Some("gemini-2.5-pro"), None),
+            ModelTier::Standard
+        );
     }
 
     #[test]
@@ -189,9 +210,18 @@ mod tests {
         assert_eq!(tier("glm-4-flashx", None, None), ModelTier::Light);
         assert_eq!(tier("glm-z1-flash", None, None), ModelTier::Light);
         assert_eq!(tier("glm-z1-flashx", None, None), ModelTier::Light);
-        assert_eq!(tier("glm-4.5-flash", Some("glm-flash"), None), ModelTier::Light);
-        assert_eq!(tier("glm-4.7-flash", Some("glm-flash"), None), ModelTier::Light);
-        assert_eq!(tier("glm-4.7-flashx", Some("glm-flash"), None), ModelTier::Light);
+        assert_eq!(
+            tier("glm-4.5-flash", Some("glm-flash"), None),
+            ModelTier::Light
+        );
+        assert_eq!(
+            tier("glm-4.7-flash", Some("glm-flash"), None),
+            ModelTier::Light
+        );
+        assert_eq!(
+            tier("glm-4.7-flashx", Some("glm-flash"), None),
+            ModelTier::Light
+        );
     }
 
     #[test]
@@ -207,24 +237,54 @@ mod tests {
     fn tier_glm_standard() {
         assert_eq!(tier("glm-4-plus", None, None), ModelTier::Standard);
         assert_eq!(tier("glm-4.6", None, None), ModelTier::Standard);
-        assert_eq!(tier("glm-4.5", Some("glm"), Some(Cost::new(0.6, 2.2))), ModelTier::Standard);
-        assert_eq!(tier("glm-4.7", Some("glm"), Some(Cost::new(0.6, 2.2))), ModelTier::Standard);
+        assert_eq!(
+            tier("glm-4.5", Some("glm"), Some(Cost::new(0.6, 2.2))),
+            ModelTier::Standard
+        );
+        assert_eq!(
+            tier("glm-4.7", Some("glm"), Some(Cost::new(0.6, 2.2))),
+            ModelTier::Standard
+        );
     }
 
     #[test]
     fn tier_glm_5_is_strong() {
-        assert_eq!(tier("glm-5", Some("glm"), Some(Cost::new(1.0, 3.2))), ModelTier::Strong);
-        assert_eq!(tier("glm-5.1", Some("glm"), Some(Cost::new(6.0, 24.0))), ModelTier::Strong);
-        assert_eq!(tier("glm-5", Some("glm"), Some(Cost::new(0.0, 0.0))), ModelTier::Strong);
-        assert_eq!(tier("glm-5.1", Some("glm"), Some(Cost::new(0.0, 0.0))), ModelTier::Strong);
-        assert_eq!(tier("glm-5-turbo", Some("glm"), Some(Cost::new(0.0, 0.0))), ModelTier::Strong);
-        assert_eq!(tier("glm-5v-turbo", Some("glm"), Some(Cost::new(5.0, 22.0))), ModelTier::Strong);
+        assert_eq!(
+            tier("glm-5", Some("glm"), Some(Cost::new(1.0, 3.2))),
+            ModelTier::Strong
+        );
+        assert_eq!(
+            tier("glm-5.1", Some("glm"), Some(Cost::new(6.0, 24.0))),
+            ModelTier::Strong
+        );
+        assert_eq!(
+            tier("glm-5", Some("glm"), Some(Cost::new(0.0, 0.0))),
+            ModelTier::Strong
+        );
+        assert_eq!(
+            tier("glm-5.1", Some("glm"), Some(Cost::new(0.0, 0.0))),
+            ModelTier::Strong
+        );
+        assert_eq!(
+            tier("glm-5-turbo", Some("glm"), Some(Cost::new(0.0, 0.0))),
+            ModelTier::Strong
+        );
+        assert_eq!(
+            tier("glm-5v-turbo", Some("glm"), Some(Cost::new(5.0, 22.0))),
+            ModelTier::Strong
+        );
     }
 
     #[test]
     fn tier_glm_coding_plan_cost_zero_is_standard() {
-        assert_eq!(tier("glm-4.7", Some("glm"), Some(Cost::new(0.0, 0.0))), ModelTier::Standard);
-        assert_eq!(tier("glm-4.6", Some("glm"), Some(Cost::new(0.0, 0.0))), ModelTier::Standard);
+        assert_eq!(
+            tier("glm-4.7", Some("glm"), Some(Cost::new(0.0, 0.0))),
+            ModelTier::Standard
+        );
+        assert_eq!(
+            tier("glm-4.6", Some("glm"), Some(Cost::new(0.0, 0.0))),
+            ModelTier::Standard
+        );
     }
 
     #[test]
@@ -234,25 +294,50 @@ mod tests {
 
     #[test]
     fn tier_deepseek() {
-        assert_eq!(tier("deepseek-chat", Some("deepseek-chat"), None), ModelTier::Standard);
-        assert_eq!(tier("deepseek-reasoner", Some("deepseek-reasoner"), None), ModelTier::Standard);
+        assert_eq!(
+            tier("deepseek-chat", Some("deepseek-chat"), None),
+            ModelTier::Standard
+        );
+        assert_eq!(
+            tier("deepseek-reasoner", Some("deepseek-reasoner"), None),
+            ModelTier::Standard
+        );
     }
 
     #[test]
     fn tier_cost_fallback() {
-        assert_eq!(tier("unknown-model", None, Some(Cost::new(0.1, 0.1))), ModelTier::Light);
-        assert_eq!(tier("unknown-model", None, Some(Cost::new(3.0, 15.0))), ModelTier::Standard);
-        assert_eq!(tier("unknown-model", None, Some(Cost::new(30.0, 120.0))), ModelTier::Strong);
+        assert_eq!(
+            tier("unknown-model", None, Some(Cost::new(0.1, 0.1))),
+            ModelTier::Light
+        );
+        assert_eq!(
+            tier("unknown-model", None, Some(Cost::new(3.0, 15.0))),
+            ModelTier::Standard
+        );
+        assert_eq!(
+            tier("unknown-model", None, Some(Cost::new(30.0, 120.0))),
+            ModelTier::Strong
+        );
     }
 
     #[test]
     fn tier_cost_zero_is_not_light() {
-        assert_eq!(tier("unknown-model", None, Some(Cost::new(0.0, 0.0))), ModelTier::Standard);
+        assert_eq!(
+            tier("unknown-model", None, Some(Cost::new(0.0, 0.0))),
+            ModelTier::Standard
+        );
     }
 
     #[test]
     fn tier_family_suffix_priority_over_cost() {
-        assert_eq!(tier("some-flash-model", Some("some-flash"), Some(Cost::new(30.0, 120.0))), ModelTier::Light);
+        assert_eq!(
+            tier(
+                "some-flash-model",
+                Some("some-flash"),
+                Some(Cost::new(30.0, 120.0))
+            ),
+            ModelTier::Light
+        );
     }
 
     #[test]

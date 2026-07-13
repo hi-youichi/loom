@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::message::Message;
 use crate::error::LlmError;
+use crate::message::Message;
 use loom_graph_core::GraphError;
 
 // ============================================================================
@@ -300,10 +300,8 @@ pub trait LlmClient: Send + Sync {
                 }
             }
             if !response.content.is_empty() {
-                let _ = s.try_send_message(
-                    MessageChunk::message(response.content.clone()),
-                    node_id,
-                );
+                let _ =
+                    s.try_send_message(MessageChunk::message(response.content.clone()), node_id);
             }
         }
 
@@ -348,11 +346,17 @@ mod tests {
             .with_trace_id("trace-456")
             .add_header("X-Custom-Header", "custom-value")
             .add_header("X-Another-Header", "another-value");
-        
+
         assert_eq!(headers.thread_id.as_deref(), Some("thread-123"));
         assert_eq!(headers.trace_id.as_deref(), Some("trace-456"));
-        assert_eq!(headers.custom_headers.get("X-Custom-Header"), Some(&"custom-value".to_string()));
-        assert_eq!(headers.custom_headers.get("X-Another-Header"), Some(&"another-value".to_string()));
+        assert_eq!(
+            headers.custom_headers.get("X-Custom-Header"),
+            Some(&"custom-value".to_string())
+        );
+        assert_eq!(
+            headers.custom_headers.get("X-Another-Header"),
+            Some(&"another-value".to_string())
+        );
         assert_eq!(headers.custom_headers.len(), 2);
     }
 
@@ -373,18 +377,42 @@ mod tests {
 
     #[test]
     fn tool_choice_mode_from_str_valid() {
-        assert_eq!("auto".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::Auto);
-        assert_eq!("none".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::None);
-        assert_eq!("required".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::Required);
+        assert_eq!(
+            "auto".parse::<ToolChoiceMode>().unwrap(),
+            ToolChoiceMode::Auto
+        );
+        assert_eq!(
+            "none".parse::<ToolChoiceMode>().unwrap(),
+            ToolChoiceMode::None
+        );
+        assert_eq!(
+            "required".parse::<ToolChoiceMode>().unwrap(),
+            ToolChoiceMode::Required
+        );
     }
 
     #[test]
     fn tool_choice_mode_from_str_case_insensitive() {
-        assert_eq!("Auto".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::Auto);
-        assert_eq!("AUTO".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::Auto);
-        assert_eq!("NONE".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::None);
-        assert_eq!("Required".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::Required);
-        assert_eq!("REQUIRED".parse::<ToolChoiceMode>().unwrap(), ToolChoiceMode::Required);
+        assert_eq!(
+            "Auto".parse::<ToolChoiceMode>().unwrap(),
+            ToolChoiceMode::Auto
+        );
+        assert_eq!(
+            "AUTO".parse::<ToolChoiceMode>().unwrap(),
+            ToolChoiceMode::Auto
+        );
+        assert_eq!(
+            "NONE".parse::<ToolChoiceMode>().unwrap(),
+            ToolChoiceMode::None
+        );
+        assert_eq!(
+            "Required".parse::<ToolChoiceMode>().unwrap(),
+            ToolChoiceMode::Required
+        );
+        assert_eq!(
+            "REQUIRED".parse::<ToolChoiceMode>().unwrap(),
+            ToolChoiceMode::Required
+        );
     }
 
     #[test]
@@ -392,7 +420,7 @@ mod tests {
         assert!("invalid".parse::<ToolChoiceMode>().is_err());
         assert!("".parse::<ToolChoiceMode>().is_err());
         assert!("random".parse::<ToolChoiceMode>().is_err());
-        
+
         let err = "bogus".parse::<ToolChoiceMode>().unwrap_err();
         assert!(err.contains("unknown tool_choice"));
         assert!(err.contains("bogus"));
@@ -400,8 +428,12 @@ mod tests {
 
     #[test]
     fn tool_choice_mode_serde_roundtrip() {
-        let modes = vec![ToolChoiceMode::Auto, ToolChoiceMode::None, ToolChoiceMode::Required];
-        
+        let modes = vec![
+            ToolChoiceMode::Auto,
+            ToolChoiceMode::None,
+            ToolChoiceMode::Required,
+        ];
+
         for mode in modes {
             let serialized = serde_json::to_string(&mode).unwrap();
             let deserialized: ToolChoiceMode = serde_json::from_str(&serialized).unwrap();
@@ -437,7 +469,7 @@ mod tests {
                 rejected_prediction_tokens: None,
             }),
         };
-        
+
         let usage2 = LlmUsage {
             prompt_tokens: 200,
             completion_tokens: 100,
@@ -453,7 +485,7 @@ mod tests {
                 rejected_prediction_tokens: Some(2),
             }),
         };
-        
+
         let accumulated = usage1.accumulate(&usage2);
         assert_eq!(accumulated.prompt_tokens, 300);
         assert_eq!(accumulated.completion_tokens, 150);
@@ -479,7 +511,7 @@ mod tests {
                 rejected_prediction_tokens: None,
             }),
         };
-        
+
         let usage2 = LlmUsage {
             prompt_tokens: 100,
             completion_tokens: 50,
@@ -490,7 +522,7 @@ mod tests {
             }),
             completion_tokens_details: None,
         };
-        
+
         let accumulated = usage1.accumulate(&usage2);
         assert_eq!(accumulated.prompt_tokens, 150);
         assert_eq!(accumulated.completion_tokens, 75);
@@ -499,7 +531,7 @@ mod tests {
         assert!(accumulated.completion_tokens_details.is_none());
     }
 
-// LlmResponse tests
+    // LlmResponse tests
     #[test]
     fn llm_response_text_creates_response() {
         let response = LlmResponse::text("Hello, world!");
@@ -556,7 +588,7 @@ mod tests {
     fn message_chunk_is_thinking() {
         let message_chunk = MessageChunk::message("content");
         assert!(!message_chunk.is_thinking());
-        
+
         let thinking_chunk = MessageChunk::thinking("thinking");
         assert!(thinking_chunk.is_thinking());
     }

@@ -134,11 +134,7 @@ pub fn open_sqlite_with_wal(path: &Path) -> Result<rusqlite::Connection, String>
     // The fallback is logged at warn-level so a real outage shows up in
     // `loom-sqlite-store` logs but we never panic on a transient FS issue.
     let wal_ok = conn
-        .query_row::<String, _, _>(
-            "PRAGMA journal_mode=WAL;",
-            [],
-            |row| row.get(0),
-        )
+        .query_row::<String, _, _>("PRAGMA journal_mode=WAL;", [], |row| row.get(0))
         .map(|mode| mode.eq_ignore_ascii_case("wal"))
         .unwrap_or(false);
 
@@ -161,7 +157,7 @@ pub fn open_sqlite_with_wal(path: &Path) -> Result<rusqlite::Connection, String>
     }
     // Reference conn to keep `if !wal_ok` block's err-handling consistent
     // across platforms while satisfying unused-warnings on non-macOS.
-#[cfg(not(target_os = "macos"))]
+    #[cfg(not(target_os = "macos"))]
     {
         let _ = &conn;
     }

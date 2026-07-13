@@ -202,8 +202,14 @@ mod tests {
 
         assert_eq!(result.snapshot.checkpoint_id, "checkpoint-123");
         assert_eq!(result.snapshot.step, 5);
-        assert_eq!(result.snapshot.channels, serde_json::json!({"channel1": "value1"}));
-        assert_eq!(result.snapshot.updated_channels, vec!["channel1".to_string()]);
+        assert_eq!(
+            result.snapshot.channels,
+            serde_json::json!({"channel1": "value1"})
+        );
+        assert_eq!(
+            result.snapshot.updated_channels,
+            vec!["channel1".to_string()]
+        );
     }
 
     #[test]

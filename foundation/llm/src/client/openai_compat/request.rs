@@ -3,7 +3,9 @@
 
 use std::borrow::Cow;
 
-use crate::message::{assistant_content_for_chat_api, AssistantToolCall, ContentPart, Message, UserContent};
+use crate::message::{
+    assistant_content_for_chat_api, AssistantToolCall, ContentPart, Message, UserContent,
+};
 use crate::tool::ToolSpec;
 use crate::traits::ToolChoiceMode;
 use serde_json::json;
@@ -155,10 +157,7 @@ pub(super) struct ModelData {
 // ---------------------------------------------------------------------------
 
 /// Convert [`Message`] list into OpenAI-compatible request DTOs.
-pub(super) fn messages_to_request(
-    messages: &[Message],
-    model: &str,
-) -> Vec<ChatMessageRequest> {
+pub(super) fn messages_to_request(messages: &[Message], model: &str) -> Vec<ChatMessageRequest> {
     let use_space_for_empty_assistant = model.to_lowercase().starts_with("kimi");
     messages
         .iter()
@@ -244,11 +243,21 @@ pub(super) fn messages_to_request(
                                         }
                                     })
                                 }
-                                ContentPart::File { file_id, file_data, filename } => {
+                                ContentPart::File {
+                                    file_id,
+                                    file_data,
+                                    filename,
+                                } => {
                                     let mut file_obj = serde_json::Map::new();
-                                    if let Some(id) = file_id { file_obj.insert("file_id".into(), json!(id)); }
-                                    if let Some(d) = file_data { file_obj.insert("data".into(), json!(d)); }
-                                    if let Some(n) = filename { file_obj.insert("filename".into(), json!(n)); }
+                                    if let Some(id) = file_id {
+                                        file_obj.insert("file_id".into(), json!(id));
+                                    }
+                                    if let Some(d) = file_data {
+                                        file_obj.insert("data".into(), json!(d));
+                                    }
+                                    if let Some(n) = filename {
+                                        file_obj.insert("filename".into(), json!(n));
+                                    }
                                     json!({ "type": "file", "file": file_obj })
                                 }
                             })
@@ -450,7 +459,10 @@ mod tests {
         let req = messages_to_request(&[msg], "qwen-plus");
         let json = serde_json::to_value(&req[0]).unwrap();
 
-        assert!(json["content"].is_array(), "multimodal content must be array");
+        assert!(
+            json["content"].is_array(),
+            "multimodal content must be array"
+        );
         let arr = json["content"].as_array().unwrap();
         assert_eq!(arr.len(), 2);
         assert_eq!(arr[0]["type"], "text");
@@ -505,7 +517,9 @@ fn audio_format_from_media_type(media_type: &str) -> &str {
         "audio/mpeg" => "mp3",
         "audio/wav" => "wav",
         "audio/mp4" => "m4a",
-        _ => media_type.rsplit_once('/').map(|(_, f)| f).unwrap_or(media_type)
+        _ => media_type
+            .rsplit_once('/')
+            .map(|(_, f)| f)
+            .unwrap_or(media_type),
     }
 }
-

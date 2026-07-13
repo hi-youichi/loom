@@ -2,9 +2,9 @@
 //!
 //! Contains utility functions shared by LLM client implementations.
 
-pub mod http_retry;
-pub mod uuid6;
+pub mod audit;
 pub mod error_classifier;
+pub mod http_retry;
 pub mod thinking;
 pub mod tool_call_accumulator;
-pub mod audit;
+pub mod uuid6;

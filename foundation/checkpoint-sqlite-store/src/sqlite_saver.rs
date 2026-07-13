@@ -8,13 +8,13 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rusqlite::params;
 
+use checkpoint::RunnableConfig;
+use checkpoint::Serializer;
 use checkpoint::{
     ChannelVersions, Checkpoint, CheckpointListItem, CheckpointMetadata, CheckpointSource,
     KernelMetadata, CHECKPOINT_VERSION,
 };
 use checkpoint::{CheckpointError, Checkpointer};
-use checkpoint::RunnableConfig;
-use checkpoint::Serializer;
 use std::collections::HashMap;
 
 fn source_to_str(s: &CheckpointSource) -> &'static str {
@@ -164,8 +164,8 @@ where
         serializer: Arc<dyn Serializer<S>>,
     ) -> Result<Self, CheckpointError> {
         let db_path = path.as_ref().to_path_buf();
-        let conn = crate::sqlite_util::open_sqlite_with_wal(&db_path)
-            .map_err(CheckpointError::Storage)?;
+        let conn =
+            crate::sqlite_util::open_sqlite_with_wal(&db_path).map_err(CheckpointError::Storage)?;
         conn.execute(
             r#"
             CREATE TABLE IF NOT EXISTS checkpoints (
@@ -392,10 +392,8 @@ where
             source: str_to_source(&metadata_source),
             step: metadata_step,
             created_at: i64_to_created_at(metadata_created_at),
-            parents: serde_json::from_str(&metadata_parents)
-                .unwrap_or_else(|_| HashMap::new()),
-            children: serde_json::from_str(&metadata_children)
-                .unwrap_or_else(|_| HashMap::new()),
+            parents: serde_json::from_str(&metadata_parents).unwrap_or_else(|_| HashMap::new()),
+            children: serde_json::from_str(&metadata_children).unwrap_or_else(|_| HashMap::new()),
             summary: metadata_summary,
         };
         let checkpoint = Checkpoint {
@@ -645,8 +643,8 @@ mod tests {
     async fn list_returns_checkpoints() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("list.db");
-        let serializer = Arc::new(checkpoint::JsonSerializer)
-            as Arc<dyn Serializer<serde_json::Value>>;
+        let serializer =
+            Arc::new(checkpoint::JsonSerializer) as Arc<dyn Serializer<serde_json::Value>>;
         let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
 
         let config = RunnableConfig {
@@ -673,7 +671,7 @@ mod tests {
                     created_at: Some(base + Duration::from_secs(i as u64)),
                     parents: HashMap::new(),
                     children: HashMap::new(),
-                summary: None,
+                    summary: None,
                 },
             };
             saver.put(&config, &checkpoint).await.unwrap();
@@ -697,8 +695,8 @@ mod tests {
     async fn get_tuple_missing_thread_id() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("no_tid.db");
-        let serializer = Arc::new(checkpoint::JsonSerializer)
-            as Arc<dyn Serializer<serde_json::Value>>;
+        let serializer =
+            Arc::new(checkpoint::JsonSerializer) as Arc<dyn Serializer<serde_json::Value>>;
         let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
         let config = RunnableConfig::default();
         let result = saver.get_tuple(&config).await;
@@ -709,8 +707,8 @@ mod tests {
     async fn get_tuple_not_found() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("empty.db");
-        let serializer = Arc::new(checkpoint::JsonSerializer)
-            as Arc<dyn Serializer<serde_json::Value>>;
+        let serializer =
+            Arc::new(checkpoint::JsonSerializer) as Arc<dyn Serializer<serde_json::Value>>;
         let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
         let config = RunnableConfig {
             thread_id: Some("nonexistent".to_string()),

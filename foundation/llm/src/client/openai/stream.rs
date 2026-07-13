@@ -17,8 +17,8 @@ use crate::support::thinking::{
     collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser,
 };
 use crate::support::tool_call_accumulator::ToolCallAccumulator;
-use crate::traits::{LlmUsage, StreamSink};
 use crate::traits::MessageChunk;
+use crate::traits::{LlmUsage, StreamSink};
 
 /// Accumulates streaming SSE chunks into a complete response.
 pub(super) struct StreamAccumulator {
@@ -89,11 +89,13 @@ impl StreamAccumulator {
         first_chunk
     }
 
-    fn send_thinking_segment(sink: &dyn StreamSink, seg: ThinkingSegment, node_id: &str) -> Option<std::time::Instant> {
+    fn send_thinking_segment(
+        sink: &dyn StreamSink,
+        seg: ThinkingSegment,
+        node_id: &str,
+    ) -> Option<std::time::Instant> {
         match seg {
-            ThinkingSegment::Message(s) => {
-                sink.try_send_message(MessageChunk::message(s), node_id)
-            }
+            ThinkingSegment::Message(s) => sink.try_send_message(MessageChunk::message(s), node_id),
             ThinkingSegment::Thinking(s) => {
                 sink.try_send_message(MessageChunk::thinking(s), node_id)
             }
@@ -123,10 +125,7 @@ impl StreamAccumulator {
         }
     }
 
-    fn process_tool_calls_delta(
-        &mut self,
-        tool_calls: &[ChatCompletionMessageToolCallChunk],
-    ) {
+    fn process_tool_calls_delta(&mut self, tool_calls: &[ChatCompletionMessageToolCallChunk]) {
         use crate::support::tool_call_accumulator::RawToolCallDelta;
         for tc in tool_calls {
             self.tool_calls.push(RawToolCallDelta {
@@ -160,7 +159,11 @@ impl StreamAccumulator {
 
     /// Send full content as one chunk if no incremental content was sent
     /// (some proxies only include content in the final payload).
-    pub fn emit_full_if_needed(&self, sink: &dyn StreamSink, node_id: &str) -> Option<std::time::Instant> {
+    pub fn emit_full_if_needed(
+        &self,
+        sink: &dyn StreamSink,
+        node_id: &str,
+    ) -> Option<std::time::Instant> {
         if !self.sent_any_content && !self.full_content.is_empty() {
             sink.try_send_message(MessageChunk::message(self.full_content.clone()), node_id)
         } else {
@@ -212,7 +215,11 @@ pub(super) mod test_support {
     }
 
     impl StreamSink for CountingSink {
-        fn try_send_message(&self, chunk: MessageChunk, node_id: &str) -> Option<std::time::Instant> {
+        fn try_send_message(
+            &self,
+            chunk: MessageChunk,
+            node_id: &str,
+        ) -> Option<std::time::Instant> {
             self.count.fetch_add(1, Ordering::SeqCst);
             self.chunks.lock().unwrap().push(chunk);
             self.node_ids.lock().unwrap().push(node_id.to_string());
@@ -235,11 +242,11 @@ mod tests {
     use super::*;
     use crate::support::thinking::ThinkingSegment;
     use crate::traits::MessageChunkKind;
-    use std::sync::atomic::Ordering;
     use async_openai::types::chat::{
         ChatChoiceStream, ChatCompletionMessageToolCallChunk, ChatCompletionStreamResponseDelta,
         CreateChatCompletionStreamResponse, FunctionCallStream,
     };
+    use std::sync::atomic::Ordering;
 
     fn empty_stream_response() -> CreateChatCompletionStreamResponse {
         CreateChatCompletionStreamResponse {
@@ -267,7 +274,11 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn send_thinking_segment_emits_message_chunk() {
         let sink = CountingSink::new();
-        StreamAccumulator::send_thinking_segment(&sink, ThinkingSegment::Message("hi".into()), "think");
+        StreamAccumulator::send_thinking_segment(
+            &sink,
+            ThinkingSegment::Message("hi".into()),
+            "think",
+        );
         let chunks = sink.chunks.lock().unwrap();
         assert_eq!(chunks[0].content, "hi");
         assert_eq!(chunks[0].kind, MessageChunkKind::Message);
@@ -277,7 +288,11 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn send_thinking_segment_emits_thinking_chunk() {
         let sink = CountingSink::new();
-        StreamAccumulator::send_thinking_segment(&sink, ThinkingSegment::Thinking("r".into()), "think");
+        StreamAccumulator::send_thinking_segment(
+            &sink,
+            ThinkingSegment::Thinking("r".into()),
+            "think",
+        );
         let chunks = sink.chunks.lock().unwrap();
         assert_eq!(chunks[0].content, "r");
         assert_eq!(chunks[0].kind, MessageChunkKind::Thinking);

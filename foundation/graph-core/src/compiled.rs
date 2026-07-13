@@ -15,15 +15,18 @@ use tokio_util::sync::CancellationToken;
 
 use crate::channels::BoxedStateUpdater;
 use crate::conditional::NextEntry;
+use crate::error::GraphError;
 use crate::interrupt::InterruptHandler;
-use crate::logging::{log_graph_complete, log_graph_error, log_graph_start, log_node_complete, log_node_start, log_node_state, log_state_update};
-use checkpoint::{Checkpoint, CheckpointSource, Checkpointer, RunnableConfig, Store};
+use crate::logging::{
+    log_graph_complete, log_graph_error, log_graph_start, log_node_complete, log_node_start,
+    log_node_state, log_state_update,
+};
 use crate::node_middleware::NodeMiddleware;
 use crate::retry::RetryPolicy;
 use crate::state_graph::END;
-use crate::error::GraphError;
-use stream_event::{CheckpointEvent, StreamEvent, StreamMode};
 use crate::{Next, Node, RunContext};
+use checkpoint::{Checkpoint, CheckpointSource, Checkpointer, RunnableConfig, Store};
+use stream_event::{CheckpointEvent, StreamEvent, StreamMode};
 
 /// Compiled graph: immutable structure, supports invoke only.
 ///
@@ -151,7 +154,10 @@ where
 
         loop {
             if Self::is_cancelled(run_ctx) {
-                log_graph_error(&GraphError::Cancelled, config.as_ref().and_then(|c| c.thread_id.as_deref()));
+                log_graph_error(
+                    &GraphError::Cancelled,
+                    config.as_ref().and_then(|c| c.thread_id.as_deref()),
+                );
                 return Err(GraphError::Cancelled);
             }
             let node = self
@@ -171,11 +177,10 @@ where
                     if ctx.stream_mode.contains(&StreamMode::Tasks)
                         || ctx.stream_mode.contains(&StreamMode::Debug)
                     {
-                        let _ = tx
-                            .try_send(StreamEvent::TaskStart {
-                                node_id: current_id.clone(),
-                                namespace: None,
-                            });
+                        let _ = tx.try_send(StreamEvent::TaskStart {
+                            node_id: current_id.clone(),
+                            namespace: None,
+                        });
                     }
                 }
             }
@@ -211,17 +216,15 @@ where
                                         } else {
                                             Some(cfg.checkpoint_ns.clone())
                                         };
-                                        let _ = tx
-                                            .try_send(StreamEvent::Checkpoint(
-                                                CheckpointEvent {
-                                                    checkpoint_id: checkpoint.id.clone(),
-                                                    timestamp: checkpoint.ts.clone(),
-                                                    step: checkpoint.kernel.step,
-                                                    state: state.clone(),
-                                                    thread_id: cfg.thread_id.clone(),
-                                                    checkpoint_ns,
-                                                },
-                                            ));
+                                        let _ =
+                                            tx.try_send(StreamEvent::Checkpoint(CheckpointEvent {
+                                                checkpoint_id: checkpoint.id.clone(),
+                                                timestamp: checkpoint.ts.clone(),
+                                                step: checkpoint.kernel.step,
+                                                state: state.clone(),
+                                                thread_id: cfg.thread_id.clone(),
+                                                checkpoint_ns,
+                                            }));
                                     }
                                 }
                             }
@@ -239,21 +242,20 @@ where
                             if ctx.stream_mode.contains(&StreamMode::Tasks)
                                 || ctx.stream_mode.contains(&StreamMode::Debug)
                             {
-                                let _ = tx
-                                    .try_send(StreamEvent::TaskEnd {
-                                        node_id: current_id.clone(),
-                                        result: Err(format!(
-                                            "interrupted: {:?}",
-                                            interrupt.value
-                                        )),
-                                        namespace: None,
-                                    });
+                                let _ = tx.try_send(StreamEvent::TaskEnd {
+                                    node_id: current_id.clone(),
+                                    result: Err(format!("interrupted: {:?}", interrupt.value)),
+                                    namespace: None,
+                                });
                             }
                         }
                     }
 
                     // Log and return the interrupt error
-                    log_graph_error(&GraphError::Interrupted(interrupt.clone()), config.as_ref().and_then(|c| c.thread_id.as_deref()));
+                    log_graph_error(
+                        &GraphError::Interrupted(interrupt.clone()),
+                        config.as_ref().and_then(|c| c.thread_id.as_deref()),
+                    );
                     return Err(GraphError::Interrupted(interrupt.clone()));
                 }
                 Err(e) => {
@@ -263,12 +265,11 @@ where
                             if ctx.stream_mode.contains(&StreamMode::Tasks)
                                 || ctx.stream_mode.contains(&StreamMode::Debug)
                             {
-                                let _ = tx
-                                    .try_send(StreamEvent::TaskEnd {
-                                        node_id: current_id.clone(),
-                                        result: Err(e.to_string()),
-                                        namespace: None,
-                                    });
+                                let _ = tx.try_send(StreamEvent::TaskEnd {
+                                    node_id: current_id.clone(),
+                                    result: Err(e.to_string()),
+                                    namespace: None,
+                                });
                             }
                         }
                     }
@@ -283,12 +284,11 @@ where
                     if ctx.stream_mode.contains(&StreamMode::Tasks)
                         || ctx.stream_mode.contains(&StreamMode::Debug)
                     {
-                        let _ = tx
-                            .try_send(StreamEvent::TaskEnd {
-                                node_id: current_id.clone(),
-                                result: Ok(()),
-                                namespace: None,
-                            });
+                        let _ = tx.try_send(StreamEvent::TaskEnd {
+                            node_id: current_id.clone(),
+                            result: Ok(()),
+                            namespace: None,
+                        });
                     }
                 }
             }
@@ -303,7 +303,10 @@ where
             log_state_update(current_id);
 
             if Self::is_cancelled(run_ctx) {
-                log_graph_error(&GraphError::Cancelled, config.as_ref().and_then(|c| c.thread_id.as_deref()));
+                log_graph_error(
+                    &GraphError::Cancelled,
+                    config.as_ref().and_then(|c| c.thread_id.as_deref()),
+                );
                 return Err(GraphError::Cancelled);
             }
 
@@ -313,12 +316,11 @@ where
                         let _ = tx.try_send(StreamEvent::Values(state.clone()));
                     }
                     if ctx.stream_mode.contains(&StreamMode::Updates) {
-                        let _ = tx
-                            .try_send(StreamEvent::Updates {
-                                node_id: current_id.clone(),
-                                state: state.clone(),
-                                namespace: None,
-                            });
+                        let _ = tx.try_send(StreamEvent::Updates {
+                            node_id: current_id.clone(),
+                            state: state.clone(),
+                            namespace: None,
+                        });
                     }
                 }
             }
@@ -353,7 +355,7 @@ where
                     }
                 };
 
-let should_end = next_id.is_none() || next_id.as_deref() == Some(END);
+            let should_end = next_id.is_none() || next_id.as_deref() == Some(END);
             if should_end {
                 if let (Some(cp), Some(cfg)) = (&self.checkpointer, config) {
                     if cfg.thread_id.is_some() {
@@ -373,17 +375,14 @@ let should_end = next_id.is_none() || next_id.as_deref() == Some(END);
                                     } else {
                                         Some(cfg.checkpoint_ns.clone())
                                     };
-                                    let _ = tx
-                                        .try_send(StreamEvent::Checkpoint(
-                                            CheckpointEvent {
-                                                checkpoint_id: checkpoint.id.clone(),
-                                                timestamp: checkpoint.ts.clone(),
-                                                step: checkpoint.kernel.step,
-                                                state: state.clone(),
-                                                thread_id: cfg.thread_id.clone(),
-                                                checkpoint_ns,
-                                            },
-                                        ));
+                                    let _ = tx.try_send(StreamEvent::Checkpoint(CheckpointEvent {
+                                        checkpoint_id: checkpoint.id.clone(),
+                                        timestamp: checkpoint.ts.clone(),
+                                        step: checkpoint.kernel.step,
+                                        state: state.clone(),
+                                        thread_id: cfg.thread_id.clone(),
+                                        checkpoint_ns,
+                                    }));
                                 }
                             }
                         }
@@ -513,7 +512,6 @@ let should_end = next_id.is_none() || next_id.as_deref() == Some(END);
             run_ctx.stream_tx = Some(tx);
             run_ctx.stream_mode = mode_set;
             run_ctx.cancellation = cancellation;
-
 
             graph
                 .run_loop_inner(&mut state, &config, &mut current_id, Some(&run_ctx))

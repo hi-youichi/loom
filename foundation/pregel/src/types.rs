@@ -224,12 +224,16 @@ mod tests {
     #[test]
     fn test_resume_map_equality() {
         let mut map1 = ResumeMap::default();
-        map1.values_by_namespace.insert("ns-1".to_string(), serde_json::json!("value1"));
-        map1.values_by_interrupt_id.insert("int-1".to_string(), serde_json::json!("value2"));
+        map1.values_by_namespace
+            .insert("ns-1".to_string(), serde_json::json!("value1"));
+        map1.values_by_interrupt_id
+            .insert("int-1".to_string(), serde_json::json!("value2"));
 
         let mut map2 = ResumeMap::default();
-        map2.values_by_namespace.insert("ns-1".to_string(), serde_json::json!("value1"));
-        map2.values_by_interrupt_id.insert("int-1".to_string(), serde_json::json!("value2"));
+        map2.values_by_namespace
+            .insert("ns-1".to_string(), serde_json::json!("value1"));
+        map2.values_by_interrupt_id
+            .insert("int-1".to_string(), serde_json::json!("value2"));
 
         assert_eq!(map1, map2);
     }
@@ -257,7 +261,10 @@ mod tests {
         assert_eq!(scratchpad.task_id, "task-1");
         assert_eq!(scratchpad.resume_value, Some(serde_json::json!("resume")));
         assert_eq!(scratchpad.interrupt_counter, 5);
-        assert_eq!(scratchpad.local_state.get("key"), Some(&serde_json::json!("value")));
+        assert_eq!(
+            scratchpad.local_state.get("key"),
+            Some(&serde_json::json!("value"))
+        );
     }
 
     #[test]

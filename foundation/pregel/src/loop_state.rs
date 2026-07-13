@@ -8,9 +8,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use tokio_util::sync::CancellationToken;
-use loom_graph_core::GraphError;
-use loom_graph_core::Interrupt;
 use crate::algo::{
     apply_writes, normalize_pending_sends, normalize_pending_writes, pending_send_packet_id,
     prepare_next_tasks, prepare_resume_tasks_from_interrupts, ExecutableTask, PreparedTask,
@@ -22,6 +19,9 @@ use crate::node::PregelGraph;
 use crate::types::{
     ChannelName, ChannelValue, InterruptRecord, LoopStatus, PendingWrite, ReservedWrite,
 };
+use loom_graph_core::GraphError;
+use loom_graph_core::Interrupt;
+use tokio_util::sync::CancellationToken;
 
 /// Loop-level interrupt configuration and pending resume data.
 #[derive(Debug, Clone, Default)]
@@ -374,9 +374,7 @@ impl PregelLoop {
 
     /// Returns whether the cancellation token for this run has fired.
     pub fn is_cancelled(cancellation: Option<&CancellationToken>) -> bool {
-        cancellation
-            .map(|c| c.is_cancelled())
-            .unwrap_or(false)
+        cancellation.map(|c| c.is_cancelled()).unwrap_or(false)
     }
 
     /// Returns whether a channel name is a reserved write channel.

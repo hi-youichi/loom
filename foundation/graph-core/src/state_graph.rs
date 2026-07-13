@@ -199,10 +199,7 @@ where
         }
     }
 
-    pub fn with_metadata_extractor(
-        self,
-        extractor: MetadataExtractorFn<S>,
-    ) -> Self {
+    pub fn with_metadata_extractor(self, extractor: MetadataExtractorFn<S>) -> Self {
         Self {
             metadata_extractor: Some(extractor),
             ..self

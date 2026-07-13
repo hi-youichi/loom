@@ -47,11 +47,10 @@ mod tests {
     #[test]
     fn stream_mode_hash_eq() {
         use std::collections::HashSet;
-        let set: HashSet<StreamMode> = [
-            StreamMode::Values,
-            StreamMode::Updates,
-            StreamMode::Values,
-        ].into_iter().collect();
+        let set: HashSet<StreamMode> =
+            [StreamMode::Values, StreamMode::Updates, StreamMode::Values]
+                .into_iter()
+                .collect();
         assert_eq!(set.len(), 2);
     }
 }

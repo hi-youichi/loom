@@ -19,7 +19,10 @@ pub const REASONING_TAGS: &[(&str, &str)] = &[
     (THINKING_START, THINKING_END),
     ("\u{3c}thinking\u{3e}", "\u{3c}/thinking\u{3e}"),
     ("\u{3c}reasoning\u{3e}", "\u{3c}/reasoning\u{3e}"),
-    ("\u{3c}REASONING_SCRATCHPAD\u{3e}", "\u{3c}/REASONING_SCRATCHPAD\u{3e}"),
+    (
+        "\u{3c}REASONING_SCRATCHPAD\u{3e}",
+        "\u{3c}/REASONING_SCRATCHPAD\u{3e}",
+    ),
     ("\u{3c}thought\u{3e}", "\u{3c}/thought\u{3e}"),
 ];
 

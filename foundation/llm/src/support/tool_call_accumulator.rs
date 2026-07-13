@@ -69,8 +69,11 @@ impl ToolCallAccumulator {
             .map
             .into_values()
             .map(|(id, name, arguments)| {
-                let sanitized_args =
-                    sanitize_arguments(if id.is_empty() { None } else { Some(&id) }, &name, &arguments);
+                let sanitized_args = sanitize_arguments(
+                    if id.is_empty() { None } else { Some(&id) },
+                    &name,
+                    &arguments,
+                );
                 ToolCall {
                     name,
                     arguments: sanitized_args,
@@ -86,10 +89,8 @@ impl ToolCallAccumulator {
     pub fn replace_from_vec(&mut self, tool_calls: Vec<ToolCall>) {
         self.map.clear();
         for (i, tc) in tool_calls.into_iter().enumerate() {
-            self.map.insert(
-                i as u32,
-                (tc.id.unwrap_or_default(), tc.name, tc.arguments),
-            );
+            self.map
+                .insert(i as u32, (tc.id.unwrap_or_default(), tc.name, tc.arguments));
         }
     }
 }

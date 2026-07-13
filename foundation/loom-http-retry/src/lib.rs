@@ -11,8 +11,8 @@ pub const TRANSIENT_HTTP_MAX_BACKOFF: Duration = Duration::from_secs(4);
 
 pub fn retry_backoff_for_attempt(attempt: u32) -> Duration {
     let max_secs = TRANSIENT_HTTP_MAX_BACKOFF.as_secs_f64();
-    let secs = (TRANSIENT_HTTP_INITIAL_BACKOFF.as_secs_f64() * 2_f64.powi(attempt as i32))
-        .min(max_secs);
+    let secs =
+        (TRANSIENT_HTTP_INITIAL_BACKOFF.as_secs_f64() * 2_f64.powi(attempt as i32)).min(max_secs);
     Duration::from_secs_f64(secs)
 }
 
@@ -122,6 +122,8 @@ mod tests {
 
     #[test]
     fn detects_tls_error() {
-        assert!(looks_like_transient_http_error_message("tls handshake failed"));
+        assert!(looks_like_transient_http_error_message(
+            "tls handshake failed"
+        ));
     }
 }

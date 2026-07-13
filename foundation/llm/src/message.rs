@@ -3,8 +3,8 @@
 //! Message roles: System, User, Assistant, and Tool (tool outputs for strict chat APIs).
 //! Used by `AgentState::messages` and by agents that read/append messages in `Agent::run`.
 
-use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use tracing::warn;
 
 /// Strip background-review harness blocks from a transcript text.
@@ -125,7 +125,8 @@ mod strip_background_review_tests {
 
     #[test]
     fn removes_single_block() {
-        let txt = "user: hi\n\n<background_review>\n- save prefs\n</background_review>\n\nassistant: ok";
+        let txt =
+            "user: hi\n\n<background_review>\n- save prefs\n</background_review>\n\nassistant: ok";
         let out = strip_background_review_harness(txt);
         assert!(!out.contains("<background_review>"));
         assert!(!out.contains("</background_review>"));
@@ -256,14 +257,17 @@ impl UserContent {
     }
 
     /// Returns the modalities present in this content that the given model does **not** support.
-    pub fn unsupported_modalities(&self, model: &model_spec_core::Model) -> Vec<model_spec_core::ModalityType> {
+    pub fn unsupported_modalities(
+        &self,
+        model: &model_spec_core::Model,
+    ) -> Vec<model_spec_core::ModalityType> {
         self.modalities()
             .into_iter()
             .filter(|m| !model.modalities.input.contains(m))
             .collect()
     }
 
-/// Returns `true` if every modality in this content is supported by the given model.
+    /// Returns `true` if every modality in this content is supported by the given model.
     pub fn is_supported_by(&self, model: &model_spec_core::Model) -> bool {
         self.unsupported_modalities(model).is_empty()
     }
@@ -607,7 +611,11 @@ impl ToolCallContent {
     }
 
     /// Create a diff tool call content.
-    pub fn diff(path: impl Into<String>, old_text: Option<String>, new_text: impl Into<String>) -> Self {
+    pub fn diff(
+        path: impl Into<String>,
+        old_text: Option<String>,
+        new_text: impl Into<String>,
+    ) -> Self {
         Self::Diff {
             path: path.into(),
             old_text,
@@ -894,9 +902,7 @@ pub fn check_orphan_tool_calls(messages: &[Message]) -> Vec<String> {
                     }
                 }
             }
-            Message::Tool { tool_call_id, .. }
-                if !known_tool_call_ids.contains(tool_call_id) =>
-            {
+            Message::Tool { tool_call_id, .. } if !known_tool_call_ids.contains(tool_call_id) => {
                 warnings.push(format!(
                     "Tool message with tool_call_id '{}' has no matching assistant tool_call — this will be rejected by the API",
                     tool_call_id
@@ -911,17 +917,18 @@ pub fn check_orphan_tool_calls(messages: &[Message]) -> Vec<String> {
 
 /// Creates a one-line debug summary of a message, including tool_call ids.
 pub fn message_summary(index: usize, msg: &Message) -> String {
-    let content_preview = msg.content()
-        .chars()
-        .take(50)
-        .collect::<String>();
+    let content_preview = msg.content().chars().take(50).collect::<String>();
 
-    let base = format!("{}: {}{}", index, msg.role(),
+    let base = format!(
+        "{}: {}{}",
+        index,
+        msg.role(),
         if content_preview.len() < msg.content().len() {
             format!("{}...", content_preview)
         } else {
             content_preview
-        });
+        }
+    );
 
     match msg {
         Message::Assistant(p) if !p.tool_calls.is_empty() => {
@@ -1168,7 +1175,7 @@ mod tests {
         assert!(json.contains("\"type\":\"text\""));
         assert!(json.contains("\"type\":\"image_url\""));
 
-let uc2: UserContent = serde_json::from_str(&json).unwrap();
+        let uc2: UserContent = serde_json::from_str(&json).unwrap();
         assert_eq!(uc, uc2);
     }
 
@@ -1275,10 +1282,7 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
     #[test]
     fn user_content_modalities() {
         let text = UserContent::Text("hello".to_string());
-        assert_eq!(
-            text.modalities(),
-            vec![model_spec_core::ModalityType::Text]
-        );
+        assert_eq!(text.modalities(), vec![model_spec_core::ModalityType::Text]);
 
         let parts = vec![
             ContentPart::Text {
@@ -1424,13 +1428,11 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
     fn message_summary_assistant_with_both_tool_calls_and_reasoning() {
         let msg = Message::assistant_with_tool_calls_and_reasoning(
             "Response".to_string(),
-            vec![
-                AssistantToolCall {
-                    id: "call_123".to_string(),
-                    name: "search".to_string(),
-                    arguments: "{}".to_string(),
-                },
-            ],
+            vec![AssistantToolCall {
+                id: "call_123".to_string(),
+                name: "search".to_string(),
+                arguments: "{}".to_string(),
+            }],
             Some("Reasoning process".to_string()),
         );
         let summary = message_summary(6, &msg);
@@ -1481,11 +1483,11 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
             tool_calls: vec![],
             reasoning_content: None,
         };
-    // Direct AssistantPayload serialization uses derive(Serialize), not the custom serde module.
-    // The custom serde (plain string when no tool_calls) only applies via Message::Assistant.
-    let json = serde_json::to_string(&payload).unwrap();
-    assert!(json.contains("\"content\":\"simple response\""));
-    assert!(json.contains("\"tool_calls\":[]"));
+        // Direct AssistantPayload serialization uses derive(Serialize), not the custom serde module.
+        // The custom serde (plain string when no tool_calls) only applies via Message::Assistant.
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"content\":\"simple response\""));
+        assert!(json.contains("\"tool_calls\":[]"));
     }
 
     #[test]
@@ -1521,7 +1523,11 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
     fn tool_call_content_diff_factory_none_old_text() {
         let content = ToolCallContent::diff("new_file.txt", None, "new content".to_string());
         match content {
-            ToolCallContent::Diff { path, old_text, new_text } => {
+            ToolCallContent::Diff {
+                path,
+                old_text,
+                new_text,
+            } => {
                 assert_eq!(path, "new_file.txt");
                 assert_eq!(old_text, None);
                 assert_eq!(new_text, "new content");
@@ -1538,7 +1544,11 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
             "new content".to_string(),
         );
         match content {
-            ToolCallContent::Diff { path, old_text, new_text } => {
+            ToolCallContent::Diff {
+                path,
+                old_text,
+                new_text,
+            } => {
                 assert_eq!(path, "existing.txt");
                 assert_eq!(old_text, Some("old content".to_string()));
                 assert_eq!(new_text, "new content");
@@ -1709,11 +1719,8 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
 
     #[test]
     fn tool_call_content_serialization_diff_structure() {
-        let original = ToolCallContent::diff(
-            "test.txt",
-            Some("old".to_string()),
-            "new".to_string(),
-        );
+        let original =
+            ToolCallContent::diff("test.txt", Some("old".to_string()), "new".to_string());
         let json = serde_json::to_string(&original).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["type"], "diff");
@@ -1743,11 +1750,11 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
     #[test]
     fn user_content_partial_eq_overloads() {
         let content = UserContent::Text("test".to_string());
-        
+
         // Test PartialEq<&str>
         assert_eq!(content, "test");
         assert_ne!(content, "different");
-        
+
         // Test PartialEq<String>
         assert_eq!(content, String::from("test"));
         assert_ne!(content, String::from("different"));
@@ -1756,35 +1763,63 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
     #[test]
     fn content_part_modality_string_all_variants() {
         assert_eq!(
-            ContentPart::Text { text: "test".to_string() }.modality_string(),
+            ContentPart::Text {
+                text: "test".to_string()
+            }
+            .modality_string(),
             "Text"
         );
         assert_eq!(
-            ContentPart::ImageUrl { url: "url".to_string(), detail: None }.modality_string(),
+            ContentPart::ImageUrl {
+                url: "url".to_string(),
+                detail: None
+            }
+            .modality_string(),
             "Image"
         );
         assert_eq!(
-            ContentPart::ImageBase64 { media_type: "png".to_string(), data: "data".to_string() }.modality_string(),
+            ContentPart::ImageBase64 {
+                media_type: "png".to_string(),
+                data: "data".to_string()
+            }
+            .modality_string(),
             "Image"
         );
         assert_eq!(
-            ContentPart::AudioBase64 { media_type: "mp3".to_string(), data: "data".to_string() }.modality_string(),
+            ContentPart::AudioBase64 {
+                media_type: "mp3".to_string(),
+                data: "data".to_string()
+            }
+            .modality_string(),
             "Audio"
         );
         assert_eq!(
-            ContentPart::VideoUrl { url: "url".to_string() }.modality_string(),
+            ContentPart::VideoUrl {
+                url: "url".to_string()
+            }
+            .modality_string(),
             "Video"
         );
         assert_eq!(
-            ContentPart::VideoBase64 { media_type: "mp4".to_string(), data: "data".to_string() }.modality_string(),
+            ContentPart::VideoBase64 {
+                media_type: "mp4".to_string(),
+                data: "data".to_string()
+            }
+            .modality_string(),
             "Video"
         );
         assert_eq!(
-            ContentPart::PdfUrl { url: "url".to_string() }.modality_string(),
+            ContentPart::PdfUrl {
+                url: "url".to_string()
+            }
+            .modality_string(),
             "Pdf"
         );
         assert_eq!(
-            ContentPart::PdfBase64 { data: "data".to_string() }.modality_string(),
+            ContentPart::PdfBase64 {
+                data: "data".to_string()
+            }
+            .modality_string(),
             "Pdf"
         );
         assert_eq!(
@@ -1792,8 +1827,9 @@ let uc2: UserContent = serde_json::from_str(&json).unwrap();
                 file_id: None,
                 file_data: None,
                 filename: None,
-            }.modality_string(),
-"Text"
+            }
+            .modality_string(),
+            "Text"
         );
     }
 }

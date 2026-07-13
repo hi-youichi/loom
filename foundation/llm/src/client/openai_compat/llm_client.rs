@@ -12,16 +12,16 @@ use crate::support::thinking::{
 };
 use crate::support::tool_call_accumulator::{RawToolCallDelta, ToolCallAccumulator};
 use crate::support::uuid6::uuid6;
-use crate::traits::{LlmClient, LlmResponse, LlmUsage, MessageChunk, StreamSink};
 use crate::tool::ToolCall;
+use crate::traits::{LlmClient, LlmResponse, LlmUsage, MessageChunk, StreamSink};
 
-use super::ChatOpenAICompat;
 use super::audit::AuditCtx;
 use super::request::{ChatCompletionRequest, ChatCompletionResponse, ModelsResponse};
 use super::retry::{
     backoff_for_attempt as compat_backoff, format_api_error_body, is_retryable_status_for,
     COMPAT_RETRY_MAX_RETRIES,
 };
+use super::ChatOpenAICompat;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -52,10 +52,7 @@ impl ChatOpenAICompat {
         loop {
             match self
                 .add_headers_to_request(
-                    self.client
-                        .post(url)
-                        .bearer_auth(&self.api_key)
-                        .json(body),
+                    self.client.post(url).bearer_auth(&self.api_key).json(body),
                     request_id,
                 )
                 .send()
@@ -114,7 +111,8 @@ impl ChatOpenAICompat {
         let error_msg = format_api_error_body(&body_bytes);
 
         if !is_retryable_status_for(status, &self.base_url, &error_msg) {
-            let msg = format!("{log_prefix} API error {status}: {error_msg} (trace_id: {trace_id})");
+            let msg =
+                format!("{log_prefix} API error {status}: {error_msg} (trace_id: {trace_id})");
             return Err(self.audit_error(ctx, status.as_u16(), msg));
         }
 
@@ -237,9 +235,9 @@ impl LlmClient for ChatOpenAICompat {
         let msg = choice.message;
         let finish_reason = choice.finish_reason;
         let content = msg.content.unwrap_or_default();
-        let reasoning_content =
-            msg.reasoning_content
-                .or_else(|| collect_thinking_tags(&content));
+        let reasoning_content = msg
+            .reasoning_content
+            .or_else(|| collect_thinking_tags(&content));
         let content = if self.parse_thinking_tags {
             strip_thinking_tags(&content)
         } else {
@@ -353,7 +351,8 @@ impl LlmClient for ChatOpenAICompat {
                 if data == "[DONE]" {
                     break 'sse;
                 }
-                let mut stream_chunk: super::stream::StreamChunk = match serde_json::from_str(data) {
+                let mut stream_chunk: super::stream::StreamChunk = match serde_json::from_str(data)
+                {
                     Ok(c) => c,
                     Err(_) => continue,
                 };

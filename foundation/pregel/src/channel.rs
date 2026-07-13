@@ -483,7 +483,10 @@ mod tests {
     fn test_channel_spec_clone() {
         let spec = ChannelSpec::new(ChannelKind::Topic { accumulate: true });
         let cloned = spec.clone();
-        assert!(matches!(cloned.kind, ChannelKind::Topic { accumulate: true }));
+        assert!(matches!(
+            cloned.kind,
+            ChannelKind::Topic { accumulate: true }
+        ));
     }
 
     #[test]
@@ -565,8 +568,8 @@ mod tests {
 
     #[test]
     fn test_build_channel_binary_aggregate() {
-        let reducer: BinaryAggregateReducer = Arc::new(
-            |old: Option<&ChannelValue>, new: &[ChannelValue]| {
+        let reducer: BinaryAggregateReducer =
+            Arc::new(|old: Option<&ChannelValue>, new: &[ChannelValue]| {
                 if let Some(old_value) = old {
                     return old_value.clone();
                 }
@@ -574,8 +577,7 @@ mod tests {
                     return ChannelValue::Null;
                 }
                 new.last().unwrap().clone()
-            }
-        );
+            });
 
         let spec = ChannelSpec::new(ChannelKind::BinaryAggregate { reducer });
         let channel = build_channel(&spec);

@@ -1,7 +1,7 @@
 //! Pregel checkpoint-backed state inspection types.
 
-use checkpoint::Checkpoint;
 use crate::types::{ChannelName, ChannelValue, InterruptRecord, PendingWrite};
+use checkpoint::Checkpoint;
 
 /// Materialized runtime state loaded from a checkpoint.
 #[derive(Debug, Clone, PartialEq)]
@@ -75,22 +75,24 @@ mod tests {
                 "channel2": 42,
             }),
             updated_channels: Some(vec!["channel1".to_string(), "channel2".to_string()]),
-            pending_sends: vec![
-                ("task-1".to_string(), "channel1".to_string(), serde_json::json!("send1")),
-            ],
-            pending_writes: vec![
-                ("task-2".to_string(), "channel2".to_string(), serde_json::json!("write1")),
-            ],
-            pending_interrupts: vec![
-                serde_json::json!({
-                    "interrupt_id": "int-1",
-                    "namespace": "ns-1",
-                    "task_id": "task-1",
-                    "node_name": "node-1",
-                    "step": 3,
-                    "value": "interrupt-value",
-                }),
-            ],
+            pending_sends: vec![(
+                "task-1".to_string(),
+                "channel1".to_string(),
+                serde_json::json!("send1"),
+            )],
+            pending_writes: vec![(
+                "task-2".to_string(),
+                "channel2".to_string(),
+                serde_json::json!("write1"),
+            )],
+            pending_interrupts: vec![serde_json::json!({
+                "interrupt_id": "int-1",
+                "namespace": "ns-1",
+                "task_id": "task-1",
+                "node_name": "node-1",
+                "step": 3,
+                "value": "interrupt-value",
+            })],
             channel_versions: std::collections::HashMap::new(),
             versions_seen: std::collections::HashMap::new(),
         }
@@ -104,7 +106,10 @@ mod tests {
         assert_eq!(snapshot.checkpoint_id, "empty");
         assert_eq!(snapshot.step, 5);
         assert_eq!(snapshot.channels, checkpoint.channel_values);
-        assert_eq!(snapshot.updated_channels, vec!["channel1".to_string(), "channel2".to_string()]);
+        assert_eq!(
+            snapshot.updated_channels,
+            vec!["channel1".to_string(), "channel2".to_string()]
+        );
         assert_eq!(snapshot.pending_sends.len(), 1);
         assert_eq!(snapshot.pending_writes.len(), 1);
     }
@@ -141,7 +146,9 @@ mod tests {
     #[test]
     fn test_pregel_state_snapshot_from_checkpoint_invalid_interrupt() {
         let mut checkpoint = create_minimal_checkpoint();
-        checkpoint.pending_interrupts.push(serde_json::json!("invalid interrupt data"));
+        checkpoint
+            .pending_interrupts
+            .push(serde_json::json!("invalid interrupt data"));
 
         let snapshot = PregelStateSnapshot::from_checkpoint(&checkpoint);
         assert_eq!(snapshot.pending_interrupts.len(), 1);
@@ -240,12 +247,10 @@ mod tests {
 
     #[test]
     fn test_bulk_state_update_request_equality() {
-        let updates = vec![
-            StateUpdateRequest {
-                as_node: Some("node-1".to_string()),
-                values: serde_json::json!("value"),
-            },
-        ];
+        let updates = vec![StateUpdateRequest {
+            as_node: Some("node-1".to_string()),
+            values: serde_json::json!("value"),
+        }];
 
         let bulk1 = BulkStateUpdateRequest {
             updates: updates.clone(),
@@ -260,12 +265,10 @@ mod tests {
 
     #[test]
     fn test_bulk_state_update_request_clone() {
-        let updates = vec![
-            StateUpdateRequest {
-                as_node: Some("node-1".to_string()),
-                values: serde_json::json!("value"),
-            },
-        ];
+        let updates = vec![StateUpdateRequest {
+            as_node: Some("node-1".to_string()),
+            values: serde_json::json!("value"),
+        }];
 
         let bulk = BulkStateUpdateRequest {
             updates: updates.clone(),

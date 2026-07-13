@@ -15,10 +15,10 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use crate::error::LlmError;
-use crate::traits::{LlmClient, LlmResponse, LlmUsage, StreamSink};
 use crate::message::Message;
 use crate::tool::ToolCall;
 use crate::traits::MessageChunk;
+use crate::traits::{LlmClient, LlmResponse, LlmUsage, StreamSink};
 
 /// Mock LLM: fixed assistant text and optional tool_calls.
 ///
@@ -243,7 +243,10 @@ pub struct MultiRoundMockLlm {
 
 impl MultiRoundMockLlm {
     pub fn new(rounds: Vec<(String, Vec<ToolCall>)>) -> Self {
-        assert!(!rounds.is_empty(), "MultiRoundMockLlm needs at least one round");
+        assert!(
+            !rounds.is_empty(),
+            "MultiRoundMockLlm needs at least one round"
+        );
         Self {
             rounds,
             current: AtomicUsize::new(0),

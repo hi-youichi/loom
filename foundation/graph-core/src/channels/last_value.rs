@@ -92,10 +92,10 @@ mod tests {
         let mut channel = LastValue::new();
         channel.write(1).unwrap();
         assert_eq!(channel.read(), Some(1));
-        
+
         channel.write(2).unwrap();
         assert_eq!(channel.read(), Some(2));
-        
+
         channel.write(3).unwrap();
         assert_eq!(channel.read(), Some(3));
     }

@@ -2,14 +2,14 @@
 //!
 //! Migrated from loom-protocol crate (responses.rs + stream.rs + export.rs).
 
+use crate::types::message::MessageChunkKind;
+use crate::types::metadata::StreamMetadata;
+use crate::types::stream_event::StreamEvent;
+use crate::wire::envelope::{to_json as stream_event_to_json, EnvelopeState};
+use crate::wire::protocol::ProtocolEvent;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fmt::Debug;
-use crate::wire::envelope::{to_json as stream_event_to_json, EnvelopeState};
-use crate::wire::protocol::ProtocolEvent;
-use crate::types::stream_event::StreamEvent;
-use crate::types::metadata::StreamMetadata;
-use crate::types::message::MessageChunkKind;
 
 // ---------------------------------------------------------------------------
 // ProtocolEventEnvelope (from responses.rs)
@@ -363,10 +363,7 @@ mod tests {
     #[derive(Clone, Debug, serde::Serialize)]
     struct DummyState(i32);
 
-    fn to_value<S>(
-        ev: &StreamEvent<S>,
-        state: &mut EnvelopeState,
-    ) -> Value
+    fn to_value<S>(ev: &StreamEvent<S>, state: &mut EnvelopeState) -> Value
     where
         S: Serialize + Clone + Send + Sync + Debug + 'static,
     {
@@ -688,15 +685,14 @@ mod tests {
 
     #[test]
     fn protocol_checkpoint_format() {
-        let ev: StreamEvent<DummyState> =
-            StreamEvent::Checkpoint(CheckpointEvent {
-                checkpoint_id: "cp-1".to_string(),
-                timestamp: "2024-01-01T00:00:00Z".to_string(),
-                step: 5,
-                state: DummyState(99),
-                thread_id: Some("t1".to_string()),
-                checkpoint_ns: Some("ns".to_string()),
-            });
+        let ev: StreamEvent<DummyState> = StreamEvent::Checkpoint(CheckpointEvent {
+            checkpoint_id: "cp-1".to_string(),
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            step: 5,
+            state: DummyState(99),
+            thread_id: Some("t1".to_string()),
+            checkpoint_ns: Some("ns".to_string()),
+        });
         let pe = stream_event_to_protocol_event(&ev).unwrap();
         let v = pe.to_value().unwrap();
         assert_eq!(v["type"], "checkpoint");

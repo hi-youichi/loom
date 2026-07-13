@@ -24,8 +24,8 @@ pub use mcp_config::{
     McpServerEntry,
 };
 pub use xdg_toml::{
-    load_full_config, FullConfig, ProviderDef, LlmAuditConfig, LlmSection, LoggingSection,
-    LogsModuleConfig, SessionSection,
+    load_full_config, FullConfig, LlmAuditConfig, LlmSection, LoggingSection, LogsModuleConfig,
+    ProviderDef, SessionSection,
 };
 
 // Re-export model resolution helpers
