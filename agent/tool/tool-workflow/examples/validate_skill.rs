@@ -97,7 +97,10 @@ fn main() {
     println!("    has 'Required Structure':     {}", has_structure);
     println!("    has 'agent(opts)' + 'pipeline{{': {}", has_primitives);
     println!("    has '## Rules':               {}", has_rules);
-    println!("    has '## Additional resources': {}", has_additional_resources);
+    println!(
+        "    has '## Additional resources': {}",
+        has_additional_resources
+    );
     println!("    lists 'references/examples.md': {}", has_examples_ref);
 
     // 6. available_skills_prompt includes it (drives nudge system)

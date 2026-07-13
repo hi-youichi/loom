@@ -21,12 +21,17 @@ fn workflow_tool_exposes_builtin_skill() {
     assert!(skill.requires_tools.contains(&"workflow".to_string()));
     assert!(skill.content.contains("# Workflow DSL Reference"));
     // References bundled alongside SKILL.md
-    assert!(!skill.references.is_empty(), "references should not be empty");
+    assert!(
+        !skill.references.is_empty(),
+        "references should not be empty"
+    );
     let ref_names: Vec<&str> = skill.references.iter().map(|(n, _)| n.as_str()).collect();
     assert!(ref_names.iter().any(|n| n.contains("architecture-header")));
     assert!(ref_names.iter().any(|n| n.contains("agent-prompts")));
     assert!(ref_names.iter().any(|n| n.contains("task-decomposition")));
-    assert!(ref_names.iter().any(|n| n.contains("adversarial-verification")));
+    assert!(ref_names
+        .iter()
+        .any(|n| n.contains("adversarial-verification")));
     assert!(ref_names.iter().any(|n| n.contains("examples")));
 }
 

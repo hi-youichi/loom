@@ -195,7 +195,11 @@ impl SkillRegistry {
             skill_file: PathBuf::new(),
             source: SkillSource::Builtin,
             embedded_content: Some(content.to_string()),
-            embedded_files: if references.is_empty() { None } else { Some(references) },
+            embedded_files: if references.is_empty() {
+                None
+            } else {
+                Some(references)
+            },
         });
     }
 
@@ -697,7 +701,14 @@ mod tests {
             .push(make_test_entry("luft-workflow-dsl", SkillSource::Project));
 
         // No-op: builtin skipped because name already taken.
-        registry.add_builtin("luft-workflow-dsl", "v1", "v1 content", vec![], vec![], vec![]);
+        registry.add_builtin(
+            "luft-workflow-dsl",
+            "v1",
+            "v1 content",
+            vec![],
+            vec![],
+            vec![],
+        );
         assert_eq!(registry.list().len(), 1);
         assert_eq!(registry.list()[0].source, SkillSource::Project);
     }

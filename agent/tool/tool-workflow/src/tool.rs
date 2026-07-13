@@ -485,11 +485,26 @@ impl Tool for WorkflowTool {
             ],
             requires_tools: vec!["workflow".to_string()],
             references: vec![
-                ("references/architecture-header.md".to_string(), REF_ARCH_HEADER.to_string()),
-                ("references/agent-prompts.md".to_string(), REF_AGENT_PROMPTS.to_string()),
-                ("references/task-decomposition.md".to_string(), REF_DECOMPOSITION.to_string()),
-                ("references/adversarial-verification.md".to_string(), REF_ADVERSARIAL.to_string()),
-                ("references/examples.md".to_string(), REF_EXAMPLES.to_string()),
+                (
+                    "references/architecture-header.md".to_string(),
+                    REF_ARCH_HEADER.to_string(),
+                ),
+                (
+                    "references/agent-prompts.md".to_string(),
+                    REF_AGENT_PROMPTS.to_string(),
+                ),
+                (
+                    "references/task-decomposition.md".to_string(),
+                    REF_DECOMPOSITION.to_string(),
+                ),
+                (
+                    "references/adversarial-verification.md".to_string(),
+                    REF_ADVERSARIAL.to_string(),
+                ),
+                (
+                    "references/examples.md".to_string(),
+                    REF_EXAMPLES.to_string(),
+                ),
             ],
         })
     }
