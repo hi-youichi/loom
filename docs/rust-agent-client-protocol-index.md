@@ -20,6 +20,7 @@
 6. [核心流程](#核心流程)
 7. [能力与扩展](#能力与扩展)
 8. [实现指南](#实现指南)
+9. [opencode HTTP+SSE Loom Server 实现映射](#附录-hopencode-httpsse-loom-server-实现映射)
 
 ---
 
@@ -922,3 +923,112 @@ Agent 可以提供多个操作模式：
 **文档版本**: 1.1
 **最后更新**: 2026-07-05
 **协议版本**: v1 (稳定) | v2 (草案，实验性)
+
+---
+
+## 附录 H：opencode HTTP+SSE Loom Server 实现映射
+
+> Last verified: 2026-07-13
+> Server implementation: `apps/server` (`loom-server`)
+> Route registry: `apps/server/src/routes.rs`
+
+This index records the HTTP/SSE contract implemented by the Rust Loom agent
+server for opencode External mode. The generated opencode SDK remains the
+upstream source of truth; this file maps that contract to Rust artifacts and
+verification gates.
+
+## Sources of truth
+
+1. opencode generated SDK:
+   `packages/sdk/js/src/v2/gen/sdk.gen.ts` and `types.gen.ts`.
+2. Rollout plan: `docs/design/loom-server-v2-protocol-rollout.md`.
+3. Runtime route registry: `apps/server/src/routes.rs`.
+4. Protocol tests: `apps/server/tests/protocol.rs`.
+5. Executable smoke gates: `scripts/check-protocol.ps1` and
+   `scripts/check-protocol.sh`.
+
+The rollout plan was authored against an earlier v2 SDK snapshot. The server
+therefore keeps those rollout URLs and also registers the current generated
+resource-oriented aliases under `/api/app/*`, `/api/project/*`,
+`/api/experimental/app/*`, `/api/config/agents*`, and related paths. Compatibility
+aliases live in `handlers/v2_compat.rs` and are intentionally conservative
+stubs outside the session/agent critical path.
+
+## Critical bootstrap routes
+
+| Client generation | Routes | Rust owner | Response rule |
+|---|---|---|---|
+| v1/current TUI | `/config`, `/config/providers`, `/provider`, `/agent`, `/path`, `/project`, `/project/current`, `/command`, `/mcp`, `/lsp`, `/formatter`, `/session/status`, `/experimental/capabilities` | `handlers/bootstrap.rs`, `handlers/mcp_pty_file.rs`, `handlers/lsp_formatter.rs`, `handlers/messages.rs`, `handlers/experimental.rs` | Bare SDK data; no `{data: ...}` wrapper |
+| rollout v2 | `/api/health`, `/api/location`, `/api/path`, `/api/config`, `/api/provider`, `/api/agent`, `/api/model`, `/api/command`, `/api/skill`, `/api/reference`, `/api/integration` | `handlers/health.rs`, `handlers/bootstrap.rs`, `handlers/vcs_extra.rs` | Earlier-v2 compatibility shapes |
+| current v2 aliases | `/api/app/agent`, `/api/app/model`, `/api/app/provider`, `/api/project`, `/api/project/current`, `/api/workspace` | `handlers/bootstrap.rs`, `handlers/v2_compat.rs` | Current generated SDK route/method aliases |
+
+`/agent` is intentionally the v1 bootstrap URL used by the unchanged TUI; it
+returns the discoverable `build` agent.
+
+## Session and agent critical path
+
+| Capability | Routes | Rust owner |
+|---|---|---|
+| Session CRUD | `GET/POST /session`, `GET/PATCH/DELETE /session/:id`, `/api/session*` aliases | `handlers/session.rs` |
+| Current TUI prompt | `POST /session/:id/message` | `handlers/session.rs::prompt` |
+| Rollout prompt | `POST /session/:id/prompt`, `POST /session/:id/prompt_async`, `POST /api/session/:id/agent` | `handlers/session.rs` |
+| Agent execution | Loom `ReactBuildConfig` + `run_agent_from_config` | `agent_runner.rs` |
+| Cancellation | `POST /session/:id/abort`, `POST /api/session/:id/interrupt` | `handlers/session.rs`, `state.rs` |
+| Message/Part CRUD | `/session/:id/message*`, `/api/session/:id/message*` | `handlers/messages.rs` |
+| Session projections | children, share, fork, init, summarize, todo, diff | `handlers/session.rs`, `handlers/messages.rs` |
+| TUI control | `/tui/*`, `/control/next` | `handlers/control.rs`, `handlers/v2_compat.rs` |
+
+The prompt handler persists user and assistant messages, emits busy/idle status,
+runs the production Loom ReAct path, translates stream events, and uses
+generation-safe `RunCancellation` cleanup so an older cancelled task cannot
+remove a replacement run.
+
+## SSE contract
+
+| Channel | Wire envelope | Rust owner |
+|---|---|---|
+| `/event`, `/global/event` | `{directory, payload:{id,type,properties}}` | `sse.rs::event_stream` |
+| `/api/event` | `{payload:{id,type,properties}}` | `sse.rs::api_event_stream` |
+
+Every connection receives `server.connected`, business events, business-level
+`server.heartbeat`, and transport keep-alive comments. Replay/cursor state is
+held in `AppState.event_buffer`; `GET /api/session/:id/event?after=<id>` filters
+by session and returns `{data,cursor,hasMore}`.
+
+## Non-critical/stub route groups
+
+| Group | Rust owner |
+|---|---|
+| Permission and question | `handlers/permission.rs`, `handlers/question.rs` |
+| Revert lifecycle | `handlers/revert.rs` |
+| Instance, MCP, PTY, file, find | `handlers/instance.rs`, `handlers/mcp_pty_file.rs` |
+| Experimental resources/apps | `handlers/experimental.rs`, `handlers/v2_compat.rs` |
+| Provider OAuth/auth | `handlers/provider_auth.rs`, `handlers/v2_compat.rs` |
+| Global event/config/session control | `handlers/global_bus.rs` |
+
+These endpoints are registered with the SDK method and return a stable JSON
+stub where the feature is deliberately not implemented. They must not 404 or
+405 for a valid generated-SDK call.
+
+## Verification
+
+Run all gates from the repository root:
+
+```powershell
+cargo fmt --all -- --check
+cargo check -p loom-server
+cargo test -p loom-server
+cargo clippy -p loom-server --all-targets -- -D warnings
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check-protocol.ps1
+```
+
+Linux/macOS:
+
+```sh
+bash scripts/check-protocol.sh
+```
+
+The protocol scripts boot `loom-server serve`, send an Authorization header,
+validate both SSE envelopes, exercise stateful session CRUD, and probe P2/current
+v2 compatibility routes. They intentionally avoid a paid LLM call; real prompt
+execution requires the normal Loom provider/model environment.
