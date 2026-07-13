@@ -500,20 +500,16 @@ agent/tool/tool-luft/
 
 ### 8.2 Cargo.toml 依赖
 
-推荐使用 workspace `[workspace.dependencies]` 统一管理 path 依赖，避免脆弱的相对路径：
+Luft crate 已发布到 crates.io（luft, luft-core, luft-storage, luft-runtime, luft-adapters, luft-planner, luft-service, luft-mcp, luft-cli，均为 0.3.0）。Loom **不**使用 path/git 依赖 luft，全部走 crates.io，避免脆弱的相对路径和 monorepo 假设：
 
 ```toml
-# 在根 Cargo.toml 的 [workspace.dependencies] 中声明
-luft = { path = "../../luft" }
-luft-core = { path = "../../luft/crates/luft-core" }
-
-# 在 tool-luft/Cargo.toml 中引用
+# 在 tool-workflow/Cargo.toml 中直接引用 crates.io 版本
 [dependencies]
-luft = { workspace = true }
-luft-core = { workspace = true }
-agent-core = { workspace = true }
-tool-core = { workspace = true }
-loom-llm = { workspace = true }
+luft = "0.3"
+luft-core = "0.3"
+agent-core = { path = "../../agent-core" }   # loom 内部 crate 仍用 path
+tool-core = { path = "../tool-core" }
+loom-llm = { path = "../../../foundation/llm" }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
