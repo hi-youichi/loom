@@ -180,18 +180,37 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    fn make_graph(nodes: Vec<(&str, TaskStatus)>, edges: Vec<(&str, &str)>) -> (TaskGraph, HashMap<String, TaskNodeState>) {
+    fn make_graph(
+        nodes: Vec<(&str, TaskStatus)>,
+        edges: Vec<(&str, &str)>,
+    ) -> (TaskGraph, HashMap<String, TaskNodeState>) {
         let nodes_out: Vec<TaskNode> = nodes
             .iter()
-            .map(|(id, _status)| TaskNode { id: (*id).to_string(), description: "".to_string(), tool_calls: vec![] })
+            .map(|(id, _status)| TaskNode {
+                id: (*id).to_string(),
+                description: "".to_string(),
+                tool_calls: vec![],
+            })
             .collect();
         let node_states_out: HashMap<String, TaskNodeState> = nodes
             .into_iter()
-            .map(|(id, status)| (id.to_string(), TaskNodeState { status, result: None, error: None }))
+            .map(|(id, status)| {
+                (
+                    id.to_string(),
+                    TaskNodeState {
+                        status,
+                        result: None,
+                        error: None,
+                    },
+                )
+            })
             .collect();
         let graph = TaskGraph {
             nodes: nodes_out,
-            edges: edges.into_iter().map(|(f, t)| (f.to_string(), t.to_string())).collect(),
+            edges: edges
+                .into_iter()
+                .map(|(f, t)| (f.to_string(), t.to_string()))
+                .collect(),
         };
         (graph, node_states_out)
     }
@@ -199,7 +218,11 @@ mod tests {
     #[test]
     fn topo_sort_linear() {
         let (g, _states) = make_graph(
-            vec![("a", TaskStatus::Pending), ("b", TaskStatus::Pending), ("c", TaskStatus::Pending)],
+            vec![
+                ("a", TaskStatus::Pending),
+                ("b", TaskStatus::Pending),
+                ("c", TaskStatus::Pending),
+            ],
             vec![("a", "b"), ("b", "c")],
         );
         let order = topological_sort(&g).unwrap();
@@ -242,7 +265,10 @@ mod tests {
     fn append_subgraph_ok() {
         let (g, _states) = make_graph(vec![("root", TaskStatus::Pending)], vec![]);
         let (sub, _) = make_graph(
-            vec![("step1", TaskStatus::Pending), ("step2", TaskStatus::Pending)],
+            vec![
+                ("step1", TaskStatus::Pending),
+                ("step2", TaskStatus::Pending),
+            ],
             vec![("step1", "step2")],
         );
         let result = append_subgraph(&g, sub, "root").unwrap();

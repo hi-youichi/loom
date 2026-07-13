@@ -15,17 +15,17 @@ pub mod registry;
 mod runner;
 mod worktree;
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
 use tokio::task::JoinHandle;
 
-use crate::profile::list_available_profiles;
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool};
 use crate::agent::ReactBuildConfig;
+use crate::profile::list_available_profiles;
 use crate::tool_output_normalizer::{ToolOutputHint, ToolOutputStrategy};
+use tool_core::{Tool, ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
 pub use tool_core::tool_name::TOOL_AGENT;
 
@@ -68,11 +68,7 @@ impl AgentTool {
 
     /// Generate a unique agent_id and extract common fields from args/ctx.
     fn prepare_agent_id(&self, agent_name: &str, depth: u32) -> String {
-        let parent_thread_id = self
-            .base_config
-            .thread_id
-            .as_deref()
-            .unwrap_or("root");
+        let parent_thread_id = self.base_config.thread_id.as_deref().unwrap_or("root");
         let seq = ASYNC_SEQ.fetch_add(1, Ordering::Relaxed);
         format!("sub-{}-{}-{}-{}", parent_thread_id, agent_name, depth, seq)
     }
@@ -92,7 +88,8 @@ impl AgentTool {
         args: Value,
         ctx: Option<&ToolCallContext>,
         agent_id: String,
-    ) -> JoinHandle<Result<(ToolCallContent, registry::AgentCompletionStats), ToolSourceError>> {
+    ) -> JoinHandle<Result<(ToolCallContent, registry::AgentCompletionStats), ToolSourceError>>
+    {
         let base_config = self.base_config.clone();
         let ctx_clone = ctx.cloned();
         let registry = self.registry.clone();
@@ -106,12 +103,8 @@ impl AgentTool {
                 agent_id = %agent_id_for_task,
                 "Starting agent execution"
             );
-            let result = worktree::invoke_single_agent(
-                &base_config,
-                args,
-                ctx_clone.as_ref(),
-            )
-            .await;
+            let result =
+                worktree::invoke_single_agent(&base_config, args, ctx_clone.as_ref()).await;
 
             // Update registry with result.
             match &result {
@@ -154,7 +147,8 @@ impl Tool for AgentTool {
              \n\
              Required: `task` (full context; sub-agents have no memory of the current conversation).\n\
              Optional: `agent` (profile name) — if omitted, uses the built-in `default` profile \
-             for simple, focused tasks. Default: \"default\".\n\
+             (alias of `assistant`, a general-purpose agent with full tool access). \
+             Default: \"default\".\n\
              \n\
              Optional: `background` (bool) — if true, starts agent in background and returns \
              `agent_id` immediately. Use `agent_get` tool to retrieve results. Default: false.\n\
@@ -171,7 +165,7 @@ impl Tool for AgentTool {
                 "properties": {
                     "agent": {
                         "type": "string",
-                        "description": "Agent profile name or path to profile directory. If omitted, uses the built-in 'default' profile."
+                        "description": "Agent profile name or path to profile directory. If omitted, uses the built-in 'default' profile (alias of 'assistant')."
                     },
                     "task": {
                         "type": "string",
@@ -196,6 +190,10 @@ impl Tool for AgentTool {
                         "enum": model_spec_core::ModelTier::variants().to_vec(),
                         "description": "Override the agent's model tier for this invocation."
                     },
+                    "model": {
+                        "type": "string",
+                        "description": "Override the agent's model name for this invocation. Takes precedence over model_tier."
+                    },
                     "isolation": {
                         "type": "string",
                         "description": "worktree: create an isolated git worktree. none: explicitly disable worktree even if profile configures it. If omitted, uses profile default.",
@@ -218,12 +216,9 @@ impl Tool for AgentTool {
             .and_then(|v| v.as_str())
             .unwrap_or("default")
             .to_string();
-        let task = args
-            .get("task")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                ToolSourceError::InvalidInput("missing required argument: task".into())
-            })?;
+        let task = args.get("task").and_then(|v| v.as_str()).ok_or_else(|| {
+            ToolSourceError::InvalidInput("missing required argument: task".into())
+        })?;
         let background = args
             .get("background")
             .and_then(|v| v.as_bool())
@@ -265,18 +260,10 @@ impl Tool for AgentTool {
             Ok(ToolCallContent::text(response.to_string()))
         } else {
             // Spawn + wait with timeout.
-            let timeout_sec = args
-                .get("timeout")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(600);
+            let timeout_sec = args.get("timeout").and_then(|v| v.as_u64()).unwrap_or(600);
             let handle = self.spawn_agent_task(&agent_name, args, ctx, agent_id.clone());
 
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(timeout_sec),
-                handle,
-            )
-            .await
-            {
+            match tokio::time::timeout(std::time::Duration::from_secs(timeout_sec), handle).await {
                 Ok(Ok(Ok((content, _)))) => Ok(content),
                 Ok(Ok(Err(e))) => Err(e),
                 Ok(Err(_)) => {

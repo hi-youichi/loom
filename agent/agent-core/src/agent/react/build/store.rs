@@ -16,11 +16,9 @@ pub(crate) fn build_store(
     }
 }
 
-fn build_vector_store(
-    config: &ReactBuildConfig,
-) -> Result<Arc<dyn checkpoint::Store>, GraphError> {
-    use vector_store::{InMemoryVectorStore, OpenAIEmbedder};
+fn build_vector_store(config: &ReactBuildConfig) -> Result<Arc<dyn checkpoint::Store>, GraphError> {
     use async_openai::config::OpenAIConfig;
+    use vector_store::{InMemoryVectorStore, OpenAIEmbedder};
 
     let api_key = config
         .embedding_api_key

@@ -51,7 +51,7 @@ members = [
 
     "agent/tool/tool-experimental",
 
-    "agent/tool/tool-luft",
+    "agent/tool/tool-workflow",
 
     "experimental/curator",
 

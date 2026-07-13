@@ -223,5 +223,3 @@ mod tests {
         assert_eq!(s.summary_result(), "fallback");
     }
 }
-
-

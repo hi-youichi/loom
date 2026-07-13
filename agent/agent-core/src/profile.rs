@@ -100,12 +100,18 @@ const EXPLORE_AGENT_INSTRUCTIONS: &str = include_str!("../agents/explore/instruc
 const EXPLORE_AGENT_CONFIG_YAML: &str = include_str!("../agents/explore/config.yaml");
 
 /// Built-in orchestrator agent: task decomposition and multi-agent delegation.
-const ORCHESTRATOR_AGENT_INSTRUCTIONS: &str = include_str!("../agents/orchestrator/instructions.md");
+const ORCHESTRATOR_AGENT_INSTRUCTIONS: &str =
+    include_str!("../agents/orchestrator/instructions.md");
 const ORCHESTRATOR_AGENT_CONFIG_YAML: &str = include_str!("../agents/orchestrator/config.yaml");
 
 /// Built-in ask agent: read-only Q&A agent that never modifies files.
 const ASK_AGENT_INSTRUCTIONS: &str = include_str!("../agents/ask/instructions.md");
 const ASK_AGENT_CONFIG_YAML: &str = include_str!("../agents/ask/config.yaml");
+
+/// Built-in assistant agent: general-purpose conversational assistant with full tool access.
+/// Also exposed under the alias name `default` (see `load_builtin_profile`).
+const ASSISTANT_AGENT_INSTRUCTIONS: &str = include_str!("../agents/assistant/instructions.md");
+const ASSISTANT_AGENT_CONFIG_YAML: &str = include_str!("../agents/assistant/config.yaml");
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct RoleConfig {
@@ -458,7 +464,15 @@ pub struct ProfileSummary {
 }
 
 /// Built-in agent names (compile-time embedded).
-const BUILTIN_AGENT_NAMES: &[&str] = &["dev", "ask", "agent-builder", "explore", "orchestrator"];
+const BUILTIN_AGENT_NAMES: &[&str] = &[
+    "dev",
+    "ask",
+    "agent-builder",
+    "explore",
+    "orchestrator",
+    "assistant",
+    "default",
+];
 
 /// Resolve an agent profile by name at runtime. Tries built-in agents first,
 /// then project-level `.loom/agents/<name>/`, then user-level `~/.loom/agents/<name>/`.
@@ -571,6 +585,9 @@ pub fn load_builtin_profile(name: &str) -> Option<AgentProfile> {
             ORCHESTRATOR_AGENT_CONFIG_YAML,
             ORCHESTRATOR_AGENT_INSTRUCTIONS,
         ),
+        // `default` is an alias of `assistant`: same capabilities, same role content.
+        // We override `profile.name` below so the requested name wins over the YAML's `name:`.
+        "assistant" | "default" => (ASSISTANT_AGENT_CONFIG_YAML, ASSISTANT_AGENT_INSTRUCTIONS),
         _ => return None,
     };
     let mut profile: AgentProfile = serde_yaml::from_str(config_yaml).ok()?;
@@ -579,6 +596,9 @@ pub fn load_builtin_profile(name: &str) -> Option<AgentProfile> {
         .get_or_insert_with(RoleConfig::default)
         .content
         .replace(instructions.trim().to_string());
+    // Alias resolution: when `default` is requested, surface it under that name
+    // (the YAML's `name: assistant` would otherwise leak through).
+    profile.name = name.to_string();
     Some(profile)
 }
 
@@ -1135,7 +1155,10 @@ tools:
             append: None,
         });
         let result = merge_role(base, over);
-        assert_eq!(result.unwrap().content.as_deref(), Some("override instructions"));
+        assert_eq!(
+            result.unwrap().content.as_deref(),
+            Some("override instructions")
+        );
     }
 
     #[test]
@@ -1153,8 +1176,16 @@ tools:
         let result = merge_role(base, over);
         let role = result.unwrap();
         assert_eq!(role.append, Some(false));
-        assert!(role.content.as_ref().unwrap().starts_with("base instructions"));
-        assert!(role.content.as_ref().unwrap().ends_with("extra instructions"));
+        assert!(role
+            .content
+            .as_ref()
+            .unwrap()
+            .starts_with("base instructions"));
+        assert!(role
+            .content
+            .as_ref()
+            .unwrap()
+            .ends_with("extra instructions"));
         assert!(role.content.as_ref().unwrap().contains("\n\n"));
     }
 
@@ -1210,7 +1241,11 @@ tools:
         let profile = load_builtin_profile("dev").unwrap();
         assert_eq!(profile.name, "dev");
         let role = profile.role.as_ref().unwrap();
-        assert!(role.content.as_ref().unwrap().contains("Editing constraints"));
+        assert!(role
+            .content
+            .as_ref()
+            .unwrap()
+            .contains("Editing constraints"));
         assert!(role.content.as_ref().unwrap().contains("agent"));
     }
 
@@ -1249,5 +1284,55 @@ tools:
         }
 
         assert!(result.is_none());
+    }
+
+    // `default` is an alias for `assistant`. Both should load the same
+    // config + role content, but surface under their requested name.
+
+    #[test]
+    fn load_builtin_profile_assistant() {
+        let p = load_builtin_profile("assistant").expect("assistant profile");
+        assert_eq!(p.name, "assistant");
+        let content = p.role.as_ref().unwrap().content.as_ref().unwrap();
+        assert!(
+            !content.is_empty(),
+            "assistant role content should be populated"
+        );
+    }
+
+    #[test]
+    fn load_builtin_profile_default_is_alias_of_assistant() {
+        let def = load_builtin_profile("default").expect("default profile");
+        let asst = load_builtin_profile("assistant").expect("assistant profile");
+        // Both share the same role content (alias of capabilities), but surface
+        // under their requested name.
+        assert_eq!(def.name, "default");
+        assert_eq!(asst.name, "assistant");
+        assert_eq!(
+            def.role.as_ref().unwrap().content.as_ref().unwrap(),
+            asst.role.as_ref().unwrap().content.as_ref().unwrap()
+        );
+        assert_eq!(def.description, asst.description);
+    }
+
+    #[test]
+    fn list_available_profiles_includes_default_and_assistant() {
+        let profiles = list_available_profiles();
+        let names: Vec<&str> = profiles.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"default"), "missing default in {:?}", names);
+        assert!(
+            names.contains(&"assistant"),
+            "missing assistant in {:?}",
+            names
+        );
+    }
+
+    #[test]
+    fn resolve_profile_default_succeeds() {
+        // Regression: AgentTool falls back to "default" when `agent` is omitted;
+        // this must now resolve to the `assistant` built-in.
+        let profile = resolve_profile("default").expect("default resolves");
+        assert_eq!(profile.name, "default");
+        assert!(profile.role.as_ref().unwrap().content.is_some());
     }
 }

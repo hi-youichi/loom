@@ -126,13 +126,10 @@ mod tests {
 
     #[test]
     fn build_title_messages_uses_system_and_user() {
-        let conv = vec![
-            Message::user("hello"),
-            Message::assistant("hi there"),
-        ];
+        let conv = vec![Message::user("hello"), Message::assistant("hi there")];
         let msgs = build_title_messages(&conv);
         assert!(msgs.len() >= 3); // system + at least 1 conv + user request
-        // First message is system
+                                  // First message is system
         assert!(matches!(&msgs[0], Message::System(_)));
         // Last message is the user request
         assert!(matches!(msgs.last().unwrap(), Message::User(_)));
@@ -140,9 +137,7 @@ mod tests {
 
     #[test]
     fn build_title_messages_limits_to_6() {
-        let conv: Vec<Message> = (0..20)
-            .map(|i| Message::user(format!("msg {i}")))
-            .collect();
+        let conv: Vec<Message> = (0..20).map(|i| Message::user(format!("msg {i}"))).collect();
         let msgs = build_title_messages(&conv);
         // 1 system + 6 conv + 1 user = 8
         assert_eq!(msgs.len(), 8);

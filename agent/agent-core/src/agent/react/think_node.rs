@@ -8,13 +8,13 @@ use dashmap::DashMap;
 use serde_json::Value;
 use tracing::{debug, trace};
 
+use crate::state::{ModelConfig, ReActState};
+use env_config::load_provider_configs_from_xdg;
 use loom_graph_core::{run_cancellable, Next, Node, RunContext};
 use loom_llm::{GraphError, LlmClient, LlmProvider, LlmResponse, LlmUsage, Message, ToolCall};
-use stream_event::{MessageChunk, StreamEvent, StreamEventSink, StreamMetadata, StreamMode};
-use env_config::load_provider_configs_from_xdg;
 use model_spec_core::resolve_tier_intelligent;
-use crate::state::{ModelConfig, ReActState};
 use model_spec_core::ModelTier;
+use stream_event::{MessageChunk, StreamEvent, StreamEventSink, StreamMetadata, StreamMode};
 
 pub struct ThinkNode {
     provider: Arc<dyn LlmProvider>,
@@ -29,7 +29,10 @@ impl ThinkNode {
         }
     }
 
-    async fn resolve_client(&self, model_config: &ModelConfig) -> Result<Arc<dyn LlmClient>, GraphError> {
+    async fn resolve_client(
+        &self,
+        model_config: &ModelConfig,
+    ) -> Result<Arc<dyn LlmClient>, GraphError> {
         let model = if !model_config.model_id.is_empty() {
             model_config.model_id.clone()
         } else if model_config.tier != ModelTier::None {
@@ -60,7 +63,9 @@ impl ThinkNode {
 
         let client = self.provider.create_client(&model)?;
         let client = Arc::from(client);
-        self.client_cache.entry(model).or_insert_with(|| Arc::clone(&client));
+        self.client_cache
+            .entry(model)
+            .or_insert_with(|| Arc::clone(&client));
         Ok(client)
     }
 
@@ -82,14 +87,13 @@ impl ThinkNode {
         };
 
         if should_stream && !content.is_empty() && streamed_chunks == 0 {
-            let _ = stream_tx
-                .try_send(StreamEvent::Messages {
-                    chunk: MessageChunk::message(content.to_string()),
-                    metadata: StreamMetadata {
-                        loom_node: self.id().to_string(),
-                        namespace: None,
-                    },
-                });
+            let _ = stream_tx.try_send(StreamEvent::Messages {
+                chunk: MessageChunk::message(content.to_string()),
+                metadata: StreamMetadata {
+                    loom_node: self.id().to_string(),
+                    namespace: None,
+                },
+            });
         }
 
         if should_stream_tools && !tool_calls.is_empty() {
@@ -99,12 +103,11 @@ impl ThinkNode {
                 }
                 let args: Value = serde_json::from_str(&tc.arguments)
                     .unwrap_or_else(|_| Value::String(tc.arguments.clone()));
-                let _ = stream_tx
-                    .try_send(StreamEvent::ToolCall {
-                        call_id: tc.id.clone(),
-                        name: tc.name.clone(),
-                        arguments: args,
-                    });
+                let _ = stream_tx.try_send(StreamEvent::ToolCall {
+                    call_id: tc.id.clone(),
+                    name: tc.name.clone(),
+                    arguments: args,
+                });
             }
         }
 
@@ -141,15 +144,14 @@ impl ThinkNode {
             .prompt_tokens_details
             .as_ref()
             .and_then(|d| d.cached_tokens);
-        let _ = stream_tx
-            .try_send(StreamEvent::Usage {
-                prompt_tokens: usage.prompt_tokens,
-                completion_tokens: usage.completion_tokens,
-                total_tokens: usage.total_tokens,
-                cached_tokens,
-                prefill_duration,
-                decode_duration,
-            });
+        let _ = stream_tx.try_send(StreamEvent::Usage {
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
+            cached_tokens,
+            prefill_duration,
+            decode_duration,
+        });
     }
 }
 
@@ -237,24 +239,16 @@ impl Node<ReActState> for ThinkNode {
                 )
                 .await
             } else {
-                Ok((
-                    llm.invoke(&state.messages).await?,
-                    0u64,
-                    None::<Instant>,
-                ))
+                Ok((llm.invoke(&state.messages).await?, 0u64, None::<Instant>))
             }
         };
 
-        let (response, streamed_chunks, first_token_at) = match run_cancellable(
-            llm_call,
-            ctx.cancellation.as_ref(),
-        )
-        .await
-        {
-            Ok(Ok(triple)) => triple,
-            Ok(Err(e)) => return Err(e),
-            Err(e) => return Err(e),
-        };
+        let (response, streamed_chunks, first_token_at) =
+            match run_cancellable(llm_call, ctx.cancellation.as_ref()).await {
+                Ok(Ok(triple)) => triple,
+                Ok(Err(e)) => return Err(e),
+                Err(e) => return Err(e),
+            };
 
         if is_cancelled() {
             return Err(GraphError::Cancelled);

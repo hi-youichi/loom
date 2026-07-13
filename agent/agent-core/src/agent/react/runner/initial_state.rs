@@ -1,8 +1,8 @@
 //! Build initial ReAct state from user message, optionally loading from checkpoint.
 
+use crate::state::ReActState;
 use checkpoint::{CheckpointError, Checkpointer, RunnableConfig};
 use loom_llm::message::{Message, UserContent};
-use crate::state::ReActState;
 
 use crate::runner_common::load_from_checkpoint_or_build;
 
@@ -19,24 +19,24 @@ pub async fn build_react_initial_state(
         runnable_config,
         user_message,
         async move {
-Ok(ReActState {
-            model_config: Default::default(),
-            messages: vec![
-                Message::system(system_prompt),
-                Message::user(user_message_owned),
-            ],
-            last_reasoning_content: None,
-            tool_calls: vec![],
-            tool_results: vec![],
-            turn_count: 0,
-            usage: None,
-            total_usage: None,
-            message_count_after_last_think: None,
-            summary: None,
-            think_count: 0,
-            should_continue: true,
-            force_compact: false,
-        })
+            Ok(ReActState {
+                model_config: Default::default(),
+                messages: vec![
+                    Message::system(system_prompt),
+                    Message::user(user_message_owned),
+                ],
+                last_reasoning_content: None,
+                tool_calls: vec![],
+                tool_results: vec![],
+                turn_count: 0,
+                usage: None,
+                total_usage: None,
+                message_count_after_last_think: None,
+                summary: None,
+                think_count: 0,
+                should_continue: true,
+                force_compact: false,
+            })
         },
         |mut state, msg: UserContent| {
             state.messages.push(Message::user(msg));

@@ -14,8 +14,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool};
 use crate::agent::ReactBuildConfig;
+use tool_core::{Tool, ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
 use worktree::{WorktreeConfig, WorktreeManager};
 
@@ -39,7 +39,10 @@ impl GitWorktreeTool {
         // `.file_name()` is None, falling back to `default`.
         let repo_root = worktree::git_ops::resolve_repo_root(working_folder)
             .unwrap_or_else(|_| working_folder.to_path_buf());
-        Self { base_config, repo_root }
+        Self {
+            base_config,
+            repo_root,
+        }
     }
 }
 
@@ -148,19 +151,13 @@ fn cmd_list(manager: &WorktreeManager) -> Result<ToolCallContent, ToolSourceErro
     ))
 }
 
-async fn cmd_create(
-    repo_root: &Path,
-    args: &Value,
-) -> Result<ToolCallContent, ToolSourceError> {
+async fn cmd_create(repo_root: &Path, args: &Value) -> Result<ToolCallContent, ToolSourceError> {
     let slug = args
         .get("slug")
         .and_then(|v| v.as_str())
         .ok_or_else(|| ToolSourceError::InvalidInput("missing required: slug".into()))?;
 
-    let reuse = args
-        .get("reuse")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
+    let reuse = args.get("reuse").and_then(|v| v.as_bool()).unwrap_or(true);
 
     if reuse {
         let config = parse_create_config(args);
@@ -189,10 +186,7 @@ async fn cmd_create(
     }
 }
 
-async fn cmd_cleanup(
-    repo_root: &Path,
-    args: &Value,
-) -> Result<ToolCallContent, ToolSourceError> {
+async fn cmd_cleanup(repo_root: &Path, args: &Value) -> Result<ToolCallContent, ToolSourceError> {
     let slug = args
         .get("slug")
         .and_then(|v| v.as_str())

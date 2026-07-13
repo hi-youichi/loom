@@ -34,7 +34,7 @@ impl Tool for AgentGetTool {
                 "Retrieve the status or result of an async agent. \
                  Pass `agent_id` to get a specific agent, or omit to list all agents. \
                  Shares state with the `agent` tool's registry."
-                .to_string(),
+                    .to_string(),
             ),
             input_schema: json!({
                 "type": "object",

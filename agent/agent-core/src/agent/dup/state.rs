@@ -99,4 +99,3 @@ mod tests {
         assert_eq!(restored.understood.as_ref().unwrap().core_goal, "goal");
     }
 }
-

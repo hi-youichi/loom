@@ -4,12 +4,12 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use loom_graph_core::GraphError;
-use loom_llm::LlmProvider;
 use crate::state::ReActState;
+use loom_graph_core::GraphError;
 use loom_graph_core::{
     CompilationError, CompiledStateGraph, Next, Node, RunContext, StateGraph, END, START,
 };
+use loom_llm::LlmProvider;
 
 use super::compact_node::CompactNode;
 use super::config::CompactionConfig;
@@ -26,7 +26,9 @@ pub fn build_graph(
     });
     let compact_provider = compact_llm.unwrap_or(provider);
     let default_model = compact_provider.default_model().to_string();
-    let compact_client = compact_provider.create_client(&default_model).expect("failed to create compact client");
+    let compact_client = compact_provider
+        .create_client(&default_model)
+        .expect("failed to create compact client");
     let compact_node = Arc::new(CompactNode {
         config,
         llm: Arc::from(compact_client),
@@ -78,10 +80,10 @@ impl Node<ReActState> for CompressionGraphNode {
 mod tests {
     use std::sync::Arc;
 
-    use loom_llm::client::{FixedLlmProvider, MockLlm};
-    use loom_llm::LlmProvider;
-    use loom_llm::message::{Message, UserContent};
     use crate::state::ReActState;
+    use loom_llm::client::{FixedLlmProvider, MockLlm};
+    use loom_llm::message::{Message, UserContent};
+    use loom_llm::LlmProvider;
 
     use super::*;
 
@@ -94,12 +96,14 @@ mod tests {
 
     #[test]
     fn build_graph_compiles() {
-        let _compiled = build_graph(CompactionConfig::default(), mock_provider(), None).expect("compile");
+        let _compiled =
+            build_graph(CompactionConfig::default(), mock_provider(), None).expect("compile");
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn build_graph_invoke_preserves_messages_when_no_prune_no_overflow() {
-        let compiled = build_graph(CompactionConfig::default(), mock_provider(), None).expect("compile");
+        let compiled =
+            build_graph(CompactionConfig::default(), mock_provider(), None).expect("compile");
         let state = ReActState {
             messages: vec![Message::user("hello")],
             ..Default::default()

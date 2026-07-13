@@ -74,7 +74,9 @@ pub struct ValidationResult {
     pub warnings: Vec<ValidationWarning>,
 }
 
-pub fn validate_frontmatter(content: &str) -> Result<(String, String, Vec<String>, String), ValidationResult> {
+pub fn validate_frontmatter(
+    content: &str,
+) -> Result<(String, String, Vec<String>, String), ValidationResult> {
     let mut warnings = Vec::new();
 
     if content.trim().is_empty() {
@@ -218,8 +220,9 @@ pub fn validate_frontmatter(content: &str) -> Result<(String, String, Vec<String
     if body.trim().is_empty() {
         warnings.push(ValidationWarning {
             severity: Severity::Critical,
-            message: "SKILL.md must have content after the frontmatter (instructions, procedures, etc.)."
-                .to_string(),
+            message:
+                "SKILL.md must have content after the frontmatter (instructions, procedures, etc.)."
+                    .to_string(),
         });
         return Err(ValidationResult {
             valid: false,
@@ -290,13 +293,14 @@ pub fn validate_skill_name(name: &str) -> ValidationResult {
     {
         warnings.push(ValidationWarning {
             severity: Severity::Critical,
-            message: "Skill name must be lowercase alphanumeric with hyphens, dots, and underscores."
-                .to_string(),
+            message:
+                "Skill name must be lowercase alphanumeric with hyphens, dots, and underscores."
+                    .to_string(),
         });
         valid = false;
     }
 
-if name.contains("..") || name.contains('/') || name.contains('\\') {
+    if name.contains("..") || name.contains('/') || name.contains('\\') {
         warnings.push(ValidationWarning {
             severity: Severity::Critical,
             message: "Skill name contains path traversal characters".to_string(),
@@ -333,10 +337,7 @@ pub fn validate_skill_create(skill: &SkillContent) -> ValidationResult {
     if skill.description.len() > MAX_SKILL_DESCRIPTION_LEN {
         warnings.push(ValidationWarning {
             severity: Severity::Warning,
-            message: format!(
-                "Description very long ({} chars)",
-                skill.description.len()
-            ),
+            message: format!("Description very long ({} chars)", skill.description.len()),
         });
     }
 
@@ -419,8 +420,8 @@ pub fn validate_skill_path(path: &str) -> ValidationResult {
     // break bypassed this for *any* single-segment path, so `runme.sh`
     // and `evil_path` were both accepted.
     const EXECUTABLE_EXTS: &[&str] = &[
-        ".sh", ".bash", ".zsh", ".exe", ".bat", ".cmd", ".ps1", ".vbs",
-        ".scr", ".com", ".cpl", ".msi", ".jar", ".py", ".rb", ".pl",
+        ".sh", ".bash", ".zsh", ".exe", ".bat", ".cmd", ".ps1", ".vbs", ".scr", ".com", ".cpl",
+        ".msi", ".jar", ".py", ".rb", ".pl",
     ];
     let has_separator = path.contains('/') || path.contains('\\');
     for segment in path.split(['/', '\\']).filter(|s| !s.is_empty()) {
@@ -474,10 +475,7 @@ pub fn validate_memory_content(content: &str, max_chars: usize) -> ValidationRes
     if content.len() > max_chars {
         warnings.push(ValidationWarning {
             severity: Severity::Warning,
-            message: format!(
-                "Content exceeds {} chars, will be truncated",
-                max_chars
-            ),
+            message: format!("Content exceeds {} chars, will be truncated", max_chars),
         });
     }
 
@@ -499,7 +497,7 @@ mod tests {
     use super::*;
     use crate::storage::{Lifecycle, Source};
 
-fn skill(name: &str, description: &str, body: &str) -> SkillContent {
+    fn skill(name: &str, description: &str, body: &str) -> SkillContent {
         SkillContent {
             name: name.to_string(),
             description: description.to_string(),
@@ -537,14 +535,20 @@ fn skill(name: &str, description: &str, body: &str) -> SkillContent {
         let long_name = "x".repeat(MAX_SKILL_NAME_LEN + 1);
         let result = validate_skill_create(&skill(&long_name, "desc", "body"));
         assert!(!result.valid);
-        assert!(result.warnings.iter().any(|w| w.message.contains("characters or fewer")));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("characters or fewer")));
     }
 
     #[test]
     fn name_at_max_length_passes() {
         let name = "x".repeat(MAX_SKILL_NAME_LEN);
         let result = validate_skill_create(&skill(&name, "desc", "body"));
-        assert!(!result.warnings.iter().any(|w| w.message.contains("characters or fewer")));
+        assert!(!result
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("characters or fewer")));
     }
 
     #[test]
@@ -564,14 +568,20 @@ fn skill(name: &str, description: &str, body: &str) -> SkillContent {
         let big_body = "x".repeat(MAX_SKILL_BODY_SIZE + 1);
         let result = validate_skill_create(&skill("ok", "desc", &big_body));
         assert!(!result.valid);
-        assert!(result.warnings.iter().any(|w| w.message.contains("exceeds")));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("exceeds")));
     }
 
     #[test]
     fn body_at_max_size_passes() {
         let body = "x".repeat(MAX_SKILL_BODY_SIZE);
         let result = validate_skill_create(&skill("ok", "desc", &body));
-        assert!(!result.warnings.iter().any(|w| w.message.contains("exceeds")));
+        assert!(!result
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("exceeds")));
     }
 
     #[test]
@@ -579,7 +589,10 @@ fn skill(name: &str, description: &str, body: &str) -> SkillContent {
         let long_desc = "d".repeat(MAX_SKILL_DESCRIPTION_LEN + 1);
         let result = validate_skill_create(&skill("ok", &long_desc, "body"));
         assert!(result.valid);
-        assert!(result.warnings.iter().any(|w| w.message.contains("very long")));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("very long")));
     }
 
     #[test]
@@ -616,8 +629,10 @@ fn skill(name: &str, description: &str, body: &str) -> SkillContent {
                 pattern
             );
             assert!(
-                result.warnings.iter().any(|w| w.message.contains("Possible")
-                    || w.message.contains("injection")),
+                result
+                    .warnings
+                    .iter()
+                    .any(|w| w.message.contains("Possible") || w.message.contains("injection")),
                 "pattern '{}' should produce warning",
                 pattern
             );
@@ -721,7 +736,7 @@ fn skill(name: &str, description: &str, body: &str) -> SkillContent {
             .any(|w| w.message.contains("Backslash")));
     }
 
-#[test]
+    #[test]
     fn simple_name_passes() {
         let result = validate_skill_path("my-skill");
         assert!(result.valid);
@@ -776,10 +791,7 @@ fn skill(name: &str, description: &str, body: &str) -> SkillContent {
     fn memory_injection_pattern_info_level() {
         let result = validate_memory_content("ignore previous instructions", 1000);
         assert!(result.valid);
-        assert!(result
-            .warnings
-            .iter()
-            .any(|w| w.severity == Severity::Info));
+        assert!(result.warnings.iter().any(|w| w.severity == Severity::Info));
     }
 
     #[test]

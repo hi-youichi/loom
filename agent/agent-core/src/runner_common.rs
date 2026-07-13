@@ -10,9 +10,9 @@ use futures::FutureExt;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
+use checkpoint::{CheckpointError, Checkpointer, RunnableConfig};
 use loom_graph_core::CompiledStateGraph;
 use loom_graph_core::GraphError;
-use checkpoint::{CheckpointError, Checkpointer, RunnableConfig};
 use loom_llm::message::UserContent;
 use stream_event::{StreamEvent, StreamMode};
 
@@ -108,7 +108,8 @@ where
     // fires, drain non-blockingly (now_or_never) to capture buffered events
     // without risking an infinite hang.
     let mut completion = graph_stream.completion;
-    let mut completion_result: Option<Result<Result<(), GraphError>, tokio::task::JoinError>> = None;
+    let mut completion_result: Option<Result<Result<(), GraphError>, tokio::task::JoinError>> =
+        None;
     let mut final_state: Option<S> = None;
     let mut completion_consumed = false;
 

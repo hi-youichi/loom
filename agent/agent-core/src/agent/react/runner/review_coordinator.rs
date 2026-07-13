@@ -88,11 +88,7 @@ impl ReviewCoordinator {
     /// - `prior_user_turns` is the number of completed user turns in the history.
     /// - `prior_tool_iterations` is the number of tool-role messages (each
     ///   corresponds to one Act→Observe cycle).
-    pub fn init_from_history(
-        &mut self,
-        prior_user_turns: u32,
-        prior_tool_iterations: u32,
-    ) {
+    pub fn init_from_history(&mut self, prior_user_turns: u32, prior_tool_iterations: u32) {
         self.nudge
             .init_from_history(prior_user_turns, prior_tool_iterations);
     }

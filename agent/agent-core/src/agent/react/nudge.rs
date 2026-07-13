@@ -97,11 +97,7 @@ impl ReactLoop {
     ///
     /// The idempotency guard (`counter == 0`) ensures we don't overwrite a counter
     /// that was already explicitly set (e.g. a mid-flight conversation loop).
-    pub fn init_from_history(
-        &mut self,
-        prior_user_turns: u32,
-        prior_tool_iterations: u32,
-    ) {
+    pub fn init_from_history(&mut self, prior_user_turns: u32, prior_tool_iterations: u32) {
         if prior_user_turns > 0
             && self.turns_since_memory == 0
             && self.config.memory_nudge_interval > 0
@@ -131,9 +127,8 @@ impl ReactLoop {
     /// ```
     pub fn on_user_turn_start(&mut self, tools: &NudgeToolAvailability) {
         // Gate 1: interval > 0, Gate 2: memory tool registered, Gate 3: store exists
-        let gate_open = self.config.memory_nudge_interval > 0
-            && tools.has_memory_tool
-            && self.has_memory_store;
+        let gate_open =
+            self.config.memory_nudge_interval > 0 && tools.has_memory_tool && self.has_memory_store;
 
         if !gate_open {
             return;
@@ -363,7 +358,7 @@ mod tests {
         cfg.memory_nudge_interval = 10;
         let mut rl = ReactLoop::new(cfg, true);
         rl.init_from_history(15, 0); // 15 prior user turns, 0 tool iters
-        // 15 % 10 = 5
+                                     // 15 % 10 = 5
         assert_eq!(rl.turns_since_memory(), 5);
         // Next 5 turns fire (5 + 5 = 10)
         for _ in 0..4 {

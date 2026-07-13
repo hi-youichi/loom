@@ -3,13 +3,13 @@
 use async_trait::async_trait;
 use tracing::{debug, warn};
 
+use crate::state::ReActState;
+use checkpoint::uuid6;
 use loom_graph_core::GraphError;
 use loom_graph_core::Next;
-use checkpoint::uuid6;
-use loom_llm::message::{message_summary, Message};
-use crate::state::ReActState;
-use tool_core::ToolCallContent;
 use loom_graph_core::Node;
+use loom_llm::message::{message_summary, Message};
+use tool_core::ToolCallContent;
 
 pub struct ObserveNode {
     enable_loop: bool,
@@ -137,7 +137,12 @@ impl Node<ReActState> for ObserveNode {
             exit_reason,
             "observe:exit"
         );
-        for (i, msg) in new_state.messages.iter().enumerate().skip(messages_before.saturating_sub(2)) {
+        for (i, msg) in new_state
+            .messages
+            .iter()
+            .enumerate()
+            .skip(messages_before.saturating_sub(2))
+        {
             debug!("  {}", message_summary(i, msg));
         }
         Ok((new_state, next))
@@ -148,8 +153,8 @@ impl Node<ReActState> for ObserveNode {
 mod tests {
     use super::*;
     use crate::state::{ReActState, ToolResult, ToolStorageRef};
-    use loom_llm::ToolCall;
     use loom_llm::message::Message;
+    use loom_llm::ToolCall;
     use std::path::PathBuf;
 
     fn make_tool_result(call_id: &str, name: &str, content: &str, is_error: bool) -> ToolResult {
@@ -184,7 +189,7 @@ mod tests {
     async fn test_observe_linear_no_tool_results_returns_continue() {
         let node = ObserveNode::new();
         let state = make_empty_state();
-        
+
         let (new_state, next) = node.run(state).await.unwrap();
         assert!(matches!(next, Next::Continue));
         assert_eq!(new_state.messages.len(), 0);
@@ -198,7 +203,7 @@ mod tests {
             make_tool_result("call_1", "read_file", "file content", false),
             make_tool_result("call_2", "grep", "found matches", false),
         ];
-        
+
         let (new_state, next) = node.run(state).await.unwrap();
         assert!(matches!(next, Next::Continue));
         assert_eq!(new_state.messages.len(), 2);
@@ -210,7 +215,7 @@ mod tests {
     async fn test_observe_loop_no_tool_calls_returns_end() {
         let node = ObserveNode::with_loop();
         let state = make_empty_state();
-        
+
         let (new_state, next) = node.run(state).await.unwrap();
         assert!(matches!(next, Next::End));
         assert_eq!(new_state.turn_count, 1);
@@ -222,7 +227,7 @@ mod tests {
         let mut state = make_empty_state();
         state.tool_calls = vec![ToolCall::new("test_tool", "{}")];
         state.tool_results = vec![make_tool_result("call_1", "test_tool", "result", false)];
-        
+
         let (new_state, next) = node.run(state).await.unwrap();
         assert!(matches!(next, Next::Continue));
         assert_eq!(new_state.turn_count, 1);
@@ -232,7 +237,7 @@ mod tests {
     async fn test_observe_loop_max_turns_reached_returns_end() {
         let node = ObserveNode::with_loop_max_turns(1);
         let state = make_empty_state();
-        
+
         let (new_state, next) = node.run(state).await.unwrap();
         assert!(matches!(next, Next::End));
         assert_eq!(new_state.turn_count, 1); // turn_count was 0, incremented to 1
@@ -244,7 +249,7 @@ mod tests {
         let mut state = make_empty_state();
         state.tool_calls = vec![ToolCall::new("test_tool", "{}")];
         state.tool_results = vec![make_tool_result("call_1", "test_tool", "result", false)];
-        
+
         let (new_state, next) = node.run(state).await.unwrap();
         assert!(matches!(next, Next::Continue));
         assert_eq!(new_state.turn_count, 1);
@@ -254,7 +259,7 @@ mod tests {
     async fn test_observe_generates_synthetic_call_id_when_missing() {
         let node = ObserveNode::new();
         let mut state = make_empty_state();
-        
+
         let result_without_call_id = ToolResult {
             call_id: None,
             name: Some("test_tool".to_string()),
@@ -263,11 +268,11 @@ mod tests {
             ..Default::default()
         };
         state.tool_results = vec![result_without_call_id];
-        
+
         let (new_state, next) = node.run(state).await.unwrap();
         assert!(matches!(next, Next::Continue));
         assert_eq!(new_state.messages.len(), 1);
-        
+
         if let Message::Tool { tool_call_id, .. } = &new_state.messages[0] {
             assert!(tool_call_id.starts_with("call_"));
         } else {
@@ -279,11 +284,16 @@ mod tests {
     async fn test_observe_uses_name_for_tool_label() {
         let node = ObserveNode::new();
         let mut state = make_empty_state();
-        state.tool_results = vec![make_tool_result("call_1", "read_file", "file content", false)];
-        
+        state.tool_results = vec![make_tool_result(
+            "call_1",
+            "read_file",
+            "file content",
+            false,
+        )];
+
         let (new_state, next) = node.run(state).await.unwrap();
         assert!(matches!(next, Next::Continue));
-        
+
         if let Message::Tool { content, .. } = &new_state.messages[0] {
             assert!(content.as_text().unwrap().contains("Tool read_file"));
         } else {
@@ -295,11 +305,16 @@ mod tests {
     async fn test_observe_error_label() {
         let node = ObserveNode::new();
         let mut state = make_empty_state();
-        state.tool_results = vec![make_tool_result("call_1", "read_file", "file not found", true)];
-        
+        state.tool_results = vec![make_tool_result(
+            "call_1",
+            "read_file",
+            "file not found",
+            true,
+        )];
+
         let (new_state, next) = node.run(state).await.unwrap();
         assert!(matches!(next, Next::Continue));
-        
+
         if let Message::Tool { content, .. } = &new_state.messages[0] {
             assert!(content.as_text().unwrap().contains("error"));
         } else {
@@ -311,11 +326,16 @@ mod tests {
     async fn test_observe_result_label() {
         let node = ObserveNode::new();
         let mut state = make_empty_state();
-        state.tool_results = vec![make_tool_result("call_1", "read_file", "file content", false)];
-        
+        state.tool_results = vec![make_tool_result(
+            "call_1",
+            "read_file",
+            "file content",
+            false,
+        )];
+
         let (new_state, next) = node.run(state).await.unwrap();
         assert!(matches!(next, Next::Continue));
-        
+
         if let Message::Tool { content, .. } = &new_state.messages[0] {
             assert!(content.as_text().unwrap().contains("result"));
         } else {
@@ -329,7 +349,7 @@ mod tests {
         let mut state = make_empty_state();
         state.tool_calls = vec![ToolCall::new("test_tool", "{}")];
         state.tool_results = vec![make_tool_result("call_1", "test_tool", "result", false)];
-        
+
         let (new_state, next) = node.run(state).await.unwrap();
         assert!(new_state.tool_calls.is_empty());
         assert!(new_state.tool_results.is_empty());
@@ -341,7 +361,7 @@ mod tests {
         let node = ObserveNode::new();
         let mut state = make_empty_state();
         state.turn_count = 5;
-        
+
         let (new_state, next) = node.run(state).await.unwrap();
         assert_eq!(new_state.turn_count, 6);
         assert!(matches!(next, Next::Continue));
@@ -351,7 +371,7 @@ mod tests {
     async fn test_observe_storage_ref_hint() {
         let node = ObserveNode::new();
         let mut state = make_empty_state();
-        
+
         let mut tool_result = make_tool_result("call_1", "read_file", "file content", false);
         tool_result.storage_ref = Some(ToolStorageRef {
             path: PathBuf::from("/tmp/output.txt"),
@@ -361,10 +381,10 @@ mod tests {
             tool_name: "read_file".to_string(),
         });
         state.tool_results = vec![tool_result];
-        
+
         let (new_state, next) = node.run(state).await.unwrap();
         assert!(matches!(next, Next::Continue));
-        
+
         if let Message::Tool { content, .. } = &new_state.messages[0] {
             let content_str = content.as_text().unwrap();
             assert!(content_str.contains("Full output saved to:"));
@@ -374,4 +394,3 @@ mod tests {
         }
     }
 }
-

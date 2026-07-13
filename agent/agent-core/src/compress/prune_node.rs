@@ -3,8 +3,8 @@
 use async_trait::async_trait;
 use tracing::debug;
 
-use loom_graph_core::GraphError;
 use crate::state::ReActState;
+use loom_graph_core::GraphError;
 use loom_graph_core::{Next, Node};
 
 use super::compaction;
@@ -49,8 +49,8 @@ impl Node<ReActState> for PruneNode {
 
 #[cfg(test)]
 mod tests {
-    use loom_llm::message::{Message, UserContent};
     use crate::state::ReActState;
+    use loom_llm::message::{Message, UserContent};
 
     use super::*;
 

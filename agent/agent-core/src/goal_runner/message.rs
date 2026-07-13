@@ -125,7 +125,10 @@ mod tests {
 
     #[test]
     fn test_escape_angle_brackets() {
-        assert_eq!(escape_xml_text("<script>alert(1)</script>"), "&lt;script&gt;alert(1)&lt;/script&gt;");
+        assert_eq!(
+            escape_xml_text("<script>alert(1)</script>"),
+            "&lt;script&gt;alert(1)&lt;/script&gt;"
+        );
     }
 
     #[test]

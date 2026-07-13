@@ -63,7 +63,9 @@ impl WriteOrigin {
     /// scope (e.g., from a synchronous test or before the runtime has
     /// been entered).
     pub fn current() -> Self {
-        WRITE_ORIGIN.try_with(|o| *o).unwrap_or(WriteOrigin::Foreground)
+        WRITE_ORIGIN
+            .try_with(|o| *o)
+            .unwrap_or(WriteOrigin::Foreground)
     }
 
     /// Check if currently running in background review context.

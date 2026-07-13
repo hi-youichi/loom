@@ -3,7 +3,9 @@
 //! These types are shared across all agent patterns and consumers.
 
 // Re-export cancellation types from loom
-pub use tool_core::active_operation::{ActiveOperationCanceller, ActiveOperationKind, ActiveOperation, RunCancellation};
+pub use tool_core::active_operation::{
+    ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, RunCancellation,
+};
 
 /// Final result of a single agent run.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -52,7 +54,8 @@ pub struct RunOptions {
     pub output_timestamp: bool,
     pub dry_run: bool,
     pub debug_llm: bool,
-    pub any_stream_event_sender: Option<std::sync::Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
+    pub any_stream_event_sender:
+        Option<std::sync::Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
     pub bash_executor: Option<std::sync::Arc<dyn tool_basic::bash::CommandExecutor>>,
     pub extra_tools: Option<std::sync::Arc<Vec<std::sync::Arc<dyn tool_core::Tool>>>>,
     pub acp_session_id: Option<String>,
@@ -79,5 +82,3 @@ impl std::fmt::Debug for RunOptions {
             .finish()
     }
 }
-
-

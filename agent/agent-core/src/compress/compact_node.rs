@@ -5,10 +5,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tracing::debug;
 
-use loom_graph_core::GraphError;
-use loom_llm::LlmClient;
 use crate::state::ReActState;
+use loom_graph_core::GraphError;
 use loom_graph_core::{Next, Node};
+use loom_llm::LlmClient;
 
 use super::compaction;
 use super::config::CompactionConfig;
@@ -70,7 +70,14 @@ impl Node<ReActState> for CompactNode {
             debug!(reason, current_tokens, "compact skipped");
             state.messages
         };
-        Ok((ReActState { messages, force_compact: false, ..state }, Next::Continue))
+        Ok((
+            ReActState {
+                messages,
+                force_compact: false,
+                ..state
+            },
+            Next::Continue,
+        ))
     }
 
     async fn run_with_context(
@@ -87,9 +94,9 @@ impl Node<ReActState> for CompactNode {
 mod tests {
     use std::sync::Arc;
 
+    use crate::state::ReActState;
     use loom_llm::client::MockLlm;
     use loom_llm::message::Message;
-    use crate::state::ReActState;
 
     use super::*;
 

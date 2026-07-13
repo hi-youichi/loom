@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use loom_graph_core::{LoggingNodeMiddleware, StateGraph};
 use crate::state::ReActState;
+use loom_graph_core::{LoggingNodeMiddleware, StateGraph};
 
 pub trait WithNodeLogging {
     fn with_node_logging(self) -> Self;
@@ -25,4 +25,3 @@ mod tests {
         let _result = graph.with_node_logging();
     }
 }
-

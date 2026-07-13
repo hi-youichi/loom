@@ -3,57 +3,65 @@
 use std::path::Path;
 
 static TEMPLATE_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-    regex::Regex::new(r"\$\{(LOOM_SKILL_DIR|HERMES_SKILL_DIR|LOOM_SESSION_ID|HERMES_SESSION_ID)\}").unwrap()
+    regex::Regex::new(r"\$\{(LOOM_SKILL_DIR|HERMES_SKILL_DIR|LOOM_SESSION_ID|HERMES_SESSION_ID)\}")
+        .unwrap()
 });
 
-static INLINE_SHELL_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-    regex::Regex::new(r"!`([^`\n]+)`").unwrap()
-});
+static INLINE_SHELL_RE: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"!`([^`\n]+)`").unwrap());
 
 const INLINE_SHELL_MAX_OUTPUT: usize = 4000;
 
-pub fn substitute_template_vars(content: &str, skill_dir: &Path, session_id: Option<&str>) -> String {
+pub fn substitute_template_vars(
+    content: &str,
+    skill_dir: &Path,
+    session_id: Option<&str>,
+) -> String {
     let dir_str = skill_dir.to_string_lossy().to_string();
-    TEMPLATE_RE.replace_all(content, |caps: &regex::Captures| {
-        match &caps[1] {
-            // Legacy HERMES_* variables are deprecated aliases for LOOM_* equivalents.
-            "LOOM_SKILL_DIR" | "HERMES_SKILL_DIR" => dir_str.clone(),
-            "LOOM_SESSION_ID" | "HERMES_SESSION_ID" => session_id.unwrap_or("").to_string(),
-            _ => caps[0].to_string(),
-        }
-    }).to_string()
+    TEMPLATE_RE
+        .replace_all(content, |caps: &regex::Captures| {
+            match &caps[1] {
+                // Legacy HERMES_* variables are deprecated aliases for LOOM_* equivalents.
+                "LOOM_SKILL_DIR" | "HERMES_SKILL_DIR" => dir_str.clone(),
+                "LOOM_SESSION_ID" | "HERMES_SESSION_ID" => session_id.unwrap_or("").to_string(),
+                _ => caps[0].to_string(),
+            }
+        })
+        .to_string()
 }
 
 pub fn expand_inline_shell(content: &str, skill_dir: Option<&Path>) -> String {
-    INLINE_SHELL_RE.replace_all(content, |caps: &regex::Captures| {
-        let cmd = &caps[1];
-        let cwd = skill_dir;
-        match std::process::Command::new(if cfg!(windows) { "cmd" } else { "sh" })
-            .arg(if cfg!(windows) { "/C" } else { "-c" })
-            .arg(cmd)
-            .current_dir(cwd.unwrap_or(std::path::Path::new(".")))
-            .output()
-        {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let trimmed = stdout.trim();
-                if trimmed.is_empty() {
-                    format!("(no output from: {})", cmd)
-                } else if trimmed.len() > INLINE_SHELL_MAX_OUTPUT {
-                    let end = trimmed
-                        .char_indices()
-                        .take_while(|(i, _)| *i < INLINE_SHELL_MAX_OUTPUT)
-                        .last()
-                        .map(|(i, c)| i + c.len_utf8())
-                        .unwrap_or(INLINE_SHELL_MAX_OUTPUT);
-                    format!("{}...", &trimmed[..end])
-                } else {
-                    trimmed.to_string()
+    INLINE_SHELL_RE
+        .replace_all(content, |caps: &regex::Captures| {
+            let cmd = &caps[1];
+            let cwd = skill_dir;
+            match std::process::Command::new(if cfg!(windows) { "cmd" } else { "sh" })
+                .arg(if cfg!(windows) { "/C" } else { "-c" })
+                .arg(cmd)
+                .current_dir(cwd.unwrap_or(std::path::Path::new(".")))
+                .output()
+            {
+                Ok(output) => {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    let trimmed = stdout.trim();
+                    if trimmed.is_empty() {
+                        format!("(no output from: {})", cmd)
+                    } else if trimmed.len() > INLINE_SHELL_MAX_OUTPUT {
+                        let end = trimmed
+                            .char_indices()
+                            .take_while(|(i, _)| *i < INLINE_SHELL_MAX_OUTPUT)
+                            .last()
+                            .map(|(i, c)| i + c.len_utf8())
+                            .unwrap_or(INLINE_SHELL_MAX_OUTPUT);
+                        format!("{}...", &trimmed[..end])
+                    } else {
+                        trimmed.to_string()
+                    }
                 }
+                Err(e) => format!("(error: {})", e),
             }
-            Err(e) => format!("(error: {})", e),
-        }
-    }).to_string()
+        })
+        .to_string()
 }
 
 #[cfg(test)]
@@ -156,7 +164,11 @@ mod tests {
     fn expand_inline_shell_error_yields_error_message() {
         let content = "Run: !`false_command_that_does_not_exist_12345`.";
         let result = expand_inline_shell(content, None);
-        assert!(result.contains("error:") || result.contains("no output") || result.contains("false_command"));
+        assert!(
+            result.contains("error:")
+                || result.contains("no output")
+                || result.contains("false_command")
+        );
     }
 
     #[test]

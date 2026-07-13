@@ -3,10 +3,7 @@
 //! Migrated from `loom-tier/src/apply.rs`. Lives in `loom-react-config` because
 //! it reads and writes `ReactBuildConfig` fields.
 
-use model_spec_core::{
-    DefaultTierResolver, TierResolver,
-    registry::ModelEntry,
-};
+use model_spec_core::{registry::ModelEntry, DefaultTierResolver, TierResolver};
 
 use crate::agent::ReactBuildConfig;
 
@@ -178,10 +175,16 @@ mod tests {
         let result = resolve_tier_and_build_config_with_resolver(&config, &resolver).await;
 
         assert_eq!(result.model, Some("resolved_model".to_string()));
-        assert_eq!(result.openai_base_url, Some("https://resolved.com".to_string()));
+        assert_eq!(
+            result.openai_base_url,
+            Some("https://resolved.com".to_string())
+        );
         assert_eq!(result.openai_api_key, Some("resolved_key".to_string()));
         assert_eq!(result.llm_provider, Some("resolved_type".to_string()));
-        assert_eq!(result.llm_provider_name, Some("resolved_provider".to_string()));
+        assert_eq!(
+            result.llm_provider_name,
+            Some("resolved_provider".to_string())
+        );
     }
 
     #[tokio::test]
@@ -204,10 +207,16 @@ mod tests {
         let result = resolve_tier_and_build_config_with_resolver(&config, &resolver).await;
 
         assert_eq!(result.model, Some("original_model".to_string()));
-        assert_eq!(result.openai_base_url, Some("https://original.com".to_string()));
+        assert_eq!(
+            result.openai_base_url,
+            Some("https://original.com".to_string())
+        );
         assert_eq!(result.openai_api_key, Some("original_key".to_string()));
         assert_eq!(result.llm_provider, Some("original_type".to_string()));
-        assert_eq!(result.llm_provider_name, Some("original_provider".to_string()));
+        assert_eq!(
+            result.llm_provider_name,
+            Some("original_provider".to_string())
+        );
     }
 
     #[tokio::test]
@@ -232,7 +241,10 @@ mod tests {
         let result = resolve_tier_and_build_config_with_resolver(&config, &resolver).await;
 
         assert_eq!(result.model, Some("partial_model".to_string()));
-        assert_eq!(result.openai_base_url, Some("https://partial.com".to_string()));
+        assert_eq!(
+            result.openai_base_url,
+            Some("https://partial.com".to_string())
+        );
         assert_eq!(result.openai_api_key, None);
         assert_eq!(result.llm_provider, None);
         assert_eq!(result.llm_provider_name, None);

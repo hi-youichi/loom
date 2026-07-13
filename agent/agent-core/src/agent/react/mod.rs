@@ -27,16 +27,16 @@
 //!
 //! Custom files (act_node, config, observe_node, think_node, title_generator, with_node_logging, build, runner) remain local.
 
+mod act_executor;
 mod act_node;
 mod act_utils;
-mod act_executor;
 pub mod build;
 pub mod config;
 pub mod nudge;
-pub mod tier_apply;
 mod observe_node;
 mod runner;
 mod think_node;
+pub mod tier_apply;
 pub mod title_generator;
 mod with_node_logging;
 
@@ -45,15 +45,15 @@ pub use act_utils::{
     DEFAULT_EXECUTION_ERROR_TEMPLATE, DEFAULT_TOOL_ERROR_TEMPLATE, STEP_PROGRESS_EVENT_TYPE,
 };
 pub use build::{
-    build_react_run_context, build_react_runner,
-    build_react_runner_with_openai, BuildRunnerError, ReactRunContext,
+    build_react_run_context, build_react_runner, build_react_runner_with_openai, BuildRunnerError,
+    ReactRunContext,
 };
 pub use build::{DefaultTierResolver, ResolvedTierModel, TierResolver};
 pub use config::{BuiltinToolFilter, GotRunnerConfig, ReactBuildConfig, TotRunnerConfig};
 pub use observe_node::ObserveNode;
 pub use runner::{
-    build_react_initial_state, run_react_graph_stream, AgentOptions, ReactRunner,
-    ReviewCoordinator, CoordinatorTrigger, RunError,
+    build_react_initial_state, run_react_graph_stream, AgentOptions, CoordinatorTrigger,
+    ReactRunner, ReviewCoordinator, RunError,
 };
 
 pub use think_node::ThinkNode;
@@ -106,8 +106,8 @@ pub const REACT_SYSTEM_PROMPT: &str = "";
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_llm::ToolCall;
     use loom_llm::message::Message;
+    use loom_llm::ToolCall;
 
     #[test]
     fn tools_condition_returns_end_when_no_tool_calls() {

@@ -5,15 +5,14 @@
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
-
-use loom_graph_core::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
-use checkpoint::{CheckpointError, Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
-use stream_event::StreamEvent;
-use tool_core::ToolRegistryLocked;
-use loom_llm::LlmClient;
+use checkpoint::{CheckpointError, Checkpointer, RunnableConfig, Store};
+use loom_graph_core::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
 use loom_graph_core::{StateGraph, END, START};
 use loom_llm::message::UserContent;
+use loom_llm::LlmClient;
+use stream_event::StreamEvent;
+use tool_core::ToolRegistryLocked;
 
 use super::dag::ready_nodes;
 use super::execute_engine::ExecuteGraphNode;
@@ -72,7 +71,10 @@ impl GotRunner {
         self
     }
 
-    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>) -> Self {
+    pub fn with_any_stream_event_sender(
+        mut self,
+        sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
+    ) -> Self {
         self.any_stream_event_sender = sender;
         self
     }
@@ -94,10 +96,11 @@ impl GotRunner {
         agot_llm_complexity: bool,
     ) -> Result<Self, CompilationError> {
         let plan = PlanGraphNode::new(Box::new(SharedLlm(Arc::clone(&llm))));
-        let provider: Arc<dyn loom_llm::LlmProvider> = Arc::new(loom_llm::client::FixedLlmProvider {
-            client: Arc::clone(&llm),
-            model_id: "got".to_string(),
-        });
+        let provider: Arc<dyn loom_llm::LlmProvider> =
+            Arc::new(loom_llm::client::FixedLlmProvider {
+                client: Arc::clone(&llm),
+                model_id: "got".to_string(),
+            });
         let execute = ExecuteGraphNode::new(provider, tool_source, adaptive, agot_llm_complexity);
 
         let mut graph = StateGraph::<GotState>::new();
@@ -186,10 +189,16 @@ impl GotRunner {
         )
         .await;
         match result {
-            Ok(runner_common::StreamRunOutcome::Finished(s)) => Ok(runner_common::StreamRunOutcome::Finished(s)),
-            Ok(runner_common::StreamRunOutcome::Cancelled) => Ok(runner_common::StreamRunOutcome::Cancelled),
+            Ok(runner_common::StreamRunOutcome::Finished(s)) => {
+                Ok(runner_common::StreamRunOutcome::Finished(s))
+            }
+            Ok(runner_common::StreamRunOutcome::Cancelled) => {
+                Ok(runner_common::StreamRunOutcome::Cancelled)
+            }
             Err(runner_common::StreamRunError::Execution(err)) => Err(GotRunError::Execution(err)),
-            Err(runner_common::StreamRunError::StreamEndedWithoutState(_)) => Err(GotRunError::StreamEndedWithoutState),
+            Err(runner_common::StreamRunError::StreamEndedWithoutState(_)) => {
+                Err(GotRunError::StreamEndedWithoutState)
+            }
         }
     }
 }
@@ -219,8 +228,8 @@ impl LlmClient for SharedLlm {
 mod tests {
     use super::*;
     use loom_llm::client::MockLlm;
-    use stream_event::StreamEvent;
     use std::sync::{Arc, Mutex};
+    use stream_event::StreamEvent;
 
     #[test]
     fn got_execute_condition_routes_based_on_ready_nodes() {
@@ -237,21 +246,22 @@ mod tests {
                 }],
                 edges: vec![],
             },
-            node_states: [(
-                "n1".into(),
-                super::super::state::TaskNodeState::default(),
-            )]
-            .into_iter()
-            .collect(),
+            node_states: [("n1".into(), super::super::state::TaskNodeState::default())]
+                .into_iter()
+                .collect(),
         };
         assert_eq!(got_execute_condition(&state), "execute_graph");
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn build_got_initial_state_without_checkpoint_uses_input_message() {
-        let state = build_got_initial_state(&loom_llm::message::UserContent::text("hello got".to_string()), None, None)
-            .await
-            .unwrap();
+        let state = build_got_initial_state(
+            &loom_llm::message::UserContent::text("hello got".to_string()),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(state.input_message, "hello got");
         assert!(state.task_graph.nodes.is_empty());
         assert!(state.node_states.is_empty());
@@ -293,5 +303,3 @@ mod tests {
         assert!(!events.lock().unwrap().is_empty());
     }
 }
-
-

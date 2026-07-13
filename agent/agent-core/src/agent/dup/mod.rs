@@ -8,12 +8,12 @@ mod adapter_nodes;
 mod runner;
 mod state;
 
-mod prompt;
 pub mod build;
+mod prompt;
 mod understand_node;
 
+pub use build::build_dup_runner;
 pub use prompt::DUP_UNDERSTAND_PROMPT;
 pub use runner::{build_dup_initial_state, DupRunError, DupRunner};
 pub use state::{DupState, UnderstandOutput};
 pub use understand_node::UnderstandNode;
-pub use build::build_dup_runner;

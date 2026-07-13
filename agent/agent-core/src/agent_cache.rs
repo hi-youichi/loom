@@ -78,8 +78,7 @@ impl<T: Send + Sync + 'static> AgentCache<T> {
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(lru::LruCache::new(
-                std::num::NonZeroUsize::new(MAX_CACHE_SIZE)
-                    .expect("MAX_CACHE_SIZE > 0"),
+                std::num::NonZeroUsize::new(MAX_CACHE_SIZE).expect("MAX_CACHE_SIZE > 0"),
             )),
         }
     }
@@ -236,8 +235,7 @@ mod tests {
         {
             let mut guard = cache.inner.lock();
             let entry = guard.peek_mut(&key).unwrap();
-            entry.last_used =
-                Instant::now() - Duration::from_secs(IDLE_EVICTION_SECS + 1);
+            entry.last_used = Instant::now() - Duration::from_secs(IDLE_EVICTION_SECS + 1);
         }
         let evicted = cache.sweep_idle();
         assert_eq!(evicted, 1);

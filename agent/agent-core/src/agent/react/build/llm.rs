@@ -6,10 +6,10 @@
 use std::sync::Arc;
 
 use loom_graph_core::GraphError;
-use loom_llm::support::audit::LlmAuditLog;
-use loom_llm::{ChatOpenAI, ChatOpenAICompat, LlmClient, LlmProvider, ModelEntry};
 use loom_llm::client::{FixedLlmProvider, RetryLlmClient};
 use loom_llm::factory::create_llm_client;
+use loom_llm::support::audit::LlmAuditLog;
+use loom_llm::{ChatOpenAI, ChatOpenAICompat, LlmClient, LlmProvider, ModelEntry};
 use model_spec_core::ModelTier;
 use tool_core::ToolRegistryLocked;
 
@@ -26,8 +26,8 @@ fn parse_provider_model(model: &str) -> Option<(&str, &str)> {
     Some((provider, model_id))
 }
 
-pub use model_spec_core::{DefaultTierResolver, ResolvedTierModel, TierResolver};
 pub(crate) use model_spec_core::resolve_tier;
+pub use model_spec_core::{DefaultTierResolver, ResolvedTierModel, TierResolver};
 
 pub(crate) fn model_entry_from_config(
     config: &ReactBuildConfig,
@@ -142,14 +142,17 @@ pub async fn build_default_llm_with_tool_source(
             }
             tracing::debug!("build_default_llm: OpenAI with tools");
             let mut client = ChatOpenAI::with_config(openai_config, entry.name).with_tools(tools);
-            
-            let trace_id = config.trace_thread_id.as_ref().or(config.thread_id.as_ref());
+
+            let trace_id = config
+                .trace_thread_id
+                .as_ref()
+                .or(config.thread_id.as_ref());
             if let Some(thread_id) = trace_id {
                 let headers = loom_llm::LlmHeaders::default().with_thread_id(thread_id);
                 client = client.with_headers(headers);
                 tracing::debug!("Set X-Thread-Id header: {}", thread_id);
             }
-            
+
             if let Some(t) = entry.temperature {
                 client = client.with_temperature(t);
             }
@@ -184,21 +187,23 @@ pub async fn build_default_llm_with_tool_source(
             })?;
             tracing::debug!(provider_type = %provider_type, "build_default_llm: OpenAI-compat with tools");
             let mut client =
-                ChatOpenAICompat::with_config(base_url, api_key, entry.name)
-                    .with_tools(tools);
-            
+                ChatOpenAICompat::with_config(base_url, api_key, entry.name).with_tools(tools);
+
             // Attach audit log if enabled
             if let Some(ref audit) = audit_log {
                 client = client.with_audit_log(Arc::clone(audit));
             }
-            
-            let trace_id = config.trace_thread_id.as_ref().or(config.thread_id.as_ref());
+
+            let trace_id = config
+                .trace_thread_id
+                .as_ref()
+                .or(config.thread_id.as_ref());
             if let Some(thread_id) = trace_id {
                 let headers = loom_llm::LlmHeaders::default().with_thread_id(thread_id);
                 client = client.with_headers(headers);
                 tracing::debug!("Set X-Thread-Id header: {}", thread_id);
             }
-            
+
             if let Some(t) = entry.temperature {
                 client = client.with_temperature(t);
             }
@@ -232,7 +237,13 @@ pub(crate) async fn resolve_title_provider(
 ) -> Option<Arc<dyn LlmProvider>> {
     let providers = env_config::load_provider_configs_from_xdg().unwrap_or_default();
     let provider_hint = crate::agent::react::tier_apply::extract_provider_hint(config);
-    let resolved = resolve_tier(config.model.as_deref(), ModelTier::Light, provider_hint.as_deref(), &providers).await?;
+    let resolved = resolve_tier(
+        config.model.as_deref(),
+        ModelTier::Light,
+        provider_hint.as_deref(),
+        &providers,
+    )
+    .await?;
     let (provider, model_name) = ModelEntry::parse_id(&resolved.model_id)?;
     let entry = ModelEntry {
         id: resolved.model_id.clone(),
@@ -410,5 +421,3 @@ mod tests {
         assert_eq!(entry.name, "glm-5");
     }
 }
-
-

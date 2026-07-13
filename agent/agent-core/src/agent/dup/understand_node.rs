@@ -7,9 +7,9 @@ use async_trait::async_trait;
 
 use loom_graph_core::GraphError;
 use loom_graph_core::Next;
-use loom_llm::LlmClient;
-use loom_llm::message::Message;
 use loom_graph_core::Node;
+use loom_llm::message::Message;
+use loom_llm::LlmClient;
 
 use super::prompt::DUP_UNDERSTAND_PROMPT;
 use super::state::{DupState, UnderstandOutput};
@@ -64,7 +64,11 @@ fn parse_understand_output(raw: &str) -> UnderstandOutput {
         relevant_context = raw.trim().to_string();
     }
 
-    UnderstandOutput { core_goal, key_constraints, relevant_context }
+    UnderstandOutput {
+        core_goal,
+        key_constraints,
+        relevant_context,
+    }
 }
 
 fn extract_json_value(line: &str) -> Option<String> {
@@ -116,7 +120,9 @@ fn extract_json_array(line: &str) -> Option<Vec<String>> {
 
 #[async_trait]
 impl Node<DupState> for UnderstandNode {
-    fn id(&self) -> &str { "understand" }
+    fn id(&self) -> &str {
+        "understand"
+    }
 
     async fn run(&self, mut state: DupState) -> Result<(DupState, Next), GraphError> {
         // Build messages: system prompt + last user message
@@ -143,7 +149,10 @@ impl Node<DupState> for UnderstandNode {
             output.core_goal.chars().take(50).collect::<String>()
         );
 
-        state.core.messages.push(Message::assistant(&response.content));
+        state
+            .core
+            .messages
+            .push(Message::assistant(&response.content));
         Ok((state, Next::Node("plan".into())))
     }
 }

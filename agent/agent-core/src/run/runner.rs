@@ -8,27 +8,27 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use crate::agent::react::build::{build_react_runner, BuildRunnerError};
-use crate::agent::react::ReactRunner;
-use crate::runner_common;
 use crate::agent::dup::build::build_dup_runner;
 use crate::agent::dup::{DupRunner, DupState};
 use crate::agent::got::build::build_got_runner;
 use crate::agent::got::{GotRunner, GotState};
+use crate::agent::react::build::{build_react_runner, BuildRunnerError};
+use crate::agent::react::ReactRunner;
 use crate::agent::tot::build::build_tot_runner;
 use crate::agent::tot::{TotRunner, TotState};
-use loom_llm::LlmClient;
+use crate::agent::ReactBuildConfig;
+use crate::runner_common;
+use crate::state::ReActState;
 use loom_llm::support::uuid6::uuid6;
+use loom_llm::LlmClient;
+use serde_json::Value;
 use stream_event::wire::convert::{
     stream_event_to_format_a, stream_event_to_protocol_envelope, ProtocolEventEnvelope,
 };
 use stream_event::wire::envelope::EnvelopeState;
-use crate::agent::ReactBuildConfig;
 use stream_event::StreamEvent;
-use tool_core::active_operation::RunCancellation;
-use crate::state::ReActState;
-use serde_json::Value;
 use thiserror::Error;
+use tool_core::active_operation::RunCancellation;
 use tracing::Instrument;
 
 use super::types::{AgentRunResult, RunCompletion};
@@ -108,7 +108,6 @@ impl TypedAnyStreamEvent {
         let event = self.to_protocol_event(state)?;
         event.to_value()
     }
-
 }
 
 #[allow(clippy::type_complexity)]
@@ -151,9 +150,7 @@ pub async fn run_agent_from_config(
                     }
                 }
             });
-            let outcome = r
-                .stream_with_config(message.clone(), None, on_ev)
-                .await?;
+            let outcome = r.stream_with_config(message.clone(), None, on_ev).await?;
             match outcome {
                 runner_common::StreamRunOutcome::Finished(state) => {
                     RunCompletion::Finished(AgentRunResult {
@@ -256,31 +253,53 @@ pub async fn build_runner(
 ) -> Result<AnyRunner, RunError> {
     let config = crate::resolve_tier_and_build_config(config).await;
     let cancellation = params.cancellation.as_ref().map(RunCancellation::token);
-    let llm_override_provider: Option<Arc<dyn loom_llm::LlmProvider>> = params.llm_override.take().map(|llm| {
-        Arc::new(loom_llm::client::FixedLlmProvider {
-            client: Arc::from(llm),
-            model_id: "override".to_string(),
-        }) as Arc<dyn loom_llm::LlmProvider>
-    });
+    let llm_override_provider: Option<Arc<dyn loom_llm::LlmProvider>> =
+        params.llm_override.take().map(|llm| {
+            Arc::new(loom_llm::client::FixedLlmProvider {
+                client: Arc::from(llm),
+                model_id: "override".to_string(),
+            }) as Arc<dyn loom_llm::LlmProvider>
+        });
     match cmd {
         RunCmd::React => {
-            let r = build_react_runner(&config, llm_override_provider, params.verbose, params.cancellation.clone(), params.any_stream_event_sender.clone()).await?;
+            let r = build_react_runner(
+                &config,
+                llm_override_provider,
+                params.verbose,
+                params.cancellation.clone(),
+                params.any_stream_event_sender.clone(),
+            )
+            .await?;
             Ok(AnyRunner::React(r))
         }
         RunCmd::Dup => {
-            let llm_boxed = llm_override_provider.map(|p| p.create_client(p.default_model()).unwrap());
+            let llm_boxed =
+                llm_override_provider.map(|p| p.create_client(p.default_model()).unwrap());
             let r = build_dup_runner(&config, llm_boxed, params.verbose).await?;
-            Ok(AnyRunner::Dup(r.with_cancellation(cancellation.clone()).with_any_stream_event_sender(params.any_stream_event_sender.clone())))
+            Ok(AnyRunner::Dup(
+                r.with_cancellation(cancellation.clone())
+                    .with_any_stream_event_sender(params.any_stream_event_sender.clone()),
+            ))
         }
         RunCmd::Tot => {
-            let llm_boxed = llm_override_provider.as_ref().map(|p| p.create_client(p.default_model()).unwrap());
+            let llm_boxed = llm_override_provider
+                .as_ref()
+                .map(|p| p.create_client(p.default_model()).unwrap());
             let r = build_tot_runner(&config, llm_boxed, params.verbose).await?;
-            Ok(AnyRunner::Tot(r.with_cancellation(cancellation.clone()).with_any_stream_event_sender(params.any_stream_event_sender.clone())))
+            Ok(AnyRunner::Tot(
+                r.with_cancellation(cancellation.clone())
+                    .with_any_stream_event_sender(params.any_stream_event_sender.clone()),
+            ))
         }
         RunCmd::Got { .. } => {
-            let llm_boxed = llm_override_provider.as_ref().map(|p| p.create_client(p.default_model()).unwrap());
+            let llm_boxed = llm_override_provider
+                .as_ref()
+                .map(|p| p.create_client(p.default_model()).unwrap());
             let r = build_got_runner(&config, llm_boxed, params.verbose).await?;
-            Ok(AnyRunner::Got(r.with_cancellation(cancellation).with_any_stream_event_sender(params.any_stream_event_sender.clone())))
+            Ok(AnyRunner::Got(
+                r.with_cancellation(cancellation)
+                    .with_any_stream_event_sender(params.any_stream_event_sender.clone()),
+            ))
         }
     }
 }

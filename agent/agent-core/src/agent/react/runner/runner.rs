@@ -3,22 +3,21 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-
 use crate::agent::react::REACT_SYSTEM_PROMPT;
 use crate::compress::{build_graph, CompactionConfig, CompressionGraphNode};
 use loom_graph_core::{
     CompilationError, CompiledStateGraph, LoggingNodeMiddleware, StateGraph, END, START,
 };
 
-use loom_llm::LlmProvider;
-use loom_llm::message::UserContent;
-use checkpoint::{Checkpointer, RunnableConfig, Store};
 use crate::runner_common;
 use crate::state::ReActState;
-use stream_event::StreamEvent;
-use tool_core::ToolRegistryLocked;
+use checkpoint::{Checkpointer, RunnableConfig, Store};
 use checkpoint_sqlite_store::user_message::UserMessageStore;
+use loom_llm::message::UserContent;
+use loom_llm::LlmProvider;
+use stream_event::StreamEvent;
 use tool_core::active_operation::RunCancellation;
+use tool_core::ToolRegistryLocked;
 
 use super::error::RunError;
 use super::initial_state::build_react_initial_state;
@@ -29,8 +28,7 @@ use crate::agent::react::observe_node::ObserveNode;
 use crate::agent::react::think_node::ThinkNode;
 use crate::agent::react::tools_condition;
 
-
-    pub struct ReactRunner {
+pub struct ReactRunner {
     compiled: CompiledStateGraph<ReActState>,
     checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
     runnable_config: Option<RunnableConfig>,
@@ -57,9 +55,10 @@ impl ReactRunner {
         self.checkpointer.as_ref()
     }
 
-
-
-    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>) -> Self {
+    pub fn with_any_stream_event_sender(
+        mut self,
+        sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
+    ) -> Self {
         self.any_stream_event_sender = sender;
         self
     }
@@ -98,18 +97,19 @@ impl ReactRunner {
         let title_provider = title_provider.unwrap_or_else(|| Arc::clone(&provider));
         let _ = title_headers; // reserved for future provider-level header injection
 
-        let think_condition_path_map: HashMap<String, String> = [
-            ("tools".into(), "act".into()),
-            (END.into(), END.into()),
-        ]
-        .into_iter()
-        .collect();
+        let think_condition_path_map: HashMap<String, String> =
+            [("tools".into(), "act".into()), (END.into(), END.into())]
+                .into_iter()
+                .collect();
 
         let act = Arc::new(act);
 
         graph
             .add_node("think", Arc::new(think))
-            .add_node("act", Arc::clone(&act) as Arc<dyn loom_graph_core::Node<ReActState>>)
+            .add_node(
+                "act",
+                Arc::clone(&act) as Arc<dyn loom_graph_core::Node<ReActState>>,
+            )
             .add_node("observe", Arc::new(observe))
             .add_node("compress", compress_node)
             .add_edge(START, "think")
@@ -122,9 +122,8 @@ impl ReactRunner {
             .add_edge("observe", "compress")
             .add_edge("compress", "think");
 
-        let graph = graph.with_metadata_extractor(Arc::new(|state: &ReActState| {
-            state.summary.clone()
-        }));
+        let graph =
+            graph.with_metadata_extractor(Arc::new(|state: &ReActState| state.summary.clone()));
 
         let compiled = if verbose {
             let mw: Arc<LoggingNodeMiddleware<ReActState>> =
@@ -150,8 +149,6 @@ impl ReactRunner {
             title_provider,
         })
     }
-
-
 
     pub async fn stream_with_callback<F>(
         &self,
@@ -222,10 +219,16 @@ impl ReactRunner {
         // otherwise). The exhaustive match documents the conversion to
         // `RunError`; if the upstream enum grows, this will fail to compile.
         match result {
-            Ok(runner_common::StreamRunOutcome::Finished(s)) => Ok(runner_common::StreamRunOutcome::Finished(s)),
-            Ok(runner_common::StreamRunOutcome::Cancelled) => Ok(runner_common::StreamRunOutcome::Cancelled),
+            Ok(runner_common::StreamRunOutcome::Finished(s)) => {
+                Ok(runner_common::StreamRunOutcome::Finished(s))
+            }
+            Ok(runner_common::StreamRunOutcome::Cancelled) => {
+                Ok(runner_common::StreamRunOutcome::Cancelled)
+            }
             Err(runner_common::StreamRunError::Execution(err)) => Err(RunError::Execution(err)),
-            Err(runner_common::StreamRunError::StreamEndedWithoutState(_)) => Err(RunError::StreamEndedWithoutState),
+            Err(runner_common::StreamRunError::StreamEndedWithoutState(_)) => {
+                Err(RunError::StreamEndedWithoutState)
+            }
         }
     }
 }

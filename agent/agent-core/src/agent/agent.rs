@@ -1,11 +1,11 @@
 use crate::agent::react::build::build_react_runner;
 use crate::agent::react::{ReactBuildConfig, ReactRunner};
 use crate::runner_common::StreamRunOutcome;
+use crate::state::ReActState;
 use checkpoint::RunnableConfig;
 use loom_llm::MessageChunkKind;
-use stream_event::StreamEvent;
-use crate::state::ReActState;
 use std::sync::Arc;
+use stream_event::StreamEvent;
 
 pub type AgentConfig = ReactBuildConfig;
 
@@ -135,7 +135,9 @@ fn map_stream_event(ev: StreamEvent<ReActState>) -> Option<AgentEvent> {
             MessageChunkKind::Thinking => Some(AgentEvent::ReasoningChunk(chunk.content)),
             MessageChunkKind::Message => Some(AgentEvent::TextChunk(chunk.content)),
         },
-        StreamEvent::ToolCall { name, arguments, .. } => Some(AgentEvent::ToolCallStart {
+        StreamEvent::ToolCall {
+            name, arguments, ..
+        } => Some(AgentEvent::ToolCallStart {
             name,
             arguments: arguments.to_string(),
         }),
@@ -143,7 +145,10 @@ fn map_stream_event(ev: StreamEvent<ReActState>) -> Option<AgentEvent> {
             Some(AgentEvent::ToolOutput { name, content })
         }
         StreamEvent::ToolEnd {
-            name, result, is_error, ..
+            name,
+            result,
+            is_error,
+            ..
         } => Some(AgentEvent::ToolEnd {
             name,
             result,
@@ -168,12 +173,12 @@ fn map_stream_event(ev: StreamEvent<ReActState>) -> Option<AgentEvent> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ReactBuildConfig;
     use crate::agent::react::build::build_react_runner;
+    use crate::ReactBuildConfig;
     use loom_llm::client::{FixedLlmProvider, MockLlm};
     use loom_llm::MessageChunk;
-    use stream_event::StreamMetadata;
     use std::sync::Arc;
+    use stream_event::StreamMetadata;
 
     fn base_config() -> ReactBuildConfig {
         let mut cfg = ReactBuildConfig::from_env();
@@ -361,7 +366,8 @@ mod tests {
         .unwrap();
 
         let agent = Agent::from_runner(cfg.clone(), runner);
-        let events: Arc<std::sync::Mutex<Vec<AgentEvent>>> = Arc::new(std::sync::Mutex::new(vec![]));
+        let events: Arc<std::sync::Mutex<Vec<AgentEvent>>> =
+            Arc::new(std::sync::Mutex::new(vec![]));
         let events_clone = events.clone();
         let result = agent
             .run("test message", move |ev| {

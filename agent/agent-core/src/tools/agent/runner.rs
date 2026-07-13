@@ -4,12 +4,12 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
-use crate::tools::agent::build_config::build_config_from_profile;
-use crate::profile::AgentProfile;
-use crate::agent::ReactBuildConfig;
-use crate::agent::react::tier_apply::resolve_tier_and_build_config;
 use crate::agent::react::build::build_react_runner;
+use crate::agent::react::tier_apply::resolve_tier_and_build_config;
+use crate::agent::ReactBuildConfig;
+use crate::profile::AgentProfile;
+use crate::tools::agent::build_config::build_config_from_profile;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 /// Build sub-agent config, resolve model tier, construct ReactRunner, and execute.
 ///
@@ -48,8 +48,7 @@ pub(super) async fn build_and_run_sub_agent(
         profile_name = %profile.name,
         "Building sub-agent configuration"
     );
-    let mut sub_config =
-        build_config_from_profile(profile, base_config, working_folder_override);
+    let mut sub_config = build_config_from_profile(profile, base_config, working_folder_override);
 
     tracing::debug!(
         agent = %agent_name,
@@ -91,6 +90,19 @@ pub(super) async fn build_and_run_sub_agent(
                     "Invalid model_tier format, ignoring override"
                 );
             }
+        }
+    }
+
+    // --- model override ---
+    if let Some(model_str) = args.get("model").and_then(|v| v.as_str()) {
+        if !model_str.is_empty() {
+            tracing::info!(
+                agent = %agent_name,
+                model_override = %model_str,
+                current_model = ?sub_config.model,
+                "Overriding model from agent tool arguments"
+            );
+            sub_config.model = Some(model_str.to_string());
         }
     }
 
@@ -150,18 +162,15 @@ pub(super) async fn build_and_run_sub_agent(
         .await
         .map_err(|e| {
             tracing::error!(agent = %agent_name, error = %e, "Failed to build sub-agent runner");
-            ToolSourceError::Transport(format!(
-                "failed to build sub-agent '{}': {}",
-                agent_name, e
-            ))
+            ToolSourceError::Transport(format!("failed to build sub-agent '{}': {}", agent_name, e))
         })?;
 
     tracing::debug!(agent = %agent_name, "Starting sub-agent execution");
     let agent_name_for_event = agent_name.to_string();
     let start = std::time::Instant::now();
 
-    let on_event = Some(move |event: stream_event::StreamEvent<crate::state::ReActState>| {
-        match &event {
+    let on_event = Some(
+        move |event: stream_event::StreamEvent<crate::state::ReActState>| match &event {
             stream_event::StreamEvent::TaskStart { .. }
             | stream_event::StreamEvent::TaskEnd { .. }
             | stream_event::StreamEvent::ToolStart { .. }
@@ -176,8 +185,8 @@ pub(super) async fn build_and_run_sub_agent(
                 }
             }
             _ => {}
-        }
-    });
+        },
+    );
 
     let outcome = runner
         .stream_with_config(task, None, on_event)
@@ -214,7 +223,8 @@ pub(super) async fn build_and_run_sub_agent(
         crate::runner_common::StreamRunOutcome::Cancelled => {
             tracing::warn!(agent = %agent_name, "Sub-agent was cancelled");
             return Err(ToolSourceError::Transport(format!(
-                "sub-agent '{}' was cancelled", agent_name
+                "sub-agent '{}' was cancelled",
+                agent_name
             )));
         }
     };

@@ -11,12 +11,12 @@ mod plan_node;
 mod runner;
 mod state;
 
-mod dag;
 pub mod build;
+mod dag;
 mod prompt;
 
+pub use build::build_got_runner;
 pub use dag::{append_subgraph, AppendSubgraphError};
 pub use prompt::{AGOT_EXPAND_SYSTEM, GOT_PLAN_SYSTEM};
 pub use runner::{build_got_initial_state, GotRunError, GotRunner};
 pub use state::{GotState, TaskGraph, TaskNode, TaskNodeState, TaskStatus};
-pub use build::build_got_runner;

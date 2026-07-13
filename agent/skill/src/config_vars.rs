@@ -80,10 +80,7 @@ fn expand_value(value: &str) -> String {
     expanded
 }
 
-pub fn inject_config_into_content(
-    content: &str,
-    resolved: &HashMap<String, String>,
-) -> String {
+pub fn inject_config_into_content(content: &str, resolved: &HashMap<String, String>) -> String {
     if resolved.is_empty() {
         return content.to_string();
     }

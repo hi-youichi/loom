@@ -65,11 +65,9 @@ impl std::fmt::Display for ToolError {
                 parse_error,
             } => {
                 // Short preview of raw_args (first 100 chars).
-                let preview = raw_args
-                    .chars()
-                    .take(100)
-                    .collect::<String>();
-                write!(f,
+                let preview = raw_args.chars().take(100).collect::<String>();
+                write!(
+                    f,
                     "[{tool_name}] invalid arguments: expected valid JSON object string. \
                      Parse error: {parse_error}. Raw input: {preview}",
                 )
@@ -112,11 +110,12 @@ impl ToolError {
     /// Returns a message that tells the model what went wrong and how to fix it.
     pub fn self_correct_hint(&self) -> String {
         match self {
-            Self::InvalidJsonArguments { tool_name, raw_args, .. } => {
-                let preview = raw_args
-                    .chars()
-                    .take(150)
-                    .collect::<String>();
+            Self::InvalidJsonArguments {
+                tool_name,
+                raw_args,
+                ..
+            } => {
+                let preview = raw_args.chars().take(150).collect::<String>();
                 format!(
                     "[{tool_name}] invalid arguments: expected a JSON object string, \
                      but received: \"{preview}\". \
@@ -134,7 +133,10 @@ pub enum GoalOutcome {
     Achieved,
     Error(String),
     /// Token budget exhausted; the loop stopped to avoid overruns.
-    UsageLimited { tokens_used: u32, token_budget: u32 },
+    UsageLimited {
+        tokens_used: u32,
+        token_budget: u32,
+    },
 }
 
 impl std::fmt::Display for GoalOutcome {
@@ -142,8 +144,15 @@ impl std::fmt::Display for GoalOutcome {
         match self {
             GoalOutcome::Achieved => write!(f, "Goal achieved"),
             GoalOutcome::Error(e) => write!(f, "Goal error: {}", e),
-            GoalOutcome::UsageLimited { tokens_used, token_budget } => {
-                write!(f, "Token budget exhausted ({}/{})", tokens_used, token_budget)
+            GoalOutcome::UsageLimited {
+                tokens_used,
+                token_budget,
+            } => {
+                write!(
+                    f,
+                    "Token budget exhausted ({}/{})",
+                    tokens_used, token_budget
+                )
             }
         }
     }
@@ -262,18 +271,24 @@ mod tests {
             parse_error: "parse error".to_string(),
         };
         let display = format!("{}", error);
-        
+
         // Display should truncate to 100 chars in the preview part
         assert!(display.contains("Raw input:"));
-        
+
         // Check that the Display impl truncates to 100 chars in the preview (using 'z' which doesn't appear elsewhere)
         let z_count_in_display = display.matches("z").count();
-        assert_eq!(z_count_in_display, 100, "Display should contain exactly 100 'z' characters in the truncated preview");
-        
+        assert_eq!(
+            z_count_in_display, 100,
+            "Display should contain exactly 100 'z' characters in the truncated preview"
+        );
+
         // Also check that self_correct_hint truncates to 150 chars
         let hint = error.self_correct_hint();
         let z_count_in_hint = hint.matches("z").count();
-        assert_eq!(z_count_in_hint, 150, "Self-correct hint should contain exactly 150 'z' characters in the truncated preview");
+        assert_eq!(
+            z_count_in_hint, 150,
+            "Self-correct hint should contain exactly 150 'z' characters in the truncated preview"
+        );
     }
 
     #[test]
@@ -282,7 +297,7 @@ mod tests {
             tool_name: "read_file".to_string(),
             result_preview: "Successfully read file contents".to_string(),
         };
-        
+
         assert_eq!(summary.tool_name, "read_file");
         assert_eq!(summary.result_preview, "Successfully read file contents");
     }
@@ -292,22 +307,26 @@ mod tests {
         let turn_result = TurnResult {
             reply: "Task completed successfully".to_string(),
             reasoning_content: Some("Using grep to find the pattern".to_string()),
-            tool_calls_summary: vec![
-                ToolCallSummary {
-                    tool_name: "grep".to_string(),
-                    result_preview: "Found 5 matches".to_string(),
-                }
-            ],
+            tool_calls_summary: vec![ToolCallSummary {
+                tool_name: "grep".to_string(),
+                result_preview: "Found 5 matches".to_string(),
+            }],
             usage: None,
             work_summary: Some("Completed grep search across source files".to_string()),
         };
-        
+
         assert_eq!(turn_result.reply, "Task completed successfully");
-        assert_eq!(turn_result.reasoning_content, Some("Using grep to find the pattern".to_string()));
+        assert_eq!(
+            turn_result.reasoning_content,
+            Some("Using grep to find the pattern".to_string())
+        );
         assert_eq!(turn_result.tool_calls_summary.len(), 1);
         assert_eq!(turn_result.tool_calls_summary[0].tool_name, "grep");
         assert!(turn_result.usage.is_none());
-        assert_eq!(turn_result.work_summary, Some("Completed grep search across source files".to_string()));
+        assert_eq!(
+            turn_result.work_summary,
+            Some("Completed grep search across source files".to_string())
+        );
     }
 
     #[test]
@@ -319,7 +338,7 @@ mod tests {
             usage: None,
             work_summary: None,
         };
-        
+
         assert!(turn_result.reply.is_empty());
         assert!(turn_result.reasoning_content.is_none());
         assert!(turn_result.tool_calls_summary.is_empty());
@@ -400,7 +419,7 @@ mod tests {
             raw_args: r#"pattern: "*.rs""#.to_string(),
             parse_error: "parse error".to_string(),
         };
-        
+
         let hint = json_error.self_correct_hint();
         assert!(hint.contains("[grep_tool]"));
         assert!(hint.contains("invalid arguments"));
@@ -423,11 +442,20 @@ mod tests {
     #[test]
     fn test_goal_outcome_display() {
         assert_eq!(format!("{}", GoalOutcome::Achieved), "Goal achieved");
-        
-        assert_eq!(format!("{}", GoalOutcome::Error("Test error".to_string())), "Goal error: Test error");
-        
+
         assert_eq!(
-            format!("{}", GoalOutcome::UsageLimited { tokens_used: 100, token_budget: 1000 }),
+            format!("{}", GoalOutcome::Error("Test error".to_string())),
+            "Goal error: Test error"
+        );
+
+        assert_eq!(
+            format!(
+                "{}",
+                GoalOutcome::UsageLimited {
+                    tokens_used: 100,
+                    token_budget: 1000
+                }
+            ),
             "Token budget exhausted (100/1000)"
         );
     }
@@ -435,7 +463,7 @@ mod tests {
     #[test]
     fn test_goal_meta_default() {
         let default_meta = GoalMeta::default();
-        
+
         assert_eq!(default_meta.iteration, 0);
         assert_eq!(default_meta.tool, "loom");
         assert_eq!(default_meta.time_used_seconds, 0);
@@ -456,7 +484,7 @@ mod tests {
             history: vec![],
             verify_command: Some("cargo test".to_string()),
         };
-        
+
         assert_eq!(meta.iteration, 5);
         assert_eq!(meta.tool, "test_tool");
         assert_eq!(meta.time_used_seconds, 120);
@@ -472,7 +500,7 @@ mod tests {
             timestamp: "2025-08-19T10:30:00Z".to_string(),
             summary: Some("Completed grep search".to_string()),
         };
-        
+
         assert_eq!(entry.iteration, 1);
         assert_eq!(entry.timestamp, "2025-08-19T10:30:00Z");
         assert_eq!(entry.summary, Some("Completed grep search".to_string()));
@@ -485,7 +513,7 @@ mod tests {
             timestamp: "2025-08-19T10:31:00Z".to_string(),
             summary: None,
         };
-        
+
         assert_eq!(entry.iteration, 2);
         assert_eq!(entry.timestamp, "2025-08-19T10:31:00Z");
         assert!(entry.summary.is_none());
@@ -515,7 +543,7 @@ mod tests {
             tool_name: "test_tool".to_string(),
             result_preview: "Test result".to_string(),
         };
-        
+
         let cloned = summary.clone();
         assert_eq!(summary.tool_name, cloned.tool_name);
         assert_eq!(summary.result_preview, cloned.result_preview);
@@ -525,8 +553,11 @@ mod tests {
     fn test_goal_outcome_debug() {
         let achieved = GoalOutcome::Achieved;
         let error = GoalOutcome::Error("Test error".to_string());
-        let limited = GoalOutcome::UsageLimited { tokens_used: 100, token_budget: 1000 };
-        
+        let limited = GoalOutcome::UsageLimited {
+            tokens_used: 100,
+            token_budget: 1000,
+        };
+
         assert!(format!("{:?}", achieved).contains("Achieved"));
         assert!(format!("{:?}", error).contains("Error"));
         assert!(format!("{:?}", limited).contains("UsageLimited"));
@@ -554,7 +585,7 @@ mod tests {
             usage: None,
             work_summary: None,
         };
-        
+
         assert_eq!(turn_result.tool_calls_summary.len(), 3);
         assert_eq!(turn_result.tool_calls_summary[0].tool_name, "read_file");
         assert_eq!(turn_result.tool_calls_summary[1].tool_name, "grep");
@@ -565,10 +596,10 @@ mod tests {
     fn test_tool_error_case_insensitive_transient_detection() {
         let msg = "RATE LIMIT EXCEEDED";
         assert!(ToolError::is_transient_api_error(msg));
-        
+
         let msg = "Rate Limit Exceeded";
         assert!(ToolError::is_transient_api_error(msg));
-        
+
         let msg = "rate_limit_exceeded";
         assert!(ToolError::is_transient_api_error(msg));
     }
@@ -585,9 +616,13 @@ mod tests {
             "503 Service unavailable",
             "Please try again",
         ];
-        
+
         for pattern in patterns {
-            assert!(ToolError::is_transient_api_error(pattern), "Pattern should be transient: {}", pattern);
+            assert!(
+                ToolError::is_transient_api_error(pattern),
+                "Pattern should be transient: {}",
+                pattern
+            );
         }
     }
 }

@@ -178,7 +178,7 @@ impl SkillUsageStore {
         });
     }
 
-/// Mark a skill as agent-created.
+    /// Mark a skill as agent-created.
     ///
     /// Hermes-aligned provenance guard (matches `skill_usage.py:171-195,
     /// 290-293`): a skill that appears in `.bundled_manifest` or is owned by
@@ -270,7 +270,7 @@ impl SkillUsageStore {
         });
     }
 
-/// Set the pinned status of a skill.
+    /// Set the pinned status of a skill.
     pub fn set_pinned(&self, name: &str, pinned: bool) {
         self.update(name, |u| {
             u.pinned = pinned;
@@ -346,7 +346,7 @@ impl SkillUsageStore {
         self.forget_with_intent(name, None);
     }
 
-/// Remove usage data for a skill, recording where it was absorbed into.
+    /// Remove usage data for a skill, recording where it was absorbed into.
     pub fn forget_with_intent(&self, name: &str, absorbed_into: Option<&str>) {
         match self.load() {
             Ok(mut data) => {
@@ -489,12 +489,11 @@ impl SkillUsageStore {
         if raw.trim().is_empty() {
             return Ok(HashMap::new());
         }
-        serde_json::from_str(&raw).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
-        })
+        serde_json::from_str(&raw)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
     }
 
-/// Save all usage data to the store.
+    /// Save all usage data to the store.
     ///
     /// Uses `atomic_write_text` so the destination is never observed in a
     /// half-written state, even if the process is killed mid-write. The helper
@@ -514,10 +513,11 @@ impl SkillUsageStore {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let json = serde_json::to_string_pretty(data).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
-        })?;
-        with_usage_lock(&self.path, || crate::storage::atomic_write_text(&self.path, &json))
+        let json = serde_json::to_string_pretty(data)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+        with_usage_lock(&self.path, || {
+            crate::storage::atomic_write_text(&self.path, &json)
+        })
     }
 
     /// Save a single entry (load existing, update, save).
@@ -527,7 +527,7 @@ impl SkillUsageStore {
         self.save(&data)
     }
 
-fn update(&self, name: &str, f: impl FnOnce(&mut SkillUsage)) {
+    fn update(&self, name: &str, f: impl FnOnce(&mut SkillUsage)) {
         match self.load() {
             Ok(mut data) => {
                 let entry = data
