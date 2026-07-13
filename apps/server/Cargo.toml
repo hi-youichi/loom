@@ -1,0 +1,47 @@
+[package]
+name = "loom-server"
+version.workspace = true
+edition.workspace = true
+description = "Loom HTTP+SSE server: serves loom as an opencode-compatible kernel (External mode)"
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "loom-server"
+path = "src/main.rs"
+
+[lib]
+name = "loom_server"
+path = "src/lib.rs"
+
+[dependencies]
+agent = { path = "../../agent/agent-core" }
+loom-llm = { path = "../../foundation/llm" }
+tool-core = { path = "../../agent/tool/tool-core" }
+stream-event = { path = "../../foundation/stream-event" }
+config = { path = "../../foundation/config", features = ["tracing-init"] }
+
+axum = { version = "0.7", features = ["macros"] }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
+
+serde = { workspace = true }
+serde_json = "1"
+toml = "0.8"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+parking_lot = "0.12"
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# HTTP middleware (task P0.7)
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["set-header", "trace", "validate-request"] }
+
+# CLI parsing (task P0.1)
+clap = { workspace = true }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+tower-test = "0.4"

@@ -24,6 +24,7 @@ members = [
     "foundation/model-spec-core",
 
     "apps/cli",
+    "apps/server",
 
     "foundation/stream-event",
 
