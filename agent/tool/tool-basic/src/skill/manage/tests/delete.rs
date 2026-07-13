@@ -24,7 +24,8 @@ async fn delete_refuses_non_agent_created() {
     let usage = Arc::new(SkillUsageStore::new(dir.path().join("usage").as_path()));
     let tool = SkillManagerTool::for_background_review(storage, Some(usage));
 
-    let result = tool.call(json!({"action": "delete", "name": "user-skill"}), None)
+    let result = tool
+        .call(json!({"action": "delete", "name": "user-skill"}), None)
         .await
         .unwrap();
     let text = match result {
@@ -45,7 +46,10 @@ async fn delete_absorbed_into_existing() {
     let tool = SkillManagerTool::for_background_review(storage, Some(usage));
 
     let result = tool
-        .call(json!({"action": "delete", "name": "to-merge", "absorbed_into": "umbrella"}), None)
+        .call(
+            json!({"action": "delete", "name": "to-merge", "absorbed_into": "umbrella"}),
+            None,
+        )
         .await
         .unwrap();
     let text = match result {
@@ -62,7 +66,10 @@ async fn delete_absorbed_into_self_fails() {
     let tool = make_tool(storage);
 
     let result = tool
-        .call(json!({"action": "delete", "name": "self", "absorbed_into": "self"}), None)
+        .call(
+            json!({"action": "delete", "name": "self", "absorbed_into": "self"}),
+            None,
+        )
         .await
         .unwrap();
     let text = match result {
@@ -79,7 +86,10 @@ async fn delete_absorbed_into_nonexistent_fails() {
     let tool = make_tool(storage);
 
     let result = tool
-        .call(json!({"action": "delete", "name": "orphan", "absorbed_into": "does-not-exist"}), None)
+        .call(
+            json!({"action": "delete", "name": "orphan", "absorbed_into": "does-not-exist"}),
+            None,
+        )
         .await
         .unwrap();
     let text = match result {

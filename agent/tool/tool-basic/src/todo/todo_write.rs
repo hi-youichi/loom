@@ -9,8 +9,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 use super::todo_file_path;
 use super::TodoInfo;
@@ -132,8 +132,8 @@ impl Tool for TodoWriteTool {
 mod tests {
     use std::sync::Arc;
 
-    use tool_core::{ToolCallContext, ToolSourceError};
     use tool_core::Tool;
+    use tool_core::{ToolCallContext, ToolSourceError};
 
     use super::{TodoWriteTool, TOOL_TODO_WRITE};
 

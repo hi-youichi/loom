@@ -9,8 +9,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::mcp::McpToolSource;
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use tool_core::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
 /// Adapter that makes one MCP tool implement the `Tool` trait.
 ///

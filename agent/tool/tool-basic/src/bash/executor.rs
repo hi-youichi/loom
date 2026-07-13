@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use tracing::{debug, error, info, instrument, warn};
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::shared::canceller::setup_cancellation;
 use crate::shared::shell_output::{
-    ShellOutput, create_output_file, format_shell_output, generate_run_id, make_relative,
-    shell_output_dir,
+    create_output_file, format_shell_output, generate_run_id, make_relative, shell_output_dir,
+    ShellOutput,
 };
 use tokio::sync::watch;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 const DEFAULT_TIMEOUT_MS: u64 = 120_000;
 
@@ -125,12 +125,10 @@ async fn run_spawned_shell_command(
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     let shell_dir = shell_output_dir(&base_dir);
-    tokio::fs::create_dir_all(&shell_dir)
-        .await
-        .map_err(|e| {
-            error!(error = %e, path = %shell_dir.display(), "failed to create shell output directory");
-            ToolSourceError::Transport(format!("failed to create output directory: {}", e))
-        })?;
+    tokio::fs::create_dir_all(&shell_dir).await.map_err(|e| {
+        error!(error = %e, path = %shell_dir.display(), "failed to create shell output directory");
+        ToolSourceError::Transport(format!("failed to create output directory: {}", e))
+    })?;
 
     let run_id = generate_run_id();
     let stdout_path = shell_dir.join(format!("{}.stdout", run_id));
@@ -224,8 +222,12 @@ async fn run_spawned_shell_command(
         "child process exited"
     );
 
-    let stdout = tokio::fs::read_to_string(&stdout_path).await.unwrap_or_default();
-    let stderr = tokio::fs::read_to_string(&stderr_path).await.unwrap_or_default();
+    let stdout = tokio::fs::read_to_string(&stdout_path)
+        .await
+        .unwrap_or_default();
+    let stderr = tokio::fs::read_to_string(&stderr_path)
+        .await
+        .unwrap_or_default();
 
     let _ = tokio::fs::remove_file(&stdout_path).await;
     let _ = tokio::fs::remove_file(&stderr_path).await;

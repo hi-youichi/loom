@@ -26,11 +26,12 @@ pub fn make_skill_md(name: &str, description: &str, body: &str) -> String {
 /// Save a skill directly into storage (bypassing the tool).
 /// Reduces the `SkillContent { ... }` boilerplate repeated in ~15 tests.
 pub fn save_skill(storage: &SkillStorageRegistry, name: &str, description: &str, body: &str) {
-    let (_, _, _, parsed_body) = validate_frontmatter(&make_skill_md(name, description, body)).unwrap();
+    let (_, _, _, parsed_body) =
+        validate_frontmatter(&make_skill_md(name, description, body)).unwrap();
     storage
         .save(
             name,
-&SkillContent {
+            &SkillContent {
                 name: name.into(),
                 description: description.into(),
                 triggers: vec![],
@@ -53,8 +54,8 @@ pub fn json_response(result: ToolCallContent) -> Value {
     serde_json::from_str(&text).unwrap_or_else(|e| panic!("invalid JSON '{}': {}", text, e))
 }
 
-mod create;
 mod coverage;
+mod create;
 mod delete;
 mod edit_patch;
 mod files;

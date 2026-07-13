@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::json;
 use task_core::{parse_status, CreateParams, TaskDb};
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool};
+use tool_core::{Tool, ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
 pub use tool_core::tool_name::TOOL_TASK_CREATE;
 
@@ -58,8 +58,7 @@ impl Tool for TaskCreateTool {
             .get("status")
             .and_then(|v| v.as_str())
             .unwrap_or("pending");
-        let status = parse_status(status_str)
-            .map_err(ToolSourceError::InvalidInput)?;
+        let status = parse_status(status_str).map_err(ToolSourceError::InvalidInput)?;
 
         let params = CreateParams {
             name,
@@ -80,7 +79,10 @@ impl Tool for TaskCreateTool {
             status,
         };
 
-        let task = self.db.create_task(&params).await
+        let task = self
+            .db
+            .create_task(&params)
+            .await
             .map_err(|e| ToolSourceError::ToolError(e.to_string()))?;
         let out = serde_json::to_string_pretty(&task)
             .map_err(|e| ToolSourceError::ToolError(e.to_string()))?;

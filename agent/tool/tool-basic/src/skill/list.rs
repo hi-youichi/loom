@@ -125,13 +125,12 @@ impl Tool for SkillListTool {
             ));
         }
 
-        let scanned = skill::discovery::scan_skills_dir_recursive(
-            &skills_dir,
-            skill::SkillSource::Project,
-        );
+        let scanned =
+            skill::discovery::scan_skills_dir_recursive(&skills_dir, skill::SkillSource::Project);
 
         let mut skills = Vec::new();
-        let mut categories_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut categories_set: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
         for entry in &scanned {
             if let Some(ref cf) = category_filter {

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::json;
 use task_core::{ShowError, TaskDb};
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool};
+use tool_core::{Tool, ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
 pub use tool_core::tool_name::TOOL_TASK_DELETE;
 

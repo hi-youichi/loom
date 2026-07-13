@@ -55,7 +55,10 @@ pub fn format_terminal_timed_out_output(terminal_id: &str, output: &str) -> Stri
     let output_size = format_size(output.len());
     let mut text = format!("Command timed out (terminal: {})\n", terminal_id);
     if !output.is_empty() {
-        text.push_str(&format!("\n--- Partial Output ({}) ---\n{}", output_size, output));
+        text.push_str(&format!(
+            "\n--- Partial Output ({}) ---\n{}",
+            output_size, output
+        ));
     }
     text.push_str(&format!(
         "\nUse terminal operations to check on this process (terminal ID: {}).",
@@ -100,7 +103,5 @@ pub fn generate_run_id() -> String {
 }
 
 pub fn make_relative(path: &Path, base_dir: &Path) -> PathBuf {
-    path.strip_prefix(base_dir)
-        .unwrap_or(path)
-        .to_path_buf()
+    path.strip_prefix(base_dir).unwrap_or(path).to_path_buf()
 }

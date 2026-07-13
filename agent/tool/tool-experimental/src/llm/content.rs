@@ -12,8 +12,8 @@
 use std::path::{Path, PathBuf};
 
 use base64::Engine;
-use serde_json::Value;
 use loom_llm::ToolSourceError;
+use serde_json::Value;
 use tool_basic::file::resolve_path_under;
 
 use loom_llm::message::ContentPart;
@@ -101,11 +101,7 @@ fn resolve_file_path(
 /// Read a file and base64-encode its contents, enforcing `max_file_size`.
 fn read_and_base64_encode(path: &Path, max_file_size: usize) -> Result<String, ToolSourceError> {
     let bytes = std::fs::read(path).map_err(|e| {
-        ToolSourceError::InvalidInput(format!(
-            "failed to read {}: {}",
-            path.display(),
-            e
-        ))
+        ToolSourceError::InvalidInput(format!("failed to read {}: {}", path.display(), e))
     })?;
     if bytes.len() > max_file_size {
         return Err(ToolSourceError::InvalidInput(format!(
@@ -161,9 +157,9 @@ pub(crate) fn resolve_content_part(
 
             // data: URI → ImageBase64; HTTP URL → ImageUrl
             if let Some(rest) = url.strip_prefix("data:") {
-                let (header, data) = rest.split_once(',').ok_or_else(|| {
-                    ToolSourceError::InvalidInput("data URI 格式错误".into())
-                })?;
+                let (header, data) = rest
+                    .split_once(',')
+                    .ok_or_else(|| ToolSourceError::InvalidInput("data URI 格式错误".into()))?;
                 let media_type = header.split(';').next().unwrap_or("image/png");
                 Ok(ContentPart::ImageBase64 {
                     media_type: media_type.to_string(),

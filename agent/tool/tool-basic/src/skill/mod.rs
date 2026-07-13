@@ -100,7 +100,10 @@ pub fn make_skill_tools_with_registry(
         ctx = ctx.with_store(store);
     }
     let ctx = Arc::new(ctx);
-    (SkillListTool::new(ctx.clone()), SkillViewTool::new(ctx.clone()))
+    (
+        SkillListTool::new(ctx.clone()),
+        SkillViewTool::new(ctx.clone()),
+    )
 }
 
 /// Build skill tools from an explicit skills directory path.
@@ -117,7 +120,10 @@ pub fn make_skill_tools_with_skills_dir(
         ctx = ctx.with_store(store);
     }
     let ctx = Arc::new(ctx);
-    (SkillListTool::new(ctx.clone()), SkillViewTool::new(ctx.clone()))
+    (
+        SkillListTool::new(ctx.clone()),
+        SkillViewTool::new(ctx.clone()),
+    )
 }
 
 pub fn make_skill_tools_with_folder(
@@ -129,5 +135,8 @@ pub fn make_skill_tools_with_folder(
         ctx = ctx.with_store(store);
     }
     let ctx = Arc::new(ctx);
-    (SkillListTool::new(ctx.clone()), SkillViewTool::new(ctx.clone()))
+    (
+        SkillListTool::new(ctx.clone()),
+        SkillViewTool::new(ctx.clone()),
+    )
 }

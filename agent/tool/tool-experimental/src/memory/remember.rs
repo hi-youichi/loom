@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use checkpoint::{Namespace, Store};
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, Tool};
+use tool_core::{Tool, ToolCallContent, ToolCallContext, ToolSourceError};
 
 /// Tool name for the remember operation.
 pub use tool_core::tool_name::TOOL_REMEMBER;

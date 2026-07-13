@@ -90,8 +90,7 @@ impl SkillViewTool {
                     .list()
                     .iter()
                     .filter(|e| {
-                        e.metadata.name == short_name
-                            && e.base_path.to_string_lossy().contains(ns)
+                        e.metadata.name == short_name && e.base_path.to_string_lossy().contains(ns)
                     })
                     .collect()
             } else {
@@ -203,7 +202,7 @@ impl SkillViewTool {
             ReadinessStatus::Available => String::new(),
         };
 
-if let Some(ref store) = self.ctx.usage_store {
+        if let Some(ref store) = self.ctx.usage_store {
             // Hermes `skill_usage.py:408-422`: viewing a skill bumps
             // `view_count` only. `bump_use` must happen at the actual
             // skill-into-prompt injection site, NOT here. The previous
@@ -226,9 +225,9 @@ if let Some(ref store) = self.ctx.usage_store {
     ) -> Result<ToolCallContent, ToolSourceError> {
         let target = skill_dir.join(file_path);
 
-        let canonical_skill = skill_dir.canonicalize().map_err(|e| {
-            ToolSourceError::InvalidInput(format!("invalid skill dir: {}", e))
-        })?;
+        let canonical_skill = skill_dir
+            .canonicalize()
+            .map_err(|e| ToolSourceError::InvalidInput(format!("invalid skill dir: {}", e)))?;
         let canonical_target = target.canonicalize().map_err(|e| {
             ToolSourceError::InvalidInput(format!(
                 "file '{}' not found in skill '{}': {}",
@@ -253,7 +252,7 @@ if let Some(ref store) = self.ctx.usage_store {
         let content = std::fs::read_to_string(&canonical_target)
             .map_err(|e| ToolSourceError::Transport(format!("read {}: {}", file_path, e)))?;
 
-if let Some(ref store) = self.ctx.usage_store {
+        if let Some(ref store) = self.ctx.usage_store {
             // See note above: view bumps only, use bumps at injection site.
             store.bump_view(skill_name);
         }
@@ -281,10 +280,8 @@ if let Some(ref store) = self.ctx.usage_store {
         }
 
         let mut temp_registry = SkillRegistry::empty();
-        temp_registry.skills = skill::discovery::scan_skills_dir_recursive(
-            &skills_dir,
-            skill::SkillSource::Project,
-        );
+        temp_registry.skills =
+            skill::discovery::scan_skills_dir_recursive(&skills_dir, skill::SkillSource::Project);
 
         self.view_from_registry(&temp_registry, name, file_path)
     }

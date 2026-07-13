@@ -9,8 +9,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 use super::path::resolve_path_under;
 
@@ -114,6 +114,10 @@ impl Tool for WriteFileTool {
         })?;
         std::io::Write::write_all(&mut f, content.as_bytes())
             .map_err(|e| ToolSourceError::Transport(format!("failed to write file: {}", e)))?;
-        Ok(ToolCallContent::diff(path_param.to_string(), old_content, content.to_string()))
+        Ok(ToolCallContent::diff(
+            path_param.to_string(),
+            old_content,
+            content.to_string(),
+        ))
     }
 }

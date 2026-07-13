@@ -7,8 +7,8 @@ use async_trait::async_trait;
 use chrono::{FixedOffset, Local, TimeZone, Utc};
 use serde_json::json;
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use tool_core::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
 pub use tool_core::tool_name::TOOL_DATE;
 
@@ -86,7 +86,10 @@ impl Tool for DateTool {
                         tz, e
                     ))
                 })?;
-                offset.from_utc_datetime(&Utc::now().naive_utc()).format(fmt).to_string()
+                offset
+                    .from_utc_datetime(&Utc::now().naive_utc())
+                    .format(fmt)
+                    .to_string()
             }
         } else {
             Local::now().format(fmt).to_string()
@@ -120,13 +123,20 @@ mod tests {
         let result = tool.call(json!({}), None).await.unwrap();
         let text = result.as_text().unwrap();
         // Should look like "2026-05-26T21:30:00+09:00"
-        assert!(text.contains('T'), "expected ISO 8601 format, got: {}", text);
+        assert!(
+            text.contains('T'),
+            "expected ISO 8601 format, got: {}",
+            text
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn date_tool_custom_format() {
         let tool = DateTool::new();
-        let result = tool.call(json!({ "format": "%Y-%m-%d" }), None).await.unwrap();
+        let result = tool
+            .call(json!({ "format": "%Y-%m-%d" }), None)
+            .await
+            .unwrap();
         let text = result.as_text().unwrap();
         // Should be like "2026-05-26" (no 'T')
         assert!(!text.contains('T'), "expected date only, got: {}", text);
@@ -136,11 +146,18 @@ mod tests {
     async fn date_tool_utc_timezone() {
         let tool = DateTool::new();
         let result = tool
-            .call(json!({ "timezone": "UTC", "format": "%Y-%m-%dT%H:%M:%S%:z" }), None)
+            .call(
+                json!({ "timezone": "UTC", "format": "%Y-%m-%dT%H:%M:%S%:z" }),
+                None,
+            )
             .await
             .unwrap();
         let text = result.as_text().unwrap();
-        assert!(text.ends_with("+00:00"), "expected UTC offset, got: {}", text);
+        assert!(
+            text.ends_with("+00:00"),
+            "expected UTC offset, got: {}",
+            text
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -154,10 +171,17 @@ mod tests {
     async fn date_tool_offset_timezone() {
         let tool = DateTool::new();
         let result = tool
-            .call(json!({ "timezone": "+09:00", "format": "%Y-%m-%dT%H:%M:%S%:z" }), None)
+            .call(
+                json!({ "timezone": "+09:00", "format": "%Y-%m-%dT%H:%M:%S%:z" }),
+                None,
+            )
             .await
             .unwrap();
         let text = result.as_text().unwrap();
-        assert!(text.contains('+'), "expected offset in output, got: {}", text);
+        assert!(
+            text.contains('+'),
+            "expected offset in output, got: {}",
+            text
+        );
     }
 }

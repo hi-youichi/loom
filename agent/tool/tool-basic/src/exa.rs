@@ -4,8 +4,10 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use loom_util::text::truncate::truncate;
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolOutputHint, ToolOutputStrategy};
 use tool_core::Tool;
+use tool_core::{
+    ToolCallContent, ToolCallContext, ToolOutputHint, ToolOutputStrategy, ToolSourceError,
+};
 
 const EXA_SEARCH_URL: &str = "https://api.exa.ai/search";
 const NUM_RESULTS_MAX: u64 = 100;

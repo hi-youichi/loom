@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::json;
 use task_core::{parse_status, ListParams, TaskDb};
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool};
+use tool_core::{Tool, ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
 pub use tool_core::tool_name::TOOL_TASK_LIST;
 
@@ -58,7 +58,10 @@ impl Tool for TaskListTool {
 
         let params = ListParams {
             status,
-            assignee: args.get("assignee").and_then(|v| v.as_str()).map(String::from),
+            assignee: args
+                .get("assignee")
+                .and_then(|v| v.as_str())
+                .map(String::from),
             name: args.get("name").and_then(|v| v.as_str()).map(String::from),
             sort_by: args
                 .get("sort_by")
@@ -70,17 +73,14 @@ impl Tool for TaskListTool {
                 .and_then(|v| v.as_str())
                 .unwrap_or("desc")
                 .to_string(),
-            limit: args
-                .get("limit")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(20) as u32,
-            page: args
-                .get("page")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(1) as u32,
+            limit: args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as u32,
+            page: args.get("page").and_then(|v| v.as_u64()).unwrap_or(1) as u32,
         };
 
-        let list = self.db.list_tasks(&params).await
+        let list = self
+            .db
+            .list_tasks(&params)
+            .await
             .map_err(|e| ToolSourceError::ToolError(e.to_string()))?;
         let out = serde_json::to_string_pretty(&list)
             .map_err(|e| ToolSourceError::ToolError(e.to_string()))?;

@@ -1,26 +1,23 @@
-pub mod file_memory;
-pub mod memory;
 pub mod conversation;
-pub mod task;
-pub mod llm;
+pub mod file_memory;
 mod help;
+pub mod llm;
+pub mod memory;
+pub mod task;
 
-pub use file_memory::{MemoryTool, TOOL_MEMORY};
-pub use memory::*;
 pub use conversation::*;
-pub use task::*;
+pub use file_memory::{MemoryTool, TOOL_MEMORY};
 pub use help::{HelpTool, TOOL_HELP};
-pub use llm::{LlmTool, LlmToolConfig, LlmToolData, LlmProviderData};
+pub use llm::{LlmProviderData, LlmTool, LlmToolConfig, LlmToolData};
+pub use memory::*;
+pub use task::*;
 
-use std::sync::Arc;
-use tool_core::ToolRegistryLocked;
 use memory_v2::MemoryStore;
+use std::sync::Arc;
 use task_core::TaskDb;
+use tool_core::ToolRegistryLocked;
 
-pub async fn register_file_memory_tool(
-    registry: &ToolRegistryLocked,
-    store: Arc<MemoryStore>,
-) {
+pub async fn register_file_memory_tool(registry: &ToolRegistryLocked, store: Arc<MemoryStore>) {
     registry
         .register_async(Box::new(MemoryTool::new(store)))
         .await;
@@ -45,9 +42,19 @@ pub async fn register_file_memory_tool_guarded(
 }
 
 pub async fn register_task_tools(registry: &ToolRegistryLocked, db: Arc<TaskDb>) {
-    registry.register_async(Box::new(task::TaskCreateTool::new(db.clone()))).await;
-    registry.register_async(Box::new(task::TaskShowTool::new(db.clone()))).await;
-    registry.register_async(Box::new(task::TaskListTool::new(db.clone()))).await;
-    registry.register_async(Box::new(task::TaskUpdateTool::new(db.clone()))).await;
-    registry.register_async(Box::new(task::TaskDeleteTool::new(db))).await;
+    registry
+        .register_async(Box::new(task::TaskCreateTool::new(db.clone())))
+        .await;
+    registry
+        .register_async(Box::new(task::TaskShowTool::new(db.clone())))
+        .await;
+    registry
+        .register_async(Box::new(task::TaskListTool::new(db.clone())))
+        .await;
+    registry
+        .register_async(Box::new(task::TaskUpdateTool::new(db.clone())))
+        .await;
+    registry
+        .register_async(Box::new(task::TaskDeleteTool::new(db)))
+        .await;
 }

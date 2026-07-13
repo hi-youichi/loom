@@ -5,7 +5,7 @@
 
 use std::process::Stdio;
 
-use rmcp::{ServiceExt, transport::TokioChildProcess};
+use rmcp::{transport::TokioChildProcess, ServiceExt};
 use serde_json::Value;
 use tokio::process::Command;
 
@@ -60,12 +60,12 @@ impl McpSession {
             cmd.stderr(Stdio::null());
         }
 
-        let transport = TokioChildProcess::new(cmd)
-            .map_err(|e| McpSessionError::Transport(e.to_string()))?;
-        let client = ()
-            .serve(transport)
-            .await
-            .map_err(|e| McpSessionError::Initialize(e.to_string()))?;
+        let transport =
+            TokioChildProcess::new(cmd).map_err(|e| McpSessionError::Transport(e.to_string()))?;
+        let client =
+            ().serve(transport)
+                .await
+                .map_err(|e| McpSessionError::Initialize(e.to_string()))?;
         Ok(Self { client })
     }
 

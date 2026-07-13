@@ -7,8 +7,8 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 use super::{get_current_chat_id, get_telegram_api};
 

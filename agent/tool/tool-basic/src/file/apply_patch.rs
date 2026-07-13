@@ -7,8 +7,8 @@ use std::path::Path;
 use async_trait::async_trait;
 use serde_json::json;
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 use super::edit_file::replace as edit_replace;
 use super::path::resolve_path_under;

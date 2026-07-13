@@ -3,8 +3,9 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use loom_llm::Message;
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, Tool, ToolOutputHint, ToolOutputStrategy};
-
+use tool_core::{
+    Tool, ToolCallContent, ToolCallContext, ToolOutputHint, ToolOutputStrategy, ToolSourceError,
+};
 
 /// Tool name for the get_recent_messages operation.
 pub const TOOL_GET_RECENT_MESSAGES: &str = "get_recent_messages";

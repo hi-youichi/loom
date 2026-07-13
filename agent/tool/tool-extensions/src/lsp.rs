@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use lsp::LspManager;
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 pub use tool_core::tool_name::TOOL_LSP;
 
@@ -26,7 +26,8 @@ impl LspTool {
 
 impl Default for LspTool {
     fn default() -> Self {
-        let manager = std::sync::Arc::new(tokio::sync::RwLock::new(LspManager::from_configs(vec![])));
+        let manager =
+            std::sync::Arc::new(tokio::sync::RwLock::new(LspManager::from_configs(vec![])));
         Self { manager }
     }
 }

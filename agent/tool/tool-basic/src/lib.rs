@@ -1,29 +1,31 @@
 pub mod bash;
-pub mod powershell;
-pub mod file;
-pub mod web;
-pub mod todo;
-pub mod shared;
 pub mod batch;
 pub mod date;
+pub mod exa;
+pub mod file;
 pub mod http_retry;
 pub mod mcp;
 pub mod mcp_adapter;
+pub mod powershell;
+pub mod shared;
 pub mod skill;
-pub mod exa;
+pub mod todo;
+pub mod web;
 
 // Re-export tools
 pub use bash::{BashTool, CommandExecutor, LocalCommandExecutor, TOOL_BASH};
-pub use powershell::{LocalPowerShellExecutor, PowerShellExecutor, PowerShellTool, TOOL_POWERSHELL};
-pub use file::*;
-pub use web::WebFetcherTool;
-pub use todo::*;
-pub use shared::{canceller::*, shell_output::*};
 pub use batch::{BatchTool, TOOL_BATCH};
 pub use date::{DateTool, TOOL_DATE};
+pub use file::*;
 pub use mcp::{McpSession, McpSessionError, McpToolSource};
 pub use mcp_adapter::{register_mcp_tools, register_mcp_tools_with_specs, McpToolAdapter};
+pub use powershell::{
+    LocalPowerShellExecutor, PowerShellExecutor, PowerShellTool, TOOL_POWERSHELL,
+};
+pub use shared::{canceller::*, shell_output::*};
 pub use skill::{SkillListTool, SkillManagerTool, SkillViewTool, TOOL_SKILL_MANAGE};
+pub use todo::*;
+pub use web::WebFetcherTool;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -74,7 +76,8 @@ pub fn register_file_tools(
         aggregate.register_sync(Box::new(list_tool));
         aggregate.register_sync(Box::new(view_tool));
     } else if let Some(usage) = _skill_usage {
-        let (list_tool, view_tool) = skill::make_skill_tools_with_folder(working_folder.clone(), Some(usage));
+        let (list_tool, view_tool) =
+            skill::make_skill_tools_with_folder(working_folder.clone(), Some(usage));
         aggregate.register_sync(Box::new(list_tool));
         aggregate.register_sync(Box::new(view_tool));
     }
@@ -96,7 +99,9 @@ pub fn register_file_tools(
 }
 
 pub async fn register_web_tools(registry: &ToolRegistryLocked) {
-    registry.register_async(Box::new(WebFetcherTool::new())).await;
+    registry
+        .register_async(Box::new(WebFetcherTool::new()))
+        .await;
 }
 
 #[cfg(test)]
