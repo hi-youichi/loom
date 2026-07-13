@@ -9,6 +9,8 @@ use crate::args::{
 };
 use crate::mcp_manager::{AddMcpArgs, EditMcpArgs, McpManager, ServerDetail, ServerInfo};
 use crate::run_flow::build_run_options;
+use std::path::Path;
+
 use crate::session::{SessionArgs, SessionCommand, SessionManager};
 use cli::profile_convert::ExportFormat;
 
@@ -396,6 +398,8 @@ fn handle_agent_export(export_args: &ExportArgs) -> Result<(), Box<dyn std::erro
 pub(crate) fn handle_skills_command(
     skills_args: &SkillsArgs,
     json: bool,
+    pretty: bool,
+    output_file: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use cli::run::skill_registry::{Lifecycle, SkillContent, SkillRegistry, Source};
 
@@ -439,6 +443,22 @@ pub(crate) fn handle_skills_command(
                 println!();
                 println!("{}", skill.body);
             }
+        }
+        SkillsCommand::Inspect {
+            name,
+            all,
+            read_file,
+            source,
+        } => {
+            return crate::skill_inspect::run(
+                name,
+                *all,
+                read_file.as_deref(),
+                source.as_ref(),
+                json,
+                pretty,
+                output_file,
+            );
         }
         SkillsCommand::Create {
             name,

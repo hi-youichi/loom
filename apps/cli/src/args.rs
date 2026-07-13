@@ -71,15 +71,15 @@ pub(crate) struct Args {
     pub(crate) interactive: bool,
 
     /// Output all data as JSON (stream events + reply for agent run; JSON array for tool list; JSON for tool show)
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub(crate) json: bool,
 
     /// When using --json, write output to this file instead of stdout
-    #[arg(long, value_name = "PATH")]
+    #[arg(long, global = true, value_name = "PATH")]
     pub(crate) file: Option<PathBuf>,
 
     /// When using --json, pretty-print (multi-line). Default: compact, one line per event
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub(crate) pretty: bool,
 
     /// Print a timestamp to stderr before each reply (local time, e.g. 2025-03-15 10:30:00)
@@ -471,12 +471,51 @@ pub(crate) struct SkillsArgs {
     pub(crate) command: SkillsCommand,
 }
 
+/// Filter by skill source (e.g. Project, User, Builtin).
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+#[clap(rename_all = "PascalCase")]
+pub enum SkillSourceFilter {
+    Project,
+    Profile,
+    User,
+    Agent,
+    Data,
+    Builtin,
+}
+
+impl SkillSourceFilter {
+    pub fn label(&self) -> &'static str {
+        match self {
+            SkillSourceFilter::Project => "Project",
+            SkillSourceFilter::Profile => "Profile",
+            SkillSourceFilter::User => "User",
+            SkillSourceFilter::Agent => "Agent",
+            SkillSourceFilter::Data => "Data",
+            SkillSourceFilter::Builtin => "Builtin",
+        }
+    }
+}
+
 #[derive(Subcommand, Debug, Clone)]
 pub(crate) enum SkillsCommand {
     /// List all skills
     List,
     /// Show skill details
     Show { name: String },
+    /// Inspect a single skill in depth (agent-discovery perspective)
+    Inspect {
+        /// Skill name to inspect
+        name: String,
+        /// Show all fields and full body (no truncation)
+        #[arg(long)]
+        all: bool,
+        /// Read a sub-file from the skill directory (e.g. references/api.md)
+        #[arg(long, value_name = "PATH")]
+        read_file: Option<PathBuf>,
+        /// Filter to a specific skill source when name is ambiguous
+        #[arg(long, value_name = "SOURCE", value_enum)]
+        source: Option<SkillSourceFilter>,
+    },
     /// Create a new skill
     Create {
         name: String,
