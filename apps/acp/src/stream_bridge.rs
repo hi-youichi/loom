@@ -584,7 +584,7 @@ impl SessionNotifier {
 
     pub async fn send_event(&self, event: &TypedAnyStreamEvent) {
         let mut updates = loom_event_to_updates(event);
-        
+
         // 处理高频更新
         if let Some(size) = self.context_window_size {
             if let Some(usage_delta) = extract_usage_delta(event) {
@@ -600,7 +600,8 @@ impl SessionNotifier {
                         update_info.used,
                         update_info.size,
                         update_info.increment,
-                    ).await;
+                    )
+                    .await;
                 } else {
                     // 降级到原始逻辑
                     if let Some(used) = extract_usage_tokens(event) {
@@ -610,7 +611,7 @@ impl SessionNotifier {
                 }
             }
         }
-        
+
         for u in updates {
             let u = self.inject_message_id(u);
             if let Some(notif) = stream_update_to_session_notification(&self.session_id, &u) {
@@ -947,7 +948,10 @@ impl SessionNotifier {
     ) {
         let mut tracker = self.high_freq_tracker.lock().unwrap();
         *tracker = Some(HighFreqUsageTracker::with_config(
-            base_used, size, min_increment, min_interval_ms
+            base_used,
+            size,
+            min_increment,
+            min_interval_ms,
         ));
     }
 
@@ -960,7 +964,7 @@ impl SessionNotifier {
     ) {
         let mut tracker = self.high_freq_tracker.lock().unwrap();
         *tracker = Some(HighFreqUsageTracker::with_custom_thresholds(
-            base_used, size, thresholds
+            base_used, size, thresholds,
         ));
     }
 
@@ -970,21 +974,18 @@ impl SessionNotifier {
         let update_opt = {
             let mut tracker_opt = self.high_freq_tracker.lock().unwrap();
             if let Some(tracker) = tracker_opt.as_mut() {
-                tracker.force_update().map(|info| {
-                    (info.used, info.size, info.increment)
-                })
+                tracker
+                    .force_update()
+                    .map(|info| (info.used, info.size, info.increment))
             } else {
                 None
             }
         };
-        
+
         // Send update outside of lock scope
         if let Some(update_data) = update_opt {
-            self.send_usage_update(
-                update_data.0,
-                update_data.1,
-                update_data.2,
-            ).await;
+            self.send_usage_update(update_data.0, update_data.1, update_data.2)
+                .await;
         }
     }
 
@@ -992,7 +993,11 @@ impl SessionNotifier {
     pub fn get_high_freq_tracker_status(&self) -> Option<(u64, u64, f64)> {
         let tracker = self.high_freq_tracker.lock().unwrap();
         tracker.as_ref().map(|t| {
-            (t.get_current_usage(), t.get_size(), t.get_usage_percentage())
+            (
+                t.get_current_usage(),
+                t.get_size(),
+                t.get_usage_percentage(),
+            )
         })
     }
 
@@ -1003,15 +1008,21 @@ impl SessionNotifier {
 
         // Add high-frequency tracking metadata
         extended_meta.insert("increment".to_string(), serde_json::json!(increment));
-        extended_meta.insert("timestamp".to_string(), 
+        extended_meta.insert(
+            "timestamp".to_string(),
             serde_json::json!(std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_millis()));
+                .as_millis()),
+        );
         extended_meta.insert("precision".to_string(), serde_json::json!("incremental"));
         extended_meta.insert("source".to_string(), serde_json::json!("high_freq_tracker"));
 
-        let update = StreamUpdate::UsageUpdate { used, size, meta: Some(extended_meta) };
+        let update = StreamUpdate::UsageUpdate {
+            used,
+            size,
+            meta: Some(extended_meta),
+        };
         if let Some(notif) = stream_update_to_session_notification(&self.session_id, &update) {
             if let Err(e) = self.tx.send(notif).await {
                 tracing::error!(session_id = %self.session_id, error = %e,
@@ -1047,9 +1058,9 @@ where
     S: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
     match ev {
-        StreamEvent::Usage { 
-            prompt_tokens: _, 
-            completion_tokens: _, 
+        StreamEvent::Usage {
+            prompt_tokens: _,
+            completion_tokens: _,
             total_tokens,
             cached_tokens,
             ..
@@ -1057,12 +1068,10 @@ where
             let total = *total_tokens as u64;
             let cached = cached_tokens.unwrap_or(0) as u64;
             Some(total.saturating_sub(cached))
-        },
+        }
         _ => None,
     }
 }
-
-
 
 fn extract_usage_inner<S>(ev: &StreamEvent<S>) -> Option<u32>
 where

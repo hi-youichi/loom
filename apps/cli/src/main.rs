@@ -13,8 +13,8 @@ mod logging;
 mod mcp_manager;
 mod output;
 mod repl;
-mod review_history;
 mod review_cmd;
+mod review_history;
 mod review_skill_cmd;
 mod run_flow;
 mod session;
@@ -24,11 +24,9 @@ mod subcommands;
 mod task_cmd;
 mod task_db;
 
-
 pub(crate) use args::Command;
 
 use cli::display;
-
 
 use std::sync::Arc;
 
@@ -38,17 +36,16 @@ use tokio::sync::Notify;
 use args::{AcpCmd, Args, Command as Cmd, GotArgs};
 use bootstrap::{init_logging, preserve_shell_env, print_config_report};
 use display_limits::max_reply_len;
-use tool_core::active_operation::RunCancellation;
 use run_flow::{
     build_run_options, output_config, resolve_user_message, run_interactive_mode,
     run_single_turn_mode,
 };
-use subcommands::{
-    handle_agent_command, handle_curator_command, handle_mcp_command,
-    handle_memory_command, handle_models_command, handle_session_command, handle_skills_command,
-    handle_tool_command,
-};
 use skill_usage_cmd::handle_skill_usage_command;
+use subcommands::{
+    handle_agent_command, handle_curator_command, handle_mcp_command, handle_memory_command,
+    handle_models_command, handle_session_command, handle_skills_command, handle_tool_command,
+};
+use tool_core::active_operation::RunCancellation;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -195,7 +192,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Ok(());
     }
-
 
     let message = resolve_user_message(&args);
     if !args.interactive && message.is_none() {

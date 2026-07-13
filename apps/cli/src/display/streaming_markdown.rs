@@ -5,9 +5,9 @@
 //! markdown constructs (bold, italic, code blocks, etc.) are split across
 //! multiple LLM stream chunks.
 
-use stream_event::{MessageChunk, MessageChunkKind};
 use super::markdown::*;
 use std::io::Write;
+use stream_event::{MessageChunk, MessageChunkKind};
 
 /// Stateful line-buffering markdown renderer for streaming output.
 ///

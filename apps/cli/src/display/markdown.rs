@@ -131,8 +131,8 @@ pub fn render_inline(input: &str) -> String {
         }
 
         // Bold: **text** or __text__
-        if i + 1 < chars.len() && (chars[i] == '*' && chars[i + 1] == '*'
-            || chars[i] == '_' && chars[i + 1] == '_')
+        if i + 1 < chars.len()
+            && (chars[i] == '*' && chars[i + 1] == '*' || chars[i] == '_' && chars[i + 1] == '_')
         {
             let marker = chars[i];
             let start = i + 2;
@@ -145,8 +145,7 @@ pub fn render_inline(input: &str) -> String {
         }
 
         // Italic: *text* or _text_
-        if (chars[i] == '*' || chars[i] == '_')
-            && (i + 1 < chars.len() && chars[i + 1] != chars[i])
+        if (chars[i] == '*' || chars[i] == '_') && (i + 1 < chars.len() && chars[i + 1] != chars[i])
         {
             let marker = chars[i];
             let start = i + 1;
@@ -305,7 +304,14 @@ pub(crate) fn format_code_block_start(lang: &str) -> String {
             format!("\x1b[2m─── {} ────────────\x1b[0m", lang)
         }
     } else {
-        format!("---{}---", if lang.is_empty() { String::new() } else { format!(" {} ", lang) })
+        format!(
+            "---{}---",
+            if lang.is_empty() {
+                String::new()
+            } else {
+                format!(" {} ", lang)
+            }
+        )
     }
 }
 

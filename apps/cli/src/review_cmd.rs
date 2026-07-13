@@ -3,9 +3,7 @@ use crate::review_history::{ReviewHistory, ReviewRecord};
 use crate::review_skill_cmd::build_review_react_config;
 use crate::session::SessionManager;
 use chrono::{Duration, Utc};
-use loom_curator::{
-    run_review, ReviewConfig as BgReviewConfig, ReviewOutcome, TokenUsageSummary,
-};
+use loom_curator::{run_review, ReviewConfig as BgReviewConfig, ReviewOutcome, TokenUsageSummary};
 use std::time::Instant;
 
 pub(crate) async fn handle_review_command(
@@ -189,9 +187,7 @@ async fn do_review_batch(
             .filter(|s| !reviewed.contains(&s.session_id))
             .collect()
     } else {
-        return Err(
-            "Specify --recent <Nd>, --all-unreviewed, or --query <text>".into(),
-        );
+        return Err("Specify --recent <Nd>, --all-unreviewed, or --query <text>".into());
     };
 
     if sessions.is_empty() {
@@ -255,14 +251,7 @@ async fn do_review_batch(
         };
 
         let single_start = Instant::now();
-        match do_review_single(
-            &session.session_id,
-            "batch",
-            &single_args,
-            true,
-        )
-        .await
-        {
+        match do_review_single(&session.session_id, "batch", &single_args, true).await {
             Ok(()) => {
                 eprintln!(
                     "OK ({}s)",
@@ -336,10 +325,7 @@ fn show_history(
     Ok(())
 }
 
-fn show_review(
-    session_id: &str,
-    json: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn show_review(session_id: &str, json: bool) -> Result<(), Box<dyn std::error::Error>> {
     let loom_home = config::home::loom_home();
     let history = ReviewHistory::new(&loom_home);
     match history.find_by_session(session_id)? {
@@ -403,10 +389,7 @@ fn show_pending(limit: usize, json: bool) -> Result<(), Box<dyn std::error::Erro
                 .last_updated
                 .map(|t| t.format("%Y-%m-%d %H:%M").to_string())
                 .unwrap_or_default();
-            println!(
-                "  {} | {} | steps:{}",
-                short_id, time, s.latest_step
-            );
+            println!("  {} | {} | steps:{}", short_id, time, s.latest_step);
         }
     }
     Ok(())
@@ -418,12 +401,8 @@ fn parse_duration_days(s: &str) -> Result<usize, String> {
         num.parse::<usize>()
             .map_err(|e| format!("Invalid duration '{}': {}", s, e))
     } else {
-        s.parse::<usize>().map_err(|_| {
-            format!(
-                "Invalid duration '{}': expected 'Nd' format (e.g. '7d')",
-                s
-            )
-        })
+        s.parse::<usize>()
+            .map_err(|_| format!("Invalid duration '{}': expected 'Nd' format (e.g. '7d')", s))
     }
 }
 
@@ -446,7 +425,10 @@ fn print_review_outcome(outcome: &ReviewOutcome, verbose: bool) {
             } else {
                 format!(" — {}", action.summary)
             };
-            println!("  [{}] {} ({}){}", status, action.target, action.kind, detail);
+            println!(
+                "  [{}] {} ({}){}",
+                status, action.target, action.kind, detail
+            );
             if verbose && !action.summary.is_empty() {
                 // Verbose already shows the summary inline above; reserve this slot
                 // for future richer context (e.g. raw tool result, provenance).
@@ -520,7 +502,10 @@ mod tests {
         assert!(s.contains("50 out"), "got: {s}");
         assert!(s.contains("550 total"), "got: {s}");
         assert!(s.contains("1 LLM call"), "got: {s}");
-        assert!(!s.contains("cached"), "should not mention cache when none: {s}");
+        assert!(
+            !s.contains("cached"),
+            "should not mention cache when none: {s}"
+        );
     }
 
     #[test]

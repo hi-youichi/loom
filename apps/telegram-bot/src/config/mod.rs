@@ -11,6 +11,4 @@ mod types;
 
 pub use error::ConfigError;
 pub use loader::{load_config, load_from_path};
-pub use types::{
-    AgentConfig, BotConfig, Settings, StreamingConfig, TelegramBotConfig,
-};
+pub use types::{AgentConfig, BotConfig, Settings, StreamingConfig, TelegramBotConfig};

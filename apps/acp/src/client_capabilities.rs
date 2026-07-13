@@ -356,7 +356,10 @@ mod tests {
         });
         let caps = DetectedCapabilities::from_client_capabilities_json(Some(caps_json));
         assert!(caps.prompt_text, "text must be true (baseline)");
-        assert!(caps.prompt_resource_link, "resourceLink must be true (baseline)");
+        assert!(
+            caps.prompt_resource_link,
+            "resourceLink must be true (baseline)"
+        );
     }
 
     #[test]

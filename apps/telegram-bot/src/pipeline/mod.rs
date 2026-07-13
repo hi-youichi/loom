@@ -151,10 +151,10 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                 }
                 loom_command::Command::Compact { instructions } => {
                     let _thread_id = format!("telegram_{}", ctx.chat_id());
-                    let compact_prompt = instructions
-                        .as_deref()
-                        .unwrap_or("Compress the conversation history, keeping the most important context.");
-                    
+                    let compact_prompt = instructions.as_deref().unwrap_or(
+                        "Compress the conversation history, keeping the most important context.",
+                    );
+
                     ctx.deps
                         .sender
                         .send_text(ctx.chat_id(), "⏳ 正在压缩上下文...")
@@ -166,13 +166,13 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                     let sender = ctx.deps.sender.clone();
                     let settings = ctx.deps.settings.clone();
                     let model = ctx.deps.model_selection.current_model(chat_id)?;
-                    
+
                     let run_context = AgentRunContext {
                         user_message_id: Some(message_id),
                         ack_message_id: None,
                         model_override: Some(model),
                     };
-                    
+
                     match crate::streaming::run_loom_agent_streaming(
                         compact_prompt,
                         chat_id,
@@ -180,7 +180,9 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                         run_context,
                         &settings,
                         true, // force_compact
-                    ).await {
+                    )
+                    .await
+                    {
                         Ok(reply) => {
                             let msg = if reply.trim().is_empty() {
                                 "✅ 上下文已压缩".to_string()
@@ -191,14 +193,17 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                         }
                         Err(e) => {
                             tracing::error!("Compact failed: {}", e);
-                            ctx.deps.sender.send_text(ctx.chat_id(), &format!("❌ 压缩失败: {}", e)).await?;
+                            ctx.deps
+                                .sender
+                                .send_text(ctx.chat_id(), &format!("❌ 压缩失败: {}", e))
+                                .await?;
                         }
                     }
                     return Ok(());
                 }
                 loom_command::Command::Summarize => {
                     let _thread_id = format!("telegram_{}", ctx.chat_id());
-                    
+
                     ctx.deps
                         .sender
                         .send_text(ctx.chat_id(), "⏳ 正在生成摘要...")
@@ -210,13 +215,13 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                     let sender = ctx.deps.sender.clone();
                     let settings = ctx.deps.settings.clone();
                     let model = ctx.deps.model_selection.current_model(chat_id)?;
-                    
+
                     let run_context = AgentRunContext {
                         user_message_id: Some(message_id),
                         ack_message_id: None,
                         model_override: Some(model),
                     };
-                    
+
                     match crate::streaming::run_loom_agent_streaming(
                         "Summarize the conversation so far.",
                         chat_id,
@@ -224,7 +229,9 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                         run_context,
                         &settings,
                         true,
-                    ).await {
+                    )
+                    .await
+                    {
                         Ok(reply) => {
                             let msg = if reply.trim().is_empty() {
                                 "✅ 摘要已生成".to_string()
@@ -235,7 +242,10 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                         }
                         Err(e) => {
                             tracing::error!("Summarize failed: {}", e);
-                            ctx.deps.sender.send_text(ctx.chat_id(), &format!("❌ 摘要失败: {}", e)).await?;
+                            ctx.deps
+                                .sender
+                                .send_text(ctx.chat_id(), &format!("❌ 摘要失败: {}", e))
+                                .await?;
                         }
                     }
                     return Ok(());
@@ -335,10 +345,7 @@ mod tests {
 
     #[test]
     fn strip_bot_mention_removes_mention_without_trailing_space() {
-        assert_eq!(
-            strip_bot_mention("Hello @MyBot", "MyBot"),
-            "Hello "
-        );
+        assert_eq!(strip_bot_mention("Hello @MyBot", "MyBot"), "Hello ");
     }
 
     #[test]
@@ -352,17 +359,11 @@ mod tests {
 
     #[test]
     fn strip_bot_mention_empty_username() {
-        assert_eq!(
-            strip_bot_mention("Hello @MyBot", ""),
-            "Hello @MyBot"
-        );
+        assert_eq!(strip_bot_mention("Hello @MyBot", ""), "Hello @MyBot");
     }
 
     #[test]
     fn strip_bot_mention_no_mention_present() {
-        assert_eq!(
-            strip_bot_mention("Hello world", "MyBot"),
-            "Hello world"
-        );
+        assert_eq!(strip_bot_mention("Hello world", "MyBot"), "Hello world");
     }
 }

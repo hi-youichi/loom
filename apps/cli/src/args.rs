@@ -60,9 +60,11 @@ pub(crate) struct Args {
     #[arg(long, value_name = "ID")]
     pub(crate) session_id: Option<String>,
 
-    /// Print State info to stderr (node enter/exit, state after each step, flow)
-    #[arg(short, long, default_value = "false")]
-    pub(crate) verbose: bool,
+    /// Increase output verbosity (counted). `-v` adds skill list and runtime step info;
+    /// `-vv` also expands tools/skills with source, description, and toolset requirements.
+    /// `-vvv` and above behave the same as `-vv`.
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    pub(crate) verbose: u8,
 
     /// Interactive REPL: after output, prompt for input and continue conversation
     #[arg(short, long)]
@@ -97,7 +99,7 @@ pub(crate) struct Args {
     #[arg(long = "worktree")]
     pub(crate) worktree: bool,
 
-/// Debug LLM: print full system prompt and messages to stderr before sending to LLM
+    /// Debug LLM: print full system prompt and messages to stderr before sending to LLM
     #[arg(long)]
     pub(crate) debug_llm: bool,
 
@@ -148,7 +150,7 @@ pub(crate) enum Command {
     /// Run autonomous goal loop with an external coding tool
     Goal(GoalArgs),
     /// Manage skills (list, show, create, edit, delete)
-Skills(SkillsArgs),
+    Skills(SkillsArgs),
     /// Sync, show, and repair skill usage tracking (.usage.json)
     SkillUsage(SkillUsageArgs),
     /// Run and manage skill evolution
@@ -453,7 +455,7 @@ pub(crate) struct GoalArgs {
     #[arg(long, value_name = "TOKENS")]
     pub(crate) token_budget: Option<u32>,
 
-/// Shell command to verify objective after each iteration (e.g. "cargo test")
+    /// Shell command to verify objective after each iteration (e.g. "cargo test")
     #[arg(long, value_name = "CMD")]
     pub(crate) verify: Option<String>,
 
@@ -683,9 +685,7 @@ pub(crate) enum MemoryCommand {
         file: String,
     },
     /// Search memory for a keyword
-    Search {
-        query: String,
-    },
+    Search { query: String },
 }
 
 #[derive(clap::Args, Debug, Clone)]
@@ -730,7 +730,6 @@ pub(crate) enum TaskCommand {
         agent: String,
     },
 }
-
 
 /// Arguments for the `acp` subcommand.
 #[derive(clap::Args, Debug, Clone)]

@@ -4,8 +4,8 @@
 //! Accepts a `SessionListDisplayConfig` struct that can be built from CLI args
 //! or config file defaults.
 
-use chrono::{DateTime, Utc};
 use crate::display::terminal as term;
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -128,12 +128,21 @@ fn build_table(sessions: &[SessionInfo], review_map: &HashMap<String, ReviewStat
     let mut out = String::new();
     out.push_str(&format!(
         "{}  {}  {}  {}  {}  {}\n",
-        paint(&pad_to_display_width("SESSION ID", SESSION_ID_COL_WIDTH), AnsiStyle::Dim),
+        paint(
+            &pad_to_display_width("SESSION ID", SESSION_ID_COL_WIDTH),
+            AnsiStyle::Dim
+        ),
         paint(&pad_to_display_width("LAST UPDATED", 12), AnsiStyle::Dim),
-        paint(&pad_to_display_width("REVIEW", REVIEW_COL_WIDTH), AnsiStyle::Dim),
+        paint(
+            &pad_to_display_width("REVIEW", REVIEW_COL_WIDTH),
+            AnsiStyle::Dim
+        ),
         paint(&pad_to_display_width("STEPS", 6), AnsiStyle::Dim),
         paint(&pad_to_display_width("LATEST", 8), AnsiStyle::Dim),
-        paint(&truncate_to_display_width("TITLE", title_width), AnsiStyle::Dim),
+        paint(
+            &truncate_to_display_width("TITLE", title_width),
+            AnsiStyle::Dim
+        ),
     ));
     out.push_str(&"-".repeat(total_width));
     out.push('\n');
@@ -144,15 +153,18 @@ fn build_table(sessions: &[SessionInfo], review_map: &HashMap<String, ReviewStat
         let review = review_status_for(review_map, &s.session_id);
         out.push_str(&format!(
             "{}  {}  {}  {}  {}  {}\n",
-            paint(&pad_to_display_width(&short_id, SESSION_ID_COL_WIDTH), AnsiStyle::Cyan),
+            paint(
+                &pad_to_display_width(&short_id, SESSION_ID_COL_WIDTH),
+                AnsiStyle::Cyan
+            ),
             paint(&pad_to_display_width(&rel, 12), AnsiStyle::Dim),
-            paint(&pad_to_display_width(review.as_str(), REVIEW_COL_WIDTH), review_ansi_style(review)),
+            paint(
+                &pad_to_display_width(review.as_str(), REVIEW_COL_WIDTH),
+                review_ansi_style(review)
+            ),
             pad_to_display_width(&s.checkpoint_count.to_string(), 6),
             pad_to_display_width(&s.latest_source, 8),
-            truncate_to_display_width(
-                s.title.as_deref().unwrap_or("(untitled)"),
-                title_width,
-            ),
+            truncate_to_display_width(s.title.as_deref().unwrap_or("(untitled)"), title_width,),
         ));
     }
 
@@ -199,7 +211,10 @@ fn render_format_string(
         };
         chars.next();
         match next {
-            'h' => out.push_str(&shorten_session_id(&session.session_id, SESSION_ID_TEMPLATE_CHARS)),
+            'h' => out.push_str(&shorten_session_id(
+                &session.session_id,
+                SESSION_ID_TEMPLATE_CHARS,
+            )),
             'i' => out.push_str(&session.session_id),
             't' => out.push_str(session.title.as_deref().unwrap_or("(untitled)")),
             'c' => out.push_str(&session.checkpoint_count.to_string()),
@@ -320,10 +335,7 @@ fn paint(text: &str, style: AnsiStyle) -> String {
 // ── Review helpers ─────────────────────────────────────────────────
 
 /// Looks up the review status for `session_id`, defaulting to `Pending`.
-fn review_status_for(
-    review_map: &HashMap<String, ReviewStatus>,
-    session_id: &str,
-) -> ReviewStatus {
+fn review_status_for(review_map: &HashMap<String, ReviewStatus>, session_id: &str) -> ReviewStatus {
     review_map
         .get(session_id)
         .copied()
@@ -363,21 +375,30 @@ mod tests {
     fn render_format_percent_h_short_id() {
         let s = fixture_session();
         let now = DateTime::from_timestamp_millis(1_725_000_000_000).unwrap();
-        assert_eq!(render_format_string("%h", &s, now, ReviewStatus::Pending), "abcdef12…");
+        assert_eq!(
+            render_format_string("%h", &s, now, ReviewStatus::Pending),
+            "abcdef12…"
+        );
     }
 
     #[test]
     fn render_format_percent_i_full_id() {
         let s = fixture_session();
         let now = DateTime::from_timestamp_millis(1_725_000_000_000).unwrap();
-        assert_eq!(render_format_string("%i", &s, now, ReviewStatus::Pending), "abcdef1234567890");
+        assert_eq!(
+            render_format_string("%i", &s, now, ReviewStatus::Pending),
+            "abcdef1234567890"
+        );
     }
 
     #[test]
     fn render_format_percent_t_title() {
         let s = fixture_session();
         let now = DateTime::from_timestamp_millis(1_725_000_000_000).unwrap();
-        assert_eq!(render_format_string("%t", &s, now, ReviewStatus::Pending), "审计 dsgil 优化层");
+        assert_eq!(
+            render_format_string("%t", &s, now, ReviewStatus::Pending),
+            "审计 dsgil 优化层"
+        );
     }
 
     #[test]
@@ -385,21 +406,30 @@ mod tests {
         let mut s = fixture_session();
         s.title = None;
         let now = DateTime::from_timestamp_millis(1_725_000_000_000).unwrap();
-        assert_eq!(render_format_string("%t", &s, now, ReviewStatus::Pending), "(untitled)");
+        assert_eq!(
+            render_format_string("%t", &s, now, ReviewStatus::Pending),
+            "(untitled)"
+        );
     }
 
     #[test]
     fn render_format_percent_c_count() {
         let s = fixture_session();
         let now = DateTime::from_timestamp_millis(1_725_000_000_000).unwrap();
-        assert_eq!(render_format_string("%c", &s, now, ReviewStatus::Pending), "42");
+        assert_eq!(
+            render_format_string("%c", &s, now, ReviewStatus::Pending),
+            "42"
+        );
     }
 
     #[test]
     fn render_format_percent_s_source() {
         let s = fixture_session();
         let now = DateTime::from_timestamp_millis(1_725_000_000_000).unwrap();
-        assert_eq!(render_format_string("%s", &s, now, ReviewStatus::Pending), "Loop");
+        assert_eq!(
+            render_format_string("%s", &s, now, ReviewStatus::Pending),
+            "Loop"
+        );
     }
 
     #[test]
@@ -423,14 +453,20 @@ mod tests {
     fn render_format_percent_percent_literal() {
         let s = fixture_session();
         let now = DateTime::from_timestamp_millis(1_725_000_000_000).unwrap();
-        assert_eq!(render_format_string("100%%", &s, now, ReviewStatus::Pending), "100%");
+        assert_eq!(
+            render_format_string("100%%", &s, now, ReviewStatus::Pending),
+            "100%"
+        );
     }
 
     #[test]
     fn render_format_unknown_placeholder_emitted_literally() {
         let s = fixture_session();
         let now = DateTime::from_timestamp_millis(1_725_000_000_000).unwrap();
-        assert_eq!(render_format_string("%z", &s, now, ReviewStatus::Pending), "%z");
+        assert_eq!(
+            render_format_string("%z", &s, now, ReviewStatus::Pending),
+            "%z"
+        );
         assert_eq!(
             render_format_string("%h %x %i", &s, now, ReviewStatus::Pending),
             "abcdef12… %x abcdef1234567890"
@@ -441,7 +477,10 @@ mod tests {
     fn render_format_trailing_percent() {
         let s = fixture_session();
         let now = DateTime::from_timestamp_millis(1_725_000_000_000).unwrap();
-        assert_eq!(render_format_string("abc%", &s, now, ReviewStatus::Pending), "abc%");
+        assert_eq!(
+            render_format_string("abc%", &s, now, ReviewStatus::Pending),
+            "abc%"
+        );
     }
 
     #[test]
@@ -456,7 +495,10 @@ mod tests {
     fn render_format_plain_text_passes_through() {
         let s = fixture_session();
         let now = DateTime::from_timestamp_millis(1_725_000_000_000).unwrap();
-        assert_eq!(render_format_string("hello world", &s, now, ReviewStatus::Pending), "hello world");
+        assert_eq!(
+            render_format_string("hello world", &s, now, ReviewStatus::Pending),
+            "hello world"
+        );
     }
 
     #[test]
@@ -472,21 +514,30 @@ mod tests {
     fn render_format_percent_r_reviewed() {
         let s = fixture_session();
         let now = DateTime::from_timestamp_millis(1_725_000_000_000).unwrap();
-        assert_eq!(render_format_string("%R", &s, now, ReviewStatus::Reviewed), "reviewed");
+        assert_eq!(
+            render_format_string("%R", &s, now, ReviewStatus::Reviewed),
+            "reviewed"
+        );
     }
 
     #[test]
     fn render_format_percent_r_skipped() {
         let s = fixture_session();
         let now = DateTime::from_timestamp_millis(1_725_000_000_000).unwrap();
-        assert_eq!(render_format_string("%R", &s, now, ReviewStatus::Skipped), "skipped");
+        assert_eq!(
+            render_format_string("%R", &s, now, ReviewStatus::Skipped),
+            "skipped"
+        );
     }
 
     #[test]
     fn render_format_percent_r_pending() {
         let s = fixture_session();
         let now = DateTime::from_timestamp_millis(1_725_000_000_000).unwrap();
-        assert_eq!(render_format_string("%R", &s, now, ReviewStatus::Pending), "pending");
+        assert_eq!(
+            render_format_string("%R", &s, now, ReviewStatus::Pending),
+            "pending"
+        );
     }
 
     // ── shorten_session_id ─────────────────────────────────────

@@ -178,10 +178,14 @@ mod tests {
         let dir = std::env::temp_dir().join("telegram_bot_test_empty_token");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("test.toml");
-        std::fs::write(&path, r#"
+        std::fs::write(
+            &path,
+            r#"
 [bots.mybot]
 token = ""
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let result = load_from_path(&path);
         match result {

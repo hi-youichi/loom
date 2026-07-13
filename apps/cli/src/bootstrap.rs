@@ -59,15 +59,16 @@ pub(crate) fn init_logging(args: &Args, shell_env: ShellEnv) -> logging::LogGuar
         .unwrap_or_else(|| "info".to_string());
 
     // Load logging config from config.toml
-    let logging_config = config::load_full_config("loom")
-        .ok()
-        .map(|c| c.logging);
+    let logging_config = config::load_full_config("loom").ok().map(|c| c.logging);
 
     // Determine the effective log file path, considering:
     // - If CLI --log-file was explicitly set, use it
     // - If shell LOG_FILE was set before config.toml, use it
     // - Otherwise use config.toml [logging.cli].path or default
-    eprintln!("DEBUG: args.log_file.is_some() = {}", args.log_file.is_some());
+    eprintln!(
+        "DEBUG: args.log_file.is_some() = {}",
+        args.log_file.is_some()
+    );
     eprintln!("DEBUG: shell_env.log_file = {:?}", shell_env.log_file);
     let log_file_path = if args.log_file.is_some() {
         // CLI --log-file was explicitly set

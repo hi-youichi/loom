@@ -8,8 +8,8 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Notify;
 
-use cli::{run_cli_turn, RunCmd, RunError, RunOptions, RunOutput, StreamOut};
 use agent::commands::{self as loom_command};
+use cli::{run_cli_turn, RunCmd, RunError, RunOptions, RunOutput, StreamOut};
 use loom_llm::message::UserContent;
 
 use crate::output::{emit_run_output, OutputConfig};

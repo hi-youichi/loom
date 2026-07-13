@@ -7,9 +7,9 @@ use crate::error::{BotError, Result};
 use crate::streaming::event_mapper::StreamEventMapper;
 use crate::streaming::message_handler::StreamCommand;
 use crate::traits::{AgentRunContext, MessageSender};
-use tool_extensions::set_current_chat_id;
 use agent::run::{build_react_config, run_agent_from_config, RunCmd, RunParams};
 use agent::run::{RunCompletion, RunOptions};
+use tool_extensions::set_current_chat_id;
 
 use loom_llm::message::UserContent;
 use std::path::PathBuf;
@@ -50,11 +50,12 @@ pub async fn run_loom_agent_streaming(
         message: UserContent::Text(message.to_string()),
         thread_id: Some(thread_id),
         working_folder: Some(PathBuf::from(
-            std::env::var("WORKING_DIR").unwrap_or_else(|_| ".".to_string())
+            std::env::var("WORKING_DIR").unwrap_or_else(|_| ".".to_string()),
         )),
         session_id: None,
         agent: None,
         verbose: false,
+        verbose_level: 0,
         got_adaptive: false,
         display_max_len: 2000,
         output_json: false,
@@ -68,24 +69,24 @@ pub async fn run_loom_agent_streaming(
         output_timestamp: false,
         dry_run: false,
         debug_llm: false,
-    any_stream_event_sender: None,
-            bash_executor: None,
-            extra_tools: None,
-            acp_session_id: None,
-            force_compact,
-            chat_id: Some(chat_id),
-            worktree: false,
+        any_stream_event_sender: None,
+        bash_executor: None,
+        extra_tools: None,
+        default_extra_tools_provider: Some(tool_workflow::default_workflow_tool_provider()),
+        acp_session_id: None,
+        force_compact,
+        chat_id: Some(chat_id),
+        worktree: false,
         goal_mode: false,
         acp_mcp_servers: None,
         effort: None,
         tier: None,
     };
 
-
     let mapper = StreamEventMapper::new(tx.clone());
     let on_event = mapper.boxed_callback();
 
-    let (config, _) = build_react_config(&opts);
+    let (config, _, _) = build_react_config(&opts);
     let result = run_agent_from_config(
         &config,
         &RunCmd::React,
@@ -96,8 +97,9 @@ pub async fn run_loom_agent_streaming(
             any_stream_event_sender: opts.any_stream_event_sender.clone(),
             llm_override: None,
         },
-        Some(on_event)
-    ).await;
+        Some(on_event),
+    )
+    .await;
 
     let completion = result?;
 

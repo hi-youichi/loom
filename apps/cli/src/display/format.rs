@@ -1,5 +1,5 @@
-use agent::{DupState, TotState, GotState};
 use agent::state::{ReActState, ToolCall, ToolResult};
+use agent::{DupState, GotState, TotState};
 use loom_llm::message::Message;
 
 const INDENT: &str = "  ";
@@ -147,7 +147,7 @@ pub fn format_context_limit(limit: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent::{DupState, TotState, TotExtension};
+    use agent::{DupState, TotExtension, TotState};
 
     #[test]
     fn truncate_display_handles_short_exact_and_truncated() {

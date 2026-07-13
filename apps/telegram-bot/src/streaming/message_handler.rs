@@ -15,8 +15,14 @@ pub async fn stream_message_handler_simple(
     _chat_id: i64,
     _settings: crate::config::StreamingConfig,
 ) -> String {
-    stream_message_handler_with_context(rx, _sender, _chat_id, AgentRunContext::default(), _settings)
-        .await
+    stream_message_handler_with_context(
+        rx,
+        _sender,
+        _chat_id,
+        AgentRunContext::default(),
+        _settings,
+    )
+    .await
 }
 
 pub async fn stream_message_handler_with_context(

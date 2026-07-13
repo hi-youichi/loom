@@ -37,7 +37,8 @@ pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool
         cancellation: None,
         thread_id: args.session_id.clone(),
         agent: args.agent.clone(),
-        verbose: args.verbose,
+        verbose: args.verbose >= 1,
+        verbose_level: args.verbose,
         got_adaptive,
         display_max_len: max_message_len(),
         output_json: args.json,
@@ -53,10 +54,11 @@ pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool
         any_stream_event_sender: None,
         bash_executor: None,
         extra_tools: None,
+        default_extra_tools_provider: Some(cli::run::default_workflow_tool_provider()),
         acp_session_id: None,
         force_compact: false,
         chat_id: None,
-worktree: args.worktree,
+        worktree: args.worktree,
         goal_mode: false,
         acp_mcp_servers: None,
         effort: args.effort.clone(),
@@ -81,7 +83,8 @@ pub fn validate_tier_arg(tier: &Option<String>) -> Result<(), String> {
 pub fn check_model_tier_conflict(args: &Args) -> Result<(), String> {
     if args.model.is_some() && args.tier.is_some() {
         Err(
-            "Cannot specify both --model and --tier. Choose one method for model selection.".to_string()
+            "Cannot specify both --model and --tier. Choose one method for model selection."
+                .to_string(),
         )
     } else {
         Ok(())
@@ -254,10 +257,7 @@ fn build_multimodal(images: &[std::path::PathBuf], message: String) -> UserConte
                 });
             }
             Ok(_) => {
-                tracing::warn!(
-                    "image too large, skipping: {} (>8 MB)",
-                    path.display()
-                );
+                tracing::warn!("image too large, skipping: {} (>8 MB)", path.display());
             }
             Err(e) => {
                 tracing::warn!("failed to read image {}: {}", path.display(), e);
@@ -391,9 +391,7 @@ pub(crate) async fn run_interactive_mode(
                         || msg.contains("billing")
                         || msg.contains("insufficient credit");
                     if is_transient {
-                        std::process::exit(
-                            agent::goal_runner::state::KANBAN_RATE_LIMIT_EXIT_CODE,
-                        );
+                        std::process::exit(agent::goal_runner::state::KANBAN_RATE_LIMIT_EXIT_CODE);
                     }
                 }
                 std::process::exit(1);
@@ -401,7 +399,7 @@ pub(crate) async fn run_interactive_mode(
         }
     }
 
-run_repl_loop(opts, cmd, reply_len, output.clone(), stream_out, force_quit).await?;
+    run_repl_loop(opts, cmd, reply_len, output.clone(), stream_out, force_quit).await?;
     print_session_status(opts.thread_id.as_deref(), true, output.json);
     println!("Bye.");
     Ok(())
@@ -438,7 +436,7 @@ mod tests {
         let opts = build_run_options(&args, "hi".to_string(), false);
         assert!(opts.effort.is_none());
     }
-    
+
     /// `--tier` on the top-level `Args` must be plumbed through `build_run_options`
     /// into `RunOptions.tier` so the model tier resolution works correctly.
     #[test]

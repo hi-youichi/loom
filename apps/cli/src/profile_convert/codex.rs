@@ -3,14 +3,11 @@ use std::path::PathBuf;
 use agent::profile::AgentProfile;
 use model_spec_core::ModelTier;
 
-use super::{collect_constraints, ExportOutput, role_content};
+use super::{collect_constraints, role_content, ExportOutput};
 
 pub fn convert(profile: &AgentProfile) -> ExportOutput {
     let name = &profile.name;
-    let description = profile
-        .description
-        .as_deref()
-        .unwrap_or(&profile.name);
+    let description = profile.description.as_deref().unwrap_or(&profile.name);
 
     let mut out = String::new();
 

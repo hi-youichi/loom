@@ -2,9 +2,10 @@ use chrono::Local;
 use std::sync::Mutex;
 
 use agent::run::TypedAnyStreamEvent;
-use agent::state::ReActState; use agent::{DupState, TotState, GotState};
-use stream_event::{MessageChunk, MessageChunkKind, StreamEvent};
+use agent::state::ReActState;
 use agent::state::{ToolCall, ToolResult};
+use agent::{DupState, GotState, TotState};
+use stream_event::{MessageChunk, MessageChunkKind, StreamEvent};
 
 use super::format::*;
 use super::panel_format;
@@ -143,8 +144,8 @@ fn handle_messages(s: &mut EventState, chunk: &MessageChunk, output_timestamp: b
         s.reply_started = true;
     }
     if s.in_thinking && chunk.kind != MessageChunkKind::Thinking {
-                eprintln!();
-                eprintln!("{}", panel_format::format_thinking_separator());
+        eprintln!();
+        eprintln!("{}", panel_format::format_thinking_separator());
         s.in_thinking = false;
     }
     print_stream_chunk(chunk, &mut s.markdown_renderer);
@@ -252,12 +253,13 @@ pub fn on_event_react(
                     }
                     // Show tool call lines (name + args summary)
                     for tc in &state.tool_calls {
-                        let summary = super::tool_summary::format_call_summary(&tc.name, &tc.arguments);
+                        let summary =
+                            super::tool_summary::format_call_summary(&tc.name, &tc.arguments);
                         eprintln!("{}", panel_format::format_tool_call(&tc.name, &summary));
                         // Show DIFF immediately for edit/multiedit (doesn't need result)
-                        if let Some(diff) = super::tool_preview::format_diff(
-                            &tc.name, &tc.arguments, "", s.compact,
-                        ) {
+                        if let Some(diff) =
+                            super::tool_preview::format_diff(&tc.name, &tc.arguments, "", s.compact)
+                        {
                             eprintln!("{}", diff);
                         }
                     }
@@ -291,29 +293,56 @@ pub fn on_event_react(
                             Some(r) => r.lines().next().unwrap_or("error"),
                             None => "error",
                         };
-                        eprintln!("{}", panel_format::format_panel_line("ERROR", &format!("{}: {}", tc.name, super::tool_summary::truncate(err_msg, 80))));
+                        eprintln!(
+                            "{}",
+                            panel_format::format_panel_line(
+                                "ERROR",
+                                &format!(
+                                    "{}: {}",
+                                    tc.name,
+                                    super::tool_summary::truncate(err_msg, 80)
+                                )
+                            )
+                        );
                     }
 
                     // PREVIEW and result fallback: skip for edit/multiedit (diff already shown)
                     if !is_edit_like {
                         if let Some(ref result) = result_text {
                             let has_diff = super::tool_preview::format_diff(
-                                &tc.name, &tc.arguments, result, compact,
-                            ).is_some();
+                                &tc.name,
+                                &tc.arguments,
+                                result,
+                                compact,
+                            )
+                            .is_some();
 
                             if let Some(preview) = super::tool_preview::format_preview(
-                                &tc.name, &tc.arguments, result, compact,
+                                &tc.name,
+                                &tc.arguments,
+                                result,
+                                compact,
                             ) {
                                 eprintln!("{}", preview);
-                            } else if !is_error && !result.trim().is_empty() && !compact && !has_diff {
-                                eprintln!("{}", super::tool_preview::format_result_preview(
-                                    &tc.name, result, elapsed,
-                                ));
+                            } else if !is_error
+                                && !result.trim().is_empty()
+                                && !compact
+                                && !has_diff
+                            {
+                                eprintln!(
+                                    "{}",
+                                    super::tool_preview::format_result_preview(
+                                        &tc.name, result, elapsed,
+                                    )
+                                );
                             }
 
                             if has_diff {
                                 if let Some(diff) = super::tool_preview::format_diff(
-                                    &tc.name, &tc.arguments, result, compact,
+                                    &tc.name,
+                                    &tc.arguments,
+                                    result,
+                                    compact,
                                 ) {
                                     eprintln!("{}", diff);
                                 }
@@ -328,7 +357,10 @@ pub fn on_event_react(
                             result_text.as_deref().unwrap_or(""),
                             is_error,
                         );
-                        eprintln!("{}", panel_format::format_tool_done(&tc.name, &done_summary, elapsed));
+                        eprintln!(
+                            "{}",
+                            panel_format::format_tool_done(&tc.name, &done_summary, elapsed)
+                        );
                     }
                 }
                 s.pending_tool_start = None;
@@ -342,7 +374,14 @@ pub fn on_event_react(
             decode_duration,
             ..
         } => {
-            handle_usage(s, prompt_tokens, completion_tokens, prefill_duration, decode_duration, verbose);
+            handle_usage(
+                s,
+                prompt_tokens,
+                completion_tokens,
+                prefill_duration,
+                decode_duration,
+                verbose,
+            );
         }
         _ => {}
     }
@@ -386,7 +425,14 @@ pub fn on_event_dup(
             decode_duration,
             ..
         } => {
-            handle_usage(s, prompt_tokens, completion_tokens, prefill_duration, decode_duration, verbose);
+            handle_usage(
+                s,
+                prompt_tokens,
+                completion_tokens,
+                prefill_duration,
+                decode_duration,
+                verbose,
+            );
         }
         _ => {}
     }
@@ -446,7 +492,14 @@ pub fn on_event_tot(
             decode_duration,
             ..
         } => {
-            handle_usage(s, prompt_tokens, completion_tokens, prefill_duration, decode_duration, verbose);
+            handle_usage(
+                s,
+                prompt_tokens,
+                completion_tokens,
+                prefill_duration,
+                decode_duration,
+                verbose,
+            );
         }
         _ => {}
     }
@@ -515,43 +568,81 @@ pub fn on_event_got(
             decode_duration,
             ..
         } => {
-            handle_usage(s, prompt_tokens, completion_tokens, prefill_duration, decode_duration, verbose);
+            handle_usage(
+                s,
+                prompt_tokens,
+                completion_tokens,
+                prefill_duration,
+                decode_duration,
+                verbose,
+            );
         }
         _ => {}
     }
 }
 
-
 // ── Tool result helpers ──────────────────────────────────────────
 
 /// Find the tool result text matching a tool call by name and/or id.
-pub fn find_tool_result(results: &[ToolResult], tool_name: &str, call_id: &Option<String>) -> Option<String> {
+pub fn find_tool_result(
+    results: &[ToolResult],
+    tool_name: &str,
+    call_id: &Option<String>,
+) -> Option<String> {
     // Try matching by id first
     if let Some(ref id) = call_id {
-        if let Some(tr) = results.iter().find(|r| r.call_id.as_deref() == Some(id.as_str())) {
-            return Some(tr.observation_text.clone().unwrap_or_else(|| tr.content.clone()));
+        if let Some(tr) = results
+            .iter()
+            .find(|r| r.call_id.as_deref() == Some(id.as_str()))
+        {
+            return Some(
+                tr.observation_text
+                    .clone()
+                    .unwrap_or_else(|| tr.content.clone()),
+            );
         }
     }
     // Fallback: match by name
-    if let Some(tr) = results.iter().find(|r| r.name.as_deref() == Some(tool_name)) {
-        return Some(tr.observation_text.clone().unwrap_or_else(|| tr.content.clone()));
+    if let Some(tr) = results
+        .iter()
+        .find(|r| r.name.as_deref() == Some(tool_name))
+    {
+        return Some(
+            tr.observation_text
+                .clone()
+                .unwrap_or_else(|| tr.content.clone()),
+        );
     }
     // Last resort: return first result if only one
     if results.len() == 1 {
         let tr = &results[0];
-        return Some(tr.observation_text.clone().unwrap_or_else(|| tr.content.clone()));
+        return Some(
+            tr.observation_text
+                .clone()
+                .unwrap_or_else(|| tr.content.clone()),
+        );
     }
     None
 }
 
 /// Check if a tool result is an error.
-pub fn find_tool_result_error(results: &[ToolResult], tool_name: &str, call_id: &Option<String>) -> bool {
+pub fn find_tool_result_error(
+    results: &[ToolResult],
+    tool_name: &str,
+    call_id: &Option<String>,
+) -> bool {
     if let Some(ref id) = call_id {
-        if let Some(tr) = results.iter().find(|r| r.call_id.as_deref() == Some(id.as_str())) {
+        if let Some(tr) = results
+            .iter()
+            .find(|r| r.call_id.as_deref() == Some(id.as_str()))
+        {
             return tr.is_error;
         }
     }
-    if let Some(tr) = results.iter().find(|r| r.name.as_deref() == Some(tool_name)) {
+    if let Some(tr) = results
+        .iter()
+        .find(|r| r.name.as_deref() == Some(tool_name))
+    {
         return tr.is_error;
     }
     false

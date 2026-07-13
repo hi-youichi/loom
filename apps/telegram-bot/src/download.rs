@@ -464,7 +464,10 @@ mod tests {
     #[test]
     fn file_extension_long_ext_ignored() {
         // ext longer than MAX_EXT_LEN (10) falls through
-        assert_eq!(get_file_extension(Some("file.verylongextension"), None), "bin");
+        assert_eq!(
+            get_file_extension(Some("file.verylongextension"), None),
+            "bin"
+        );
     }
 
     #[test]
@@ -484,7 +487,10 @@ mod tests {
 
     #[test]
     fn file_extension_from_mime_unknown() {
-        assert_eq!(get_file_extension(None, Some("application/x-unknown")), "bin");
+        assert_eq!(
+            get_file_extension(None, Some("application/x-unknown")),
+            "bin"
+        );
     }
 
     #[test]
@@ -494,7 +500,10 @@ mod tests {
 
     #[test]
     fn file_extension_prefers_filename_over_mime() {
-        assert_eq!(get_file_extension(Some("photo.jpg"), Some("image/png")), "jpg");
+        assert_eq!(
+            get_file_extension(Some("photo.jpg"), Some("image/png")),
+            "jpg"
+        );
     }
 
     #[test]

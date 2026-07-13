@@ -18,9 +18,10 @@ path = "src/main.rs"
 agent = { path = "../../agent/agent-core" }
 loom-llm = { path = "../../foundation/llm" }
 loom-graph-core = { path = "../../foundation/graph-core" }
+skill = { path = "../../agent/skill" }
 
 tool-core = { path = "../../agent/tool/tool-core" }
-tool-luft = { path = "../../agent/tool/tool-luft" }
+tool-workflow = { path = "../../agent/tool/tool-workflow" }
 loom-curator = { path = "../../experimental/curator" }
 tool-experimental = { path = "../../agent/tool/tool-experimental" }
 memory-v2 = { path = "../../experimental/memory-v2" }

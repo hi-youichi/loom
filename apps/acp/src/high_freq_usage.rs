@@ -66,11 +66,7 @@ impl HighFreqUsageTracker {
         }
     }
 
-    pub fn with_custom_thresholds(
-        base_used: u64,
-        size: u64,
-        thresholds: Vec<f64>,
-    ) -> Self {
+    pub fn with_custom_thresholds(base_used: u64, size: u64, thresholds: Vec<f64>) -> Self {
         Self {
             base_used,
             current_used: base_used,
@@ -95,10 +91,9 @@ impl HighFreqUsageTracker {
         let now = Instant::now();
         let elapsed_ms = now.duration_since(self.last_notify_time).as_millis() as u64;
 
-        let should_notify =
-            self.increment_trigger_met() ||
-            self.interval_trigger_met(elapsed_ms) ||
-            self.percentage_trigger_met();
+        let should_notify = self.increment_trigger_met()
+            || self.interval_trigger_met(elapsed_ms)
+            || self.percentage_trigger_met();
 
         if should_notify && self.current_used != self.last_notified_used {
             let increment = self.current_used - self.last_notified_used;
@@ -132,9 +127,9 @@ impl HighFreqUsageTracker {
         let current_percentage = (self.current_used as f64 / self.size as f64) * 100.0;
         let last_percentage = (self.last_notified_used as f64 / self.size as f64) * 100.0;
 
-        self.percentage_thresholds.iter().any(|&threshold| {
-            last_percentage < threshold && current_percentage >= threshold
-        })
+        self.percentage_thresholds
+            .iter()
+            .any(|&threshold| last_percentage < threshold && current_percentage >= threshold)
     }
 
     pub fn get_increment(&self) -> u64 {
@@ -310,9 +305,8 @@ mod tests {
 
     #[test]
     fn test_custom_thresholds() {
-        let mut tracker = HighFreqUsageTracker::with_custom_thresholds(
-            1000, 10000, vec![30.0, 60.0, 90.0]
-        );
+        let mut tracker =
+            HighFreqUsageTracker::with_custom_thresholds(1000, 10000, vec![30.0, 60.0, 90.0]);
 
         assert!(tracker.update_tokens(2000).is_some()); // 3000/10000 = 30%
         assert!(tracker.update_tokens(3000).is_some()); // 6000/10000 = 60%
@@ -358,8 +352,8 @@ mod tests {
 #[cfg(test)]
 mod session_notifier_integration_tests {
     use super::*;
-    use async_channel::mpsc;
     use agent_client_protocol::schema::v1::SessionNotification;
+    use async_channel::mpsc;
     use std::time::Duration;
     use tokio;
 
@@ -367,7 +361,7 @@ mod session_notifier_integration_tests {
     async fn test_high_freq_tracking_with_notifier() {
         let (tx, mut rx) = mpsc::channel(100);
         let session_id = SessionId::new("test_session");
-        
+
         let notifier = SessionNotifier::new(tx, session_id);
         notifier.enable_high_freq_tracking(1000, 10000);
 
@@ -388,8 +382,11 @@ mod session_notifier_integration_tests {
 
         // Verify that some updates were triggered
         assert!(updates_received > 0, "Should receive at least one update");
-        assert_eq!(total_increment, 300, "Total increment should match sum of deltas");
-        
+        assert_eq!(
+            total_increment, 300,
+            "Total increment should match sum of deltas"
+        );
+
         // Verify final state
         let final_usage = {
             let tracker = notifier.high_freq_tracker.lock().unwrap();
@@ -402,7 +399,7 @@ mod session_notifier_integration_tests {
     async fn test_percentage_trigger_in_notifier() {
         let (tx, mut rx) = mpsc::channel(100);
         let session_id = SessionId::new("test_session");
-        
+
         let notifier = SessionNotifier::new(tx, session_id);
         notifier.enable_high_freq_tracking(4000, 10000);
 
@@ -423,7 +420,7 @@ mod session_notifier_integration_tests {
     async fn test_time_interval_trigger_in_notifier() {
         let (tx, mut rx) = mpsc::channel(100);
         let session_id = SessionId::new("test_session");
-        
+
         let notifier = SessionNotifier::new(tx, session_id);
         notifier.enable_high_freq_tracking(1000, 10000);
 
@@ -437,7 +434,10 @@ mod session_notifier_integration_tests {
             updates_received += 1;
         }
 
-        assert_eq!(updates_received, 0, "Should not trigger before time interval");
+        assert_eq!(
+            updates_received, 0,
+            "Should not trigger before time interval"
+        );
 
         // Wait for interval to pass
         tokio::time::sleep(Duration::from_millis(110)).await;
@@ -457,7 +457,7 @@ mod session_notifier_integration_tests {
     async fn test_custom_configuration_in_notifier() {
         let (tx, mut rx) = mpsc::channel(100);
         let session_id = SessionId::new("test_session");
-        
+
         let notifier = SessionNotifier::new(tx, session_id);
         notifier.enable_high_freq_tracking_with_config(1000, 10000, 25, 50);
 
@@ -473,14 +473,17 @@ mod session_notifier_integration_tests {
             }
         }
 
-        assert!(updates_received > 0, "Should trigger with custom threshold of 25");
+        assert!(
+            updates_received > 0,
+            "Should trigger with custom threshold of 25"
+        );
     }
 
     #[tokio::test]
     async fn test_disable_high_freq_tracking() {
         let (tx, mut rx) = mpsc::channel(100);
         let session_id = SessionId::new("test_session");
-        
+
         let notifier = SessionNotifier::new(tx, session_id);
         notifier.enable_high_freq_tracking(1000, 10000);
 
@@ -506,14 +509,17 @@ mod session_notifier_integration_tests {
     async fn test_adaptive_frequency_adjustment() {
         let (tx, mut rx) = mpsc::channel(100);
         let session_id = SessionId::new("test_session");
-        
+
         let notifier = SessionNotifier::new(tx, session_id);
         notifier.enable_high_freq_tracking(1000, 10000);
 
         // Simulate high system load
         {
             let mut tracker = notifier.high_freq_tracker.lock().unwrap();
-            tracker.as_mut().unwrap().adjust_frequency_based_on_load(0.9);
+            tracker
+                .as_mut()
+                .unwrap()
+                .adjust_frequency_based_on_load(0.9);
         }
 
         // Verify adjustment to high load
@@ -527,7 +533,10 @@ mod session_notifier_integration_tests {
         // Simulate low system load
         {
             let mut tracker = notifier.high_freq_tracker.lock().unwrap();
-            tracker.as_mut().unwrap().adjust_frequency_based_on_load(0.2);
+            tracker
+                .as_mut()
+                .unwrap()
+                .adjust_frequency_based_on_load(0.2);
         }
 
         // More aggressive updates should work with low load
@@ -541,16 +550,19 @@ mod session_notifier_integration_tests {
             }
         }
 
-        assert!(updates_received > 0, "Should receive updates with low load settings");
+        assert!(
+            updates_received > 0,
+            "Should receive updates with low load settings"
+        );
     }
 
     #[tokio::test]
     async fn test_high_freq_tracker_status_query() {
         let (tx, mut rx) = mpsc::channel(100);
         let session_id = SessionId::new("test_session");
-        
+
         let notifier = SessionNotifier::new(tx, session_id);
-        
+
         // Initially should be None
         let status = notifier.get_high_freq_tracker_status();
         assert!(status.is_none(), "Should be None before enabling");
@@ -559,7 +571,7 @@ mod session_notifier_integration_tests {
         notifier.enable_high_freq_tracking(1000, 10000);
         let status = notifier.get_high_freq_tracker_status();
         assert!(status.is_some(), "Should be Some after enabling");
-        
+
         let (used, size, percentage) = status.unwrap();
         assert_eq!(used, 1000, "Initial usage should be base_used");
         assert_eq!(size, 10000, "Size should match");

@@ -1,11 +1,17 @@
-use crate::run::memory::{MemoryFile, MemoryProvenance, MemoryStore, MemoryError};
+use crate::run::memory::{MemoryError, MemoryFile, MemoryProvenance, MemoryStore};
 use std::path::Path;
 
 pub trait MemoryProvider: Send + Sync {
     fn load(&self, file: MemoryFile) -> Result<String, MemoryProviderError>;
     fn add_entry(&self, file: MemoryFile, content: &str) -> Result<String, MemoryProviderError>;
-    fn replace_entry(&self, file: MemoryFile, old_text: &str, new_content: &str) -> Result<String, MemoryProviderError>;
-    fn remove_entry(&self, file: MemoryFile, old_text: &str) -> Result<String, MemoryProviderError>;
+    fn replace_entry(
+        &self,
+        file: MemoryFile,
+        old_text: &str,
+        new_content: &str,
+    ) -> Result<String, MemoryProviderError>;
+    fn remove_entry(&self, file: MemoryFile, old_text: &str)
+        -> Result<String, MemoryProviderError>;
     fn read_entries(&self, file: MemoryFile) -> Result<Vec<String>, MemoryProviderError>;
     fn load_all_for_prompt(&self) -> Result<String, MemoryProviderError>;
     fn capture_snapshot(&self) -> Result<String, MemoryProviderError>;
@@ -44,16 +50,31 @@ impl MemoryProvider for LocalFileProvider {
     }
 
     fn add_entry(&self, file: MemoryFile, content: &str) -> Result<String, MemoryProviderError> {
-        let result = self.store.add_entry(file, content, &MemoryProvenance::foreground_default()).map_err(map_err)?;
+        let result = self
+            .store
+            .add_entry(file, content, &MemoryProvenance::foreground_default())
+            .map_err(map_err)?;
         Ok(serde_json::to_string_pretty(&result).unwrap_or_default())
     }
 
-    fn replace_entry(&self, file: MemoryFile, old_text: &str, new_content: &str) -> Result<String, MemoryProviderError> {
-        let result = self.store.replace_entry(file, old_text, new_content).map_err(map_err)?;
+    fn replace_entry(
+        &self,
+        file: MemoryFile,
+        old_text: &str,
+        new_content: &str,
+    ) -> Result<String, MemoryProviderError> {
+        let result = self
+            .store
+            .replace_entry(file, old_text, new_content)
+            .map_err(map_err)?;
         Ok(serde_json::to_string_pretty(&result).unwrap_or_default())
     }
 
-    fn remove_entry(&self, file: MemoryFile, old_text: &str) -> Result<String, MemoryProviderError> {
+    fn remove_entry(
+        &self,
+        file: MemoryFile,
+        old_text: &str,
+    ) -> Result<String, MemoryProviderError> {
         let result = self.store.remove_entry(file, old_text).map_err(map_err)?;
         Ok(serde_json::to_string_pretty(&result).unwrap_or_default())
     }

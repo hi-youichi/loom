@@ -2,11 +2,11 @@
 
 use crate::model_cmd::{list_all_models, list_provider_models};
 use crate::tool_cmd::{list_tools, show_tool, ToolShowFormat};
-use stream_event::Envelope;
 use agent::run::{RunCmd, RunError};
 use agent::RunOptions;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
+use stream_event::Envelope;
 
 use super::run_agent_wrapper as run_agent;
 use super::{RunAgentOutput, RunStopReason};

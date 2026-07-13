@@ -1,5 +1,5 @@
 pub mod runner;
 pub mod tool;
 
-pub use runner::{GoalRunner, resume, write_mcp_config};
-pub use tool::{CodingTool, LoomTool, ShellTool, shell_tool_args};
+pub use runner::{resume, write_mcp_config, GoalRunner};
+pub use tool::{shell_tool_args, CodingTool, LoomTool, ShellTool};

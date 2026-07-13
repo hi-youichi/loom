@@ -28,7 +28,14 @@ impl AgentRunner for LoomAgentRunner {
         context: AgentRunContext,
     ) -> Result<String, BotError> {
         let sender: Arc<dyn MessageSender> = Arc::new(TeloxideSender::new(self.bot.clone()));
-        crate::streaming::run_loom_agent_streaming(prompt, chat_id, sender, context, &self.settings, false)
-            .await
+        crate::streaming::run_loom_agent_streaming(
+            prompt,
+            chat_id,
+            sender,
+            context,
+            &self.settings,
+            false,
+        )
+        .await
     }
 }

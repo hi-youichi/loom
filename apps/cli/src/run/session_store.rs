@@ -58,7 +58,10 @@ impl FileSessionStore {
             .map_err(|e| e.to_string())?
             .filter_map(|e| e.ok())
             .filter(|e| {
-                e.path().extension().map(|ext| ext == "json").unwrap_or(false)
+                e.path()
+                    .extension()
+                    .map(|ext| ext == "json")
+                    .unwrap_or(false)
             })
             .filter_map(|e| {
                 let content = fs::read_to_string(e.path()).ok()?;
@@ -78,8 +81,13 @@ impl FileSessionStore {
             .into_iter()
             .filter(|s| {
                 s.content.to_lowercase().contains(&query_lower)
-                    || s.title.as_ref().map(|t| t.to_lowercase().contains(&query_lower)).unwrap_or(false)
-                    || s.tags.iter().any(|t| t.to_lowercase().contains(&query_lower))
+                    || s.title
+                        .as_ref()
+                        .map(|t| t.to_lowercase().contains(&query_lower))
+                        .unwrap_or(false)
+                    || s.tags
+                        .iter()
+                        .any(|t| t.to_lowercase().contains(&query_lower))
             })
             .take(limit)
             .collect();
@@ -114,7 +122,10 @@ pub fn store_session_from_conversation(
             return Ok(());
         }
         None => {
-            let content = format!("**User**: {}\n\n**Assistant**: {}", user_msg, assistant_reply);
+            let content = format!(
+                "**User**: {}\n\n**Assistant**: {}",
+                user_msg, assistant_reply
+            );
             let title = if user_msg.chars().count() > 60 {
                 format!("{}...", user_msg.chars().take(60).collect::<String>())
             } else {

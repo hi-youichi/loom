@@ -6,11 +6,11 @@
 //! **Interaction**: Called from the `loom` binary when the user runs `loom models list`
 //! or `loom models show <PROVIDER>`.
 
+use agent::run::RunError;
 use config::{load_full_config, ProviderDef};
 use loom_llm::ModelInfo;
 use loom_llm::ProviderConfig;
 use model_spec_core::ModelRegistry;
-use agent::run::RunError;
 use std::collections::HashMap;
 
 /// Result of querying models from a single provider.

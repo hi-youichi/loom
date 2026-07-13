@@ -12,16 +12,16 @@ use crate::stream_bridge::SessionNotifier;
 use crate::tools::create_acp_tools;
 use agent::state::ReActState;
 use agent_client_protocol::schema::v1::{
+    AgentCapabilities, McpCapabilities, PromptCapabilities, SessionCapabilities,
+    SessionListCapabilities, SessionResumeCapabilities,
+};
+use agent_client_protocol::schema::v1::{
     AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
     ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
     ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
     NewSessionResponse, PromptRequest, PromptResponse, SessionConfigOptionValue, SessionId,
     SessionNotification, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
     SetSessionModeRequest, SetSessionModeResponse, StopReason, Usage,
-};
-use agent_client_protocol::schema::v1::{
-    AgentCapabilities, McpCapabilities, PromptCapabilities, SessionCapabilities,
-    SessionListCapabilities, SessionResumeCapabilities,
 };
 use checkpoint::{Checkpointer, JsonSerializer, RunnableConfig};
 use checkpoint_sqlite_store::SqliteSaver;
@@ -32,11 +32,11 @@ use agent::run::{build_react_config, run_agent_from_config, RunCmd, RunError, Ru
 use agent::run::{RunCompletion, RunOptions};
 use chrono::DateTime;
 use config::load_full_config;
+use loom_llm::message::UserContent;
 use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
-use loom_llm::message::UserContent;
 
 #[async_trait::async_trait]
 pub trait ModelProvider: Send + Sync {
@@ -913,6 +913,7 @@ impl LoomAcpAgent {
                     .resolve_agent_name(&entry.session_config.current_agent),
             ),
             verbose: false,
+            verbose_level: 0,
             got_adaptive: false,
             display_max_len: 4096,
             output_json: false,
@@ -949,6 +950,7 @@ impl LoomAcpAgent {
                     ))
                 }
             },
+            default_extra_tools_provider: Some(tool_workflow::default_workflow_tool_provider()),
             force_compact: false,
             chat_id: None,
             worktree: false,
@@ -972,22 +974,30 @@ impl LoomAcpAgent {
                     let notifier = SessionNotifier::new(sender.clone(), session_id.clone())
                         .with_context_window_size(context_window_size)
                         .with_usage_acc(acc.clone());
-                    
+
                     // Enable high-frequency tracking with estimated base usage
                     // Base usage estimated from prompt message (rough approximation)
                     let estimated_base_tokens = match &opts.message {
                         UserContent::Text(text) => text.len() / 4, // Approx 4 chars per token
                         UserContent::Multimodal(parts) => {
-                            parts.iter().map(|p| {
-                                match p {
-                                    loom_llm::message::ContentPart::Text { text } => text.len() / 4,
-                                    _ => 0, // Non-text parts estimated as 0 tokens
-                                }
-                            }).sum::<usize>()
+                            parts
+                                .iter()
+                                .map(|p| {
+                                    match p {
+                                        loom_llm::message::ContentPart::Text { text } => {
+                                            text.len() / 4
+                                        }
+                                        _ => 0, // Non-text parts estimated as 0 tokens
+                                    }
+                                })
+                                .sum::<usize>()
                         }
                     };
-                    notifier.enable_high_freq_tracking(estimated_base_tokens as u64, context_window_size);
-                    
+                    notifier.enable_high_freq_tracking(
+                        estimated_base_tokens as u64,
+                        context_window_size,
+                    );
+
                     let closure = move |ev: TypedAnyStreamEvent| {
                         capture_turn_usage(&ev, &acc);
                         notifier.try_send_event(&ev);
@@ -998,7 +1008,7 @@ impl LoomAcpAgent {
             }
         };
 
-        let (config, _) = build_react_config(&opts);
+        let (config, _, _) = build_react_config(&opts);
         let result = run_agent_from_config(
             &config,
             &RunCmd::React,
@@ -1012,7 +1022,7 @@ impl LoomAcpAgent {
             on_event,
         )
         .await;
-        
+
         // Disable high-frequency tracking after agent execution
         if let Some(ref tx) = tx {
             let notifier = SessionNotifier::new(tx.clone(), session_id.clone());
@@ -1021,7 +1031,7 @@ impl LoomAcpAgent {
                 notifier.disable_high_freq_tracking().await;
             });
         }
-        
+
         self.sessions.finish_prompt(&key, cancellation.generation());
 
         match result {
@@ -2152,7 +2162,9 @@ mod tests {
             "promptCapabilities.audio must be true"
         );
         assert_eq!(
-            prompts.get("embeddedContext").and_then(serde_json::Value::as_bool),
+            prompts
+                .get("embeddedContext")
+                .and_then(serde_json::Value::as_bool),
             Some(true),
             "promptCapabilities.embeddedContext must be true"
         );
@@ -2178,11 +2190,12 @@ mod tests {
     #[tokio::test]
     async fn test_initialize_accepts_client_mcp_capabilities() {
         let agent = LoomAcpAgent::new().expect("agent");
-        let req = InitializeRequest::new(1.into())
-            .client_info(agent_client_protocol::schema::v1::Implementation::new(
+        let req = InitializeRequest::new(1.into()).client_info(
+            agent_client_protocol::schema::v1::Implementation::new(
                 "test-client".to_string(),
                 "0.1.0".to_string(),
-            ));
+            ),
+        );
         let resp = agent.initialize(req).await.expect("initialize");
         assert_mcp_caps(&resp);
     }
@@ -2190,11 +2203,12 @@ mod tests {
     #[tokio::test]
     async fn test_initialize_accepts_client_prompt_capabilities() {
         let agent = LoomAcpAgent::new().expect("agent");
-        let req = InitializeRequest::new(1.into())
-            .client_info(agent_client_protocol::schema::v1::Implementation::new(
+        let req = InitializeRequest::new(1.into()).client_info(
+            agent_client_protocol::schema::v1::Implementation::new(
                 "test-client".to_string(),
                 "0.1.0".to_string(),
-            ));
+            ),
+        );
         let resp = agent.initialize(req).await.expect("initialize");
         assert_prompt_caps(&resp);
     }

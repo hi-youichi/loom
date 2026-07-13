@@ -5,7 +5,9 @@
 
 use std::sync::Arc;
 
-use telegram_bot::{mock::MockSender, stream_message_handler_simple, StreamCommand, StreamingConfig};
+use telegram_bot::{
+    mock::MockSender, stream_message_handler_simple, StreamCommand, StreamingConfig,
+};
 
 fn streaming_config_zero_throttle() -> StreamingConfig {
     StreamingConfig {

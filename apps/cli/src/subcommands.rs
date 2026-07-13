@@ -3,14 +3,14 @@
 use cli::{cli_list_models, cli_list_tools, cli_show_tool, ToolShowFormat};
 
 use crate::args::{
-    AgentArgs, AgentCommand, Args, CuratorCmdArgs, CuratorCommand, ExportArgs, McpArgs,
-    McpCommand, MemoryCmdArgs, MemoryCommand, ModelsArgs, ModelsCommand, SkillsArgs,
-    SkillsCommand, ToolArgs, ToolCommand,
+    AgentArgs, AgentCommand, Args, CuratorCmdArgs, CuratorCommand, ExportArgs, McpArgs, McpCommand,
+    MemoryCmdArgs, MemoryCommand, ModelsArgs, ModelsCommand, SkillsArgs, SkillsCommand, ToolArgs,
+    ToolCommand,
 };
-use cli::profile_convert::ExportFormat;
 use crate::mcp_manager::{AddMcpArgs, EditMcpArgs, McpManager, ServerDetail, ServerInfo};
 use crate::run_flow::build_run_options;
 use crate::session::{SessionArgs, SessionCommand, SessionManager};
+use cli::profile_convert::ExportFormat;
 
 pub(crate) async fn handle_tool_command(
     args: &Args,
@@ -57,10 +57,7 @@ pub(crate) async fn handle_session_command(
                 eprintln!("warning: failed to load config.toml: {}", e);
                 config::FullConfig::default_session()
             });
-            let effective_limit = args
-                .limit
-                .or(cfg.session.default_limit)
-                .unwrap_or(50);
+            let effective_limit = args.limit.or(cfg.session.default_limit).unwrap_or(50);
             let effective_format: Option<String> =
                 args.format.clone().or(cfg.session.default_format);
 
@@ -144,7 +141,9 @@ pub(crate) async fn handle_session_command(
                 let formatted = crate::session_view::format_session_list(&sessions, &display_cfg);
                 tokio::task::spawn_blocking(move || -> Result<(), String> {
                     let pager = minus::Pager::new();
-                    pager.set_text(formatted).map_err(|e| format!("Pager set_text error: {}", e))?;
+                    pager
+                        .set_text(formatted)
+                        .map_err(|e| format!("Pager set_text error: {}", e))?;
                     minus::page_all(pager).map_err(|e| format!("Pager error: {}", e))
                 })
                 .await
@@ -398,7 +397,7 @@ pub(crate) fn handle_skills_command(
     skills_args: &SkillsArgs,
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use cli::run::skill_registry::{SkillRegistry, Source, SkillContent, Lifecycle};
+    use cli::run::skill_registry::{Lifecycle, SkillContent, SkillRegistry, Source};
 
     let registry = SkillRegistry::new(&loom_curator::skill_registry::default_path());
 
@@ -441,7 +440,11 @@ pub(crate) fn handle_skills_command(
                 println!("{}", skill.body);
             }
         }
-SkillsCommand::Create { name, description, triggers } => {
+        SkillsCommand::Create {
+            name,
+            description,
+            triggers,
+        } => {
             let skill = SkillContent {
                 name: name.clone(),
                 description: description.clone().unwrap_or_default(),
@@ -453,7 +456,7 @@ SkillsCommand::Create { name, description, triggers } => {
                 body: String::new(),
                 raw: String::new(),
             };
-registry.save(name, &skill)?;
+            registry.save(name, &skill)?;
             println!("Created skill: {}", name);
         }
         SkillsCommand::Sync {
@@ -465,9 +468,7 @@ registry.save(name, &skill)?;
             let bundled = bundled_dir
                 .as_deref()
                 .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| {
-                    config::home::loom_home().join("bundled-skills")
-                });
+                .unwrap_or_else(|| config::home::loom_home().join("bundled-skills"));
             let user = user_dir
                 .as_deref()
                 .map(std::path::PathBuf::from)
@@ -505,7 +506,9 @@ registry.save(name, &skill)?;
             let tmp_dir = std::env::temp_dir();
             let tmp_path = tmp_dir.join(format!("loom-skill-{}.md", name));
             std::fs::write(&tmp_path, &skill.raw)?;
-            let status = std::process::Command::new(&editor).arg(&tmp_path).status()?;
+            let status = std::process::Command::new(&editor)
+                .arg(&tmp_path)
+                .status()?;
             if status.success() {
                 let edited = std::fs::read_to_string(&tmp_path)?;
                 let mut updated = skill.clone();
@@ -570,10 +573,7 @@ pub(crate) async fn handle_curator_command(
     curator_args: &CuratorCmdArgs,
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use cli::run::curator::{
-        Curator, CuratorConfig,
-        CuratorReport, CuratorState,
-    };
+    use cli::run::curator::{Curator, CuratorConfig, CuratorReport, CuratorState};
     use cli::run::skill_registry::SkillRegistry;
 
     let skills_path = loom_curator::skill_registry::default_path();
@@ -581,7 +581,12 @@ pub(crate) async fn handle_curator_command(
     let curator = Curator::new(skills, CuratorConfig::default());
 
     match &curator_args.command {
-        CuratorCommand::Run { force: _, consolidate, no_consolidate, background } => {
+        CuratorCommand::Run {
+            force: _,
+            consolidate,
+            no_consolidate,
+            background,
+        } => {
             // Resolve the `--consolidate` tri-state into a single bool
             // (default OFF). Hermes-aligned (`agent/curator.py`): without
             // explicit consent, automatic phases run but LLM consolidation
@@ -643,7 +648,11 @@ pub(crate) async fn handle_curator_command(
                 println!("Active: {}", report.active);
                 println!("Marked Stale: {} {:?}", report.stale.len(), report.stale);
                 println!("Archived: {} {:?}", report.archived.len(), report.archived);
-                println!("Reactivated: {} {:?}", report.reactivated.len(), report.reactivated);
+                println!(
+                    "Reactivated: {} {:?}",
+                    report.reactivated.len(),
+                    report.reactivated
+                );
                 println!("Overlapping: {} pairs", report.overlapping.len());
             }
 
@@ -700,9 +709,10 @@ pub(crate) async fn handle_curator_command(
                                 "curator-{}",
                                 chrono::Utc::now().format("%Y-%m-%dT%H-%M-%S")
                             );
-                            let run_report = cli::run::curator::CuratorRunReport::from_llm_pass_outcome(
-                                &outcome, &run_id,
-                            );
+                            let run_report =
+                                cli::run::curator::CuratorRunReport::from_llm_pass_outcome(
+                                    &outcome, &run_id,
+                                );
                             let reports_dir = skills_path.join("curator").join("reports");
                             match run_report.save_to_dir(&reports_dir) {
                                 Ok((json_path, md_path)) => {
@@ -735,9 +745,18 @@ pub(crate) async fn handle_curator_command(
             let state: CuratorState = curator.load_state().unwrap_or_default();
             let all = curator.skills.list().unwrap_or_default();
 
-            let active = all.iter().filter(|m| m.lifecycle == cli::run::skill_registry::Lifecycle::Active && !m.pinned).count();
-            let stale = all.iter().filter(|m| m.lifecycle == cli::run::skill_registry::Lifecycle::Stale).count();
-            let archived = all.iter().filter(|m| m.lifecycle == cli::run::skill_registry::Lifecycle::Archived).count();
+            let active = all
+                .iter()
+                .filter(|m| m.lifecycle == cli::run::skill_registry::Lifecycle::Active && !m.pinned)
+                .count();
+            let stale = all
+                .iter()
+                .filter(|m| m.lifecycle == cli::run::skill_registry::Lifecycle::Stale)
+                .count();
+            let archived = all
+                .iter()
+                .filter(|m| m.lifecycle == cli::run::skill_registry::Lifecycle::Archived)
+                .count();
             let pinned = all.iter().filter(|m| m.pinned).count();
 
             // Determine next-run eligibility
@@ -747,10 +766,7 @@ pub(crate) async fn handle_curator_command(
             // Load usage for top-skills display
             let usage_store = loom_curator::SkillUsageStore::new(curator.skills.base_dir());
             let usage_reports = usage_store.agent_created_report().unwrap_or_default();
-            let mut top_skills: Vec<_> = usage_reports
-                .iter()
-                .filter(|u| u.use_count > 0)
-                .collect();
+            let mut top_skills: Vec<_> = usage_reports.iter().filter(|u| u.use_count > 0).collect();
             top_skills.sort_by_key(|a| std::cmp::Reverse(a.use_count));
             let top_skills: Vec<_> = top_skills.into_iter().take(5).collect();
 
@@ -766,10 +782,7 @@ pub(crate) async fn handle_curator_command(
             lra.sort_by_key(|a| a.last_used_at.clone());
             let least_recently_active: Vec<_> = lra.into_iter().take(5).collect();
 
-            let mut la: Vec<_> = usage_reports
-                .iter()
-                .filter(|u| u.use_count > 0)
-                .collect();
+            let mut la: Vec<_> = usage_reports.iter().filter(|u| u.use_count > 0).collect();
             la.sort_by_key(|a| a.use_count);
             let least_active: Vec<_> = la.into_iter().take(5).collect();
 
@@ -802,45 +815,61 @@ pub(crate) async fn handle_curator_command(
             }
 
             if json {
-                println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-                    "enabled": curator.config_enabled(),
-                    "paused": state.paused,
-                    "run_count": state.run_count,
-                    "last_run_at": state.last_run_at,
-                    "last_run_summary": state.last_run_summary,
-                    "last_report_path": state.last_report_path,
-                    "active": active,
-                    "stale": stale,
-                    "archived": archived,
-                    "pinned": pinned,
-                    "total": total,
-                    "next_run_eligible": eligible,
-                    "interval_hours": curator.config_interval_hours(),
-                    "min_skills_to_run": curator.config_min_skills(),
-                    "overlap_threshold": curator.config_overlap_threshold(),
-                    "stale_days_auto": curator.config_stale_days_auto(),
-                    "stale_days_manual": curator.config_stale_days_manual(),
-                    "archive_days": curator.config_archive_days(),
-                    "top_skills": top_skills.iter().map(|u| serde_json::json!({
-                        "name": u.name,
-                        "uses": u.use_count,
-                        "views": u.view_count,
-                    })).collect::<Vec<_>>(),
-                }))?);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "enabled": curator.config_enabled(),
+                        "paused": state.paused,
+                        "run_count": state.run_count,
+                        "last_run_at": state.last_run_at,
+                        "last_run_summary": state.last_run_summary,
+                        "last_report_path": state.last_report_path,
+                        "active": active,
+                        "stale": stale,
+                        "archived": archived,
+                        "pinned": pinned,
+                        "total": total,
+                        "next_run_eligible": eligible,
+                        "interval_hours": curator.config_interval_hours(),
+                        "min_skills_to_run": curator.config_min_skills(),
+                        "overlap_threshold": curator.config_overlap_threshold(),
+                        "stale_days_auto": curator.config_stale_days_auto(),
+                        "stale_days_manual": curator.config_stale_days_manual(),
+                        "archive_days": curator.config_archive_days(),
+                        "top_skills": top_skills.iter().map(|u| serde_json::json!({
+                            "name": u.name,
+                            "uses": u.use_count,
+                            "views": u.view_count,
+                        })).collect::<Vec<_>>(),
+                    }))?
+                );
             } else {
                 println!("Curator Status:");
                 println!("{}", "═".repeat(60));
                 println!("Enabled: {}", curator.config_enabled());
                 println!("Paused: {}", state.paused);
                 println!("Run Count: {}", state.run_count);
-                println!("Last Run: {}", state.last_run_at.as_deref().unwrap_or("never"));
-                println!("Next Run Eligible: {}", if eligible { "✓ yes" } else { "✗ no" });
+                println!(
+                    "Last Run: {}",
+                    state.last_run_at.as_deref().unwrap_or("never")
+                );
+                println!(
+                    "Next Run Eligible: {}",
+                    if eligible { "✓ yes" } else { "✗ no" }
+                );
                 println!();
                 println!("Config:");
                 println!("  Interval: every {}h", curator.config_interval_hours());
                 println!("  Min skills: {}", curator.config_min_skills());
-                println!("  Overlap threshold: {:.0}%", curator.config_overlap_threshold() * 100.0);
-                println!("  Stale days (auto/manual): {}/{}", curator.config_stale_days_auto(), curator.config_stale_days_manual());
+                println!(
+                    "  Overlap threshold: {:.0}%",
+                    curator.config_overlap_threshold() * 100.0
+                );
+                println!(
+                    "  Stale days (auto/manual): {}/{}",
+                    curator.config_stale_days_auto(),
+                    curator.config_stale_days_manual()
+                );
                 println!("  Archive days: {}", curator.config_archive_days());
                 if let Some(summary) = &state.last_run_summary {
                     println!();
@@ -848,31 +877,47 @@ pub(crate) async fn handle_curator_command(
                 }
                 println!();
                 println!("Skill Counts ({} total):", total);
-                println!("  Active: {}  |  Stale: {}  |  Archived: {}  |  Pinned: {}",
-                    active, stale, archived, pinned);
+                println!(
+                    "  Active: {}  |  Stale: {}  |  Archived: {}  |  Pinned: {}",
+                    active, stale, archived, pinned
+                );
                 if !top_skills.is_empty() {
                     println!();
                     println!("Most-active skills (by uses):");
                     for (i, u) in most_active.iter().enumerate() {
-                        println!("  {}. {} — {} uses, {} views, last used {} ago",
-                            i + 1, u.name, u.use_count, u.view_count,
-                            bucket_age(u.last_used_at.as_deref()));
+                        println!(
+                            "  {}. {} — {} uses, {} views, last used {} ago",
+                            i + 1,
+                            u.name,
+                            u.use_count,
+                            u.view_count,
+                            bucket_age(u.last_used_at.as_deref())
+                        );
                     }
                 }
                 if !least_recently_active.is_empty() {
                     println!();
                     println!("Least-recently-active skills:");
                     for (i, u) in least_recently_active.iter().enumerate() {
-                        println!("  {}. {} — last used {} ago",
-                            i + 1, u.name, bucket_age(u.last_used_at.as_deref()));
+                        println!(
+                            "  {}. {} — last used {} ago",
+                            i + 1,
+                            u.name,
+                            bucket_age(u.last_used_at.as_deref())
+                        );
                     }
                 }
                 if !least_active.is_empty() {
                     println!();
                     println!("Least-active skills (still used):");
                     for (i, u) in least_active.iter().enumerate() {
-                        println!("  {}. {} — {} uses, {} views",
-                            i + 1, u.name, u.use_count, u.view_count);
+                        println!(
+                            "  {}. {} — {} uses, {} views",
+                            i + 1,
+                            u.name,
+                            u.use_count,
+                            u.view_count
+                        );
                     }
                 }
             }
@@ -881,10 +926,7 @@ pub(crate) async fn handle_curator_command(
             // Hermes `hermes_cli/curator.py:344-352`: prompt y/N unless `--yes`.
             // Dry-run is non-destructive so skip the prompt there too.
             if !yes && !curator_args.dry_run {
-                eprint!(
-                    "Archive all skills idle for >= {} days? [y/N] ",
-                    days
-                );
+                eprint!("Archive all skills idle for >= {} days? [y/N] ", days);
                 use std::io::Write;
                 let _ = std::io::stderr().flush();
                 let mut input = String::new();
@@ -909,7 +951,10 @@ pub(crate) async fn handle_curator_command(
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
-                println!("Curator Prune (days={}, dry_run={}):", days, curator_args.dry_run);
+                println!(
+                    "Curator Prune (days={}, dry_run={}):",
+                    days, curator_args.dry_run
+                );
                 println!("{}", "═".repeat(60));
                 println!("Archived: {}", report.archived.len());
                 for s in &report.archived {
@@ -934,9 +979,13 @@ pub(crate) async fn handle_curator_command(
                     "Cannot pin '{}': only agent-created or curated skills can be pinned. \
                      Bundled and hub-installed skills are read-only.",
                     skill
-                ).into());
+                )
+                .into());
             }
-            curator.skills.set_pinned(skill, true).map_err(|e| format!("{:?}", e))?;
+            curator
+                .skills
+                .set_pinned(skill, true)
+                .map_err(|e| format!("{:?}", e))?;
             println!("✓ Pinned '{}'", skill);
         }
         CuratorCommand::Unpin { skill } => {
@@ -944,24 +993,29 @@ pub(crate) async fn handle_curator_command(
                 return Err(format!(
                     "Cannot unpin '{}': only agent-created or curated skills may be pinned.",
                     skill
-                ).into());
+                )
+                .into());
             }
-            curator.skills.set_pinned(skill, false).map_err(|e| format!("{:?}", e))?;
+            curator
+                .skills
+                .set_pinned(skill, false)
+                .map_err(|e| format!("{:?}", e))?;
             println!("✓ Unpinned '{}'", skill);
         }
         CuratorCommand::Restore { skill } => {
             use cli::run::skill_registry::Lifecycle;
-            curator.skills.set_lifecycle(skill, Lifecycle::Active).map_err(|e| format!("{:?}", e))?;
+            curator
+                .skills
+                .set_lifecycle(skill, Lifecycle::Active)
+                .map_err(|e| format!("{:?}", e))?;
             println!("✓ Restored '{}' to Active", skill);
         }
         CuratorCommand::Archive { skill } => {
             use cli::run::skill_registry::Lifecycle;
 
             // Package integrity gate: warn but don't block manual archive
-            let integrity = loom_curator::curator::check_package_integrity(
-                curator.skills.base_dir(),
-                skill,
-            );
+            let integrity =
+                loom_curator::curator::check_package_integrity(curator.skills.base_dir(), skill);
             if !integrity.is_safe {
                 eprintln!(
                     "⚠ Warning: '{}' has broken relative links: {}",
@@ -970,7 +1024,10 @@ pub(crate) async fn handle_curator_command(
                 );
             }
 
-            curator.skills.set_lifecycle(skill, Lifecycle::Archived).map_err(|e| format!("{:?}", e))?;
+            curator
+                .skills
+                .set_lifecycle(skill, Lifecycle::Archived)
+                .map_err(|e| format!("{:?}", e))?;
             println!("✓ Archived '{}' (Lifecycle → Archived)", skill);
         }
         CuratorCommand::Backup { description } => {
@@ -984,16 +1041,23 @@ pub(crate) async fn handle_curator_command(
                 .map_err(|e| format!("{:?}", e))?;
 
             if json {
-                println!("{}", serde_json::json!({
-                    "snapshot": filename,
-                    "backup_dir": backup.backup_dir(),
-                }));
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "snapshot": filename,
+                        "backup_dir": backup.backup_dir(),
+                    })
+                );
             } else {
                 println!("✓ Snapshot created: {}", filename);
                 println!("  Location: {}", backup.backup_dir().display());
             }
         }
-        CuratorCommand::Rollback { snapshot, yes, capture_pre } => {
+        CuratorCommand::Rollback {
+            snapshot,
+            yes,
+            capture_pre,
+        } => {
             use loom_curator::CuratorBackup;
 
             let skills_dir = loom_curator::skill_registry::default_path();
@@ -1053,7 +1117,7 @@ pub(crate) async fn handle_curator_command(
                 }
             }
 
-backup
+            backup
                 .rollback(&snapshot, &skills_dir)
                 .map_err(|e| format!("{:?}", e))?;
 
@@ -1063,9 +1127,7 @@ backup
             use loom_curator::CuratorBackup;
 
             let backup = CuratorBackup::new();
-            let snapshots = backup
-                .list_snapshots()
-                .map_err(|e| format!("{:?}", e))?;
+            let snapshots = backup.list_snapshots().map_err(|e| format!("{:?}", e))?;
 
             if json {
                 println!("{}", serde_json::to_string_pretty(&snapshots)?);
@@ -1099,9 +1161,7 @@ backup
             if json {
                 println!("{}", serde_json::to_string_pretty(&archived)?);
             } else if archived.is_empty() {
-                println!(
-                    "No archived skills. Use `loom curator archive <name>` to archive one."
-                );
+                println!("No archived skills. Use `loom curator archive <name>` to archive one.");
             } else {
                 println!("Archived skills ({} total):", archived.len());
                 println!("{}", "=".repeat(60));
@@ -1140,12 +1200,15 @@ backup
             .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
 
             if json {
-                println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-                    "dry_run": outcome.dry_run,
-                    "updated": outcome.updated,
-                    "no_triggers_found": outcome.no_triggers_found,
-                    "failed": outcome.failed.iter().map(|(n, e)| serde_json::json!({"skill": n, "error": e})).collect::<Vec<_>>(),
-                }))?);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "dry_run": outcome.dry_run,
+                        "updated": outcome.updated,
+                        "no_triggers_found": outcome.no_triggers_found,
+                        "failed": outcome.failed.iter().map(|(n, e)| serde_json::json!({"skill": n, "error": e})).collect::<Vec<_>>(),
+                    }))?
+                );
             } else {
                 let label = if outcome.dry_run { " (dry-run)" } else { "" };
                 println!("Backfill Triggers{}:", label);
@@ -1191,22 +1254,44 @@ pub(crate) fn handle_memory_command(
                 });
                 println!("{}", serde_json::to_string_pretty(&obj)?);
             } else {
-                println!("USER.md:\n{}\n", if user.is_empty() { "(empty)".to_string() } else { user });
-                println!("PROJECT.md:\n{}\n", if project.is_empty() { "(empty)".to_string() } else { project });
+                println!(
+                    "USER.md:\n{}\n",
+                    if user.is_empty() {
+                        "(empty)".to_string()
+                    } else {
+                        user
+                    }
+                );
+                println!(
+                    "PROJECT.md:\n{}\n",
+                    if project.is_empty() {
+                        "(empty)".to_string()
+                    } else {
+                        project
+                    }
+                );
             }
         }
         MemoryCommand::Edit { file } => {
             let mf = match file.to_lowercase().as_str() {
                 "user" | "user.md" => MemoryFile::User,
                 "project" | "project.md" | "memory" | "memory.md" => MemoryFile::Project,
-                _ => { return Err(format!("Unknown memory file: {}. Use USER or PROJECT (or MEMORY).", file).into()); }
+                _ => {
+                    return Err(format!(
+                        "Unknown memory file: {}. Use USER or PROJECT (or MEMORY).",
+                        file
+                    )
+                    .into());
+                }
             };
             let content = store.load(mf)?;
             let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
             let tmp_dir = std::env::temp_dir();
             let tmp_path = tmp_dir.join(format!("loom-memory-{}.md", file));
             std::fs::write(&tmp_path, &content)?;
-            let status = std::process::Command::new(&editor).arg(&tmp_path).status()?;
+            let status = std::process::Command::new(&editor)
+                .arg(&tmp_path)
+                .status()?;
             if status.success() {
                 let edited = std::fs::read_to_string(&tmp_path)?;
                 store.add_entry(mf, &edited, &MemoryProvenance::foreground_default())?;

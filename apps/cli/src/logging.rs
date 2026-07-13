@@ -34,7 +34,10 @@ impl FromStr for LogFormat {
         match s.to_lowercase().as_str() {
             "text" => Ok(Self::Text),
             "json" => Ok(Self::Json),
-            other => Err(format!("unknown log format `{}`, expected `text` or `json`", other)),
+            other => Err(format!(
+                "unknown log format `{}`, expected `text` or `json`",
+                other
+            )),
         }
     }
 }
@@ -107,7 +110,11 @@ pub fn resolve_cli_log_path(
     // We check if LOG_FILE was set in the shell before config.toml was loaded.
     // If the logging_config has cli.path set, that takes precedence over [env] LOG_FILE.
     if let Some(path) = log_file_from_env {
-        if logging_config.as_ref().and_then(|c| c.cli.path.as_ref()).is_none() {
+        if logging_config
+            .as_ref()
+            .and_then(|c| c.cli.path.as_ref())
+            .is_none()
+        {
             return Some(PathBuf::from(path));
         }
     }
@@ -137,7 +144,12 @@ pub fn init_with_config(
     let log_file = if let Some(path) = args.resolve_log_file() {
         Some(path)
     } else {
-        resolve_cli_log_path(None, args.working_folder.as_deref(), logging_config, log_file_from_shell)
+        resolve_cli_log_path(
+            None,
+            args.working_folder.as_deref(),
+            logging_config,
+            log_file_from_shell,
+        )
     };
 
     // Resolve rotate from config if not set by CLI
@@ -156,7 +168,12 @@ pub fn init_with_config(
     }
 }
 
-fn init_file_logging(path: &Path, rotate: LogRotate, format: LogFormat, filter: EnvFilter) -> LogGuard {
+fn init_file_logging(
+    path: &Path,
+    rotate: LogRotate,
+    format: LogFormat,
+    filter: EnvFilter,
+) -> LogGuard {
     // Auto-create parent directories
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
