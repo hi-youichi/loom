@@ -486,10 +486,11 @@ impl SkillUsageStore {
             return Ok(HashMap::new());
         }
         let raw = fs::read_to_string(&self.path)?;
+        let raw = raw.trim_start_matches('\u{feff}');
         if raw.trim().is_empty() {
             return Ok(HashMap::new());
         }
-        serde_json::from_str(&raw)
+        serde_json::from_str(raw)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
     }
 
@@ -743,6 +744,21 @@ mod tests {
         let store = SkillUsageStore::new(dir.path());
         let data = store.load().unwrap();
         assert!(data.is_empty());
+    }
+
+    #[test]
+    fn load_accepts_utf8_bom() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SkillUsageStore::new(dir.path());
+        let mut usage = SkillUsage::new("agent-skill");
+        usage.created_by = Some("agent".to_string());
+        let data = HashMap::from([("agent-skill".to_string(), usage)]);
+        let json = serde_json::to_string(&data).unwrap();
+        fs::write(dir.path().join(".usage.json"), format!("\u{feff}{json}")).unwrap();
+
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert!(store.is_agent_created("agent-skill"));
     }
 
     #[test]
