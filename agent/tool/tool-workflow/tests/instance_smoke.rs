@@ -1,19 +1,19 @@
 //! Integration smoke for the public surface of `instance.rs`.
 //!
-//! Reads a real run dir (LOOM_TEST_RUNS_DIR), runs `build_instance_meta` +
+//! Reads a real instance dir (LOOM_TEST_INSTANCES_DIR), runs `build_instance_meta` +
 //! `write_instance_artifacts`, then prints a structural check so we can
 //! eyeball the produced JSON against the design.
 //!
 //! Run with:
-//!   LOOM_TEST_RUNS_DIR=<path> cargo test -p tool-workflow \
+//!   LOOM_TEST_INSTANCES_DIR=<path> cargo test -p tool-workflow \
 //!       --test instance_smoke -- --nocapture
 
 use serde_json::Value;
 use std::path::PathBuf;
 use tool_workflow::{build_instance_meta, write_instance_artifacts, WorkflowRef};
 
-fn runs_dir() -> Option<PathBuf> {
-    if let Ok(v) = std::env::var("LOOM_TEST_RUNS_DIR") {
+fn instances_dir() -> Option<PathBuf> {
+    if let Ok(v) = std::env::var("LOOM_TEST_INSTANCES_DIR") {
         let p = PathBuf::from(v);
         if p.is_dir() {
             return Some(p);
@@ -32,12 +32,12 @@ fn load_jsonl(p: &std::path::Path) -> Vec<Value> {
 }
 
 #[test]
-fn dump_instance_for_real_run() {
-    let Some(runs) = runs_dir() else {
-        eprintln!("set LOOM_TEST_RUNS_DIR to enable this smoke");
+fn dump_instance_for_real_instance() {
+    let Some(instances) = instances_dir() else {
+        eprintln!("set LOOM_TEST_INSTANCES_DIR to enable this smoke");
         return;
     };
-    let dir = runs.join("luft-workflow_1783783769");
+    let dir = instances.join("loom-instance_1783783769");
     if !dir.is_dir() {
         eprintln!("missing fixture {}", dir.display());
         return;
@@ -60,7 +60,7 @@ fn dump_instance_for_real_run() {
         &bytes,
     );
 
-    // Temporary out dir so we don't trample .luft/runs.
+    // Temporary out dir so we don't trample .loom/instances.
     let tmp = tempfile::tempdir().expect("tmpdir");
     let out = tmp.path();
     write_instance_artifacts(out, &meta, None, &[]).unwrap();

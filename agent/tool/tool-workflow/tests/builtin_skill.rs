@@ -90,8 +90,8 @@ fn builtin_skill_loadable_via_registry() {
 
     // Frontmatter stripped, body present
     assert!(content.contains("# Workflow DSL Reference"));
-    assert!(content.contains("## Required Structure"));
-    assert!(content.contains("agent(opts)"));
+    assert!(content.contains("## 3 Minimal skeleton"));
+    assert!(content.contains("agent()"));
     assert!(!content.contains("name: workflow"));
 
     // References surfaced under "## Additional resources" so the agent can `read` them

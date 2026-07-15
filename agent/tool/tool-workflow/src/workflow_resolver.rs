@@ -3,19 +3,19 @@ use std::path::{Path, PathBuf};
 pub fn resolve_workflow(name: &str, working_folder: &Path) -> Result<PathBuf, String> {
     if name.ends_with(".lua") && Path::new(name).is_absolute() {
         let p = PathBuf::from(name);
-        if p.exists() {
+        if p.is_file() {
             return Ok(p);
         }
     }
 
     let candidates = [
         working_folder
-            .join(".luft")
+            .join(".loom")
             .join("workflows")
             .join(format!("{name}.lua")),
         dirs_home()
             .join(".config")
-            .join("luft")
+            .join("loom")
             .join("workflows")
             .join(format!("{name}.lua")),
         working_folder.join(format!("{name}.lua")),
@@ -23,7 +23,7 @@ pub fn resolve_workflow(name: &str, working_folder: &Path) -> Result<PathBuf, St
     ];
 
     for candidate in &candidates {
-        if candidate.exists() {
+        if candidate.is_file() {
             return Ok(candidate.clone());
         }
     }
@@ -53,15 +53,27 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn resolve_workflow_from_luft_dir() {
+    fn resolve_workflow_from_loom_dir() {
         let dir = tempdir().unwrap();
-        let wf_dir = dir.path().join(".luft").join("workflows");
+        let wf_dir = dir.path().join(".loom").join("workflows");
         fs::create_dir_all(&wf_dir).unwrap();
         fs::write(wf_dir.join("my_flow.lua"), "function main() end").unwrap();
 
         let result = resolve_workflow("my_flow", dir.path());
         assert!(result.is_ok());
         assert!(result.unwrap().to_string_lossy().contains("my_flow.lua"));
+    }
+
+    #[test]
+    fn resolve_workflow_prefers_loom_dir_over_working_folder() {
+        let dir = tempdir().unwrap();
+        let wf_dir = dir.path().join(".loom").join("workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(wf_dir.join("same.lua"), "-- loom").unwrap();
+        fs::write(dir.path().join("same.lua"), "-- working folder").unwrap();
+
+        let result = resolve_workflow("same", dir.path()).unwrap();
+        assert_eq!(result, wf_dir.join("same.lua"));
     }
 
     #[test]
