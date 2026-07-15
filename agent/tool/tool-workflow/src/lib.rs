@@ -1,11 +1,16 @@
 mod backend;
 mod event_bridge;
+mod instance;
 mod json_to_lua;
 mod structured_output;
 mod tool;
 mod workflow_resolver;
 
 pub use backend::LoomAgentBackend;
+pub use instance::{
+    build_instance_meta, write_instance_artifacts, AgentSummary, EventStats, InstanceMeta,
+    PhaseSpan, ReportRef, WorkflowRef,
+};
 pub use structured_output::StructuredOutputTool;
 pub use tool::WorkflowTool;
 pub use workflow_resolver::resolve_workflow;
