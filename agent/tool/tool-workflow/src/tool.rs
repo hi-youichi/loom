@@ -16,6 +16,8 @@ use tool_core::{
 const INSTANCE_DIR_PREFIX: &str = "loom-instance_";
 
 const WORKFLOW_SKILL: &str = include_str!("workflow_skill.md");
+const REF_TOOL_USAGE: &str = include_str!("references/tool-usage.md");
+const REF_DSL_REFERENCE: &str = include_str!("references/dsl-reference.md");
 const REF_ARCH_HEADER: &str = include_str!("references/architecture-header.md");
 const REF_AGENT_PROMPTS: &str = include_str!("references/agent-prompts.md");
 const REF_DECOMPOSITION: &str = include_str!("references/task-decomposition.md");
@@ -1376,9 +1378,22 @@ impl Tool for WorkflowTool {
                 "workflow".to_string(),
                 "multi-agent".to_string(),
                 "lua script".to_string(),
+                "list-instances".to_string(),
+                "instance-summary".to_string(),
+                "debug workflow".to_string(),
+                "workflow failed".to_string(),
+                "workflow status".to_string(),
             ],
             requires_tools: vec!["workflow".to_string()],
             references: vec![
+                (
+                    "references/tool-usage.md".to_string(),
+                    REF_TOOL_USAGE.to_string(),
+                ),
+                (
+                    "references/dsl-reference.md".to_string(),
+                    REF_DSL_REFERENCE.to_string(),
+                ),
                 (
                     "references/architecture-header.md".to_string(),
                     REF_ARCH_HEADER.to_string(),
