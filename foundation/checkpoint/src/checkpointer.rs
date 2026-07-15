@@ -6,7 +6,7 @@
 
 use async_trait::async_trait;
 
-use crate::checkpoint::{Checkpoint, CheckpointListItem, CheckpointMetadata};
+use crate::checkpoint::{Checkpoint, CheckpointListItem, CheckpointMetadata, PendingWrite};
 use crate::config::RunnableConfig;
 
 /// Error type for checkpoint operations.
@@ -63,6 +63,36 @@ where
         before: Option<&str>,
         after: Option<&str>,
     ) -> Result<Vec<CheckpointListItem>, CheckpointError>;
+
+    /// Persists pending task writes associated with a checkpoint.
+    ///
+    /// `writes` is a slice of `(channel, value)` pairs representing the
+    /// successful outputs of one task within a super-step. Implementations
+    /// assign each entry a stable per-task index (the slice position) and
+    /// dedupe on `(task_id, idx)`. The default implementation is a no-op for
+    /// backward compatibility with savers that do not track writes.
+    async fn put_writes(
+        &self,
+        _config: &RunnableConfig,
+        _checkpoint_id: &str,
+        _task_id: &str,
+        _writes: &[(String, serde_json::Value)],
+    ) -> Result<(), CheckpointError> {
+        Ok(())
+    }
+
+    /// Loads pending writes associated with a checkpoint.
+    ///
+    /// Returns writes ordered by `(task_id, idx)` so callers can replay them
+    /// deterministically. The default implementation returns an empty vector
+    /// for backward compatibility with savers that do not track writes.
+    async fn get_writes(
+        &self,
+        _config: &RunnableConfig,
+        _checkpoint_id: &str,
+    ) -> Result<Vec<PendingWrite>, CheckpointError> {
+        Ok(Vec::new())
+    }
 }
 
 #[cfg(test)]

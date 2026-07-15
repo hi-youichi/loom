@@ -12,7 +12,7 @@ use checkpoint::RunnableConfig;
 use checkpoint::Serializer;
 use checkpoint::{
     ChannelVersions, Checkpoint, CheckpointListItem, CheckpointMetadata, CheckpointSource,
-    KernelMetadata, CHECKPOINT_VERSION,
+    KernelMetadata, PendingWrite, CHECKPOINT_VERSION,
 };
 use checkpoint::{CheckpointError, Checkpointer};
 use std::collections::HashMap;
@@ -193,6 +193,23 @@ where
         )
         .map_err(|e| CheckpointError::Storage(e.to_string()))?;
         ensure_checkpoint_runtime_columns(&conn)?;
+        conn.execute(
+            r#"
+            CREATE TABLE IF NOT EXISTS checkpoint_writes (
+                thread_id TEXT NOT NULL,
+                checkpoint_ns TEXT NOT NULL,
+                checkpoint_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                idx INTEGER NOT NULL,
+                channel TEXT NOT NULL,
+                value BLOB NOT NULL,
+                created_at INTEGER,
+                PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
+            )
+            "#,
+            [],
+        )
+        .map_err(|e| CheckpointError::Storage(e.to_string()))?;
         Ok(Self {
             db_path,
             serializer,
@@ -479,6 +496,111 @@ where
 
         Ok(items)
     }
+
+    async fn put_writes(
+        &self,
+        config: &RunnableConfig,
+        checkpoint_id: &str,
+        task_id: &str,
+        writes: &[(String, serde_json::Value)],
+    ) -> Result<(), CheckpointError> {
+        let thread_id = Self::thread_id_required(config)?;
+        let checkpoint_ns = config.checkpoint_ns.clone();
+        let db_path = self.db_path.clone();
+        let checkpoint_id_owned = checkpoint_id.to_string();
+        let task_id_owned = task_id.to_string();
+        // Pre-serialize each write to (idx, channel, JSON bytes) so the
+        // blocking task owns everything by value and doesn't borrow `writes`.
+        let mut prepared: Vec<(i64, String, Vec<u8>)> = Vec::with_capacity(writes.len());
+        for (idx, (channel, value)) in writes.iter().enumerate() {
+            let bytes = serde_json::to_vec(value)
+                .map_err(|e| CheckpointError::Serialization(e.to_string()))?;
+            prepared.push((idx as i64, channel.clone(), bytes));
+        }
+        tokio::task::spawn_blocking(move || {
+            let conn = crate::sqlite_util::open_sqlite_with_wal(&db_path)
+                .map_err(CheckpointError::Storage)?;
+            // Open a short-lived transaction so multiple writes either land
+            // together or get rolled back.
+            let tx = conn
+                .unchecked_transaction()
+                .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            for (idx, channel, bytes) in prepared {
+                tx.execute(
+                    r#"
+                    INSERT OR IGNORE INTO checkpoint_writes
+                        (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, value, created_at)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                    "#,
+                    params![
+                        thread_id,
+                        checkpoint_ns,
+                        checkpoint_id_owned,
+                        task_id_owned,
+                        idx,
+                        channel,
+                        bytes,
+                        created_at_to_i64(&Some(std::time::SystemTime::now())),
+                    ],
+                )
+                .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            }
+            tx.commit().map_err(|e| CheckpointError::Storage(e.to_string()))?;
+            Ok::<(), CheckpointError>(())
+        })
+        .await
+        .map_err(|e| CheckpointError::Storage(e.to_string()))?
+    }
+
+    async fn get_writes(
+        &self,
+        config: &RunnableConfig,
+        checkpoint_id: &str,
+    ) -> Result<Vec<PendingWrite>, CheckpointError> {
+        let thread_id = Self::thread_id_required(config)?;
+        let checkpoint_ns = config.checkpoint_ns.clone();
+        let checkpoint_id_owned = checkpoint_id.to_string();
+        let db_path = self.db_path.clone();
+
+        let rows: Vec<(String, String, Vec<u8>)> = tokio::task::spawn_blocking(
+            move || -> Result<Vec<(String, String, Vec<u8>)>, CheckpointError> {
+                let conn = crate::sqlite_util::open_sqlite_with_wal(&db_path)
+                    .map_err(CheckpointError::Storage)?;
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT task_id, channel, value FROM checkpoint_writes \
+                         WHERE thread_id = ?1 AND checkpoint_ns = ?2 AND checkpoint_id = ?3 \
+                         ORDER BY task_id ASC, idx ASC",
+                    )
+                    .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+                let rows = stmt
+                    .query_map(
+                        params![thread_id, checkpoint_ns, checkpoint_id_owned],
+                        |row| {
+                            Ok((
+                                row.get::<_, String>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, Vec<u8>>(2)?,
+                            ))
+                        },
+                    )
+                    .map_err(|e| CheckpointError::Storage(e.to_string()))?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| CheckpointError::Storage(e.to_string()))?;
+                Ok(rows)
+            },
+        )
+        .await
+        .map_err(|e| CheckpointError::Storage(e.to_string()))??;
+
+        let mut result = Vec::with_capacity(rows.len());
+        for (task_id, channel, bytes) in rows {
+            let value: serde_json::Value = serde_json::from_slice(&bytes)
+                .map_err(|e| CheckpointError::Serialization(e.to_string()))?;
+            result.push((task_id, channel, value));
+        }
+        Ok(result)
+    }
 }
 
 #[cfg(test)]
@@ -716,5 +838,216 @@ mod tests {
         };
         let result = saver.get_tuple(&config).await.unwrap();
         assert!(result.is_none());
+    }
+
+    /// **Scenario**: put_writes + get_writes round-trip across multiple tasks.
+    #[tokio::test(flavor = "current_thread")]
+    async fn put_writes_roundtrip_and_ordering() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("writes_rt.db");
+        let serializer =
+            Arc::new(checkpoint::JsonSerializer) as Arc<dyn Serializer<serde_json::Value>>;
+        let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
+        let config = RunnableConfig {
+            thread_id: Some("thread-writes-rt".to_string()),
+            checkpoint_ns: "main".to_string(),
+            ..RunnableConfig::default()
+        };
+
+        // Insert in non-sorted order to verify ORDER BY (task_id, idx).
+        saver
+            .put_writes(
+                &config,
+                "ck-1",
+                "task-b",
+                &[("channel-1".to_string(), serde_json::json!("b1"))],
+            )
+            .await
+            .unwrap();
+        saver
+            .put_writes(
+                &config,
+                "ck-1",
+                "task-a",
+                &[
+                    ("channel-1".to_string(), serde_json::json!(1)),
+                    ("channel-2".to_string(), serde_json::json!("a2")),
+                ],
+            )
+            .await
+            .unwrap();
+
+        let writes = saver.get_writes(&config, "ck-1").await.unwrap();
+        assert_eq!(writes.len(), 3);
+        let summary: Vec<(String, String)> = writes
+            .iter()
+            .map(|(t, c, _)| (t.clone(), c.clone()))
+            .collect();
+        assert_eq!(
+            summary,
+            vec![
+                ("task-a".to_string(), "channel-1".to_string()),
+                ("task-a".to_string(), "channel-2".to_string()),
+                ("task-b".to_string(), "channel-1".to_string()),
+            ]
+        );
+        // Values are deserialized correctly from BLOB
+        assert_eq!(writes[0].2, serde_json::json!(1));
+        assert_eq!(writes[1].2, serde_json::json!("a2"));
+        assert_eq!(writes[2].2, serde_json::json!("b1"));
+    }
+
+    /// **Scenario**: Re-inserting the same (task_id, idx) is idempotent.
+    #[tokio::test(flavor = "current_thread")]
+    async fn put_writes_is_idempotent_on_task_id_idx() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("writes_idem.db");
+        let serializer =
+            Arc::new(checkpoint::JsonSerializer) as Arc<dyn Serializer<serde_json::Value>>;
+        let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
+        let config = RunnableConfig {
+            thread_id: Some("thread-writes-idem".to_string()),
+            checkpoint_ns: "main".to_string(),
+            ..RunnableConfig::default()
+        };
+
+        saver
+            .put_writes(
+                &config,
+                "ck-1",
+                "task-a",
+                &[("ch".to_string(), serde_json::json!("first"))],
+            )
+            .await
+            .unwrap();
+        saver
+            .put_writes(
+                &config,
+                "ck-1",
+                "task-a",
+                &[("ch".to_string(), serde_json::json!("second"))],
+            )
+            .await
+            .unwrap();
+
+        let writes = saver.get_writes(&config, "ck-1").await.unwrap();
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].2, serde_json::json!("first"));
+    }
+
+    /// **Scenario**: Writes are isolated by thread_id, checkpoint_ns, and checkpoint_id.
+    #[tokio::test(flavor = "current_thread")]
+    async fn put_writes_isolated_by_thread_ns_checkpoint() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("writes_iso.db");
+        let serializer =
+            Arc::new(checkpoint::JsonSerializer) as Arc<dyn Serializer<serde_json::Value>>;
+        let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
+
+        let cfg_a_ns_a = RunnableConfig {
+            thread_id: Some("thread-a".to_string()),
+            checkpoint_ns: "ns-a".to_string(),
+            ..RunnableConfig::default()
+        };
+        let cfg_b_ns_a = RunnableConfig {
+            thread_id: Some("thread-b".to_string()),
+            checkpoint_ns: "ns-a".to_string(),
+            ..RunnableConfig::default()
+        };
+        let cfg_a_ns_b = RunnableConfig {
+            thread_id: Some("thread-a".to_string()),
+            checkpoint_ns: "ns-b".to_string(),
+            ..RunnableConfig::default()
+        };
+
+        saver
+            .put_writes(
+                &cfg_a_ns_a,
+                "ck-1",
+                "task",
+                &[("ch".to_string(), serde_json::json!("a/nsa/ck-1"))],
+            )
+            .await
+            .unwrap();
+        saver
+            .put_writes(
+                &cfg_b_ns_a,
+                "ck-1",
+                "task",
+                &[("ch".to_string(), serde_json::json!("b/nsa/ck-1"))],
+            )
+            .await
+            .unwrap();
+        saver
+            .put_writes(
+                &cfg_a_ns_b,
+                "ck-1",
+                "task",
+                &[("ch".to_string(), serde_json::json!("a/nsb/ck-1"))],
+            )
+            .await
+            .unwrap();
+        saver
+            .put_writes(
+                &cfg_a_ns_a,
+                "ck-2",
+                "task",
+                &[("ch".to_string(), serde_json::json!("a/nsa/ck-2"))],
+            )
+            .await
+            .unwrap();
+
+        let a_nsa_ck1 = saver.get_writes(&cfg_a_ns_a, "ck-1").await.unwrap();
+        let b_nsa_ck1 = saver.get_writes(&cfg_b_ns_a, "ck-1").await.unwrap();
+        let a_nsb_ck1 = saver.get_writes(&cfg_a_ns_b, "ck-1").await.unwrap();
+        let a_nsa_ck2 = saver.get_writes(&cfg_a_ns_a, "ck-2").await.unwrap();
+        let missing = saver.get_writes(&cfg_a_ns_a, "ck-missing").await.unwrap();
+
+        assert_eq!(a_nsa_ck1.len(), 1);
+        assert_eq!(a_nsa_ck1[0].2, serde_json::json!("a/nsa/ck-1"));
+        assert_eq!(b_nsa_ck1.len(), 1);
+        assert_eq!(b_nsa_ck1[0].2, serde_json::json!("b/nsa/ck-1"));
+        assert_eq!(a_nsb_ck1.len(), 1);
+        assert_eq!(a_nsb_ck1[0].2, serde_json::json!("a/nsb/ck-1"));
+        assert_eq!(a_nsa_ck2.len(), 1);
+        assert_eq!(a_nsa_ck2[0].2, serde_json::json!("a/nsa/ck-2"));
+        assert!(missing.is_empty());
+    }
+
+    /// **Scenario**: get_writes for a never-touched checkpoint returns empty Vec.
+    #[tokio::test(flavor = "current_thread")]
+    async fn get_writes_empty_when_no_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("writes_empty.db");
+        let serializer =
+            Arc::new(checkpoint::JsonSerializer) as Arc<dyn Serializer<serde_json::Value>>;
+        let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
+        let config = RunnableConfig {
+            thread_id: Some("thread-empty".to_string()),
+            checkpoint_ns: "main".to_string(),
+            ..RunnableConfig::default()
+        };
+        let writes = saver.get_writes(&config, "ck-missing").await.unwrap();
+        assert!(writes.is_empty());
+    }
+
+    /// **Scenario**: put_writes missing thread_id returns ThreadIdRequired.
+    #[tokio::test(flavor = "current_thread")]
+    async fn put_writes_missing_thread_id_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("writes_no_tid.db");
+        let serializer =
+            Arc::new(checkpoint::JsonSerializer) as Arc<dyn Serializer<serde_json::Value>>;
+        let saver = SqliteSaver::<serde_json::Value>::new(&db_path, serializer).unwrap();
+        let config = RunnableConfig::default();
+        let result = saver
+            .put_writes(
+                &config,
+                "ck-1",
+                "task",
+                &[("ch".to_string(), serde_json::json!("v"))],
+            )
+            .await;
+        assert!(matches!(result, Err(CheckpointError::ThreadIdRequired)));
     }
 }
