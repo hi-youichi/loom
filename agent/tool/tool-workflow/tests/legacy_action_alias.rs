@@ -110,7 +110,12 @@ async fn legacy_run_status_reads_instance_and_returns_deprecation() {
         .expect("legacy run-status action should be accepted"),
     );
 
-    assert_eq!(value["checkpoint"]["run_id"], "run-fixture");
+    // T-05: the legacy `run-status` alias goes through `instance-summary`,
+    // which now returns the curated `InstanceMeta` rather than the raw
+    // checkpoint. The checkpoint's `run_id` is recovered as the meta's
+    // `instance_id`; the rest of the curated surface (status, workflow,
+    // event_stats, ...) is asserted by `instance_summary.rs`.
+    assert_eq!(value["instance_id"], "run-fixture");
     assert_eq!(
         value["deprecation"],
         "run-status is now instance-summary; update your calls."

@@ -840,41 +840,117 @@ impl WorkflowTool {
         &self,
         instance_dir: &str,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let path = self.instances_dir().join(instance_dir);
-
-        if !path.exists() {
+        // T-05: a single path segment. Reject anything that looks like a
+        // nested path so we never escape the instances_dir() tree.
+        if instance_dir.is_empty() || instance_dir.contains('/') || instance_dir.contains('\\') {
             return Err(ToolSourceError::InvalidInput(format!(
-                "Instance directory '{instance_dir}' not found in {}",
-                self.instances_dir().display()
+                "'instance_dir' must be a single path segment, got '{instance_dir}'"
             )));
         }
 
-        let checkpoint: Value = std::fs::read_to_string(path.join("checkpoint.json"))
-            .map_err(|e| ToolSourceError::ToolError(format!("Failed to read checkpoint: {e}")))
-            .and_then(|s| {
-                serde_json::from_str(&s).map_err(|e| {
-                    ToolSourceError::ToolError(format!("Invalid checkpoint JSON: {e}"))
-                })
+        // Preferred location is the post-migration `.loom/instances/`.
+        // Fall back to the historical `.luft/runs/` so legacy artefacts
+        // (T-02 in flight) and older fixtures still resolve.
+        let new_path = self.instances_dir().join(instance_dir);
+        let legacy_path = self.runs_dir().join(instance_dir);
+        let resolved = if new_path.is_dir() {
+            new_path
+        } else if legacy_path.is_dir() {
+            legacy_path
+        } else {
+            return Err(ToolSourceError::InvalidInput(format!(
+                "Instance directory '{instance_dir}' not found in {} or {}",
+                self.instances_dir().display(),
+                self.runs_dir().display()
+            )));
+        };
+
+        let instance_json_path = resolved.join("instance.json");
+
+        // Fast path: a pre-built meta is already on disk. Surface it as-is.
+        if instance_json_path.is_file() {
+            let raw = std::fs::read_to_string(&instance_json_path).map_err(|e| {
+                ToolSourceError::ToolError(format!(
+                    "Failed to read instance.json at {}: {e}",
+                    instance_json_path.display()
+                ))
             })?;
+            let value: Value = serde_json::from_str(&raw).map_err(|e| {
+                ToolSourceError::ToolError(format!(
+                    "Invalid instance.json at {}: {e}",
+                    instance_json_path.display()
+                ))
+            })?;
+            return Ok(ToolCallContent::Text(
+                serde_json::to_string_pretty(&value).unwrap_or_else(|_| raw.clone()),
+            ));
+        }
 
-        let events: Vec<Value> = std::fs::read_to_string(path.join("events.jsonl"))
-            .unwrap_or_default()
-            .lines()
-            .filter_map(|line| serde_json::from_str(line).ok())
-            .collect();
+        // Slow path: synthesise the meta from the raw checkpoint+events.
+        // The events read falls back to "absent" rather than hard-fail so
+        // a partial on-disk state (e.g. just checkpoint.json) still
+        // produces a usable summary.
+        let checkpoint_path = resolved.join("checkpoint.json");
+        let checkpoint_bytes = std::fs::read(&checkpoint_path).map_err(|e| {
+            ToolSourceError::ToolError(format!(
+                "Failed to read checkpoint.json at {}: {e}",
+                checkpoint_path.display()
+            ))
+        })?;
+        let checkpoint: Value = serde_json::from_slice(&checkpoint_bytes).map_err(|e| {
+            ToolSourceError::ToolError(format!(
+                "Invalid checkpoint.json at {}: {e}",
+                checkpoint_path.display()
+            ))
+        })?;
 
-        let workflow_src = std::fs::read_to_string(path.join("workflow.lua")).ok();
+        let events_path = resolved.join("events.jsonl");
+        let events: Vec<Value> = match std::fs::read_to_string(&events_path) {
+            Ok(raw) => raw
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .filter_map(|l| serde_json::from_str(l).ok())
+                .collect(),
+            Err(_) => Vec::new(),
+        };
 
-        let result = json!({
-            "checkpoint": checkpoint,
-            "events": events,
-            "event_count": events.len(),
-            "workflow_source": workflow_src,
-        });
+        let workflow_src = std::fs::read_to_string(resolved.join("workflow.lua")).ok();
 
-        Ok(ToolCallContent::Text(
-            serde_json::to_string_pretty(&result).unwrap_or_default(),
-        ))
+        // Synthesised meta always reports `kind="legacy"`: we lost the
+        // original binding when the run pre-dated T-03's writer, and
+        // there is no source path to recover for an inline workflow.
+        let workflow_ref = crate::instance::WorkflowRef {
+            kind: "legacy",
+            name: Some(instance_dir.to_string()),
+            path: None,
+        };
+
+        let meta = crate::instance::build_instance_meta(
+            &checkpoint,
+            &events,
+            workflow_src.as_deref(),
+            &workflow_ref,
+            instance_dir.to_string(),
+            &checkpoint_bytes,
+        );
+
+        let pretty = serde_json::to_string_pretty(&meta).map_err(|e| {
+            ToolSourceError::ToolError(format!("Failed to serialise InstanceMeta: {e}"))
+        })?;
+
+        // Best-effort persist: a write failure (read-only filesystem,
+        // perms, etc.) should still return the freshly-built meta so the
+        // caller is not penalised. Subsequent calls will just rebuild.
+        if let Err(e) = std::fs::write(&instance_json_path, &pretty) {
+            tracing::warn!(
+                instance_dir = %instance_dir,
+                path = %instance_json_path.display(),
+                error = %e,
+                "failed to persist instance.json; returning in-memory InstanceMeta anyway",
+            );
+        }
+
+        Ok(ToolCallContent::Text(pretty))
     }
 
 
