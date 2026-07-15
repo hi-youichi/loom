@@ -19,17 +19,17 @@ tick boxes as each task ships to main.
     until the next minor.
 
 ## task tracking
-  - [ ] T-01 instance.rs clean-layer module
-  - [ ] T-02 paths + action rename
-  - [ ] T-03 execute wiring writes instance.json
-  - [ ] T-04 list-instances pagination + status filter + legacy tag
-  - [ ] T-05 instance-summary handler
-  - [ ] T-06 instance-events handler
-  - [ ] T-07 instance-source handler
-  - [ ] T-08a skill markdown rewrite
-  - [ ] T-08b skill wiring in tool.rs
-  - [ ] T-09a docs + changelog (this entry)
-  - [ ] T-09b CLI audit + final acceptance
+  - [x] T-01 instance.rs clean-layer module
+  - [x] T-02 paths + action rename
+  - [x] T-03 execute wiring writes instance.json
+  - [x] T-04 list-instances pagination + status filter + legacy tag
+  - [x] T-05 instance-summary handler
+  - [x] T-06 instance-events handler
+  - [x] T-07 instance-source handler
+  - [x] T-08a skill markdown rewrite
+  - [x] T-08b skill wiring in tool.rs
+  - [x] T-09a docs + changelog (this entry)
+  - [x] T-09b CLI audit + final acceptance
 
 ## migration for users
   - Move .luft/workflows/*.lua files to .loom/workflows/. The

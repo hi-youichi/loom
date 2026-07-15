@@ -13,8 +13,6 @@ use tool_core::{
     ToolSourceError, ToolSpec,
 };
 
-const INSTANCE_DIR_PREFIX: &str = "loom-instance_";
-
 const WORKFLOW_SKILL: &str = include_str!("workflow_skill.md");
 const REF_TOOL_USAGE: &str = include_str!("references/tool-usage.md");
 const REF_DSL_REFERENCE: &str = include_str!("references/dsl-reference.md");

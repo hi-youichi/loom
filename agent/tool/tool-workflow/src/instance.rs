@@ -220,7 +220,7 @@ pub fn write_instance_artifacts(
 
     // 1) instance.json — pretty-printed.
     let instance_json = serde_json::to_string_pretty(meta)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
     fs::write(dir.join("instance.json"), instance_json)?;
 
     // 2) report.json — only when the meta says File AND the caller passed the
@@ -228,7 +228,7 @@ pub fn write_instance_artifacts(
     if matches!(meta.report, ReportRef::File { .. }) {
         if let Some(v) = report_value {
             let report_json = serde_json::to_string_pretty(v)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                .map_err(std::io::Error::other)?;
             fs::write(dir.join("report.json"), report_json)?;
         }
     }
@@ -393,8 +393,8 @@ pub(crate) fn parse_workflow_meta_from_lua(src: &str) -> Option<Value> {
 /// Accept Lua `{}` literals and lift them to JSON. Supports two shapes:
 /// - Object form: every entry is `key = value` (recursive).
 /// - Sequence form: entries are bare scalars (`"a","b"` or `1,2,3`).
-/// Strings use `'…'` or `"…"`. This is intentionally tiny — good enough for
-/// `@meta` headers users write by hand.
+///   Strings use `'…'` or `"…"`. This is intentionally tiny — good enough for
+///   `@meta` headers users write by hand.
 #[allow(dead_code)] // only exercised by parse_workflow_meta_from_lua for now
 fn parse_lua_table_as_json(body: &str) -> Option<Value> {
     parse_lua_value(body)
