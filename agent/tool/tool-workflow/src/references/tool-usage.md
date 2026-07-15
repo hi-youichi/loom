@@ -103,8 +103,7 @@ Start here when debugging.
 | `count`       | int     | Entries returned                                             |
 | `next_cursor` | string? | Pass to next call; `null` when last page                     |
 
-`source` is `"current"` for `.loom/instances/`, `"legacy"` for
-`.luft/runs/`.
+`source` is currently `"current"` for `.loom/instances/`.
 
 ### Example
 

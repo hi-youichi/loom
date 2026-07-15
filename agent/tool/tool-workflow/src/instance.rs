@@ -249,9 +249,7 @@ pub fn write_instance_artifacts(
             if !needs_files.contains(&agent_id.as_str()) {
                 continue;
             }
-            let path = dir
-                .join("agent-outputs")
-                .join(format!("{agent_id}.txt"));
+            let path = dir.join("agent-outputs").join(format!("{agent_id}.txt"));
             write_if_absent(&path, raw_output.as_bytes())?;
         }
     }
@@ -286,9 +284,7 @@ fn write_if_absent(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// [`AgentSummary`] needs. The fifth element is a marker — `Some(_)`
 /// whenever the output exceeds [`AGENT_OUTPUT_INLINE_LIMIT`]; the actual
 /// file path with the agent's UUID is composed by the caller.
-pub(crate) fn classify_output(
-    raw: &str,
-) -> (&'static str, Value, String, u64, Option<String>) {
+pub(crate) fn classify_output(raw: &str) -> (&'static str, Value, String, u64, Option<String>) {
     let (output_type, parsed) = match serde_json::from_str::<Value>(raw) {
         Ok(v) => ("json", v),
         Err(_) => ("text", Value::String(raw.to_string())),
@@ -380,10 +376,7 @@ pub(crate) fn parse_workflow_meta_from_lua(src: &str) -> Option<Value> {
             continue;
         };
         // `@meta:{...}` or `@meta {...}` — strip optional leading colon/space.
-        let body = after_meta
-            .trim_start()
-            .trim_start_matches(':')
-            .trim_start();
+        let body = after_meta.trim_start().trim_start_matches(':').trim_start();
         if body.is_empty() {
             continue;
         }
@@ -600,8 +593,7 @@ fn build_agent_summaries(events: &[Value], checkpoint: &Value) -> Vec<AgentSumma
             .map(value_to_raw_string)
             .unwrap_or_default();
 
-        let (output_type, _parsed, output_preview, output_size, _marker) =
-            classify_output(&raw);
+        let (output_type, _parsed, output_preview, output_size, _marker) = classify_output(&raw);
         let output_ref = if output_size > AGENT_OUTPUT_INLINE_LIMIT as u64 {
             Some(format!("agent-outputs/{agent_id}.txt"))
         } else {
@@ -688,8 +680,8 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 // ============================================================================
 // Fixtures — used only by tests below. Reads real artefacts under
-// LOOM_TEST_RUNS_DIR/luft-workflow_1783783769 (and friends) when the env var
-// is set, otherwise falls back to <repo-root>/.luft/runs/.../ .  When the
+// LOOM_TEST_INSTANCES_DIR/loom-instance_1783783769 (and friends) when the env var
+// is set, otherwise falls back to <repo-root>/.loom/instances/.../ .  When the
 // file is absent in both places, the test reports a no-op skip (not a fail).
 // ============================================================================
 
@@ -697,12 +689,12 @@ fn sha256_hex(bytes: &[u8]) -> String {
 mod fixtures {
     use std::path::{Path, PathBuf};
 
-    /// Resolve the run fixtures dir using, in order:
-    ///   1. `LOOM_TEST_RUNS_DIR` env var (absolute path or relative-to-CWD)
-    ///   2. `<CARGO_MANIFEST_DIR>/../../../.luft/runs/` (the conventional
+    /// Resolve the instance fixtures dir using, in order:
+    ///   1. `LOOM_TEST_INSTANCES_DIR` env var (absolute path or relative-to-CWD)
+    ///   2. `<CARGO_MANIFEST_DIR>/../../../.loom/instances/` (the conventional
     ///      repo-root location)
-    pub fn runs_dir() -> Option<PathBuf> {
-        if let Some(env_val) = std::env::var_os("LOOM_TEST_RUNS_DIR") {
+    pub fn instances_dir() -> Option<PathBuf> {
+        if let Some(env_val) = std::env::var_os("LOOM_TEST_INSTANCES_DIR") {
             let p = PathBuf::from(env_val);
             if p.is_dir() {
                 return Some(p);
@@ -716,8 +708,8 @@ mod fixtures {
             .join("..")
             .join("..")
             .join("..")
-            .join(".luft")
-            .join("runs");
+            .join(".loom")
+            .join("instances");
         if candidate.is_dir() {
             Some(candidate)
         } else {
@@ -1172,18 +1164,18 @@ end
 
     // ============================================================
     // Fixture-backed tests — skip cleanly when artefacts are absent.
-    // Activate by exporting LOOM_TEST_RUNS_DIR=<path-to-.luft/runs>.
+    // Activate by exporting LOOM_TEST_INSTANCES_DIR=<path-to-.loom/instances>.
     // ============================================================
 
     fn fixture_dir() -> Option<std::path::PathBuf> {
-        fixtures::runs_dir()
+        fixtures::instances_dir()
     }
 
     /// Loads a real run directory and returns
     /// (checkpoint_value, checkpoint_bytes, events_vec, workflow_src).
     fn load_run(name: &str) -> Option<(Value, Vec<u8>, Vec<Value>, Option<String>)> {
-        let runs = fixture_dir()?;
-        let dir = runs.join(name);
+        let instances = fixture_dir()?;
+        let dir = instances.join(name);
         if !dir.is_dir() {
             return None;
         }
@@ -1197,7 +1189,7 @@ end
     fn skip_if_missing(name: &str) -> bool {
         match fixture_dir() {
             None => {
-                eprintln!("skip: no fixture dir (set LOOM_TEST_RUNS_DIR)");
+                eprintln!("skip: no fixture dir (set LOOM_TEST_INSTANCES_DIR)");
                 true
             }
             Some(d) if !d.join(name).is_dir() => {
@@ -1210,10 +1202,10 @@ end
 
     #[test]
     fn build_meta_multi_agent_success() {
-        if skip_if_missing("luft-workflow_1783786025") {
+        if skip_if_missing("loom-instance_1783786025") {
             return;
         }
-        let (ckpt, bytes, events, src) = load_run("luft-workflow_1783786025").unwrap();
+        let (ckpt, bytes, events, src) = load_run("loom-instance_1783786025").unwrap();
         let meta = build_instance_meta(
             &ckpt,
             &events,
@@ -1252,10 +1244,10 @@ end
 
     #[test]
     fn build_meta_failed_run() {
-        if skip_if_missing("luft-workflow_1783784203") {
+        if skip_if_missing("loom-instance_1783784203") {
             return;
         }
-        let (ckpt, bytes, events, _src) = load_run("luft-workflow_1783784203").unwrap();
+        let (ckpt, bytes, events, _src) = load_run("loom-instance_1783784203").unwrap();
         let meta = build_instance_meta(
             &ckpt,
             &events,
@@ -1278,13 +1270,15 @@ end
 
     #[test]
     fn checkpoint_hash_matches_known_value() {
-        if skip_if_missing("luft-workflow_1783783769") {
+        if skip_if_missing("loom-instance_1783783769") {
             return;
         }
-        let runs = fixture_dir().unwrap();
-        let ckpt_path = runs.join("luft-workflow_1783783769").join("checkpoint.json");
+        let instances = fixture_dir().unwrap();
+        let ckpt_path = instances
+            .join("loom-instance_1783783769")
+            .join("checkpoint.json");
         let bytes = fixtures::load_bytes(
-            &runs.join("luft-workflow_1783783769"),
+            &instances.join("loom-instance_1783783769"),
             "checkpoint.json",
         )
         .unwrap();
@@ -1295,11 +1289,12 @@ end
 
         // Also confirm the value flows through build_instance_meta.
         let ckpt: Value = serde_json::from_slice(&bytes).unwrap();
-        let events: Vec<Value> = std::fs::read_to_string(ckpt_path.parent().unwrap().join("events.jsonl"))
-            .unwrap_or_default()
-            .lines()
-            .filter_map(|l| serde_json::from_str(l).ok())
-            .collect();
+        let events: Vec<Value> =
+            std::fs::read_to_string(ckpt_path.parent().unwrap().join("events.jsonl"))
+                .unwrap_or_default()
+                .lines()
+                .filter_map(|l| serde_json::from_str(l).ok())
+                .collect();
         let meta = build_instance_meta(
             &ckpt,
             &events,

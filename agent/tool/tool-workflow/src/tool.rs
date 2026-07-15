@@ -10,6 +10,8 @@ use tool_core::{
     ToolSourceError, ToolSpec,
 };
 
+const INSTANCE_DIR_PREFIX: &str = "loom-instance_";
+
 const WORKFLOW_SKILL: &str = include_str!("workflow_skill.md");
 const REF_ARCH_HEADER: &str = include_str!("references/architecture-header.md");
 const REF_AGENT_PROMPTS: &str = include_str!("references/agent-prompts.md");
@@ -64,13 +66,13 @@ impl WorkflowTool {
         Self { config_template }
     }
 
-    fn runs_dir(&self) -> PathBuf {
+    fn instances_dir(&self) -> PathBuf {
         self.config_template
             .working_folder
             .as_deref()
             .unwrap_or_else(|| Path::new("."))
-            .join(".luft")
-            .join("runs")
+            .join(".loom")
+            .join("instances")
     }
 
     fn workflows_dir(&self) -> PathBuf {
@@ -78,7 +80,7 @@ impl WorkflowTool {
             .working_folder
             .as_deref()
             .unwrap_or_else(|| Path::new("."))
-            .join(".luft")
+            .join(".loom")
             .join("workflows")
     }
 
@@ -134,9 +136,9 @@ impl WorkflowTool {
         ))
     }
 
-    async fn handle_list_runs(&self) -> Result<ToolCallContent, ToolSourceError> {
-        let dir = self.runs_dir();
-        let mut runs = Vec::new();
+    async fn handle_list_instances(&self) -> Result<ToolCallContent, ToolSourceError> {
+        let dir = self.instances_dir();
+        let mut instances = Vec::new();
 
         if dir.exists() {
             if let Ok(entries) = std::fs::read_dir(&dir) {
@@ -178,8 +180,8 @@ impl WorkflowTool {
                         .map(|s| s.to_string_lossy().to_string())
                         .unwrap_or_default();
 
-                    runs.push(json!({
-                        "run_dir": dir_name,
+                    instances.push(json!({
+                        "instance_dir": dir_name,
                         "run_id": run_id,
                         "status": status,
                         "created_at": created_at,
@@ -190,7 +192,7 @@ impl WorkflowTool {
             }
         }
 
-        runs.sort_by(|a, b| {
+        instances.sort_by(|a, b| {
             let av = a.get("created_at").and_then(|v| v.as_u64()).unwrap_or(0);
             let bv = b.get("created_at").and_then(|v| v.as_u64()).unwrap_or(0);
             bv.cmp(&av)
@@ -198,20 +200,23 @@ impl WorkflowTool {
 
         Ok(ToolCallContent::Text(
             serde_json::to_string_pretty(&json!({
-                "runs": runs,
-                "count": runs.len(),
+                "instances": instances,
+                "count": instances.len(),
             }))
             .unwrap_or_default(),
         ))
     }
 
-    async fn handle_run_status(&self, run_dir: &str) -> Result<ToolCallContent, ToolSourceError> {
-        let path = self.runs_dir().join(run_dir);
+    async fn handle_instance_summary(
+        &self,
+        instance_dir: &str,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        let path = self.instances_dir().join(instance_dir);
 
         if !path.exists() {
             return Err(ToolSourceError::InvalidInput(format!(
-                "Run directory '{run_dir}' not found in {}",
-                self.runs_dir().display()
+                "Instance directory '{instance_dir}' not found in {}",
+                self.instances_dir().display()
             )));
         }
 
@@ -243,7 +248,7 @@ impl WorkflowTool {
         ))
     }
 
-    async fn handle_run(
+    async fn handle_execute(
         &self,
         args: &Value,
         ctx: Option<&ToolCallContext>,
@@ -287,7 +292,7 @@ impl WorkflowTool {
         let user_args = extract_user_args(args);
         let lua_source = inject_args_globals(&lua_source, user_args.as_ref());
 
-        let base_dir = self.runs_dir();
+        let base_dir = self.instances_dir();
         let backend = LoomAgentBackend::new(self.config_template.clone());
 
         let luft = LuftBuilder::new()
@@ -299,9 +304,34 @@ impl WorkflowTool {
                 ToolSourceError::ToolError(format!("Workflow engine build failed: {e}"))
             })?;
 
-        let run_handle = luft
-            .start_script(&lua_source)
-            .await
+        // Luft derives its directory prefix from the workflow file name and
+        // does not expose a custom directory-name setting. Launch the already
+        // resolved source through a short-lived `loom-instance.lua` file so
+        // the persisted directory is `loom-instance_<ts>` directly beneath
+        // `.loom/instances` rather than Luft's default prefix.
+        let launch_root = base_dir.parent().unwrap_or(&base_dir);
+        let launch_dir = launch_root.join(format!(".workflow-launch-{}", uuid::Uuid::new_v4()));
+        let launch_path =
+            launch_dir.join(format!("{}.lua", INSTANCE_DIR_PREFIX.trim_end_matches('_')));
+        std::fs::create_dir_all(&launch_dir).map_err(|e| {
+            ToolSourceError::ToolError(format!("Failed to prepare workflow launch: {e}"))
+        })?;
+        if let Err(error) = std::fs::write(&launch_path, &lua_source) {
+            let _ = std::fs::remove_dir_all(&launch_dir);
+            return Err(ToolSourceError::ToolError(format!(
+                "Failed to prepare workflow launch: {error}"
+            )));
+        }
+
+        let run_handle = luft.start_workflow(&launch_path).await;
+        if let Err(error) = std::fs::remove_dir_all(&launch_dir) {
+            tracing::warn!(
+                path = %launch_dir.display(),
+                %error,
+                "failed to remove temporary workflow launch directory"
+            );
+        }
+        let run_handle = run_handle
             .map_err(|e| ToolSourceError::ToolError(format!("Failed to start workflow: {e}")))?;
 
         let mut forward_rx = run_handle.subscribe();
@@ -354,7 +384,7 @@ impl WorkflowTool {
                                         "tokens": total_tokens,
                                     });
                                     if matches!(status, luft_core::contract::event::RunStatus::Failed) {
-                                        obj["error"] = json!("Workflow failed. Use action='run-status' with the latest run_dir to see details.");
+                                        obj["error"] = json!("Workflow failed. Use action='instance-summary' with the latest instance_dir to see details.");
                                     }
                                     serde_json::to_string_pretty(&obj).unwrap_or_default()
                                 }
@@ -377,6 +407,31 @@ impl WorkflowTool {
             }
         }
     }
+
+    fn with_deprecation(
+        content: ToolCallContent,
+        old_action: &str,
+        new_action: &str,
+    ) -> ToolCallContent {
+        let ToolCallContent::Text(text) = content else {
+            return content;
+        };
+
+        let deprecation = format!("{old_action} is now {new_action}; update your calls.");
+        let mut value =
+            serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({ "result": text }));
+
+        if let Value::Object(object) = &mut value {
+            object.insert("deprecation".to_string(), Value::String(deprecation));
+        } else {
+            value = json!({
+                "result": value,
+                "deprecation": deprecation,
+            });
+        }
+
+        ToolCallContent::Text(serde_json::to_string_pretty(&value).unwrap_or_default())
+    }
 }
 
 #[async_trait]
@@ -389,19 +444,15 @@ impl Tool for WorkflowTool {
         ToolSpec {
             name: "workflow".to_string(),
             description: Some(
-                "Execute or inspect multi-agent workflows.\n\
+                "Execute or inspect multi-agent workflows stored under .loom/.\n\n\
                  Actions:\n\
-                 - run (default): Execute a workflow. Provide `script` (inline Lua) or `workflow` (name/path).\n\
-                 - list-workflows: List available .lua workflow files.\n\
-                 - list-runs: List past workflow execution runs with status.\n\
-                 - run-status: Query detailed status of a specific run (checkpoint + events).\n\n\
-                 Lua primitives: agent(opts), parallel(items, mapFn), \
-                 pipeline{items=, stages=, max_inflight=}, phase(name, planned?), \
-                 phase_begin(name), phase_end(span), workflow(path, args?), \
-                 report(value), log(msg, level?), budget(time_ms, rounds), \
-                 json.encode(value), json.decode(string).\n\
-                 For the full DSL reference (required structure, rules, examples), \
-                 load the `workflow` skill."
+                 - execute (default): Run a workflow. Provide `script` (inline Lua) or `workflow` (name/path). Returns an instance summary; full report is written to .loom/instances/<dir>/report.json when large.\n\
+                 - list-workflows: List .lua files in .loom/workflows/.\n\
+                 - list-instances: List past instances (paginated). Start here when debugging.\n\
+                 - instance-summary: Get the curated summary of one instance — status, agents, phase spans, event stats. Read this BEFORE instance-events.\n\
+                 - instance-events: Page through the raw event stream with type/agent filters. Use after instance-summary.\n\
+                 - instance-source: Get the workflow.lua that an instance executed.\n\n\
+                 For the full action guide and the Lua DSL reference, load the `workflow` skill."
                     .to_string(),
             ),
             input_schema: json!({
@@ -409,21 +460,21 @@ impl Tool for WorkflowTool {
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["run", "list-workflows", "list-runs", "run-status"],
-                        "description": "Action to perform. Default: 'run'.",
-                        "default": "run"
+                        "enum": ["execute", "list-workflows", "list-instances", "instance-summary", "instance-events", "instance-source"],
+                        "description": "Action to perform. Default: 'execute'.",
+                        "default": "execute"
                     },
                     "script": {
                         "type": "string",
-                        "description": "(action=run) Inline Lua script."
+                        "description": "(execute) Inline Lua source."
                     },
                     "workflow": {
                         "type": "string",
-                        "description": "(action=run) Name or path of a .lua workflow file."
+                        "description": "(execute) Name or path of a .lua workflow file."
                     },
                     "args": {
                         "type": "object",
-                        "description": "(action=run) Arguments exposed to the workflow as the Lua global `_G._args`. Read with `_G._args` inside the script; declare `function main()` (no parameters).",
+                        "description": "(execute) Exposed as `_G._args` inside the script; declare `function main()` (no parameters).",
                         "additionalProperties": true
                     },
                     "concurrency": {
@@ -431,11 +482,11 @@ impl Tool for WorkflowTool {
                         "minimum": 1,
                         "maximum": 64,
                         "default": 4,
-                        "description": "(action=run) Maximum number of concurrent agents for this run. Default: 4."
+                        "description": "(execute) Maximum number of concurrent agents. Default: 4."
                     },
-                    "run_dir": {
+                    "instance_dir": {
                         "type": "string",
-                        "description": "(action=run-status) Run directory name to query (from list-runs)."
+                        "description": "(instance-*) Instance directory name from list-instances."
                     }
                 }
             }),
@@ -450,25 +501,60 @@ impl Tool for WorkflowTool {
         args: Value,
         ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("run");
+        let action = args
+            .get("action")
+            .and_then(|value| value.as_str())
+            .unwrap_or("execute");
 
         match action {
-            "run" => self.handle_run(&args, ctx).await,
+            "execute" => self.handle_execute(&args, ctx).await,
             "list-workflows" => self.handle_list_workflows().await,
-            "list-runs" => self.handle_list_runs().await,
-            "run-status" => {
-                let run_dir = args
-                    .get("run_dir")
-                    .and_then(|v| v.as_str())
+            "list-instances" => self.handle_list_instances().await,
+            "instance-summary" => {
+                let instance_dir = args
+                    .get("instance_dir")
+                    .and_then(|value| value.as_str())
                     .ok_or_else(|| {
                         ToolSourceError::InvalidInput(
-                            "'run_dir' is required for action='run-status'.".to_string(),
+                            "'instance_dir' is required for action='instance-summary'."
+                                .to_string(),
                         )
                     })?;
-                self.handle_run_status(run_dir).await
+                self.handle_instance_summary(instance_dir).await
             }
+            // Legacy action aliases are accepted for one minor release. They
+            // deliberately remain outside the advertised JSON-schema enum.
+            "run" => Ok(Self::with_deprecation(
+                self.handle_execute(&args, ctx).await?,
+                "run",
+                "execute",
+            )),
+            "list-runs" => Ok(Self::with_deprecation(
+                self.handle_list_instances().await?,
+                "list-runs",
+                "list-instances",
+            )),
+            "run-status" => {
+                let instance_dir = args
+                    .get("instance_dir")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| {
+                        ToolSourceError::InvalidInput(
+                            "'instance_dir' is required for action='instance-summary'."
+                                .to_string(),
+                        )
+                    })?;
+                Ok(Self::with_deprecation(
+                    self.handle_instance_summary(instance_dir).await?,
+                    "run-status",
+                    "instance-summary",
+                ))
+            }
+            "instance-events" | "instance-source" => Err(ToolSourceError::InvalidInput(format!(
+                "Action '{action}' is not implemented yet."
+            ))),
             other => Err(ToolSourceError::InvalidInput(format!(
-                "Unknown action '{other}'. Valid: run, list-workflows, list-runs, run-status."
+                "Unknown action '{other}'. Valid: execute, list-workflows, list-instances, instance-summary, instance-events, instance-source."
             ))),
         }
     }
@@ -517,13 +603,13 @@ mod tests {
 
     #[test]
     fn concurrency_default_when_missing() {
-        let args = json!({"action": "run"});
+        let args = json!({"action": "execute"});
         assert_eq!(parse_concurrency(&args).unwrap(), DEFAULT_CONCURRENCY);
     }
 
     #[test]
     fn concurrency_explicit_value() {
-        let args = json!({"action": "run", "concurrency": 8});
+        let args = json!({"action": "execute", "concurrency": 8});
         assert_eq!(parse_concurrency(&args).unwrap(), 8);
     }
 
@@ -552,7 +638,7 @@ mod tests {
 
     #[test]
     fn extract_user_args_missing() {
-        let args = json!({"action": "run"});
+        let args = json!({"action": "execute"});
         assert!(extract_user_args(&args).is_none());
     }
 
