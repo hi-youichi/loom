@@ -62,12 +62,23 @@ async fn loom_paths_are_primary_for_workflows_and_instances() {
             .await
             .expect("list instances"),
     );
-    assert_eq!(instances["count"], 1);
+    // T-04: `list-instances` walks BOTH `.loom/instances/` (current
+    // layout, post-T-02) AND `.luft/runs/` (legacy layout). The test
+    // seeds one entry under each root, so the listing carries TWO
+    // entries (paginated by `created_at` DESC). Renamed from `run_id`
+    // -> `instance_id` because T-04 unifies the field across both
+    // source directories.
+    assert_eq!(instances["count"], 2);
     assert_eq!(
         instances["instances"][0]["instance_dir"],
         "loom-instance_current"
     );
-    assert_eq!(instances["instances"][0]["run_id"], "current");
+    assert_eq!(instances["instances"][0]["instance_id"], "current");
+    assert_eq!(
+        instances["instances"][1]["instance_dir"],
+        "luft-workflow_old"
+    );
+    assert_eq!(instances["instances"][1]["instance_id"], "old");
 }
 
 #[test]

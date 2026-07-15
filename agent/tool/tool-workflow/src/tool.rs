@@ -33,6 +33,23 @@ pub struct WorkflowTool {
     config_template: agent::agent::AgentConfig,
 }
 
+/// T-04: Default page size for `action=list-instances` when the caller
+/// does not specify `limit`. Chosen to fit well under the typical 50 KB
+/// per-tool-result budget while still letting a single page scan ~25
+/// instances.
+const DEFAULT_LIST_INSTANCES_LIMIT: usize = 20;
+
+/// T-04: Upper bound on `limit` for `action=list-instances`. Prevents a
+/// caller from asking for thousands of entries in one go, which would
+/// blow past the tool-result budget and force a second round-trip anyway.
+const MAX_LIST_INSTANCES_LIMIT: usize = 100;
+
+/// T-04: Allowed status filter values for the `list-instances` action.
+/// Kept lowercase so callers can pass either case; the parser lowercases
+/// incoming strings before matching.
+const LIST_INSTANCES_STATUS_FILTERS: &[&str] = &["completed", "failed", "cancelled"];
+
+
 fn parse_concurrency(args: &Value) -> Result<usize, ToolSourceError> {
     let Some(v) = args.get("concurrency") else {
         return Ok(DEFAULT_CONCURRENCY);
@@ -84,6 +101,171 @@ fn truncate_for_preview(s: &str, max_bytes: usize) -> String {
     out
 }
 
+// ---------------------------------------------------------------------------
+// T-04 -- `handle_list_instances` parsers and helpers
+// ---------------------------------------------------------------------------
+//
+// `parse_list_instances_limit`, `parse_list_instances_cursor`, and
+// `parse_list_instances_status_filter` are all defensive: they tolerate
+// missing keys (return the spec default), explicit `null` (treated the same
+// as missing), and valid values, but reject malformed types or out-of-range
+// numbers with `ToolSourceError::InvalidInput`. Unknown status strings are
+// rejected so we never silently let through typos like "fail" or "Compete".
+
+fn parse_list_instances_limit(args: &Value) -> Result<usize, ToolSourceError> {
+    let Some(v) = args.get("limit") else {
+        return Ok(DEFAULT_LIST_INSTANCES_LIMIT);
+    };
+    if v.is_null() {
+        return Ok(DEFAULT_LIST_INSTANCES_LIMIT);
+    }
+    let n = v.as_u64().ok_or_else(|| {
+        ToolSourceError::InvalidInput(format!("'limit' must be a positive integer, got {v}"))
+    })?;
+    if !(1..=MAX_LIST_INSTANCES_LIMIT as u64).contains(&n) {
+        return Err(ToolSourceError::InvalidInput(format!(
+            "'limit' must be between 1 and {MAX_LIST_INSTANCES_LIMIT}, got {n}"
+        )));
+    }
+    Ok(n as usize)
+}
+
+fn parse_list_instances_cursor(args: &Value) -> Option<String> {
+    let v = args.get("cursor")?;
+    if v.is_null() {
+        return None;
+    }
+    v.as_str()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
+fn parse_list_instances_status_filter(args: &Value) -> Result<Option<String>, ToolSourceError> {
+    let v = match args.get("status_filter") {
+        None | Some(Value::Null) => return Ok(None),
+        Some(v) => v,
+    };
+    let s = v.as_str().ok_or_else(|| {
+        ToolSourceError::InvalidInput(format!("'status_filter' must be a string, got {v}"))
+    })?;
+    let lower = s.to_lowercase();
+    if !LIST_INSTANCES_STATUS_FILTERS.contains(&lower.as_str()) {
+        return Err(ToolSourceError::InvalidInput(format!(
+            "'status_filter' must be one of completed|failed|cancelled, got {s}"
+        )));
+    }
+    Ok(Some(lower))
+}
+
+fn read_json_value(path: &Path) -> Option<Value> {
+    let bytes = std::fs::read(path).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+/// Build a list-instances entry record from a clean `instance.json` (T-03+).
+///
+/// Per design doc (list-instances), the `workflow` field exposes only
+/// `{kind, name}` -- the absolute `path` is intentionally omitted to keep
+/// the list response lightweight. `source` is supplied by the caller
+/// (typically "current" or "legacy") based on which root directory
+/// produced the file.
+fn build_entry_from_instance_json(
+    v: &Value,
+    dir_name: &str,
+    source: &'static str,
+) -> Value {
+    let wf = v.get("workflow");
+    let kind = wf
+        .and_then(|w| w.get("kind"))
+        .and_then(|x| x.as_str())
+        .unwrap_or("file")
+        .to_string();
+    let name = wf
+        .and_then(|w| w.get("name"))
+        .and_then(|x| x.as_str())
+        .map(|s| s.to_string());
+    json!({
+        "instance_id": v.get("instance_id").and_then(|x| x.as_str()).unwrap_or("?"),
+        "instance_dir": dir_name,
+        "status": v.get("status").and_then(|x| x.as_str()).unwrap_or("unknown"),
+        "workflow": {
+            "kind": kind,
+            "name": name,
+        },
+        "created_at": v.get("created_at").and_then(|x| x.as_u64()).unwrap_or(0),
+        "completed_at": v.get("completed_at").and_then(|x| x.as_u64()).unwrap_or(0),
+        "total_tokens": v.get("total_tokens").and_then(|x| x.as_u64()).unwrap_or(0),
+        "agent_count": v.get("agent_count").and_then(|x| x.as_u64()).unwrap_or(0),
+        "source": source,
+    })
+}
+
+/// Fallback for legacy entries that predate the `instance.json` migration
+/// (T-05 will regenerate these on-the-fly). The synthetic `workflow`
+/// collapses to `{kind:"file",name:<dir>}` because `checkpoint.json` does
+/// not record the original workflow name.
+fn build_entry_from_checkpoint(
+    ckpt: &Value,
+    dir_name: &str,
+    source: &'static str,
+) -> Value {
+    let agent_count = ckpt
+        .get("agent_results")
+        .and_then(|x| x.as_object())
+        .map(|o| o.len() as u64)
+        .unwrap_or(0);
+    json!({
+        "instance_id": ckpt.get("run_id").and_then(|x| x.as_str()).unwrap_or("?"),
+        "instance_dir": dir_name,
+        "status": ckpt.get("status").and_then(|x| x.as_str()).unwrap_or("unknown"),
+        "workflow": {
+            "kind": "file",
+            "name": dir_name,
+        },
+        "created_at": ckpt.get("created_at").and_then(|x| x.as_u64()).unwrap_or(0),
+        "completed_at": ckpt.get("updated_at").and_then(|x| x.as_u64()).unwrap_or(0),
+        "total_tokens": ckpt.get("total_tokens").and_then(|x| x.as_u64()).unwrap_or(0),
+        "agent_count": agent_count,
+        "source": source,
+    })
+}
+
+/// Walk a directory of run/instance directories, preferring `instance.json`
+/// for O(1) summaries and falling back to `checkpoint.json` for legacy
+/// entries. Directories with neither artifact are skipped silently, per
+/// the design doc's "skip the entry silently" requirement.
+fn collect_instances_under(root: &Path, source: &'static str, out: &mut Vec<Value>) {
+    if !root.exists() {
+        return;
+    }
+    let entries = match std::fs::read_dir(root) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let dir_name = path
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        let inst_path = path.join("instance.json");
+        if let Some(inst) = read_json_value(&inst_path) {
+            out.push(build_entry_from_instance_json(&inst, &dir_name, source));
+            continue;
+        }
+
+        let ckpt_path = path.join("checkpoint.json");
+        if let Some(ckpt) = read_json_value(&ckpt_path) {
+            out.push(build_entry_from_checkpoint(&ckpt, &dir_name, source));
+        }
+        // else: skip silently -- the design task explicitly requires this.
+    }
+}
+
 impl WorkflowTool {
     pub fn new(config_template: agent::agent::AgentConfig) -> Self {
         Self { config_template }
@@ -96,6 +278,22 @@ impl WorkflowTool {
             .unwrap_or_else(|| Path::new("."))
             .join(".loom")
             .join("instances")
+    }
+
+    /// T-04: Legacy location for historical runs that predate the
+    /// `.loom/instances/` migration. `handle_list_instances` walks BOTH
+    /// this root and `instances_dir()` so legacy entries remain visible
+    /// after upgrades. The new instance layout (`loom-instance_*`) uses
+    /// `.loom/instances/`, but pre-T-02 Luft runs are still under
+    /// `.luft/runs/`. Source-tagged as "legacy" in the listing so callers
+    /// can tell them apart from current entries.
+    fn runs_dir(&self) -> PathBuf {
+        self.config_template
+            .working_folder
+            .as_deref()
+            .unwrap_or_else(|| Path::new("."))
+            .join(".luft")
+            .join("runs")
     }
 
     fn workflows_dir(&self) -> PathBuf {
@@ -532,72 +730,107 @@ impl WorkflowTool {
         ))
     }
 
-    async fn handle_list_instances(&self) -> Result<ToolCallContent, ToolSourceError> {
-        let dir = self.instances_dir();
-        let mut instances = Vec::new();
+    async fn handle_list_instances(
+        &self,
+        args: &Value,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        // T-04: parse pagination/filter inputs up front. Each parser
+        // returns Err on invalid input so we fail fast before any I/O.
+        let limit = parse_list_instances_limit(args)?;
+        let cursor = parse_list_instances_cursor(args);
+        let status_filter = parse_list_instances_status_filter(args)?;
 
-        if dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(&dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if !path.is_dir() {
-                        continue;
-                    }
+        // T-04: walk BOTH roots. Current instances live under
+        // `instances_dir()`; legacy Luft runs under `runs_dir()`. Each is
+        // source-tagged so callers can tell them apart. Entries from both
+        // directories are merged into a single sorted page.
+        let mut entries: Vec<Value> = Vec::new();
+        collect_instances_under(&self.instances_dir(), "current", &mut entries);
+        collect_instances_under(&self.runs_dir(), "legacy", &mut entries);
 
-                    let checkpoint_path = path.join("checkpoint.json");
-                    let checkpoint: Value = std::fs::read(&checkpoint_path)
-                        .ok()
-                        .and_then(|b| serde_json::from_slice(&b).ok())
-                        .unwrap_or(json!(null));
-
-                    let run_id = checkpoint
-                        .get("run_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("?")
-                        .to_string();
-                    let status = checkpoint
-                        .get("status")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown")
-                        .to_string();
-                    let created_at = checkpoint.get("created_at").and_then(|v| v.as_u64());
-                    let total_tokens = checkpoint
-                        .get("total_tokens")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-                    let agent_count = checkpoint
-                        .get("agent_results")
-                        .and_then(|v| v.as_object())
-                        .map(|o| o.len())
-                        .unwrap_or(0);
-
-                    let dir_name = path
-                        .file_name()
-                        .map(|s| s.to_string_lossy().to_string())
-                        .unwrap_or_default();
-
-                    instances.push(json!({
-                        "instance_dir": dir_name,
-                        "run_id": run_id,
-                        "status": status,
-                        "created_at": created_at,
-                        "total_tokens": total_tokens,
-                        "agents": agent_count,
-                    }));
-                }
-            }
+        // Step 3: case-insensitive exact match on the canonical lowercase
+        // status. We lowercase both sides so legacy mixed-case statuses
+        // ("Completed", "FAILED") still match.
+        if let Some(ref sf) = status_filter {
+            let want = sf.to_lowercase();
+            entries.retain(|e| {
+                e.get("status")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_lowercase() == want)
+                    .unwrap_or(false)
+            });
         }
 
-        instances.sort_by(|a, b| {
-            let av = a.get("created_at").and_then(|v| v.as_u64()).unwrap_or(0);
-            let bv = b.get("created_at").and_then(|v| v.as_u64()).unwrap_or(0);
-            bv.cmp(&av)
+        // Step 4: sort by (created_at desc, instance_dir desc). The
+        // instance_dir tiebreak keeps ordering stable when many entries
+        // share the same created_at (e.g. checkpoint fallback at zero).
+        entries.sort_by(|a, b| {
+            let ca = a.get("created_at").and_then(|v| v.as_u64()).unwrap_or(0);
+            let cb = b.get("created_at").and_then(|v| v.as_u64()).unwrap_or(0);
+            cb.cmp(&ca).then_with(|| {
+                let da = a.get("instance_dir").and_then(|v| v.as_str()).unwrap_or("");
+                let db = b.get("instance_dir").and_then(|v| v.as_str()).unwrap_or("");
+                db.cmp(da)
+            })
         });
+
+        let total_after_filter = entries.len();
+
+        // Step 5: cursor lookup. The cursor is the `instance_dir` of the
+        // *last* entry from the previous page. Skip every entry whose
+        // `instance_dir` exactly matches the cursor, then start with the
+        // next one. A cursor that does not match any entry is an error:
+        // returning a stale cursor silently would mask bugs in the
+        // caller's pagination logic.
+        let start_idx = match cursor.as_ref() {
+            None => 0,
+            Some(c) => {
+                let pos = entries.iter().position(|e| {
+                    e.get("instance_dir")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s == c)
+                        .unwrap_or(false)
+                });
+                match pos {
+                    None => {
+                        return Err(ToolSourceError::ToolError(format!(
+                            "cursor not found: {c}"
+                        )));
+                    }
+                    Some(p) => p + 1,
+                }
+            }
+        };
+
+        let page: Vec<Value> = entries
+            .iter()
+            .skip(start_idx)
+            .take(limit)
+            .cloned()
+            .collect();
+
+        // next_cursor is the instance_dir of the last returned entry, but
+        // ONLY when there are more entries beyond the current page. When
+        // the page exhausts the remaining list we surface null so callers
+        // know to stop. An empty page also clears next_cursor (rather than
+        // pointing past the end of the list).
+        let next_cursor = if page.is_empty() {
+            None
+        } else if start_idx + page.len() < total_after_filter {
+            page.last()
+                .and_then(|v| v.get("instance_dir").and_then(|v| v.as_str()))
+                .map(|s| s.to_string())
+        } else {
+            None
+        };
+        let has_more = next_cursor.is_some();
 
         Ok(ToolCallContent::Text(
             serde_json::to_string_pretty(&json!({
-                "instances": instances,
-                "count": instances.len(),
+                "instances": page,
+                "count": page.len(),
+                "next_cursor": next_cursor,
+                "has_more": has_more,
             }))
             .unwrap_or_default(),
         ))
@@ -724,6 +957,22 @@ impl Tool for WorkflowTool {
                     "instance_dir": {
                         "type": "string",
                         "description": "(instance-*) Instance directory name from list-instances."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "default": 20,
+                        "description": "(list-instances) Max instances to return. Default: 20, max: 100."
+                    },
+                    "cursor": {
+                        "type": "string",
+                        "description": "(list-instances) Opaque cursor from a previous page's `next_cursor`. Omit for the first page."
+                    },
+                    "status_filter": {
+                        "type": "string",
+                        "enum": ["completed", "failed", "cancelled"],
+                        "description": "(list-instances) Restrict to entries with this status. Case-insensitive. Omit for all."
                     }
                 }
             }),
@@ -746,7 +995,7 @@ impl Tool for WorkflowTool {
         match action {
             "execute" => self.handle_execute(&args, ctx).await,
             "list-workflows" => self.handle_list_workflows().await,
-            "list-instances" => self.handle_list_instances().await,
+            "list-instances" => self.handle_list_instances(&args).await,
             "instance-summary" => {
                 let instance_dir = args
                     .get("instance_dir")
@@ -767,7 +1016,7 @@ impl Tool for WorkflowTool {
                 "execute",
             )),
             "list-runs" => Ok(Self::with_deprecation(
-                self.handle_list_instances().await?,
+                self.handle_list_instances(&args).await?,
                 "list-runs",
                 "list-instances",
             )),
