@@ -19,6 +19,8 @@ thiserror = { workspace = true }
 tokio-util = { version = "0.7", features = ["rt"] }
 jsonschema = "0.18"
 uuid = { version = "1", features = ["v7"] }
+sha2 = "0.10"
+hex = "0.4"
 
 tool-core = { path = "../tool-core" }
 loom-llm = { path = "../../../foundation/llm" }
