@@ -3,6 +3,7 @@ use luft::LuftBuilder;
 use luft_core::contract::event::AgentEvent as LuftAgentEvent;
 use luft_core::contract::ids::TokenUsage;
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::future::IntoFuture;
 use std::path::{Path, PathBuf};
 use tokio_util::sync::CancellationToken;
@@ -23,6 +24,10 @@ const REF_EXAMPLES: &str = include_str!("references/examples.md");
 
 const DEFAULT_CONCURRENCY: usize = 4;
 const MAX_CONCURRENCY: usize = 64;
+
+// T-06: instance-events pagination defaults.
+const DEFAULT_EVENTS_LIMIT: u64 = 50;
+const MAX_EVENTS_LIMIT: u64 = 500;
 
 use crate::backend::LoomAgentBackend;
 use crate::event_bridge::luft_event_to_json;
@@ -264,6 +269,68 @@ fn collect_instances_under(root: &Path, source: &'static str, out: &mut Vec<Valu
         }
         // else: skip silently -- the design task explicitly requires this.
     }
+}
+
+
+// ---------------------------------------------------------------------------
+// T-06 -- `handle_instance_events` argument parsers + matching helpers
+// ---------------------------------------------------------------------------
+
+fn parse_events_offset(args: &Value) -> u64 {
+    args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0)
+}
+
+fn parse_events_limit(args: &Value) -> u64 {
+    let raw = args
+        .get("events_limit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(DEFAULT_EVENTS_LIMIT);
+    raw.clamp(1, MAX_EVENTS_LIMIT)
+}
+
+fn parse_events_types(args: &Value) -> Option<Vec<String>> {
+    let v = args.get("types")?;
+    if v.is_null() {
+        return None;
+    }
+    let arr = v.as_array()?;
+    let out: Vec<String> = arr
+        .iter()
+        .filter_map(|t| t.as_str().map(|s| s.to_string()))
+        .collect();
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+fn parse_events_agent_id(args: &Value) -> Option<String> {
+    let v = args.get("agent_id")?;
+    if v.is_null() {
+        return None;
+    }
+    v.as_str().map(|s| s.to_string())
+}
+
+/// Match an event against the type filter set. Event is included iff
+/// its `type` field is one of the allowed values.
+fn event_matches_types(event: &Value, types: &HashSet<&str>) -> bool {
+    event
+        .get("type")
+        .and_then(|t| t.as_str())
+        .map(|t| types.contains(t))
+        .unwrap_or(false)
+}
+
+/// Match an event against the agent filter. Event is included iff its
+/// `agent_id` exactly equals `agent_id`.
+fn event_matches_agent_id(event: &Value, agent_id: &str) -> bool {
+    event
+        .get("agent_id")
+        .and_then(|a| a.as_str())
+        .map(|s| s == agent_id)
+        .unwrap_or(false)
 }
 
 impl WorkflowTool {
@@ -954,6 +1021,91 @@ impl WorkflowTool {
     }
 
 
+    /// T-06: paginated, filtered event-stream reader. Walks
+    /// `<instances_dir>/<dir>/events.jsonl` line-by-line, applies the
+    /// caller-supplied `types` and `agent_id` filters, and returns a
+    /// single page of matching events. Pagination state lives in
+    /// `(offset, events_limit)` and the response surfaces `next_offset`
+    /// when more matching events exist past the current page.
+    async fn handle_instance_events(
+        &self,
+        instance_dir: &str,
+        offset: u64,
+        events_limit: u64,
+        types: Option<Vec<String>>,
+        agent_id: Option<String>,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        // T-06: Pinned to the post-migration `.loom/instances/` root.
+        // Legacy `.luft/runs/<dir>/` reads go through `instance-summary`
+        // (which already rebuilds an InstanceMeta on-demand) so we do
+        // not duplicate the directory-resolution logic here.
+        let path = self.instances_dir().join(instance_dir);
+        let events_path = path.join("events.jsonl");
+
+        let mut filtered_count: u64 = 0;
+        let mut returned: usize = 0;
+        let mut events: Vec<Value> = Vec::new();
+
+        if let Ok(file) = std::fs::File::open(&events_path) {
+            let types_set: Option<HashSet<&str>> =
+                types.as_ref().map(|v| v.iter().map(|s| s.as_str()).collect());
+
+            let reader = std::io::BufReader::new(file);
+            use std::io::BufRead as _;
+            for line in reader.lines() {
+                let Ok(line) = line else { continue };
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let val: Value = match serde_json::from_str(trimmed) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+
+                if let Some(set) = &types_set {
+                    if !event_matches_types(&val, set) {
+                        continue;
+                    }
+                }
+                if let Some(aid) = &agent_id {
+                    if !event_matches_agent_id(&val, aid) {
+                        continue;
+                    }
+                }
+
+                filtered_count += 1;
+                if filtered_count > offset && (returned as u64) < events_limit {
+                    events.push(val);
+                    returned += 1;
+                }
+            }
+        }
+
+        // next_offset points at the *unconsumed* matching event after
+        // the last one we returned. We compute it from filtered_count
+        // (after the filter, before the limit) so callers can iterate
+        // deterministically. When `returned < events_limit` we ran
+        // out of matching events, so `next_offset` is null.
+        let next_offset = if offset + (returned as u64) < filtered_count {
+            Some(offset + returned as u64)
+        } else {
+            None
+        };
+
+        Ok(ToolCallContent::Text(
+            serde_json::to_string_pretty(&json!({
+                "instance_dir": instance_dir,
+                "offset": offset,
+                "events_limit": events_limit,
+                "total_matching": filtered_count,
+                "next_offset": next_offset,
+                "events": events,
+            }))
+            .unwrap_or_default(),
+        ))
+    }
+
     fn with_deprecation(
         content: ToolCallContent,
         old_action: &str,
@@ -1049,6 +1201,28 @@ impl Tool for WorkflowTool {
                         "type": "string",
                         "enum": ["completed", "failed", "cancelled"],
                         "description": "(list-instances) Restrict to entries with this status. Case-insensitive. Omit for all."
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "default": 0,
+                        "description": "(instance-events) Skip the first N matching events."
+                    },
+                    "events_limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 500,
+                        "default": 50,
+                        "description": "(instance-events) Page size for returned events (clamped to 500)."  
+                    },
+                    "types": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string"},
+                        "description": "(instance-events) Restrict returned events to those whose `type` field is in this set. Default: no type filter."
+                    },
+                    "agent_id": {
+                        "type": ["string", "null"],
+                        "description": "(instance-events) Restrict returned events to those with this `agent_id`. Default: no agent filter."
                     }
                 }
             }),
@@ -1112,7 +1286,31 @@ impl Tool for WorkflowTool {
                     "instance-summary",
                 ))
             }
-            "instance-events" | "instance-source" => Err(ToolSourceError::InvalidInput(format!(
+            "instance-events" => {
+                let instance_dir = args
+                    .get("instance_dir")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| {
+                        ToolSourceError::InvalidInput(
+                            "'instance_dir' is required for action='instance-events'."
+                                .to_string(),
+                        )
+                    })?
+                    .to_string();
+                let offset = parse_events_offset(&args);
+                let events_limit = parse_events_limit(&args);
+                let types = parse_events_types(&args);
+                let agent_id = parse_events_agent_id(&args);
+                self.handle_instance_events(
+                    &instance_dir,
+                    offset,
+                    events_limit,
+                    types,
+                    agent_id,
+                )
+                .await
+            }
+            "instance-source" => Err(ToolSourceError::InvalidInput(format!(
                 "Action '{action}' is not implemented yet."
             ))),
             other => Err(ToolSourceError::InvalidInput(format!(
