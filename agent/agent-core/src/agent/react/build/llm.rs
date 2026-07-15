@@ -78,7 +78,14 @@ pub(crate) fn model_entry_from_config(
         Some("bigmodel") => "bigmodel".to_string(),
         Some("openai_compat") => "openai_compat".to_string(),
         Some(other) => other.to_string(),
-        None => "openai".to_string(),
+        None => {
+            let base = config.openai_base_url.as_deref().unwrap_or("");
+            if base.is_empty() || base.contains("api.openai.com") {
+                "openai".to_string()
+            } else {
+                "openai_compat".to_string()
+            }
+        }
     };
 
     let temperature = config
