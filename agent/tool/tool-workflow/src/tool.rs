@@ -1106,6 +1106,44 @@ impl WorkflowTool {
         ))
     }
 
+    /// T-07: read-only viewer for the Lua source of a finished
+    /// instance. Resolves the per-instance directory under
+    /// `.loom/instances/` and returns the contents of `workflow.lua`
+    /// alongside the resolved path so callers can pivot into editing
+    /// tools without re-deriving the location. Missing files fail
+    /// loudly: the handler never falls back to a synthetic source,
+    /// since this surface is specifically for *showing the script
+    /// that ran*.
+    async fn handle_instance_source(
+        &self,
+        instance_dir: &str,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        let path = self.instances_dir().join(instance_dir);
+
+        if !path.exists() {
+            return Err(ToolSourceError::InvalidInput(format!(
+                "Instance directory '{instance_dir}' not found in {}",
+                self.instances_dir().display()
+            )));
+        }
+
+        let source = std::fs::read_to_string(path.join("workflow.lua")).map_err(|e| {
+            ToolSourceError::ToolError(format!(
+                "Failed to read workflow.lua from instance '{}': {e}",
+                path.display()
+            ))
+        })?;
+
+        Ok(ToolCallContent::Text(
+            serde_json::to_string_pretty(&json!({
+                "instance_dir": instance_dir,
+                "instance_path": path.display().to_string(),
+                "workflow_source": source,
+            }))
+            .unwrap_or_default(),
+        ))
+    }
+
     fn with_deprecation(
         content: ToolCallContent,
         old_action: &str,
@@ -1310,9 +1348,19 @@ impl Tool for WorkflowTool {
                 )
                 .await
             }
-            "instance-source" => Err(ToolSourceError::InvalidInput(format!(
-                "Action '{action}' is not implemented yet."
-            ))),
+            "instance-source" => {
+                let instance_dir = args
+                    .get("instance_dir")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| {
+                        ToolSourceError::InvalidInput(
+                            "'instance_dir' is required for action='instance-source'."
+                                .to_string(),
+                        )
+                    })?
+                    .to_string();
+                self.handle_instance_source(&instance_dir).await
+            }
             other => Err(ToolSourceError::InvalidInput(format!(
                 "Unknown action '{other}'. Valid: execute, list-workflows, list-instances, instance-summary, instance-events, instance-source."
             ))),
@@ -1359,6 +1407,7 @@ impl Tool for WorkflowTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agent::agent::AgentConfig;
     use serde_json::json;
 
     #[test]
@@ -1805,4 +1854,129 @@ report({topic = topic, tag_count = #tags})
     fn _force_use() {
         let _: _ReportRef = _ReportRef::Empty;
     }
+
+    // ---------------------------------------------------------------------
+    // handle_instance_source (action='instance-source') tests (T-07)
+    // ---------------------------------------------------------------------
+
+    fn tool_with_working_folder_for_tests(folder: &Path) -> WorkflowTool {
+        let mut cfg = AgentConfig::default();
+        cfg.working_folder = Some(folder.to_path_buf());
+        WorkflowTool::new(cfg)
+    }
+
+    #[tokio::test]
+    async fn handle_instance_source_returns_workflow_source() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance_dir = tmp.path().join(".loom").join("instances").join("abc-123");
+        std::fs::create_dir_all(&instance_dir).expect("mkdir");
+        let lua_src = "function main() report({ok = true}) end\n";
+        std::fs::write(instance_dir.join("workflow.lua"), lua_src).expect("write workflow.lua");
+
+        let tool = tool_with_working_folder_for_tests(tmp.path());
+        let result = tool
+            .handle_instance_source("abc-123")
+            .await
+            .expect("handler should succeed");
+
+        let ToolCallContent::Text(text) = result else {
+            panic!("expected ToolCallContent::Text variant");
+        };
+        let parsed: Value = serde_json::from_str(&text).expect("output is JSON");
+        assert_eq!(parsed["instance_dir"], "abc-123");
+        assert_eq!(parsed["workflow_source"], lua_src);
+        let path = parsed["instance_path"].as_str().unwrap_or("");
+        assert!(
+            path.contains(".loom") && path.contains("instances") && path.contains("abc-123"),
+            "instance_path should contain .loom/instances/abc-123, got: {path}"
+        );
+    }
+
+    #[tokio::test]
+    async fn handle_instance_source_missing_dir_is_invalid_input() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = tool_with_working_folder_for_tests(tmp.path());
+
+        let err = tool
+            .handle_instance_source("does-not-exist")
+            .await
+            .expect_err("should fail");
+        match err {
+            ToolSourceError::InvalidInput(msg) => {
+                assert!(msg.contains("does-not-exist"));
+                assert!(msg.contains(".loom"));
+                assert!(msg.contains("instances"));
+            }
+            other => panic!("expected InvalidInput, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn handle_instance_source_missing_workflow_lua_is_tool_error() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance_dir = tmp.path().join(".loom").join("instances").join("partial");
+        std::fs::create_dir_all(&instance_dir).expect("mkdir");
+
+        let tool = tool_with_working_folder_for_tests(tmp.path());
+        let err = tool
+            .handle_instance_source("partial")
+            .await
+            .expect_err("should fail");
+        match err {
+            ToolSourceError::ToolError(msg) => {
+                assert!(msg.contains("workflow.lua"));
+                assert!(msg.contains("partial"));
+            }
+            other => panic!("expected ToolError, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn call_dispatches_instance_source_action() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance_dir = tmp.path().join(".loom").join("instances").join("disp-1");
+        std::fs::create_dir_all(&instance_dir).expect("mkdir");
+        let lua_src = "-- hello from dispatched instance\nreport({ok = true})\n";
+        std::fs::write(instance_dir.join("workflow.lua"), lua_src).expect("write");
+
+        let tool = tool_with_working_folder_for_tests(tmp.path());
+        let args = json!({
+            "action": "instance-source",
+            "instance_dir": "disp-1",
+        });
+        let result = tool.call(args, None).await.expect("call should succeed");
+        let ToolCallContent::Text(text) = result else {
+            panic!("expected ToolCallContent::Text variant");
+        };
+        let parsed: Value = serde_json::from_str(&text).expect("output is JSON");
+        assert_eq!(parsed["instance_dir"], "disp-1");
+        assert_eq!(parsed["workflow_source"], lua_src);
+    }
+
+    #[tokio::test]
+    async fn call_instance_source_without_instance_dir_is_invalid_input() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = tool_with_working_folder_for_tests(tmp.path());
+        let args = json!({ "action": "instance-source" });
+
+        let err = tool.call(args, None).await.expect_err("should fail");
+        match err {
+            ToolSourceError::InvalidInput(msg) => {
+                assert!(
+                    msg.contains("instance_dir"),
+                    "error should mention instance_dir, got: {msg}"
+                );
+            }
+            other => panic!("expected InvalidInput, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn instances_dir_is_loom_instances_subdir_of_working_folder() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let tool = tool_with_working_folder_for_tests(tmp.path());
+        let expected = tmp.path().join(".loom").join("instances");
+        assert_eq!(tool.instances_dir(), expected);
+    }
+
 }
