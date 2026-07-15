@@ -410,12 +410,29 @@ impl WorkflowTool {
         let instance_dir = self.loom_instance_dir(run_dir_name);
 
         let checkpoint_path = instance_dir.join("checkpoint.json");
-        let checkpoint_bytes = std::fs::read(&checkpoint_path).map_err(|e| {
-            ToolSourceError::ToolError(format!(
-                "checkpoint missing after execute at {}: {e}",
-                checkpoint_path.display()
-            ))
-        })?;
+        // Give Luft a moment to flush checkpoint.json + events.jsonl
+        // to disk after the task completes. into_future() returns when
+        // the Lua script finishes, but the checkpoint writer may still
+        // be flushing. Retry up to 10 times with 200ms backoff.
+        let checkpoint_bytes = {
+            let mut last_err = String::new();
+            let mut bytes = None;
+            for _ in 0..10 {
+                match std::fs::read(&checkpoint_path) {
+                    Ok(b) if !b.is_empty() => { bytes = Some(b); break; }
+                    Ok(_) => { last_err = "checkpoint.json is empty".into(); }
+                    Err(e) => { last_err = e.to_string(); }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            match bytes {
+                Some(b) => b,
+                None => return Err(ToolSourceError::ToolError(format!(
+                    "checkpoint missing or empty after retries at {}: {last_err}",
+                    checkpoint_path.display()
+                ))),
+            }
+        };
         let checkpoint: Value = serde_json::from_slice(&checkpoint_bytes)
             .map_err(|e| ToolSourceError::ToolError(format!("invalid checkpoint JSON: {e}")))?;
 
