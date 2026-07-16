@@ -690,15 +690,103 @@ The plan is split into eight steps. Each step is independently committable and l
 
 ---
 
+## Tool split — 6 specialised tools (supersedes the action-dispatched `workflow` design above)
+
+The original design above envisioned one tool that dispatched on an `action`
+enum. After Phase 1 review, the LLM-facing surface was split into six
+specialised tools so each one carries a focused schema, a focused
+description, and a focused output hint. The public `WorkflowTool` and
+its action dispatcher are removed.
+
+### Tool naming
+
+| New tool name         | Replaces action  | Runs in foreground? |
+| --------------------- | ---------------- | ------------------- |
+| `workflow_start`      | `execute`        | No — returns immediately with `{ instance_dir, status: "running" }` |
+| `workflow_status`     | `instance-summary` (also slow-path rebuild from `checkpoint.json`) | No |
+| `workflow_list`       | `list-instances` | No |
+| `workflow_events`     | `instance-events` | No |
+| `workflow_source`     | `instance-source` | No |
+| `workflow_files`      | (new)            | No |
+
+`workflow_files` provides workflow discovery through a dedicated tool;
+workflow definitions are loaded by name or path inside `workflow_start`.
+
+### Background `workflow_start`
+
+After `start_script` succeeds, the foreground handler does **not** wait
+for the run to terminate. It:
+
+1. Captures an owned copy of the runtime + config into a closure.
+2. Spawns `tokio::spawn(background_finalize(...))` which waits for
+   `RunDone`, drains the run handle, and finalises `instance.json` /
+   `report.json` / `agent-outputs/`.
+3. Returns `{ instance_dir, status: "running" }` to the caller.
+
+The caller polls with `workflow_status`. To wait a few seconds before
+polling, run a shell tool with `sleep 5` (or PowerShell
+`Start-Sleep -Seconds 5`) and then call `workflow_status`.
+
+### `workflow_status` lookup order
+
+`workflow_status` does **not** read or write `status.json`. Lookup order:
+
+1. `.loom/instances/<dir>/instance.json` → return the sanitised
+   terminal summary.
+2. `checkpoint.json` only (no `instance.json`) → rebuild an in-memory
+   `InstanceMeta` from raw artefacts and return it (slow path; no
+   write-back).
+3. `.loom/instances/<dir>/` exists with neither → return
+   `{ instance_dir, status: "running" }`.
+4. `.luft/runs/<dir>/` exists with no `checkpoint.json` → return
+   an incomplete-instance error.
+
+### Public sanitisation
+
+`workflow_status` strips internal file references from the
+`InstanceMeta` before returning it. The following fields are removed:
+
+- `workflow.path`
+- `agents[].output_ref`
+- `report.ref` (file-backed reports keep `preview`)
+- `checkpoint_hash`
+
+Error messages never expose absolute filesystem paths (e.g.
+`"not found"` rather than `/Users/me/.loom/instances/foo`). The same
+sanitisation rules are mirrored by the public normaliser
+`sanitize_instance_for_public`.
+
+### Output hints
+
+All six tools use `ToolOutputStrategy::Inline` so the output
+normaliser never falls back to `FileRefWithExcerpt` for workflow
+payloads.
+
+### Backwards compatibility
+
+This is a breaking change for the workflow tool surface:
+
+- `WorkflowTool` and the action dispatcher are removed.
+- `run`, `list-runs`, and `run-status` aliases are removed.
+- `register_workflow_tool` becomes `register_workflow_tools`.
+- `default_workflow_tool_provider` keeps its name and signature and now
+  returns all six specialised tools.
+
+### Builtin skill wiring
+
+Only `WorkflowStartTool` exposes the builtin `workflow` skill (the
+others' `builtin_skill()` returns `None`). The skill's
+`requires_tools` is updated to `["workflow_start", "workflow_status"]`,
+and the skill body now opens with the six-tool decision table from
+`workflow_skill.md §1`.
+
+---
+
 ## Acceptance checklist (end of plan)
 
-- [ ] `cargo test -p tool-workflow` green with all new test files.
-- [ ] `cargo clippy -p tool-workflow -- -D warnings` clean.
-- [ ] `rg "\.luft" agent/tool/tool-workflow/src` returns no hits.
-- [ ] `rg "\.luft" apps/` returns no hits outside legacy test fixtures.
-- [ ] `workflow_skill.md` ≤ 100 lines.
-- [ ] `references/` contains 7 files.
-- [ ] `BuiltinSkill::references` length == 7 in the `builtin_skill.rs` test.
-- [ ] Manual run: `execute` a small workflow, verify `instance.json` is written and `instance-summary` returns it; `instance-events` pages through the events; `instance-source` returns the script.
-- [ ] Manual run: trigger a failing workflow, verify `instance-summary` shows `status:"failed"` and the event stats; `instance-events` with `types:["agent_done","run_done"]` surfaces the failure.
+- [x] `cargo test -p tool-workflow` green with the migrated test files.
+- [ ] `cargo clippy -p tool-workflow --all-targets -- -D warnings` clean; currently blocked by the existing `agent/agent-core/src/run/types.rs:51` doc lint.
+- [x] Public workflow responses do not expose filesystem references.
+- [x] `workflow_start` returns immediately and `workflow_status` supports running/terminal states.
+- [ ] Manual run: start a small workflow, wait with shell sleep, poll `workflow_status`, then inspect events/source through their tools.
 - [ ] Changelog entry committed.

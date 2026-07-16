@@ -1,106 +1,129 @@
-use agent::agent::AgentConfig;
-use serde_json::{json, Value};
+//! Schema contract tests for the six workflow_* tools.
+//!
+//! Migrated from the legacy `WorkflowTool` action-dispatch schema. The new
+//! design exposes six specialised LLM-facing tools; the schema test asserts
+//! each is registered under its expected name with the right output hint,
+//! and that the legacy action-dispatch enum is gone.
+
 use std::path::Path;
+
+use agent::agent::AgentConfig;
+use tool_core::tool_name::{
+    TOOL_WORKFLOW_EVENTS, TOOL_WORKFLOW_FILES, TOOL_WORKFLOW_LIST, TOOL_WORKFLOW_SOURCE,
+    TOOL_WORKFLOW_START, TOOL_WORKFLOW_STATUS,
+};
 use tool_core::{Tool, ToolCallContent};
-use tool_workflow::WorkflowTool;
+use tool_workflow::{
+    WorkflowEventsTool, WorkflowFilesTool, WorkflowListTool, WorkflowSourceTool, WorkflowStartTool,
+    WorkflowStatusTool,
+};
 
-fn tool_for(working_folder: &Path) -> WorkflowTool {
-    let mut config = AgentConfig::default();
-    config.working_folder = Some(working_folder.to_path_buf());
-    WorkflowTool::new(config)
-}
-
-fn parse_text(content: ToolCallContent) -> Value {
-    let ToolCallContent::Text(text) = content else {
-        panic!("workflow tool should return text content");
+fn make_tools(working_folder: &Path) -> [Box<dyn Tool>; 6] {
+    let cfg = AgentConfig {
+        working_folder: Some(working_folder.to_path_buf()),
+        ..Default::default()
     };
-    serde_json::from_str(&text).expect("workflow tool should return JSON")
-}
-
-#[tokio::test]
-async fn loom_paths_are_primary_for_workflows_and_instances() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let workflows_dir = temp.path().join(".loom").join("workflows");
-    let instances_dir = temp.path().join(".loom").join("instances");
-    let current_instance = instances_dir.join("loom-instance_current");
-    let old_instance = temp
-        .path()
-        .join(".luft")
-        .join("runs")
-        .join("luft-workflow_old");
-
-    std::fs::create_dir_all(&workflows_dir).expect("create workflows directory");
-    std::fs::write(workflows_dir.join("local.lua"), "function main() end").expect("write workflow");
-    std::fs::create_dir_all(&current_instance).expect("create current instance");
-    std::fs::write(
-        current_instance.join("checkpoint.json"),
-        r#"{"run_id":"current","status":"completed","created_at":2}"#,
-    )
-    .expect("write current checkpoint");
-    std::fs::create_dir_all(&old_instance).expect("create old instance");
-    std::fs::write(
-        old_instance.join("checkpoint.json"),
-        r#"{"run_id":"old","status":"completed","created_at":1}"#,
-    )
-    .expect("write old checkpoint");
-
-    let tool = tool_for(temp.path());
-    let workflows = parse_text(
-        tool.call(json!({"action": "list-workflows"}), None)
-            .await
-            .expect("list workflows"),
-    );
-    assert_eq!(workflows["count"], 1);
-    assert_eq!(workflows["workflows"][0]["name"], "local");
-    assert_eq!(
-        Path::new(workflows["directory"].as_str().expect("directory string")),
-        workflows_dir
-    );
-
-    let instances = parse_text(
-        tool.call(json!({"action": "list-instances"}), None)
-            .await
-            .expect("list instances"),
-    );
-    // T-04: `list-instances` walks BOTH `.loom/instances/` (current
-    // layout, post-T-02) AND `.luft/runs/` (legacy layout). The test
-    // seeds one entry under each root, so the listing carries TWO
-    // entries (paginated by `created_at` DESC). Renamed from `run_id`
-    // -> `instance_id` because T-04 unifies the field across both
-    // source directories.
-    assert_eq!(instances["count"], 2);
-    assert_eq!(
-        instances["instances"][0]["instance_dir"],
-        "loom-instance_current"
-    );
-    assert_eq!(instances["instances"][0]["instance_id"], "current");
-    assert_eq!(
-        instances["instances"][1]["instance_dir"],
-        "luft-workflow_old"
-    );
-    assert_eq!(instances["instances"][1]["instance_id"], "old");
+    [
+        Box::new(WorkflowStartTool::new(cfg.clone())) as Box<dyn Tool>,
+        Box::new(WorkflowStatusTool::new(cfg.clone())) as Box<dyn Tool>,
+        Box::new(WorkflowListTool::new(cfg.clone())) as Box<dyn Tool>,
+        Box::new(WorkflowEventsTool::new(cfg.clone())) as Box<dyn Tool>,
+        Box::new(WorkflowSourceTool::new(cfg.clone())) as Box<dyn Tool>,
+        Box::new(WorkflowFilesTool::new(cfg)) as Box<dyn Tool>,
+    ]
 }
 
 #[test]
-fn schema_advertises_only_new_action_names() {
+fn six_tool_names_and_input_schemas_match_constants() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let spec = tool_for(temp.path()).spec();
-    let action = &spec.input_schema["properties"]["action"];
+    let tools = make_tools(temp.path());
 
-    assert_eq!(
-        action["enum"],
-        json!([
-            "execute",
-            "list-workflows",
-            "list-instances",
-            "instance-summary",
-            "instance-events",
-            "instance-source"
-        ])
-    );
-    assert_eq!(action["default"], "execute");
-    assert!(spec.input_schema["properties"]
-        .get("instance_dir")
-        .is_some());
-    assert!(spec.input_schema["properties"].get("run_dir").is_none());
+    let expected: [(&str, Option<&str>); 6] = [
+        (TOOL_WORKFLOW_START, Some("script")),
+        (TOOL_WORKFLOW_STATUS, Some("instance_dir")),
+        (TOOL_WORKFLOW_LIST, Some("limit")),
+        (TOOL_WORKFLOW_EVENTS, Some("instance_dir")),
+        (TOOL_WORKFLOW_SOURCE, Some("instance_dir")),
+        (TOOL_WORKFLOW_FILES, None),
+    ];
+
+    for (tool, (name, marker)) in tools.iter().zip(expected.iter()) {
+        assert_eq!(tool.name(), *name, "tool name mismatch");
+        let spec = tool.spec();
+        assert_eq!(spec.name, *name);
+        if let Some(marker) = marker {
+            assert!(
+                spec.input_schema["properties"]
+                    .as_object()
+                    .expect("properties object")
+                    .contains_key(*marker),
+                "schema for {name} must advertise property '{marker}'"
+            );
+        }
+        let legacy = spec.input_schema["properties"]
+            .get("action")
+            .map(|v| v.to_string())
+            .unwrap_or_default();
+        assert!(
+            !legacy.contains("execute") && !legacy.contains("instance-summary"),
+            "schema for {name} must not carry legacy 'action' enum; got {legacy}"
+        );
+    }
+}
+
+#[test]
+fn workflow_list_walks_both_current_and_legacy_instance_dirs() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime");
+
+    rt.block_on(async {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let workflows_dir = temp.path().join(".loom").join("workflows");
+        let instances_dir = temp.path().join(".loom").join("instances");
+        let current_instance = instances_dir.join("loom-instance_current");
+        let old_instance = temp
+            .path()
+            .join(".luft")
+            .join("runs")
+            .join("luft-workflow_old");
+
+        std::fs::create_dir_all(&workflows_dir).expect("create workflows directory");
+        std::fs::write(workflows_dir.join("local.lua"), "function main() end")
+            .expect("write workflow");
+        std::fs::create_dir_all(&current_instance).expect("create current instance");
+        std::fs::write(
+            current_instance.join("checkpoint.json"),
+            r#"{"run_id":"current","status":"completed","created_at":2}"#,
+        )
+        .expect("write current checkpoint");
+        std::fs::create_dir_all(&old_instance).expect("create old instance");
+        std::fs::write(
+            old_instance.join("checkpoint.json"),
+            r#"{"run_id":"old","status":"completed","created_at":1}"#,
+        )
+        .expect("write old checkpoint");
+
+        let cfg = AgentConfig {
+            working_folder: Some(temp.path().to_path_buf()),
+            ..Default::default()
+        };
+        let tool = WorkflowListTool::new(cfg);
+
+        let content = tool
+            .call(serde_json::json!({}), None)
+            .await
+            .expect("list instances");
+        let ToolCallContent::Text(text) = content else {
+            panic!("expected text content");
+        };
+        let v: serde_json::Value = serde_json::from_str(&text).expect("workflow_list returns JSON");
+
+        assert_eq!(v["count"], 2);
+        assert_eq!(v["instances"][0]["instance_dir"], "loom-instance_current");
+        assert_eq!(v["instances"][0]["instance_id"], "current");
+        assert_eq!(v["instances"][1]["instance_dir"], "luft-workflow_old");
+        assert_eq!(v["instances"][1]["instance_id"], "old");
+    });
 }

@@ -1,7 +1,9 @@
 # Examples
 
 Three end-to-end workflows covering the main patterns: static decomposition,
-dynamic enumeration, and adversarial voting.
+dynamic enumeration, and adversarial voting. These Lua scripts are passed
+to the `workflow_start` tool; observe progress with `workflow_status` and
+inspect failures with `workflow_events`.
 
 ---
 

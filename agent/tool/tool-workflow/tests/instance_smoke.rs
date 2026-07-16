@@ -71,7 +71,7 @@ fn dump_instance_for_real_instance() {
     // Structural assertions beyond the unit tests:
     assert_eq!(v["schema_version"], 1);
     assert_eq!(v["status"], "completed");
-    assert!(v["agents"].as_array().unwrap().len() >= 1);
+    assert!(!v["agents"].as_array().unwrap().is_empty());
     assert_eq!(v["checkpoint_hash"].as_str().unwrap().len(), 64);
     assert!(v["event_stats"]["total"].as_u64().unwrap() > 0);
     assert!(v["event_stats"]["by_type"]

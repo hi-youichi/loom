@@ -1,10 +1,11 @@
-//! Tests for the `instance-events` action of the workflow tool.
+//! Tests for `workflow_events`.
 //!
-//! These tests construct a `WorkflowTool` whose `working_folder` points
-//! at a tempdir, write a synthetic `events.jsonl` under
+//! These tests construct a `WorkflowEventsTool` whose `working_folder`
+//! points at a tempdir, write a synthetic `events.jsonl` under
 //! `<working_folder>/.loom/instances/<instance_dir>/`, and exercise
-//! `Tool::call` (or `handle_instance_events` indirectly) with various
-//! filter / pagination shapes.
+//! `Tool::call` with various filter / pagination shapes.
+//!
+//! Migrated from the legacy `instance-events` action on `WorkflowTool`.
 
 use agent::agent::AgentConfig;
 use serde_json::{json, Value};
@@ -12,23 +13,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use tool_core::{Tool, ToolSourceError};
-use tool_workflow::WorkflowTool;
+use tool_workflow::WorkflowEventsTool;
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
 // ---------------------------------------------------------------------------
 
-/// Build a synthetic 20-line JSONL events file matching the schema described
-/// in `docs/design/workflow-instance-model-tasks.md` T-06.
-///
-/// Stats (used by assertions below):
-///   * 20 total events
-///   * 4 `agent_started`          (a1, a2, a1, a3)
-///   * 4 `agent_done`             (a1, a2, a1, a3)
-///   * 5 `agent_progress`         (2x a1, 1x a2, 2x a3)
-///   * 5 `run_progress`           (r1)
-///   * 1 `run_started`, 1 `run_done`
-///   * 6 events with `agent_id="a1"`
 fn synthetic_events_jsonl() -> String {
     let lines = [
         r#"{"type":"run_started","run_id":"r1","ts":"2026-07-01T00:00:00Z"}"#,
@@ -55,17 +45,15 @@ fn synthetic_events_jsonl() -> String {
     lines.join("\n") + "\n"
 }
 
-fn build_tool(dir: &Path) -> WorkflowTool {
+fn build_tool(dir: &Path) -> WorkflowEventsTool {
     let cfg = AgentConfig {
         working_folder: Some(dir.to_path_buf()),
         ..AgentConfig::default()
     };
-    WorkflowTool::new(cfg)
+    WorkflowEventsTool::new(cfg)
 }
 
-/// Build a tool with `working_folder` pointing at `dir` and write
-/// `synthetic_events_jsonl()` into `<dir>/.loom/instances/<instance_dir>/events.jsonl`.
-fn setup_instance(dir: &Path, instance_dir: &str) -> WorkflowTool {
+fn setup_instance(dir: &Path, instance_dir: &str) -> WorkflowEventsTool {
     let inst_path: PathBuf = dir.join(".loom").join("instances").join(instance_dir);
     fs::create_dir_all(&inst_path).expect("mkdir .loom/instances/<dir>");
     fs::write(inst_path.join("events.jsonl"), synthetic_events_jsonl())
@@ -73,8 +61,7 @@ fn setup_instance(dir: &Path, instance_dir: &str) -> WorkflowTool {
     build_tool(dir)
 }
 
-/// Call the workflow tool and unwrap the JSON returned as `ToolCallContent::Text`.
-async fn call_text(tool: &WorkflowTool, args: Value) -> Value {
+async fn call_text(tool: &WorkflowEventsTool, args: Value) -> Value {
     let content = tool
         .call(args, None)
         .await
@@ -99,7 +86,6 @@ async fn events_default_limit_50() {
     let resp = call_text(
         &tool,
         json!({
-            "action": "instance-events",
             "instance_dir": "inst-1",
         }),
     )
@@ -122,14 +108,12 @@ async fn events_limit_clamped_to_500() {
     let resp = call_text(
         &tool,
         json!({
-            "action": "instance-events",
             "instance_dir": "inst-clamp",
-            "events_limit": 99999, // > 500
+            "events_limit": 99999,
         }),
     )
     .await;
 
-    // events_limit echoed back must equal 500 (clamped transparently)
     assert_eq!(resp["events_limit"], 500);
     assert_eq!(resp["total_matching"], 20);
     assert!(resp["next_offset"].is_null());
@@ -145,7 +129,6 @@ async fn events_offset_skips_matching() {
     let resp = call_text(
         &tool,
         json!({
-            "action": "instance-events",
             "instance_dir": "inst-offset",
             "offset": 2,
         }),
@@ -167,7 +150,6 @@ async fn events_type_filter_includes_only_matching() {
     let resp = call_text(
         &tool,
         json!({
-            "action": "instance-events",
             "instance_dir": "inst-types",
             "types": ["agent_started"],
         }),
@@ -192,7 +174,6 @@ async fn events_type_filter_with_multiple_types() {
     let resp = call_text(
         &tool,
         json!({
-            "action": "instance-events",
             "instance_dir": "inst-multi",
             "types": ["agent_started", "agent_done"],
         }),
@@ -217,14 +198,12 @@ async fn events_agent_filter_includes_only_matching_agent() {
     let resp = call_text(
         &tool,
         json!({
-            "action": "instance-events",
             "instance_dir": "inst-agent",
             "agent_id": "a1",
         }),
     )
     .await;
 
-    // 6 events with agent_id="a1" in the synthetic fixture.
     assert_eq!(resp["total_matching"], 6);
     let events = resp["events"].as_array().unwrap();
     assert_eq!(events.len(), 6);
@@ -240,11 +219,9 @@ async fn events_next_offset_null_on_last_page() {
     let tmp = TempDir::new().unwrap();
     let tool = setup_instance(tmp.path(), "inst-last");
 
-    // 5 events remain after offset=15; with limit=50 we capture all 5.
     let resp = call_text(
         &tool,
         json!({
-            "action": "instance-events",
             "instance_dir": "inst-last",
             "offset": 15,
         }),
@@ -253,7 +230,10 @@ async fn events_next_offset_null_on_last_page() {
 
     assert_eq!(resp["total_matching"], 20);
     assert_eq!(resp["events"].as_array().unwrap().len(), 5);
-    assert!(resp["next_offset"].is_null(), "last page must have next_offset=null");
+    assert!(
+        resp["next_offset"].is_null(),
+        "last page must have next_offset=null"
+    );
     tmp.close().unwrap();
 }
 
@@ -262,11 +242,9 @@ async fn events_next_offset_set_when_more_remain() {
     let tmp = TempDir::new().unwrap();
     let tool = setup_instance(tmp.path(), "inst-next");
 
-    // Skip first 10, take 5. 5 more remain after this page (total 20).
     let resp = call_text(
         &tool,
         json!({
-            "action": "instance-events",
             "instance_dir": "inst-next",
             "offset": 10,
             "events_limit": 5,
@@ -283,17 +261,10 @@ async fn events_next_offset_set_when_more_remain() {
 #[tokio::test]
 async fn events_missing_instance_dir_invalid_input() {
     let tmp = TempDir::new().unwrap();
-    // No setup_instance ΓÇö just need a WorkflowTool; no filesystem check happens yet.
     let tool = build_tool(tmp.path());
 
     let err = tool
-        .call(
-            json!({
-                "action": "instance-events",
-                // instance_dir intentionally omitted
-            }),
-            None,
-        )
+        .call(json!({}), None)
         .await
         .expect_err("missing instance_dir must error");
 
@@ -312,7 +283,6 @@ async fn events_missing_instance_dir_invalid_input() {
 #[tokio::test]
 async fn events_missing_events_jsonl_returns_empty_array() {
     let tmp = TempDir::new().unwrap();
-    // Create instance dir but NO events.jsonl inside.
     let inst_path = tmp.path().join(".loom").join("instances").join("ghost");
     fs::create_dir_all(&inst_path).unwrap();
 
@@ -321,7 +291,6 @@ async fn events_missing_events_jsonl_returns_empty_array() {
     let resp = call_text(
         &tool,
         json!({
-            "action": "instance-events",
             "instance_dir": "ghost",
         }),
     )
@@ -339,11 +308,10 @@ async fn events_missing_events_jsonl_returns_empty_array() {
 #[tokio::test]
 async fn events_unparseable_line_skipped_silently() {
     let tmp = TempDir::new().unwrap();
-    // Build a fixture that mixes valid lines + garbage lines + blank lines.
     let mut body = synthetic_events_jsonl();
     body.push_str("this-is-not-valid-json\n");
     body.push_str("{also bad json\n");
-    body.push_str("\n"); // blank line should also be skipped silently
+    body.push('\n');
 
     let inst_path = tmp.path().join(".loom").join("instances").join("noisy");
     fs::create_dir_all(&inst_path).unwrap();
@@ -354,17 +322,18 @@ async fn events_unparseable_line_skipped_silently() {
     let resp = call_text(
         &tool,
         json!({
-            "action": "instance-events",
             "instance_dir": "noisy",
         }),
     )
     .await;
 
-    assert_eq!(resp["total_matching"], 20, "garbage + blank lines must not be counted");
+    assert_eq!(
+        resp["total_matching"], 20,
+        "garbage + blank lines must not be counted"
+    );
     let events = resp["events"].as_array().unwrap();
     assert_eq!(events.len(), 20);
     for ev in events {
-        // Every returned event must be parseable (no raw text leaked back).
         assert!(
             ev.get("type").is_some(),
             "malformed entries must not appear in events"

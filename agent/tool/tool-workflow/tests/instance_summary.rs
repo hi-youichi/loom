@@ -1,14 +1,18 @@
-//! Integration tests for the `instance-summary` action on `WorkflowTool`.
+//! Integration tests for `workflow_status`.
 //!
-//! Covers the T-05 contract:
-//! - returns the curated `InstanceMeta` (caches as `instance.json`)
-//! - rebuilds on the fly when `instance.json` is absent
-//! - persists `instance.json` after rebuilding
-//! - excludes the raw `events` array (only `event_stats`)
-//! - falls back to legacy `.luft/runs/<dir>/` artefacts during the migration
-//! - rejects unknown `instance_dir` with `InvalidInput`
+//! Covers the public-status contract:
+//! - reads `instance.json` and returns a sanitized terminal view
+//! - rebuilds an in-memory `InstanceMeta` from `checkpoint.json` + events +
+//!   `workflow.lua` (slow path) when `instance.json` is absent, and returns
+//!   it without writing back to disk
+//! - returns "running" when only the directory exists under `.loom/instances/`
+//! - returns an error when neither `instance.json` nor `checkpoint.json`
+//!   exists under `.luft/runs/<dir>/`
+//! - strips `workflow.path`, per-agent `output_ref`, file-backed `report.ref`,
+//!   and `checkpoint_hash` from the public payload
 //!
-//! Same tempdir-style fixture as the T-01 / T-03 smoke tests.
+//! Migrated from the legacy `instance-summary` action on `WorkflowTool`.
+
 #![allow(clippy::needless_raw_string_hashes)]
 
 use std::fs;
@@ -18,22 +22,23 @@ use agent::agent::AgentConfig;
 use serde_json::{json, Value};
 use tempfile::TempDir;
 use tool_core::{Tool, ToolCallContent};
-use tool_workflow::WorkflowTool;
+use tool_workflow::WorkflowStatusTool;
 
 const LEGACY_TS: &str = "loom-instance_1783783769";
 const NEW_TS: &str = "loom-instance_1700000000";
 
-/// Construct a `WorkflowTool` rooted at the given working folder.
-fn tool_with(working_folder: PathBuf) -> WorkflowTool {
+fn tool_with(working_folder: PathBuf) -> WorkflowStatusTool {
     let cfg = AgentConfig {
         working_folder: Some(working_folder),
         ..AgentConfig::default()
     };
-    WorkflowTool::new(cfg)
+    WorkflowStatusTool::new(cfg)
 }
 
-/// Invoke the tool's async `call` from a sync `#[test]`.
-fn call(tool: &WorkflowTool, args: Value) -> Result<ToolCallContent, tool_core::ToolSourceError> {
+fn call(
+    tool: &WorkflowStatusTool,
+    args: Value,
+) -> Result<ToolCallContent, tool_core::ToolSourceError> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -48,9 +53,6 @@ fn text_of(content: ToolCallContent) -> String {
     }
 }
 
-/// Write a hand-rolled but realistic checkpoint + events + workflow.lua
-/// fixture so `build_instance_meta` produces a meaningful, structured
-/// `InstanceMeta`. Mirrors the shape used by `luft` itself.
 fn write_run_fixture(dir: &Path) {
     fs::create_dir_all(dir).expect("mkdir fixture dir");
     let checkpoint = json!({
@@ -69,8 +71,11 @@ fn write_run_fixture(dir: &Path) {
         "updated_at": 1_783_783_772u64,
         "started_agent_ids": ["a1"]
     });
-    fs::write(dir.join("checkpoint.json"), serde_json::to_vec_pretty(&checkpoint).unwrap())
-        .expect("write checkpoint");
+    fs::write(
+        dir.join("checkpoint.json"),
+        serde_json::to_vec_pretty(&checkpoint).unwrap(),
+    )
+    .expect("write checkpoint");
 
     let events = [
         json!({"type":"run_started","run_id":"run-1","task":"luft workflow"}),
@@ -98,12 +103,13 @@ fn write_run_fixture(dir: &Path) {
         .collect::<Vec<_>>()
         .join("\n");
     fs::write(dir.join("events.jsonl"), body).expect("write events");
-    fs::write(dir.join("workflow.lua"), "-- luft: hello-agents\nreport({hi='world'})\n")
-        .expect("write workflow.lua");
+    fs::write(
+        dir.join("workflow.lua"),
+        "-- luft: hello-agents\nreport({hi='world'})\n",
+    )
+    .expect("write workflow.lua");
 }
 
-/// Build a hand-written `instance.json` payload for the
-/// "reads existing instance.json" case.
 fn pre_written_instance_json(schema_version: u32) -> String {
     let meta = json!({
         "schema_version": schema_version,
@@ -126,50 +132,45 @@ fn pre_written_instance_json(schema_version: u32) -> String {
 }
 
 #[test]
-fn summary_reads_existing_instance_json() {
+fn status_reads_existing_instance_json_and_sanitizes() {
     let tmp = TempDir::new().unwrap();
     let instance_dir = NEW_TS;
-    let dir = tmp.path().join(".loom").join("instances").join(instance_dir);
+    let dir = tmp
+        .path()
+        .join(".loom")
+        .join("instances")
+        .join(instance_dir);
     fs::create_dir_all(&dir).unwrap();
 
     let pre = pre_written_instance_json(42);
     fs::write(dir.join("instance.json"), &pre).unwrap();
 
     let tool = tool_with(tmp.path().to_path_buf());
-    let body = text_of(
-        call(
-            &tool,
-            json!({"action": "instance-summary", "instance_dir": instance_dir}),
-        )
-        .expect("call"),
-    );
+    let body = text_of(call(&tool, json!({"instance_dir": instance_dir})).expect("call"));
 
-    // Round-trips the pre-written payload verbatim, pretty-printed. The custom
-    // schema_version (42) is our marker that no rebuild happened.
     let parsed: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(parsed["schema_version"], 42);
     assert_eq!(parsed["instance_dir"], instance_dir);
     assert_eq!(parsed["workflow"]["kind"], "file");
     assert_eq!(parsed["workflow"]["name"], "pre-built");
+    assert!(parsed["workflow"].get("path").is_none());
+    assert!(parsed.get("checkpoint_hash").is_none());
 }
 
 #[test]
-fn summary_builds_on_the_fly_when_missing() {
+fn status_rebuilds_in_memory_when_checkpoint_present() {
     let tmp = TempDir::new().unwrap();
     let instance_dir = NEW_TS;
-    let dir = tmp.path().join(".loom").join("instances").join(instance_dir);
+    let dir = tmp
+        .path()
+        .join(".loom")
+        .join("instances")
+        .join(instance_dir);
     write_run_fixture(&dir);
-    // Sanity: no instance.json pre-existed.
     assert!(!dir.join("instance.json").exists());
 
     let tool = tool_with(tmp.path().to_path_buf());
-    let body = text_of(
-        call(
-            &tool,
-            json!({"action": "instance-summary", "instance_dir": instance_dir}),
-        )
-        .expect("call"),
-    );
+    let body = text_of(call(&tool, json!({"instance_dir": instance_dir})).expect("call"));
 
     let parsed: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(parsed["instance_dir"], instance_dir);
@@ -177,166 +178,185 @@ fn summary_builds_on_the_fly_when_missing() {
     assert_eq!(parsed["total_tokens"], 1500);
     assert_eq!(parsed["workflow"]["kind"], "legacy");
     assert_eq!(parsed["workflow"]["name"], instance_dir);
-    // Recovers the run id embedded in the checkpoint.
     assert_eq!(parsed["instance_id"], "run-1");
-    // One agent_done event rolls into event_stats.
-    assert!(parsed["event_stats"]["by_type"]["agent_done"].as_u64().unwrap() >= 1);
+    assert!(
+        parsed["event_stats"]["by_type"]["agent_done"]
+            .as_u64()
+            .unwrap()
+            >= 1
+    );
+    assert!(parsed["workflow"].get("path").is_none());
+    assert!(parsed.get("checkpoint_hash").is_none());
 }
 
 #[test]
-fn summary_persists_instance_json_after_build() {
+fn status_rebuild_does_not_write_instance_json_back_to_disk() {
     let tmp = TempDir::new().unwrap();
     let instance_dir = NEW_TS;
-    let dir = tmp.path().join(".loom").join("instances").join(instance_dir);
+    let dir = tmp
+        .path()
+        .join(".loom")
+        .join("instances")
+        .join(instance_dir);
     write_run_fixture(&dir);
 
     let tool = tool_with(tmp.path().to_path_buf());
-    call(
-        &tool,
-        json!({"action": "instance-summary", "instance_dir": instance_dir}),
-    )
-    .expect("call");
+    call(&tool, json!({"instance_dir": instance_dir})).expect("call");
 
-    // instance.json must now exist *and* be re-readable JSON with the
-    // expected fields, so the next `instance-summary` call would hit the
-    // fast path.
-    let path = dir.join("instance.json");
-    assert!(path.is_file(), "instance.json should be persisted at {path:?}");
-    let raw = fs::read_to_string(&path).unwrap();
-    let parsed: Value = serde_json::from_str(&raw).unwrap();
-    assert_eq!(parsed["instance_dir"], instance_dir);
-    assert_eq!(parsed["workflow"]["kind"], "legacy");
-
-    // A subsequent call should return the same payload (idempotent cache).
-    let second = text_of(
-        call(
-            &tool,
-            json!({"action": "instance-summary", "instance_dir": instance_dir}),
-        )
-        .expect("call"),
+    assert!(
+        !dir.join("instance.json").exists(),
+        "workflow_status must not write instance.json back when reading from checkpoint"
     );
-    let second_parsed: Value = serde_json::from_str(&second).unwrap();
-    assert_eq!(second_parsed["instance_dir"], parsed["instance_dir"]);
 }
 
 #[test]
-fn summary_excludes_raw_events_array() {
+fn status_excludes_raw_events_array() {
     let tmp = TempDir::new().unwrap();
     let instance_dir = NEW_TS;
-    let dir = tmp.path().join(".loom").join("instances").join(instance_dir);
+    let dir = tmp
+        .path()
+        .join(".loom")
+        .join("instances")
+        .join(instance_dir);
     write_run_fixture(&dir);
 
     let tool = tool_with(tmp.path().to_path_buf());
-    let body = text_of(
-        call(
-            &tool,
-            json!({"action": "instance-summary", "instance_dir": instance_dir}),
-        )
-        .expect("call"),
-    );
+    let body = text_of(call(&tool, json!({"instance_dir": instance_dir})).expect("call"));
     let parsed: Value = serde_json::from_str(&body).unwrap();
 
-    // Per the T-05 contract: no top-level "events" array ΓÇö callers that need
-    // the raw stream should use `instance-events`.
     assert!(
         parsed.get("events").is_none(),
-        "instance-summary must NOT include a top-level events array; got: {parsed}"
+        "workflow_status must NOT include a top-level events array; got: {parsed}"
     );
 }
 
 #[test]
-fn summary_event_stats_present() {
+fn status_event_stats_present_after_rebuild() {
     let tmp = TempDir::new().unwrap();
     let instance_dir = NEW_TS;
-    let dir = tmp.path().join(".loom").join("instances").join(instance_dir);
+    let dir = tmp
+        .path()
+        .join(".loom")
+        .join("instances")
+        .join(instance_dir);
     write_run_fixture(&dir);
 
     let tool = tool_with(tmp.path().to_path_buf());
-    let body = text_of(
-        call(
-            &tool,
-            json!({"action": "instance-summary", "instance_dir": instance_dir}),
-        )
-        .expect("call"),
-    );
+    let body = text_of(call(&tool, json!({"instance_dir": instance_dir})).expect("call"));
     let parsed: Value = serde_json::from_str(&body).unwrap();
 
-    // event_stats always present with total + by_type (the curated summary).
     let stats = parsed
         .get("event_stats")
         .expect("event_stats should be present");
     assert!(stats["total"].as_u64().unwrap() >= 1);
     let by_type = stats["by_type"].as_object().expect("by_type object");
-    // Our fixture includes run_started, agent_started, agent_done, run_done.
     assert!(by_type.contains_key("agent_done"));
     assert!(by_type.contains_key("run_started"));
 }
 
 #[test]
-fn summary_legacy_dir_builds_and_persists() {
+fn status_rebuilds_from_legacy_run_dir() {
     let tmp = TempDir::new().unwrap();
-    // Pre-merge fixtures live under the historical `.luft/runs/<dir>/`
-    // path. The handler should recognise that path, build the meta, and
-    // write `instance.json` back into the SAME directory so subsequent
-    // queries hit the fast path.
-    let dir = tmp
-        .path()
-        .join(".luft")
-        .join("runs")
-        .join(LEGACY_TS);
+    let dir = tmp.path().join(".luft").join("runs").join(LEGACY_TS);
     write_run_fixture(&dir);
-    assert!(!dir.join("instance.json").exists());
 
     let tool = tool_with(tmp.path().to_path_buf());
-    let body = text_of(
-        call(
-            &tool,
-            json!({"action": "instance-summary", "instance_dir": LEGACY_TS}),
-        )
-        .expect("call"),
-    );
+    let body = text_of(call(&tool, json!({"instance_dir": LEGACY_TS})).expect("call"));
     let parsed: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(parsed["instance_dir"], LEGACY_TS);
     assert_eq!(parsed["status"], "completed");
     assert_eq!(parsed["workflow"]["kind"], "legacy");
-
-    // Persisted in the legacy dir exactly where the artefacts already live.
-    let instance_path = dir.join("instance.json");
-    assert!(
-        instance_path.is_file(),
-        "instance.json should be persisted to the legacy dir; looked at {instance_path:?}"
-    );
-    let raw = fs::read_to_string(&instance_path).unwrap();
-    let persisted: Value = serde_json::from_str(&raw).unwrap();
-    assert_eq!(persisted["instance_dir"], LEGACY_TS);
 }
 
 #[test]
-fn summary_invalid_instance_dir_returns_invalid_input() {
+fn status_invalid_instance_dir_returns_invalid_input() {
     let tmp = TempDir::new().unwrap();
 
-    // No dir exists under either the new or the legacy root.
     let tool = tool_with(tmp.path().to_path_buf());
-    let err = call(
-        &tool,
-        json!({"action": "instance-summary", "instance_dir": "ghost-instance_404"}),
-    )
-    .expect_err("missing instance_dir must error");
+    let err = call(&tool, json!({"instance_dir": "ghost-instance_404"}))
+        .expect_err("missing instance_dir must error");
 
-    // The contract is InvalidInput (caller-correctable), not ToolError.
     assert!(
         matches!(err, tool_core::ToolSourceError::InvalidInput(_)),
         "expected InvalidInput, got {err:?}"
     );
 
-    // Path-traversal attempts are also rejected at the input layer.
-    let err2 = call(
-        &tool,
-        json!({"action": "instance-summary", "instance_dir": "../../etc/passwd"}),
+    let err2 = call(&tool, json!({"instance_dir": "../../etc/passwd"}))
+        .expect_err("path traversal must error");
+    assert!(matches!(err2, tool_core::ToolSourceError::InvalidInput(_)));
+}
+
+#[test]
+fn status_returns_running_when_only_dir_exists() {
+    let tmp = TempDir::new().unwrap();
+    let instance_dir = NEW_TS;
+    let dir = tmp
+        .path()
+        .join(".loom")
+        .join("instances")
+        .join(instance_dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let tool = tool_with(tmp.path().to_path_buf());
+    let body = text_of(call(&tool, json!({"instance_dir": instance_dir})).expect("call"));
+    let parsed: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(parsed["status"], "running");
+}
+
+#[test]
+fn status_errors_on_legacy_dir_without_checkpoint() {
+    let tmp = TempDir::new().unwrap();
+    let instance_dir = "loom-instance_corrupt";
+    let dir = tmp.path().join(".luft").join("runs").join(instance_dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let tool = tool_with(tmp.path().to_path_buf());
+    let err = call(&tool, json!({"instance_dir": instance_dir}))
+        .expect_err("legacy dir without checkpoint must error");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("corrupt") || msg.contains("missing checkpoint"),
+        "unexpected error: {msg}"
+    );
+}
+
+#[test]
+fn status_sanitizes_per_agent_output_refs() {
+    let tmp = TempDir::new().unwrap();
+    let instance_dir = NEW_TS;
+    let dir = tmp
+        .path()
+        .join(".loom")
+        .join("instances")
+        .join(instance_dir);
+    fs::create_dir_all(&dir).unwrap();
+    let raw = json!({
+        "schema_version": 1,
+        "instance_id": "run-1",
+        "instance_dir": instance_dir,
+        "workflow": {"kind": "file", "name": "wf", "path": "/abs/path/wf.lua"},
+        "status": "completed",
+        "agents": [
+            {"agent_id": "a", "output_ref": "agent-outputs/a.txt", "output_size": 4096},
+            {"agent_id": "b", "output_ref": "agent-outputs/b.txt", "output_size": 4096}
+        ],
+        "report": {"ref": "report.json", "preview": "hi", "value_type": "object", "size_bytes": 5},
+        "checkpoint_hash": "deadbeef",
+    });
+    fs::write(
+        dir.join("instance.json"),
+        serde_json::to_string_pretty(&raw).unwrap(),
     )
-    .expect_err("path traversal must error");
-    assert!(matches!(
-        err2,
-        tool_core::ToolSourceError::InvalidInput(_)
-    ));
+    .unwrap();
+
+    let tool = tool_with(tmp.path().to_path_buf());
+    let body = text_of(call(&tool, json!({"instance_dir": instance_dir})).expect("call"));
+    let parsed: Value = serde_json::from_str(&body).unwrap();
+
+    assert!(parsed["workflow"].get("path").is_none());
+    assert!(parsed["agents"][0].get("output_ref").is_none());
+    assert!(parsed["agents"][1].get("output_ref").is_none());
+    assert!(parsed["report"].get("ref").is_none());
+    assert!(parsed["report"]["preview"].as_str().unwrap() == "hi");
+    assert!(parsed.get("checkpoint_hash").is_none());
 }

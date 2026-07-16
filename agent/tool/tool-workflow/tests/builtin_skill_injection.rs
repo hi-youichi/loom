@@ -81,7 +81,7 @@ fn build_react_config_with_provider_registers_workflow() {
 }
 
 #[test]
-fn build_react_config_provider_pushes_workflow_tool_into_config() {
+fn build_react_config_provider_pushes_six_workflow_tools_into_config() {
     let dir = tempfile::tempdir().expect("tempdir");
     let opts = make_run_options(
         dir.path().to_path_buf(),
@@ -95,9 +95,18 @@ fn build_react_config_provider_pushes_workflow_tool_into_config() {
         .as_ref()
         .expect("config.extra_tools should be populated by default_extra_tools_provider");
     let names: Vec<&str> = extra.iter().map(|t| t.name()).collect();
-    assert!(
-        names.contains(&"workflow"),
-        "config.extra_tools should contain the workflow tool from the provider, got: {:?}",
-        names
-    );
+    for tool in [
+        "workflow_start",
+        "workflow_status",
+        "workflow_list",
+        "workflow_events",
+        "workflow_source",
+        "workflow_files",
+    ] {
+        assert!(
+            names.contains(&tool),
+            "config.extra_tools should contain {tool}, got: {:?}",
+            names
+        );
+    }
 }

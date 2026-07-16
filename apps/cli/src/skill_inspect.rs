@@ -181,16 +181,21 @@ impl std::error::Error for SkillInspectError {
 pub fn build_inspect_registry(
     working_folder: &Path,
     extra_dirs: &[PathBuf],
-) -> Result<(skill::discovery::SkillRegistry, Vec<BuiltinSkillContribution>), Box<dyn std::error::Error>> {
-    let mut registry =
-        skill::discovery::SkillRegistry::discover(working_folder, extra_dirs)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+) -> Result<
+    (
+        skill::discovery::SkillRegistry,
+        Vec<BuiltinSkillContribution>,
+    ),
+    Box<dyn std::error::Error>,
+> {
+    let mut registry = skill::discovery::SkillRegistry::discover(working_folder, extra_dirs)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
     let mut contributions = Vec::new();
 
-    // Inject WorkflowTool builtin (the only tool currently implementing builtin_skill).
+    // Inject WorkflowStartTool builtin (the only tool currently implementing builtin_skill).
     // Construction pattern matches `agent/tool/tool-workflow/tests/builtin_skill.rs`.
-    let tool = tool_workflow::WorkflowTool::new(agent::agent::AgentConfig::default());
+    let tool = tool_workflow::WorkflowStartTool::new(agent::agent::AgentConfig::default());
     if let Some(builtin) = tool.builtin_skill() {
         registry.add_builtin(
             &builtin.name,
@@ -201,7 +206,7 @@ pub fn build_inspect_registry(
             builtin.references,
         );
         contributions.push(BuiltinSkillContribution {
-            tool_name: "workflow".to_string(),
+            tool_name: "workflow_start".to_string(),
             skill_name: builtin.name,
             source: skill::discovery::SkillSource::Builtin,
         });
@@ -234,10 +239,7 @@ const MAX_FILE_SIZE_BYTES: u64 = 5 * 1024 * 1024;
 /// 3. No `is_file()` check — caller reads after this guard.
 ///
 /// Returns the canonical absolute path on success.
-fn safe_join_under(
-    skill_dir: &Path,
-    file_path: &str,
-) -> Result<PathBuf, SkillInspectError> {
+fn safe_join_under(skill_dir: &Path, file_path: &str) -> Result<PathBuf, SkillInspectError> {
     let target = skill_dir.join(file_path);
 
     // Point 1: canonicalize skill directory first
@@ -246,9 +248,9 @@ fn safe_join_under(
         .map_err(|e| SkillInspectError::Io(e))?;
 
     // Point 2: canonicalize target and confirm prefix membership
-    let canonical_target = target.canonicalize().map_err(|e| {
-        SkillInspectError::FileNotFound(file_path.to_string(), e)
-    })?;
+    let canonical_target = target
+        .canonicalize()
+        .map_err(|e| SkillInspectError::FileNotFound(file_path.to_string(), e))?;
 
     if !canonical_target.starts_with(&canonical_skill) {
         return Err(SkillInspectError::PathTraversal(file_path.to_string()));
@@ -280,10 +282,7 @@ fn floor_char_boundary(s: &str, mut index: usize) -> usize {
 
 impl InspectOutput {
     /// Build from a `SkillEntry` + optional usage data from `SkillUsageStore`.
-    fn from_entry(
-        entry: &skill::discovery::SkillEntry,
-        usage: Option<&SkillUsage>,
-    ) -> Self {
+    fn from_entry(entry: &skill::discovery::SkillEntry, usage: Option<&SkillUsage>) -> Self {
         let usage = usage.cloned().unwrap_or_else(|| SkillUsage {
             name: entry.metadata.name.clone(),
             use_count: 0,
@@ -403,10 +402,8 @@ impl InspectOutput {
         }
 
         // embedded_references: only files under references/
-        let embedded_refs: Vec<_> = embedded_files_to_refs(
-            entry.embedded_files.as_ref(),
-            &["references/"],
-        );
+        let embedded_refs: Vec<_> =
+            embedded_files_to_refs(entry.embedded_files.as_ref(), &["references/"]);
 
         (
             SupportingFilesOutput {
@@ -456,36 +453,60 @@ impl InspectOutput {
                 if self.conditions.requires_tools.is_empty() {
                     println!("  requires_tools: (none)");
                 } else {
-                    println!("  requires_tools: {}", self.conditions.requires_tools.join(", "));
+                    println!(
+                        "  requires_tools: {}",
+                        self.conditions.requires_tools.join(", ")
+                    );
                 }
                 if self.conditions.requires_toolsets.is_empty() {
                     println!("  requires_toolsets: (none)");
                 } else {
-                    println!("  requires_toolsets: {}", self.conditions.requires_toolsets.join(", "));
+                    println!(
+                        "  requires_toolsets: {}",
+                        self.conditions.requires_toolsets.join(", ")
+                    );
                 }
                 if self.conditions.fallback_for_tools.is_empty() {
                     println!("  fallback_for_tools: (none)");
                 } else {
-                    println!("  fallback_for_tools: {}", self.conditions.fallback_for_tools.join(", "));
+                    println!(
+                        "  fallback_for_tools: {}",
+                        self.conditions.fallback_for_tools.join(", ")
+                    );
                 }
                 if self.conditions.fallback_for_toolsets.is_empty() {
                     println!("  fallback_for_toolsets: (none)");
                 } else {
-                    println!("  fallback_for_toolsets: {}", self.conditions.fallback_for_toolsets.join(", "));
+                    println!(
+                        "  fallback_for_toolsets: {}",
+                        self.conditions.fallback_for_toolsets.join(", ")
+                    );
                 }
             } else {
                 // Only non-empty fields
                 if !self.conditions.requires_tools.is_empty() {
-                    println!("  requires_tools: {}", self.conditions.requires_tools.join(", "));
+                    println!(
+                        "  requires_tools: {}",
+                        self.conditions.requires_tools.join(", ")
+                    );
                 }
                 if !self.conditions.requires_toolsets.is_empty() {
-                    println!("  requires_toolsets: {}", self.conditions.requires_toolsets.join(", "));
+                    println!(
+                        "  requires_toolsets: {}",
+                        self.conditions.requires_toolsets.join(", ")
+                    );
                 }
                 if !self.conditions.fallback_for_tools.is_empty() {
-                    println!("  fallback_for_tools: {}", self.conditions.fallback_for_tools.join(", "));
+                    println!(
+                        "  fallback_for_tools: {}",
+                        self.conditions.fallback_for_tools.join(", ")
+                    );
                 }
                 if !self.conditions.fallback_for_toolsets.is_empty() {
-                    println!("  fallback_for_toolsets: {}", self.conditions.fallback_for_toolsets.join(", "));
+                    println!(
+                        "  fallback_for_toolsets: {}",
+                        self.conditions.fallback_for_toolsets.join(", ")
+                    );
                 }
             }
         }
@@ -526,9 +547,11 @@ impl InspectOutput {
             // §5.5: truncate to ~1.2 KiB
             let truncated = if body.len() > TEXT_BODY_PREVIEW_BYTES {
                 let safe_end = floor_char_boundary(body, TEXT_BODY_PREVIEW_BYTES);
-                format!("{}...[truncated {} bytes, use --all for full body]",
+                format!(
+                    "{}...[truncated {} bytes, use --all for full body]",
                     &body[..safe_end],
-                    body.len() - safe_end)
+                    body.len() - safe_end
+                )
             } else {
                 body.clone()
             };
@@ -652,7 +675,9 @@ pub fn run(
         if entry.source == skill::discovery::SkillSource::Builtin {
             // Builtin: look up strictly by exact name (no prefix matching).
             if let Some(embedded_files) = &entry.embedded_files {
-                let found = embedded_files.iter().find(|(n, _)| n == file_path_str.as_ref());
+                let found = embedded_files
+                    .iter()
+                    .find(|(n, _)| n == file_path_str.as_ref());
                 if let Some((_, content)) = found {
                     println!("{}", content);
                     return Ok(());
@@ -667,8 +692,7 @@ pub fn run(
         } else {
             // Disk-backed: path-traversal guard + 5 MiB cap.
             let target = safe_join_under(&entry.base_path, file_path_str.as_ref())?;
-            let metadata = std::fs::metadata(&target)
-                .map_err(|e| SkillInspectError::Io(e))?;
+            let metadata = std::fs::metadata(&target).map_err(|e| SkillInspectError::Io(e))?;
             if metadata.len() > MAX_FILE_SIZE_BYTES {
                 return Err(SkillInspectError::BadCombo(format!(
                     "file '{}' exceeds the {} byte limit (is {} bytes)",
@@ -678,8 +702,7 @@ pub fn run(
                 ))
                 .into());
             }
-            let content = std::fs::read_to_string(&target)
-                .map_err(|e| SkillInspectError::Io(e))?;
+            let content = std::fs::read_to_string(&target).map_err(|e| SkillInspectError::Io(e))?;
             println!("{}", content);
             return Ok(());
         }
@@ -693,8 +716,9 @@ pub fn run(
 
     // ---- JSON branch (§5.2) ----
     if json {
-        let json_value = serde_json::to_value(&output)
-            .map_err(|e| SkillInspectError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        let json_value = serde_json::to_value(&output).map_err(|e| {
+            SkillInspectError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))
+        })?;
         write_json_output(&json_value, output_file, pretty)?;
         return Ok(());
     }
@@ -834,9 +858,7 @@ mod tests {
         let file_path_str = "references/architecture"; // no .md suffix
         if entry.source == skill::discovery::SkillSource::Builtin {
             if let Some(embedded_files) = &entry.embedded_files {
-                let found = embedded_files
-                    .iter()
-                    .find(|(n, _)| n == file_path_str);
+                let found = embedded_files.iter().find(|(n, _)| n == file_path_str);
                 assert!(
                     found.is_none(),
                     "strict eq: 'references/architecture' should NOT match any file; \
@@ -892,8 +914,16 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let skill_dir = tmp.path().join(".loom").join("skills").join("my-skill");
         fs::create_dir_all(skill_dir.join("references")).unwrap();
-        fs::write(skill_dir.join("SKILL.md"), "name: my-skill\ndescription: test\n").unwrap();
-        fs::write(skill_dir.join("references").join("guide.md"), "# Guide\nHello world").unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "name: my-skill\ndescription: test\n",
+        )
+        .unwrap();
+        fs::write(
+            skill_dir.join("references").join("guide.md"),
+            "# Guide\nHello world",
+        )
+        .unwrap();
 
         let (registry, _contributions) =
             build_inspect_registry(tmp.path(), &[]).expect("build_inspect_registry ok");
@@ -921,7 +951,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let skill_dir = tmp.path().join(".loom").join("skills").join("big-skill");
         fs::create_dir_all(&skill_dir).unwrap();
-        fs::write(skill_dir.join("SKILL.md"), "name: big-skill\ndescription: test\n").unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "name: big-skill\ndescription: test\n",
+        )
+        .unwrap();
 
         // Create a file > 5 MiB (6 MB)
         let big_content = "x".repeat(6 * 1024 * 1024);
@@ -976,11 +1010,27 @@ mod tests {
 
         // All 16 top-level keys from §5.2
         let expected_keys = [
-            "name", "source", "source_raw", "path", "skill_file",
-            "is_builtin", "readiness", "category", "category_desc",
-            "description", "triggers", "tags", "conditions",
-            "required_env_vars", "prerequisites", "related_skills",
-            "supporting_files", "embedded_references", "usage", "body", "frontmatter_raw",
+            "name",
+            "source",
+            "source_raw",
+            "path",
+            "skill_file",
+            "is_builtin",
+            "readiness",
+            "category",
+            "category_desc",
+            "description",
+            "triggers",
+            "tags",
+            "conditions",
+            "required_env_vars",
+            "prerequisites",
+            "related_skills",
+            "supporting_files",
+            "embedded_references",
+            "usage",
+            "body",
+            "frontmatter_raw",
         ];
         for key in &expected_keys {
             assert!(
@@ -993,21 +1043,43 @@ mod tests {
         // Nested readiness keys
         let readiness = &json["readiness"];
         for key in &["status", "missing_env_vars", "unsupported_reason"] {
-            assert!(readiness.get(*key).is_some(), "readiness.{} must exist", key);
+            assert!(
+                readiness.get(*key).is_some(),
+                "readiness.{} must exist",
+                key
+            );
         }
 
         // Nested conditions keys
         let conditions = &json["conditions"];
-        for key in &["requires_tools", "requires_toolsets", "fallback_for_tools", "fallback_for_toolsets"] {
-            assert!(conditions.get(*key).is_some(), "conditions.{} must exist", key);
+        for key in &[
+            "requires_tools",
+            "requires_toolsets",
+            "fallback_for_tools",
+            "fallback_for_toolsets",
+        ] {
+            assert!(
+                conditions.get(*key).is_some(),
+                "conditions.{} must exist",
+                key
+            );
         }
 
         // Nested usage keys
         let usage_keys = [
-            "use_count", "view_count", "patch_count", "last_used_at",
-            "last_viewed_at", "last_patched_at", "last_activity_at",
-            "created_at", "state", "pinned", "archived_at",
-            "absorbed_into", "created_by",
+            "use_count",
+            "view_count",
+            "patch_count",
+            "last_used_at",
+            "last_viewed_at",
+            "last_patched_at",
+            "last_activity_at",
+            "created_at",
+            "state",
+            "pinned",
+            "archived_at",
+            "absorbed_into",
+            "created_by",
         ];
         let usage = &json["usage"];
         for key in &usage_keys {
@@ -1036,10 +1108,16 @@ mod tests {
 
         // File must exist and contain valid JSON
         let content = fs::read_to_string(&output_path).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&content)
-            .expect("output file must contain valid JSON");
-        assert_eq!(parsed["name"], "workflow", "JSON should have correct skill name");
-        assert_eq!(parsed["source"], "Builtin", "source should be Builtin for workflow");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&content).expect("output file must contain valid JSON");
+        assert_eq!(
+            parsed["name"], "workflow",
+            "JSON should have correct skill name"
+        );
+        assert_eq!(
+            parsed["source"], "Builtin",
+            "source should be Builtin for workflow"
+        );
     }
 
     // ---- text view ----
@@ -1074,10 +1152,22 @@ mod tests {
 
     #[test]
     fn cli_skeleton_compiles_and_lists_args() {
-        let result = run("__nonexistent_skill_phase2_test__", false, None, None, false, false, None);
+        let result = run(
+            "__nonexistent_skill_phase2_test__",
+            false,
+            None,
+            None,
+            false,
+            false,
+            None,
+        );
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
-        assert!(msg.contains("not found"), "expected 'not found' in error, got: {}", msg);
+        assert!(
+            msg.contains("not found"),
+            "expected 'not found' in error, got: {}",
+            msg
+        );
     }
 
     #[test]
@@ -1169,10 +1259,7 @@ mod tests {
     fn all_flag_shows_full_body_no_truncation_marker() {
         // Build a synthetic entry with CJK + ASCII content > 1200 bytes.
         let cjk = "你好世界".repeat(200); // 3 bytes/char * 200 = 600 bytes per repeat → 600 bytes for 200 chars
-        let body = format!(
-            "# Workflow Skill\n\n{}\n",
-            cjk
-        );
+        let body = format!("# Workflow Skill\n\n{}\n", cjk);
         assert!(
             body.len() > TEXT_BODY_PREVIEW_BYTES,
             "synthetic body must exceed preview size"
@@ -1378,11 +1465,7 @@ mod tests {
         let refs = &output.supporting_files.references;
         let mut seen = std::collections::HashSet::new();
         for r in refs {
-            assert!(
-                seen.insert(r.clone()),
-                "duplicate reference found: {}",
-                r
-            );
+            assert!(seen.insert(r.clone()), "duplicate reference found: {}", r);
             assert!(
                 r.starts_with("references/"),
                 "reference should start with 'references/': {}",

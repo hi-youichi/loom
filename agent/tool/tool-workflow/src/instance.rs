@@ -219,16 +219,14 @@ pub fn write_instance_artifacts(
     fs::create_dir_all(dir)?;
 
     // 1) instance.json — pretty-printed.
-    let instance_json = serde_json::to_string_pretty(meta)
-        .map_err(std::io::Error::other)?;
+    let instance_json = serde_json::to_string_pretty(meta).map_err(std::io::Error::other)?;
     fs::write(dir.join("instance.json"), instance_json)?;
 
     // 2) report.json — only when the meta says File AND the caller passed the
     //    value back. We never invent a report file from the inlined copy.
     if matches!(meta.report, ReportRef::File { .. }) {
         if let Some(v) = report_value {
-            let report_json = serde_json::to_string_pretty(v)
-                .map_err(std::io::Error::other)?;
+            let report_json = serde_json::to_string_pretty(v).map_err(std::io::Error::other)?;
             fs::write(dir.join("report.json"), report_json)?;
         }
     }
@@ -1173,7 +1171,9 @@ end
 
     /// Loads a real run directory and returns
     /// (checkpoint_value, checkpoint_bytes, events_vec, workflow_src).
-    fn load_run(name: &str) -> Option<(Value, Vec<u8>, Vec<Value>, Option<String>)> {
+    type LoadedRun = (Value, Vec<u8>, Vec<Value>, Option<String>);
+
+    fn load_run(name: &str) -> Option<LoadedRun> {
         let instances = fixture_dir()?;
         let dir = instances.join(name);
         if !dir.is_dir() {

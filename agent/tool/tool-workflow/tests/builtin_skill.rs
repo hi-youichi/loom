@@ -1,26 +1,25 @@
 //! Integration test: prove the full wiring path works:
-//! `WorkflowTool::builtin_skill() -> SkillRegistry::add_builtin() -> load_skill_with_dir()`
+//! `WorkflowStartTool::builtin_skill() -> SkillRegistry::add_builtin() -> load_skill_with_dir()`
 
 use skill::discovery::{SkillRegistry, SkillSource};
 use tool_core::Tool;
-use tool_workflow::WorkflowTool;
+use tool_workflow::WorkflowStartTool;
 
-fn make_tool() -> WorkflowTool {
+fn make_tool() -> WorkflowStartTool {
     use agent::agent::AgentConfig;
-    WorkflowTool::new(AgentConfig::default())
+    WorkflowStartTool::new(AgentConfig::default())
 }
 
 #[test]
-fn workflow_tool_exposes_builtin_skill() {
+fn workflow_start_tool_exposes_builtin_skill() {
     let tool = make_tool();
     let skill = tool
         .builtin_skill()
-        .expect("WorkflowTool should expose a builtin skill");
+        .expect("WorkflowStartTool should expose a builtin skill");
     assert_eq!(skill.name, "workflow");
     assert!(skill.triggers.contains(&"workflow".to_string()));
-    assert!(skill.requires_tools.contains(&"workflow".to_string()));
+    assert!(skill.requires_tools.contains(&"workflow_start".to_string()));
     assert!(skill.content.contains("# Workflow DSL Reference"));
-    // References bundled alongside SKILL.md
     assert!(
         !skill.references.is_empty(),
         "references should not be empty"
@@ -57,11 +56,9 @@ fn builtin_skill_injects_into_registry() {
     assert_eq!(entry.metadata.name, "workflow");
     assert!(entry.embedded_content.is_some());
 
-    // Triggers preserved
     assert!(entry.metadata.triggers.contains(&"workflow".to_string()));
     assert!(entry.metadata.triggers.contains(&"multi-agent".to_string()));
 
-    // References preserved on the entry
     assert!(entry.embedded_files.is_some());
     assert_eq!(
         entry.embedded_files.as_ref().unwrap().len(),
@@ -88,13 +85,11 @@ fn builtin_skill_loadable_via_registry() {
         .load_skill_with_dir("workflow")
         .expect("builtin skill should load");
 
-    // Frontmatter stripped, body present
     assert!(content.contains("# Workflow DSL Reference"));
     assert!(content.contains("## 3 Minimal skeleton"));
     assert!(content.contains("agent()"));
     assert!(!content.contains("name: workflow"));
 
-    // References surfaced under "## Additional resources" so the agent can `read` them
     assert!(content.contains("## Additional resources"));
     assert!(content.contains("references/architecture-header.md"));
     assert!(content.contains("references/examples.md"));
@@ -125,7 +120,6 @@ fn available_skills_prompt_lists_workflow_skill() {
 fn disk_skill_overrides_builtin() {
     let mut registry = SkillRegistry::empty();
 
-    // Simulate a disk-discovered skill with the same name.
     registry.skills.push(skill::discovery::SkillEntry {
         metadata: skill::utils::SkillMetadata {
             name: "workflow".to_string(),
@@ -139,7 +133,6 @@ fn disk_skill_overrides_builtin() {
         embedded_files: None,
     });
 
-    // Builtin should be no-op now.
     let tool = make_tool();
     let skill = tool.builtin_skill().unwrap();
     registry.add_builtin(

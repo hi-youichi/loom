@@ -5,15 +5,17 @@ triggers:
   - workflow
   - multi-agent
   - lua script
-  - list-instances
-  - instance-summary
+  - workflow_list
+  - workflow_status
+  - workflow_events
   - debug workflow
   - workflow failed
   - workflow status
 metadata:
   conditions:
     requires_tools:
-      - workflow
+      - workflow_start
+      - workflow_status
 tags:
   - workflow
   - orchestration
@@ -22,44 +24,47 @@ tags:
 ---
 
 # Workflow DSL Reference
-Use this when writing or debugging Lua workflow scripts passed to the
-`workflow` tool.
 
-## 1 When to use which action
+Use this when writing or debugging Lua workflow scripts passed to `workflow_start`.
 
-The workflow tool exposes six actions. Pick the smallest one that answers
-your question; escalate only when the smaller one is not enough.
+## 1. Which tool to use
 
-| Intent                                 | Action             | Minimum args                                              |
-| -------------------------------------- | ------------------ | --------------------------------------------------------- |
-| Run a new multi-agent task             | `execute`          | `{"workflow": "refactor"}` or `{"script": "..."}`        |
-| See what scripts exist on disk         | `list-workflows`   | `{}`                                                      |
-| Review past executions / find failures | `list-instances`   | `{"limit": 20}` or `{"status_filter": "failed"}`         |
-| Inspect one execution (always first)   | `instance-summary` | `{"instance_dir": "loom-instance_<ts>"}`                  |
-| Drill into the event timeline          | `instance-events`  | `{"instance_dir": "...", "types": ["agent_done"]}`        |
-| Read the Lua script that ran           | `instance-source`  | `{"instance_dir": "loom-instance_<ts>"}`                  |
+The workflow surface has six focused tools:
 
-**Progressive disclosure.** When debugging, always follow this order:
-`list-instances` → `instance-summary` → `instance-events`. The summary tells
-you which agents failed and which event types look anomalous; only then read
-the raw event stream. Jumping straight to `instance-events` dumps hundreds of
-events into your context and is almost always the wrong first move.
+| Intent | Tool | Minimum args |
+| --- | --- | --- |
+| Start a new multi-agent task | `workflow_start` | `script` or `workflow` |
+| Find a completed instance | `workflow_list` | optional `limit`, `cursor`, `status_filter` |
+| Check one instance | `workflow_status` | `instance_dir` |
+| Inspect detailed execution events | `workflow_events` | `instance_dir` |
+| View the captured Lua source | `workflow_source` | `instance_dir` |
+| Find available workflow definitions | `workflow_files` | none |
 
-## 2 Execution model
+After `workflow_start`, use this exact sequence:
 
-- The Lua script is a **pure orchestrator**. The sandbox disables `io`, `os`, `require`.
-- All real work (file I/O, grep, edit, web search) happens inside `agent()` prompts — subagents have tools, the script does not.
-- `report(value)` is the only output returned to the caller.
+```text
+workflow_start
+→ sleep 5
+→ workflow_status
+→ repeat only while status == "running"
+```
+
+Use a shell wait between status calls. On PowerShell use `Start-Sleep -Seconds 5`; on shells with the standard command use `sleep 5`. Do not poll in a tight loop or issue the wait and status calls in parallel.
+
+Use `workflow_list` when the instance identifier is unavailable. Use `workflow_events` only after `workflow_status` identifies a failure or suspicious phase. Use `workflow_source` when reviewing the executed Lua is relevant. `workflow_files` lists definitions available to start; it is not a workflow-result inspection tool.
+
+All workflow tools provide their results directly. Do not use a file-reading tool to follow execution, find reports, or inspect outputs.
+
+## 2. Execution model
+
+- The Lua script is a pure orchestrator. The sandbox disables `io`, `os`, and `require`.
+- Real work happens inside `agent()` prompts; the script does not access tools directly.
+- `report(value)` is the workflow result.
+- `workflow_start` returns before agents finish; `workflow_status` is the source of truth for the public lifecycle state.
 
 ## 3 Minimal skeleton
 
 ```lua
---------------------------------------------
--- Goal:  <one-line objective>
--- Arch:
---   discover ==> process ==> report
--- Flow:  discover -> items[] -> results -> report
---------------------------------------------
 meta = {
   reasoning = "...",
   phases = {
@@ -71,9 +76,18 @@ meta = {
 local SCHEMA = { ... }
 function main()
   phase("discover")
-  -- ...
+  phase("process")
+  phase("report")
   report({ result = ... })
 end
 ```
 
-> For the full Lua DSL reference (primitives, schema rules, error handling), see references/dsl-reference.md. For per-action schemas, return shapes, and the three-step diagnostic flow, see references/tool-usage.md. Load these via the skill tool when needed.
+For the full Lua DSL reference, see `references/dsl-reference.md`. For schemas, return shapes, and diagnostics, see `references/tool-usage.md`. Load these through the skill tool when needed.
+
+## Additional resources
+
+- `references/architecture-header.md`
+- `references/agent-prompts.md`
+- `references/task-decomposition.md`
+- `references/adversarial-verification.md`
+- `references/examples.md`

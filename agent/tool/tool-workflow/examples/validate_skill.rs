@@ -7,17 +7,17 @@ use agent::agent::AgentConfig;
 use skill::discovery::{SkillRegistry, SkillSource};
 use std::sync::Arc;
 use tool_core::Tool;
-use tool_workflow::WorkflowTool;
+use tool_workflow::WorkflowStartTool;
 
 fn main() {
     println!("=== Workflow builtin skill: runtime validation ===\n");
 
-    // 1. WorkflowTool exposes the builtin skill
-    let tool = WorkflowTool::new(AgentConfig::default());
+    // 1. WorkflowStartTool exposes the builtin skill
+    let tool = WorkflowStartTool::new(AgentConfig::default());
     let skill = tool
         .builtin_skill()
-        .expect("WorkflowTool must expose builtin_skill()");
-    println!("[1] WorkflowTool::builtin_skill()");
+        .expect("WorkflowStartTool must expose builtin_skill()");
+    println!("[1] WorkflowStartTool::builtin_skill()");
     println!("    name:         {}", skill.name);
     println!("    description:  {}", skill.description);
     println!("    triggers:     {:?}", skill.triggers);
@@ -87,16 +87,16 @@ fn main() {
         .load_skill_with_dir("workflow")
         .expect("builtin skill must load");
     let content_len = content.len();
-    let has_structure = content.contains("## Required Structure");
-    let has_primitives = content.contains("agent(opts)") && content.contains("pipeline{");
-    let has_rules = content.contains("## Rules");
+    let has_when = content.contains("## 1 When to use which tool");
+    let has_primitives = content.contains("function main()") && content.contains("agent(");
+    let has_execution_model = content.contains("## 2 Execution model");
     let has_additional_resources = content.contains("## Additional resources");
     let has_examples_ref = content.contains("references/examples.md");
     println!("\n[5] load_skill_with_dir(\"workflow\")");
     println!("    body size:                    {} bytes", content_len);
-    println!("    has 'Required Structure':     {}", has_structure);
-    println!("    has 'agent(opts)' + 'pipeline{{': {}", has_primitives);
-    println!("    has '## Rules':               {}", has_rules);
+    println!("    has 'When to use which tool':  {}", has_when);
+    println!("    has 'main()' + 'agent(':       {}", has_primitives);
+    println!("    has 'Execution model':         {}", has_execution_model);
     println!(
         "    has '## Additional resources': {}",
         has_additional_resources
@@ -130,7 +130,7 @@ fn main() {
         },
     );
     let entries_before = registry.list().len();
-    let tool2 = WorkflowTool::new(AgentConfig::default());
+    let tool2 = WorkflowStartTool::new(AgentConfig::default());
     if let Some(s) = tool2.builtin_skill() {
         registry.add_builtin(
             &s.name,
@@ -162,9 +162,9 @@ fn main() {
         entries_before, entries_after
     );
 
-    // 8. apply_toolset_filters: hides when workflow tool missing
+    // 8. apply_toolset_filters: hides when workflow_start tool missing
     let mut registry2 = SkillRegistry::empty();
-    if let Some(s) = WorkflowTool::new(AgentConfig::default()).builtin_skill() {
+    if let Some(s) = WorkflowStartTool::new(AgentConfig::default()).builtin_skill() {
         registry2.add_builtin(
             &s.name,
             &s.description,
@@ -179,7 +179,7 @@ fn main() {
     let filtered_count = registry2.list().len();
     println!("\n[8] apply_toolset_filters (no tools available)");
     println!(
-        "    builtin skill hidden: {} (expect true since 'workflow' missing)",
+        "    builtin skill hidden: {} (expect true since 'workflow_start' missing)",
         filtered_count == 0
     );
 
@@ -187,9 +187,9 @@ fn main() {
     println!("\n=== VERDICT ===");
     let all_ok = matches!(entry_source, SkillSource::Builtin)
         && content_len > 0
-        && has_structure
+        && has_when
         && has_primitives
-        && has_rules
+        && has_execution_model
         && has_additional_resources
         && has_examples_ref
         && in_prompt
