@@ -483,6 +483,14 @@ fn instance_dir_arg<'a>(args: &'a Value, action: &str) -> Result<&'a str, ToolSo
     Ok(dir)
 }
 
+fn is_terminal_checkpoint(path: &Path) -> Option<bool> {
+    let bytes = std::fs::read(path).ok()?;
+    let value: Value = serde_json::from_slice(&bytes).ok()?;
+    let status = value.get("status").and_then(Value::as_str)?;
+    let lower = status.to_ascii_lowercase();
+    Some(matches!(lower.as_str(), "completed" | "failed" | "cancelled"))
+}
+
 pub fn sanitize_instance_for_public(mut value: Value) -> Value {
     if let Some(wf) = value.get_mut("workflow").and_then(|v| v.as_object_mut()) {
         wf.remove("path");
@@ -921,7 +929,14 @@ impl Tool for WorkflowStatusTool {
         let checkpoint_path = resolved.join("checkpoint.json");
 
         if checkpoint_path.is_file() {
-            return self.runtime.rebuild_summary(dir, &checkpoint_path).await;
+            let should_rebuild = if resolved == new_path {
+                is_terminal_checkpoint(&checkpoint_path).unwrap_or(false)
+            } else {
+                true
+            };
+            if should_rebuild {
+                return self.runtime.rebuild_summary(dir, &checkpoint_path).await;
+            }
         }
 
         if resolved == new_path {
