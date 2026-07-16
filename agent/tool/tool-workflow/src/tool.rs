@@ -358,16 +358,27 @@ fn build_entry_from_instance_json(v: &Value, dir_name: &str) -> Value {
     })
 }
 
-fn build_entry_from_checkpoint(ckpt: &Value, dir_name: &str) -> Value {
+fn build_entry_from_checkpoint(ckpt: &Value, dir_name: &str) -> Option<Value> {
+    let status = ckpt
+        .get("status")
+        .and_then(|x| x.as_str())
+        .unwrap_or("unknown");
+    let is_terminal = matches!(
+        status.to_ascii_lowercase().as_str(),
+        "completed" | "failed" | "cancelled"
+    );
+    if !is_terminal {
+        return None;
+    }
     let agent_count = ckpt
         .get("agent_results")
         .and_then(|x| x.as_object())
         .map(|o| o.len() as u64)
         .unwrap_or(0);
-    json!({
+    Some(json!({
         "instance_id": ckpt.get("run_id").and_then(|x| x.as_str()).unwrap_or("?"),
         "instance_dir": dir_name,
-        "status": ckpt.get("status").and_then(|x| x.as_str()).unwrap_or("unknown"),
+        "status": status,
         "workflow": {
             "kind": "file",
             "name": dir_name,
@@ -376,7 +387,7 @@ fn build_entry_from_checkpoint(ckpt: &Value, dir_name: &str) -> Value {
         "completed_at": ckpt.get("updated_at").and_then(|x| x.as_u64()).unwrap_or(0),
         "total_tokens": ckpt.get("total_tokens").and_then(|x| x.as_u64()).unwrap_or(0),
         "agent_count": agent_count,
-    })
+    }))
 }
 
 fn collect_instances_under(root: &Path, out: &mut Vec<Value>) {
@@ -405,7 +416,9 @@ fn collect_instances_under(root: &Path, out: &mut Vec<Value>) {
 
         let ckpt_path = path.join("checkpoint.json");
         if let Some(ckpt) = read_json_value(&ckpt_path) {
-            out.push(build_entry_from_checkpoint(&ckpt, &dir_name));
+            if let Some(entry) = build_entry_from_checkpoint(&ckpt, &dir_name) {
+                out.push(entry);
+            }
         }
     }
 }
