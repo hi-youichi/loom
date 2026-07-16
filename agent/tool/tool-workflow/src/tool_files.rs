@@ -48,45 +48,51 @@ impl Tool for WorkflowFilesTool {
         _args: Value,
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let root = self.runtime.workflows_dir();
-        let mut workflows = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(root) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if !path.is_file() || path.extension().and_then(|v| v.to_str()) != Some("lua") {
-                    continue;
-                }
-                let name = path
-                    .file_name()
-                    .map(|value| value.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                let source = std::fs::read_to_string(&path).unwrap_or_default();
-                let first_line = source
-                    .lines()
-                    .map(str::trim)
-                    .find(|line| !line.is_empty())
-                    .unwrap_or_default();
-                workflows.push(json!({
-                    "name": name,
-                    "size_bytes": source.len(),
-                    "first_line": truncate_for_preview(first_line, 200),
-                }));
-            }
-        }
-        workflows.sort_by(|left, right| {
-            left.get("name")
-                .and_then(Value::as_str)
-                .cmp(&right.get("name").and_then(Value::as_str))
-        });
-
-        Ok(ToolCallContent::Text(
-            serde_json::to_string_pretty(&json!({
-                "workflows": workflows,
-                "count": workflows.len(),
-            }))
-            .unwrap_or_default(),
-        ))
+        list_workflow_files(&self.runtime)
     }
+}
+
+fn list_workflow_files(
+    runtime: &WorkflowRuntime,
+) -> Result<ToolCallContent, ToolSourceError> {
+    let root = runtime.workflows_dir();
+    let mut workflows = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(root) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() || path.extension().and_then(|v| v.to_str()) != Some("lua") {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .map(|value| value.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let source = std::fs::read_to_string(&path).unwrap_or_default();
+            let first_line = source
+                .lines()
+                .map(str::trim)
+                .find(|line| !line.is_empty())
+                .unwrap_or_default();
+            workflows.push(json!({
+                "name": name,
+                "size_bytes": source.len(),
+                "first_line": truncate_for_preview(first_line, 200),
+            }));
+        }
+    }
+    workflows.sort_by(|left, right| {
+        left.get("name")
+            .and_then(Value::as_str)
+            .cmp(&right.get("name").and_then(Value::as_str))
+    });
+
+    Ok(ToolCallContent::Text(
+        serde_json::to_string_pretty(&json!({
+            "workflows": workflows,
+            "count": workflows.len(),
+        }))
+        .unwrap_or_default(),
+    ))
 }
 
 #[cfg(test)]
@@ -101,14 +107,6 @@ mod tests {
             ..Default::default()
         };
         Arc::new(WorkflowRuntime::new(cfg))
-    }
-
-    fn block_on<F: std::future::Future>(f: F) -> F::Output {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("tokio runtime");
-        rt.block_on(f)
     }
 
     #[test]
@@ -130,8 +128,7 @@ mod tests {
         std::fs::write(ignored, "nope").unwrap();
 
         let rt = runtime_with(tmp.path());
-        let tool = WorkflowFilesTool { runtime: rt };
-        let result = block_on(tool.call(json!({}), None)).unwrap();
+        let result = list_workflow_files(&rt).unwrap();
         let text = match result {
             ToolCallContent::Text(s) => s,
             _ => panic!("expected text output"),
@@ -149,8 +146,7 @@ mod tests {
     fn files_returns_empty_when_no_workflows_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let rt = runtime_with(tmp.path());
-        let tool = WorkflowFilesTool { runtime: rt };
-        let result = block_on(tool.call(json!({}), None)).unwrap();
+        let result = list_workflow_files(&rt).unwrap();
         let text = match result {
             ToolCallContent::Text(s) => s,
             _ => panic!("expected text output"),
@@ -169,8 +165,7 @@ mod tests {
         std::fs::write(wf_dir.join("greet.lua"), "-- greet\nfunction main() end").unwrap();
 
         let rt = runtime_with(tmp.path());
-        let tool = WorkflowFilesTool { runtime: rt };
-        let result = block_on(tool.call(json!({}), None)).unwrap();
+        let result = list_workflow_files(&rt).unwrap();
         let text = match result {
             ToolCallContent::Text(s) => s,
             _ => panic!("expected text output"),

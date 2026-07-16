@@ -138,98 +138,7 @@ impl Tool for WorkflowStartTool {
         args: Value,
         ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let depth = ctx.map(|c| c.depth).unwrap_or(0);
-        if depth >= 3 {
-            return Err(ToolSourceError::ToolError(
-                "Workflow nesting depth exceeded (max 3).".to_string(),
-            ));
-        }
-
-        let script = args.get("script").and_then(|v| v.as_str());
-        let workflow = args.get("workflow").and_then(|v| v.as_str());
-
-        let (lua_source, display_name) = match (script, workflow) {
-            (Some(s), _) => (s.to_string(), "inline script".to_string()),
-            (None, Some(w)) => {
-                let working_folder = self.runtime.working_folder();
-                let path =
-                    resolve_workflow(w, &working_folder).map_err(ToolSourceError::InvalidInput)?;
-                let source = std::fs::read_to_string(&path).map_err(|e| {
-                    ToolSourceError::ToolError(format!("Failed to read workflow: {e}"))
-                })?;
-                let display_name = path
-                    .file_stem()
-                    .or_else(|| path.file_name())
-                    .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "workflow".to_string());
-                (source, display_name)
-            }
-            (None, None) => {
-                return Err(ToolSourceError::InvalidInput(
-                    "Either 'script' or 'workflow' must be provided.".to_string(),
-                ));
-            }
-        };
-
-        let concurrency = parse_concurrency(&args)?;
-        let user_args = extract_user_args(&args);
-        let lua_source = inject_args_globals(&lua_source, user_args.as_ref());
-
-        let base_dir = self.runtime.instances_root();
-        if let Err(e) = std::fs::create_dir_all(&base_dir) {
-            return Err(ToolSourceError::ToolError(format!(
-                "Failed to create instances directory: {e}"
-            )));
-        }
-
-        let config = self.runtime.config_template.clone();
-        let backend = LoomAgentBackend::new(config);
-
-        let luft = LuftBuilder::new()
-            .backend(backend)
-            .base_dir(&base_dir)
-            .concurrency(concurrency)
-            .build()
-            .map_err(|e| {
-                ToolSourceError::ToolError(format!("Workflow engine build failed: {e}"))
-            })?;
-
-        let run_handle = luft
-            .start_script(&lua_source)
-            .await
-            .map_err(|e| ToolSourceError::ToolError(format!("Failed to start workflow: {e}")))?;
-
-        let run_dir_name = run_handle.run_dir_name().to_string();
-        let is_inline_script = script.is_some();
-        let workflow_arg_owned = workflow.map(|s| s.to_string());
-
-        let sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
-        let cancel_token = ctx
-            .and_then(|c| c.run_cancellation.as_ref())
-            .map(|c| c.token())
-            .unwrap_or_default();
-        let runtime = self.runtime.clone();
-        tokio::spawn(async move {
-            background_finalize(
-                runtime,
-                run_handle,
-                sender,
-                cancel_token,
-                display_name,
-                is_inline_script,
-                workflow_arg_owned,
-            )
-            .await;
-        });
-
-        let payload = json!({
-            "instance_dir": run_dir_name,
-            "status": "running",
-            "note": "Use workflow_status with `instance_dir` to follow progress.",
-        });
-        Ok(ToolCallContent::Text(
-            serde_json::to_string_pretty(&payload).unwrap_or_default(),
-        ))
+        start_workflow(&self.runtime, args, ctx).await
     }
 
     fn builtin_skill(&self) -> Option<BuiltinSkill> {
@@ -283,6 +192,105 @@ impl Tool for WorkflowStartTool {
             ],
         })
     }
+}
+
+async fn start_workflow(
+    runtime: &Arc<WorkflowRuntime>,
+    args: Value,
+    ctx: Option<&ToolCallContext>,
+) -> Result<ToolCallContent, ToolSourceError> {
+    let depth = ctx.map(|c| c.depth).unwrap_or(0);
+    if depth >= 3 {
+        return Err(ToolSourceError::ToolError(
+            "Workflow nesting depth exceeded (max 3).".to_string(),
+        ));
+    }
+
+    let script = args.get("script").and_then(|v| v.as_str());
+    let workflow = args.get("workflow").and_then(|v| v.as_str());
+
+    let (lua_source, display_name) = match (script, workflow) {
+        (Some(s), _) => (s.to_string(), "inline script".to_string()),
+        (None, Some(w)) => {
+            let working_folder = runtime.working_folder();
+            let path =
+                resolve_workflow(w, &working_folder).map_err(ToolSourceError::InvalidInput)?;
+            let source = std::fs::read_to_string(&path).map_err(|e| {
+                ToolSourceError::ToolError(format!("Failed to read workflow: {e}"))
+            })?;
+            let display_name = path
+                .file_stem()
+                .or_else(|| path.file_name())
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| "workflow".to_string());
+            (source, display_name)
+        }
+        (None, None) => {
+            return Err(ToolSourceError::InvalidInput(
+                "Either 'script' or 'workflow' must be provided.".to_string(),
+            ));
+        }
+    };
+
+    let concurrency = parse_concurrency(&args)?;
+    let user_args = extract_user_args(&args);
+    let lua_source = inject_args_globals(&lua_source, user_args.as_ref());
+
+    let base_dir = runtime.instances_root();
+    if let Err(e) = std::fs::create_dir_all(&base_dir) {
+        return Err(ToolSourceError::ToolError(format!(
+            "Failed to create instances directory: {e}"
+        )));
+    }
+
+    let config = runtime.config_template.clone();
+    let backend = LoomAgentBackend::new(config);
+
+    let luft = LuftBuilder::new()
+        .backend(backend)
+        .base_dir(&base_dir)
+        .concurrency(concurrency)
+        .build()
+        .map_err(|e| {
+            ToolSourceError::ToolError(format!("Workflow engine build failed: {e}"))
+        })?;
+
+    let run_handle = luft
+        .start_script(&lua_source)
+        .await
+        .map_err(|e| ToolSourceError::ToolError(format!("Failed to start workflow: {e}")))?;
+
+    let run_dir_name = run_handle.run_dir_name().to_string();
+    let is_inline_script = script.is_some();
+    let workflow_arg_owned = workflow.map(|s| s.to_string());
+
+    let sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
+    let cancel_token = ctx
+        .and_then(|c| c.run_cancellation.as_ref())
+        .map(|c| c.token())
+        .unwrap_or_default();
+    let rt = runtime.clone();
+    tokio::spawn(async move {
+        background_finalize(
+            rt,
+            run_handle,
+            sender,
+            cancel_token,
+            display_name,
+            is_inline_script,
+            workflow_arg_owned,
+        )
+        .await;
+    });
+
+    let payload = json!({
+        "instance_dir": run_dir_name,
+        "status": "running",
+        "note": "Use workflow_status with `instance_dir` to follow progress.",
+    });
+    Ok(ToolCallContent::Text(
+        serde_json::to_string_pretty(&payload).unwrap_or_default(),
+    ))
 }
 
 async fn background_finalize(

@@ -63,55 +63,62 @@ impl Tool for WorkflowStatusTool {
         args: Value,
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let dir = instance_dir_arg(&args, "workflow_status")?;
-        let new_path = self.runtime.instances_root().join(dir);
-        let legacy_path = self.runtime.runs_root().join(dir);
-
-        let resolved = if new_path.is_dir() {
-            new_path.clone()
-        } else if legacy_path.is_dir() {
-            legacy_path.clone()
-        } else {
-            return Err(ToolSourceError::InvalidInput(format!(
-                "Instance '{dir}' not found"
-            )));
-        };
-
-        let instance_json_path = resolved.join("instance.json");
-        if instance_json_path.is_file() {
-            let raw = std::fs::read_to_string(&instance_json_path).map_err(|e| {
-                ToolSourceError::ToolError(format!("Failed to read instance summary: {e}"))
-            })?;
-            let value: Value = serde_json::from_str(&raw).map_err(|e| {
-                ToolSourceError::ToolError(format!("Invalid instance summary: {e}"))
-            })?;
-            let sanitized = sanitize_instance_for_public(value);
-            return Ok(ToolCallContent::Text(
-                serde_json::to_string_pretty(&sanitized).unwrap_or_default(),
-            ));
-        }
-
-        let checkpoint_path = resolved.join("checkpoint.json");
-
-        if checkpoint_path.is_file() {
-            let should_rebuild = if resolved == new_path {
-                is_terminal_checkpoint(&checkpoint_path).unwrap_or(false)
-            } else {
-                true
-            };
-            if should_rebuild {
-                return self.runtime.rebuild_summary(dir, &checkpoint_path).await;
-            }
-        }
-
-        if resolved == new_path {
-            return Ok(running_receipt(dir));
-        }
-
-        Err(ToolSourceError::ToolError(format!(
-            "Instance '{dir}' is incomplete (missing checkpoint)"
-        )))
+        read_status(&self.runtime, &args).await
     }
+}
+
+async fn read_status(
+    runtime: &WorkflowRuntime,
+    args: &Value,
+) -> Result<ToolCallContent, ToolSourceError> {
+    let dir = instance_dir_arg(args, "workflow_status")?;
+    let new_path = runtime.instances_root().join(dir);
+    let legacy_path = runtime.runs_root().join(dir);
+
+    let resolved = if new_path.is_dir() {
+        new_path.clone()
+    } else if legacy_path.is_dir() {
+        legacy_path.clone()
+    } else {
+        return Err(ToolSourceError::InvalidInput(format!(
+            "Instance '{dir}' not found"
+        )));
+    };
+
+    let instance_json_path = resolved.join("instance.json");
+    if instance_json_path.is_file() {
+        let raw = std::fs::read_to_string(&instance_json_path).map_err(|e| {
+            ToolSourceError::ToolError(format!("Failed to read instance summary: {e}"))
+        })?;
+        let value: Value = serde_json::from_str(&raw).map_err(|e| {
+            ToolSourceError::ToolError(format!("Invalid instance summary: {e}"))
+        })?;
+        let sanitized = sanitize_instance_for_public(value);
+        return Ok(ToolCallContent::Text(
+            serde_json::to_string_pretty(&sanitized).unwrap_or_default(),
+        ));
+    }
+
+    let checkpoint_path = resolved.join("checkpoint.json");
+
+    if checkpoint_path.is_file() {
+        let should_rebuild = if resolved == new_path {
+            is_terminal_checkpoint(&checkpoint_path).unwrap_or(false)
+        } else {
+            true
+        };
+        if should_rebuild {
+            return runtime.rebuild_summary(dir, &checkpoint_path).await;
+        }
+    }
+
+    if resolved == new_path {
+        return Ok(running_receipt(dir));
+    }
+
+    Err(ToolSourceError::ToolError(format!(
+        "Instance '{dir}' is incomplete (missing checkpoint)"
+    )))
 }
 
 #[cfg(test)]
@@ -165,10 +172,7 @@ mod tests {
         .unwrap();
 
         let rt = runtime_with(tmp.path());
-        let tool = WorkflowStatusTool {
-            runtime: rt.clone(),
-        };
-        let result = block_on(tool.call(json!({"instance_dir": instance_dir}), None)).unwrap();
+        let result = block_on(read_status(&rt, &json!({"instance_dir": instance_dir}))).unwrap();
         let text = match result {
             ToolCallContent::Text(s) => s,
             _ => panic!("expected text output"),
@@ -193,8 +197,7 @@ mod tests {
         std::fs::create_dir_all(&dir_path).unwrap();
 
         let rt = runtime_with(tmp.path());
-        let tool = WorkflowStatusTool { runtime: rt };
-        let result = block_on(tool.call(json!({"instance_dir": instance_dir}), None)).unwrap();
+        let result = block_on(read_status(&rt, &json!({"instance_dir": instance_dir}))).unwrap();
         let text = match result {
             ToolCallContent::Text(s) => s,
             _ => panic!("expected text output"),
@@ -211,8 +214,7 @@ mod tests {
         std::fs::create_dir_all(&dir_path).unwrap();
 
         let rt = runtime_with(tmp.path());
-        let tool = WorkflowStatusTool { runtime: rt };
-        let err = block_on(tool.call(json!({"instance_dir": instance_dir}), None)).unwrap_err();
+        let err = block_on(read_status(&rt, &json!({"instance_dir": instance_dir}))).unwrap_err();
         let msg = format!("{err:?}");
         assert!(
             msg.contains("corrupt") || msg.contains("missing checkpoint"),
@@ -224,8 +226,7 @@ mod tests {
     fn status_errors_on_unknown_instance_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let rt = runtime_with(tmp.path());
-        let tool = WorkflowStatusTool { runtime: rt };
-        let err = block_on(tool.call(json!({"instance_dir": "does-not-exist"}), None)).unwrap_err();
+        let err = block_on(read_status(&rt, &json!({"instance_dir": "does-not-exist"}))).unwrap_err();
         let msg = format!("{err:?}");
         assert!(msg.contains("not found"));
     }

@@ -137,76 +137,82 @@ impl Tool for WorkflowEventsTool {
         args: Value,
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let dir = instance_dir_arg(&args, "workflow_events")?;
-        let path = self
-            .runtime
-            .resolve_instance_path(dir)
-            .ok_or_else(|| ToolSourceError::InvalidInput(format!("Instance '{dir}' not found")))?;
-        let events_path = path.join("events.jsonl");
-        let offset = parse_events_offset(&args);
-        let events_limit = parse_events_limit(&args);
-        let types = parse_events_types(&args);
-        let agent_id = parse_events_agent_id(&args);
+        read_events(&self.runtime, &args)
+    }
+}
 
-        let mut filtered_count: u64 = 0;
-        let mut returned: usize = 0;
-        let mut events: Vec<Value> = Vec::new();
+fn read_events(
+    runtime: &WorkflowRuntime,
+    args: &Value,
+) -> Result<ToolCallContent, ToolSourceError> {
+    let dir = instance_dir_arg(args, "workflow_events")?;
+    let path = runtime
+        .resolve_instance_path(dir)
+        .ok_or_else(|| ToolSourceError::InvalidInput(format!("Instance '{dir}' not found")))?;
+    let events_path = path.join("events.jsonl");
+    let offset = parse_events_offset(args);
+    let events_limit = parse_events_limit(args);
+    let types = parse_events_types(args);
+    let agent_id = parse_events_agent_id(args);
 
-        if let Ok(file) = std::fs::File::open(&events_path) {
-            let types_set: Option<HashSet<&str>> = types
-                .as_ref()
-                .map(|v| v.iter().map(|s| s.as_str()).collect());
+    let mut filtered_count: u64 = 0;
+    let mut returned: usize = 0;
+    let mut events: Vec<Value> = Vec::new();
 
-            let reader = std::io::BufReader::new(file);
-            use std::io::BufRead as _;
-            for line in reader.lines() {
-                let Ok(line) = line else { continue };
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
+    if let Ok(file) = std::fs::File::open(&events_path) {
+        let types_set: Option<HashSet<&str>> = types
+            .as_ref()
+            .map(|v| v.iter().map(|s| s.as_str()).collect());
+
+        let reader = std::io::BufReader::new(file);
+        use std::io::BufRead as _;
+        for line in reader.lines() {
+            let Ok(line) = line else { continue };
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let val: Value = match serde_json::from_str(trimmed) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            if let Some(set) = &types_set {
+                if !event_matches_types(&val, set) {
                     continue;
                 }
-                let val: Value = match serde_json::from_str(trimmed) {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-
-                if let Some(set) = &types_set {
-                    if !event_matches_types(&val, set) {
-                        continue;
-                    }
-                }
-                if let Some(aid) = &agent_id {
-                    if !event_matches_agent_id(&val, aid) {
-                        continue;
-                    }
-                }
-
-                filtered_count += 1;
-                if filtered_count > offset && (returned as u64) < events_limit {
-                    events.push(val);
-                    returned += 1;
+            }
+            if let Some(aid) = &agent_id {
+                if !event_matches_agent_id(&val, aid) {
+                    continue;
                 }
             }
+
+            filtered_count += 1;
+            if filtered_count > offset && (returned as u64) < events_limit {
+                events.push(val);
+                returned += 1;
+            }
         }
-
-        let next_offset = if offset + (returned as u64) < filtered_count {
-            Some(offset + returned as u64)
-        } else {
-            None
-        };
-
-        Ok(ToolCallContent::Text(
-            serde_json::to_string_pretty(&json!({
-                "instance_dir": dir,
-                "offset": offset,
-                "events_limit": events_limit,
-                "total_matching": filtered_count,
-                "next_offset": next_offset,
-                "events": events,
-            }))
-            .unwrap_or_default(),
-        ))
     }
+
+    let next_offset = if offset + (returned as u64) < filtered_count {
+        Some(offset + returned as u64)
+    } else {
+        None
+    };
+
+    Ok(ToolCallContent::Text(
+        serde_json::to_string_pretty(&json!({
+            "instance_dir": dir,
+            "offset": offset,
+            "events_limit": events_limit,
+            "total_matching": filtered_count,
+            "next_offset": next_offset,
+            "events": events,
+        }))
+        .unwrap_or_default(),
+    ))
 }
 
 #[cfg(test)]

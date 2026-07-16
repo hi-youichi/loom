@@ -58,34 +58,40 @@ impl Tool for WorkflowSourceTool {
         args: Value,
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let dir = instance_dir_arg(&args, "workflow_source")?;
-        let resolved = self
-            .runtime
-            .resolve_instance_path(dir)
-            .ok_or_else(|| ToolSourceError::InvalidInput(format!("Instance '{dir}' not found")))?;
-
-        let source = std::fs::read_to_string(resolved.join("workflow.lua")).map_err(|e| {
-            ToolSourceError::ToolError(format!("Failed to read workflow source: {e}"))
-        })?;
-
-        let (preview, truncated) = if source.len() > DEFAULT_SOURCE_PREVIEW_LIMIT {
-            (
-                truncate_for_preview(&source, DEFAULT_SOURCE_PREVIEW_LIMIT),
-                true,
-            )
-        } else {
-            (source.clone(), false)
-        };
-
-        Ok(ToolCallContent::Text(
-            serde_json::to_string_pretty(&json!({
-                "instance_dir": dir,
-                "workflow_source": preview,
-                "truncated": truncated,
-            }))
-            .unwrap_or_default(),
-        ))
+        read_source(&self.runtime, &args)
     }
+}
+
+fn read_source(
+    runtime: &WorkflowRuntime,
+    args: &Value,
+) -> Result<ToolCallContent, ToolSourceError> {
+    let dir = instance_dir_arg(args, "workflow_source")?;
+    let resolved = runtime
+        .resolve_instance_path(dir)
+        .ok_or_else(|| ToolSourceError::InvalidInput(format!("Instance '{dir}' not found")))?;
+
+    let source = std::fs::read_to_string(resolved.join("workflow.lua")).map_err(|e| {
+        ToolSourceError::ToolError(format!("Failed to read workflow source: {e}"))
+    })?;
+
+    let (preview, truncated) = if source.len() > DEFAULT_SOURCE_PREVIEW_LIMIT {
+        (
+            truncate_for_preview(&source, DEFAULT_SOURCE_PREVIEW_LIMIT),
+            true,
+        )
+    } else {
+        (source.clone(), false)
+    };
+
+    Ok(ToolCallContent::Text(
+        serde_json::to_string_pretty(&json!({
+            "instance_dir": dir,
+            "workflow_source": preview,
+            "truncated": truncated,
+        }))
+        .unwrap_or_default(),
+    ))
 }
 
 #[cfg(test)]
@@ -102,14 +108,6 @@ mod tests {
         Arc::new(WorkflowRuntime::new(cfg))
     }
 
-    fn block_on<F: std::future::Future>(f: F) -> F::Output {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("tokio runtime");
-        rt.block_on(f)
-    }
-
     #[test]
     fn source_returns_short_workflow_preview_untruncated() {
         let tmp = tempfile::tempdir().unwrap();
@@ -123,8 +121,7 @@ mod tests {
         std::fs::write(dir.join("workflow.lua"), "function main() end").unwrap();
 
         let rt = runtime_with(tmp.path());
-        let tool = WorkflowSourceTool { runtime: rt };
-        let result = block_on(tool.call(json!({"instance_dir": instance_dir}), None)).unwrap();
+        let result = read_source(&rt, &json!({"instance_dir": instance_dir})).unwrap();
         let text = match result {
             ToolCallContent::Text(s) => s,
             _ => panic!("expected text output"),
@@ -148,8 +145,7 @@ mod tests {
         std::fs::write(dir.join("workflow.lua"), &big).unwrap();
 
         let rt = runtime_with(tmp.path());
-        let tool = WorkflowSourceTool { runtime: rt };
-        let result = block_on(tool.call(json!({"instance_dir": instance_dir}), None)).unwrap();
+        let result = read_source(&rt, &json!({"instance_dir": instance_dir})).unwrap();
         let text = match result {
             ToolCallContent::Text(s) => s,
             _ => panic!("expected text output"),
@@ -173,8 +169,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
 
         let rt = runtime_with(tmp.path());
-        let tool = WorkflowSourceTool { runtime: rt };
-        let err = block_on(tool.call(json!({"instance_dir": instance_dir}), None)).unwrap_err();
+        let err = read_source(&rt, &json!({"instance_dir": instance_dir})).unwrap_err();
         let msg = format!("{err:?}");
         assert!(msg.contains("Failed to read workflow source"));
     }
@@ -183,8 +178,7 @@ mod tests {
     fn source_errors_on_unknown_instance_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let rt = runtime_with(tmp.path());
-        let tool = WorkflowSourceTool { runtime: rt };
-        let err = block_on(tool.call(json!({"instance_dir": "no-such-thing"}), None)).unwrap_err();
+        let err = read_source(&rt, &json!({"instance_dir": "no-such-thing"})).unwrap_err();
         let msg = format!("{err:?}");
         assert!(msg.contains("not found"));
     }

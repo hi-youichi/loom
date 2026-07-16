@@ -208,81 +208,88 @@ impl Tool for WorkflowListTool {
         args: Value,
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let limit = parse_list_instances_limit(&args)?;
-        let cursor = parse_list_instances_cursor(&args);
-        let status_filter = parse_list_instances_status_filter(&args)?;
+        list_instances(&self.runtime, &args)
+    }
+}
 
-        let mut entries: Vec<Value> = Vec::new();
-        collect_instances_under(&self.runtime.instances_root(), &mut entries);
-        collect_instances_under(&self.runtime.runs_root(), &mut entries);
+fn list_instances(
+    runtime: &WorkflowRuntime,
+    args: &Value,
+) -> Result<ToolCallContent, ToolSourceError> {
+    let limit = parse_list_instances_limit(args)?;
+    let cursor = parse_list_instances_cursor(args);
+    let status_filter = parse_list_instances_status_filter(args)?;
 
-        if let Some(ref sf) = status_filter {
-            let want = sf.to_lowercase();
-            entries.retain(|e| {
-                e.get("status")
+    let mut entries: Vec<Value> = Vec::new();
+    collect_instances_under(&runtime.instances_root(), &mut entries);
+    collect_instances_under(&runtime.runs_root(), &mut entries);
+
+    if let Some(ref sf) = status_filter {
+        let want = sf.to_lowercase();
+        entries.retain(|e| {
+            e.get("status")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_lowercase() == want)
+                .unwrap_or(false)
+        });
+    }
+
+    entries.sort_by(|a, b| {
+        let ca = a.get("created_at").and_then(|v| v.as_u64()).unwrap_or(0);
+        let cb = b.get("created_at").and_then(|v| v.as_u64()).unwrap_or(0);
+        cb.cmp(&ca).then_with(|| {
+            let da = a.get("instance_dir").and_then(|v| v.as_str()).unwrap_or("");
+            let db = b.get("instance_dir").and_then(|v| v.as_str()).unwrap_or("");
+            db.cmp(da)
+        })
+    });
+
+    let total_after_filter = entries.len();
+    let start_idx = match cursor.as_ref() {
+        None => 0,
+        Some(c) => {
+            let pos = entries.iter().position(|e| {
+                e.get("instance_dir")
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_lowercase() == want)
+                    .map(|s| s == c)
                     .unwrap_or(false)
             });
-        }
-
-        entries.sort_by(|a, b| {
-            let ca = a.get("created_at").and_then(|v| v.as_u64()).unwrap_or(0);
-            let cb = b.get("created_at").and_then(|v| v.as_u64()).unwrap_or(0);
-            cb.cmp(&ca).then_with(|| {
-                let da = a.get("instance_dir").and_then(|v| v.as_str()).unwrap_or("");
-                let db = b.get("instance_dir").and_then(|v| v.as_str()).unwrap_or("");
-                db.cmp(da)
-            })
-        });
-
-        let total_after_filter = entries.len();
-        let start_idx = match cursor.as_ref() {
-            None => 0,
-            Some(c) => {
-                let pos = entries.iter().position(|e| {
-                    e.get("instance_dir")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s == c)
-                        .unwrap_or(false)
-                });
-                match pos {
-                    None => {
-                        return Err(ToolSourceError::ToolError(format!("cursor not found: {c}")));
-                    }
-                    Some(p) => p + 1,
+            match pos {
+                None => {
+                    return Err(ToolSourceError::ToolError(format!("cursor not found: {c}")));
                 }
+                Some(p) => p + 1,
             }
-        };
+        }
+    };
 
-        let page: Vec<Value> = entries
-            .iter()
-            .skip(start_idx)
-            .take(limit)
-            .cloned()
-            .collect();
+    let page: Vec<Value> = entries
+        .iter()
+        .skip(start_idx)
+        .take(limit)
+        .cloned()
+        .collect();
 
-        let next_cursor = if page.is_empty() {
-            None
-        } else if start_idx + page.len() < total_after_filter {
-            page.last()
-                .and_then(|v| v.get("instance_dir").and_then(|v| v.as_str()))
-                .map(|s| s.to_string())
-        } else {
-            None
-        };
-        let has_more = next_cursor.is_some();
+    let next_cursor = if page.is_empty() {
+        None
+    } else if start_idx + page.len() < total_after_filter {
+        page.last()
+            .and_then(|v| v.get("instance_dir").and_then(|v| v.as_str()))
+            .map(|s| s.to_string())
+    } else {
+        None
+    };
+    let has_more = next_cursor.is_some();
 
-        Ok(ToolCallContent::Text(
-            serde_json::to_string_pretty(&json!({
-                "instances": page,
-                "count": page.len(),
-                "next_cursor": next_cursor,
-                "has_more": has_more,
-            }))
-            .unwrap_or_default(),
-        ))
-    }
+    Ok(ToolCallContent::Text(
+        serde_json::to_string_pretty(&json!({
+            "instances": page,
+            "count": page.len(),
+            "next_cursor": next_cursor,
+            "has_more": has_more,
+        }))
+        .unwrap_or_default(),
+    ))
 }
 
 #[cfg(test)]
