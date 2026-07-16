@@ -304,6 +304,38 @@ fn status_returns_running_when_only_dir_exists() {
 }
 
 #[test]
+fn status_returns_running_when_checkpoint_non_terminal() {
+    let tmp = TempDir::new().unwrap();
+    let instance_dir = NEW_TS;
+    let dir = tmp
+        .path()
+        .join(".loom")
+        .join("instances")
+        .join(instance_dir);
+    fs::create_dir_all(&dir).unwrap();
+    let checkpoint = json!({
+        "run_id": "run-1",
+        "status": "running",
+        "created_at": 1_700_000_000u64,
+        "updated_at": 1_700_000_005u64,
+    });
+    fs::write(
+        dir.join("checkpoint.json"),
+        serde_json::to_vec_pretty(&checkpoint).unwrap(),
+    )
+    .unwrap();
+
+    let tool = tool_with(tmp.path().to_path_buf());
+    let body = text_of(call(&tool, json!({"instance_dir": instance_dir})).expect("call"));
+    let parsed: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(parsed["instance_dir"], instance_dir);
+    assert_eq!(parsed["status"], "running");
+    assert!(parsed.get("agents").is_none());
+    assert!(parsed.get("workflow").is_none());
+    assert!(parsed.get("instance_id").is_none());
+}
+
+#[test]
 fn status_errors_on_legacy_dir_without_checkpoint() {
     let tmp = TempDir::new().unwrap();
     let instance_dir = "loom-instance_corrupt";
