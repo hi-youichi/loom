@@ -747,25 +747,6 @@ async fn background_finalize(
     let mut cancelled = false;
 
     loop {
-        if cancelled {
-            match done_rx.recv().await {
-                Ok(event) => {
-                    if let Some(ref send) = sender {
-                        send(luft_event_to_json(&event));
-                    }
-                    if let LuftAgentEvent::RunDone { report, .. } = event {
-                        final_report = Some(report);
-                    }
-                    final_status = Some("cancelled");
-                    break;
-                }
-                Err(RecvError::Lagged(_)) => continue,
-                Err(RecvError::Closed) => {
-                    final_status = Some("cancelled");
-                    break;
-                }
-            }
-        }
         tokio::select! {
             ev = done_rx.recv() => {
                 match ev {
@@ -774,19 +755,21 @@ async fn background_finalize(
                             send(luft_event_to_json(&event));
                         }
                         if let LuftAgentEvent::RunDone { report, status, .. } = event {
-                        final_status = Some(match status {
-                            luft_core::contract::event::RunStatus::Completed => "completed",
-                            luft_core::contract::event::RunStatus::Failed => "failed",
-                            luft_core::contract::event::RunStatus::Cancelled => "cancelled",
-                            luft_core::contract::event::RunStatus::Partial => "completed",
-                        });
-                        final_report = Some(report);
-                        break;
+                            final_status = Some(match status {
+                                luft_core::contract::event::RunStatus::Completed => "completed",
+                                luft_core::contract::event::RunStatus::Failed => "failed",
+                                luft_core::contract::event::RunStatus::Cancelled => "cancelled",
+                                luft_core::contract::event::RunStatus::Partial => "completed",
+                            });
+                            final_report = Some(report);
+                            break;
                         }
                     }
                     Err(RecvError::Lagged(_)) => continue,
                     Err(RecvError::Closed) => {
-                        final_status = Some("failed");
+                        if final_status.is_none() {
+                            final_status = Some(if cancelled { "cancelled" } else { "failed" });
+                        }
                         break;
                     }
                 }
