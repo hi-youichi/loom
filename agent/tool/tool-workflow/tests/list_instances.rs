@@ -336,6 +336,24 @@ async fn list_invalid_cursor_returns_error() {
 }
 
 #[tokio::test]
+async fn list_skips_non_terminal_checkpoint_status() {
+    let tmp = tempdir().unwrap();
+    let runs = tmp.path().join(".luft").join("runs");
+    write_checkpoint(&runs.join("run_done"), "completed", 1_700_000_000);
+    write_checkpoint(&runs.join("run_alive"), "running", 1_700_000_001);
+    write_checkpoint(&runs.join("run_pending"), "RUNNING", 1_700_000_002);
+    write_checkpoint(&runs.join("run_weird"), "queued", 1_700_000_003);
+
+    let tool = build_tool(tmp.path().to_path_buf());
+    let resp = call_list(&tool, json!({})).await.unwrap();
+    let v = parse_response(resp);
+
+    let dirs = instance_dirs(&v);
+    assert_eq!(dirs, vec!["run_done"], "only terminal checkpoints should appear; got {v}");
+    assert_eq!(v["count"], 1);
+}
+
+#[tokio::test]
 async fn list_empty_when_directory_missing() {
     let tmp = tempdir().unwrap();
     let tool = build_tool(tmp.path().to_path_buf());
