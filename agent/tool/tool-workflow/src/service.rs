@@ -715,17 +715,7 @@ pub(crate) fn list_workflow_files(
                 .file_name()
                 .map(|value| value.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let source = std::fs::read_to_string(&path).unwrap_or_default();
-            let first_line = source
-                .lines()
-                .map(str::trim)
-                .find(|line| !line.is_empty())
-                .unwrap_or_default();
-            workflows.push(json!({
-                "name": name,
-                "size_bytes": source.len(),
-                "first_line": truncate_for_preview(first_line, 200),
-            }));
+            workflows.push(json!({ "name": name }));
         }
     }
     workflows.sort_by(|left, right| {
@@ -1262,7 +1252,7 @@ mod tests {
     // -- files handler --
 
     #[test]
-    fn files_lists_lua_definitions_with_first_line() {
+    fn files_lists_lua_definitions() {
         let tmp = tempfile::tempdir().unwrap();
         let wf_dir = tmp.path().join(".loom").join("workflows");
         std::fs::create_dir_all(&wf_dir).unwrap();
@@ -1289,9 +1279,7 @@ mod tests {
         let list = v["workflows"].as_array().unwrap();
         assert_eq!(list.len(), 2);
         assert_eq!(list[0]["name"], "alpha.lua");
-        assert_eq!(list[0]["first_line"], "-- alpha");
         assert_eq!(list[1]["name"], "beta.lua");
-        assert_eq!(list[1]["first_line"], "-- beta");
     }
 
     #[test]
@@ -1326,6 +1314,5 @@ mod tests {
         let list = v["workflows"].as_array().unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0]["name"], "greet.lua");
-        assert_eq!(list[0]["first_line"], "-- greet");
     }
 }

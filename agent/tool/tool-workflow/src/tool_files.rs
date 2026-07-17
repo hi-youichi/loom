@@ -32,9 +32,8 @@ impl Tool for WorkflowFilesTool {
         ToolSpec {
             name: TOOL_WORKFLOW_FILES.to_string(),
             description: Some(
-                "List the available Lua workflow definitions. Returns each workflow's \
-                 name, size, and first non-empty line. Pass a returned name to \
-                 `workflow_start`."
+                "List the available Lua workflow definitions. Returns each \
+                 workflow's name. Pass a returned name to `workflow_start`."
                     .to_string(),
             ),
             input_schema: json!({"type": "object", "properties": {}}),
