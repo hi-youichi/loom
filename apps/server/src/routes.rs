@@ -1,20 +1,19 @@
 //! HTTP route registry — single source of truth for which URLs loom-server
 //! exposes (tasks P0.2, P0.3, P0.5, P0.6, P0.7, P1.x, P2.x, P3.x).
 //!
-//! The set of registered routes is now wide — every URL the opencode
-//! v1 + v2 TUI bootstrap may hit. Most are stubs that return empty
-//! JSON envelopes, but they share the same envelopes the opencode code
-//! expects so its `Promise.all`s and `.fetch().then()` resolvers all
-//! complete cleanly.
+//! W4 cleanup: removed worktree, revert, mcp-connect, and oauth route groups
+//! (opencode has none of these). Wired the new contract routes: `/api/provider`
+//! (W2), `/api/credential` (W3), and the contract-shaped `/api/pty*` set.
 
 use axum::{
     middleware,
     routing::{delete, get, patch, post},
     Router,
 };
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
-use crate::auth::log_authorization_header;
+use crate::auth::{log_authorization_header, require_valid_token};
 use crate::handlers;
 use crate::sse;
 use crate::state::SharedState;
@@ -31,7 +30,50 @@ pub fn build_router(state: SharedState) -> Router {
             "/config/providers",
             get(handlers::bootstrap::get_config_providers),
         )
+        .route(
+            "/config/settings",
+            get(handlers::settings::get_settings)
+                .put(handlers::settings::put_settings),
+        )
+        .route("/config/reload", post(handlers::settings::reload_config))
+        .route(
+            "/api/config/providers",
+            get(handlers::bootstrap::get_config_providers),
+        )
+        .route(
+            "/api/config/settings",
+            get(handlers::settings::get_settings)
+                .put(handlers::settings::put_settings),
+        )
+        .route("/api/config/reload", post(handlers::settings::reload_config))
         .route("/provider", get(handlers::bootstrap::get_provider_list))
+        // ─── Provider auth CRUD (OC-compat T4) ───────────────────
+        .route(
+            "/provider/auth",
+            get(handlers::provider_auth::get_provider_auth),
+        )
+        .route(
+            "/provider/:providerId/auth",
+            post(handlers::provider_auth::post_provider_auth)
+                .delete(handlers::provider_auth::delete_provider_auth),
+        )
+        .route(
+            "/provider/:providerId/source",
+            get(handlers::provider_auth::get_provider_source),
+        )
+        .route(
+            "/api/provider/auth",
+            get(handlers::provider_auth::get_provider_auth),
+        )
+        .route(
+            "/api/provider/:providerId/auth",
+            post(handlers::provider_auth::post_provider_auth)
+                .delete(handlers::provider_auth::delete_provider_auth),
+        )
+        .route(
+            "/api/provider/:providerId/source",
+            get(handlers::provider_auth::get_provider_source),
+        )
         .route("/agent", get(handlers::bootstrap::get_agent_list))
         .route("/path", get(handlers::bootstrap::get_api_path))
         .route("/project", get(handlers::bootstrap::get_project_list))
@@ -110,34 +152,22 @@ pub fn build_router(state: SharedState) -> Router {
             "/experimental/eval",
             post(handlers::experimental::post_eval),
         )
-        // ─── Provider OAuth (P2.22) ────────────────────────────
-        .route(
-            "/provider/auth",
-            get(handlers::v2_compat::empty_object)
-                .post(handlers::provider_auth::post_provider_auth),
-        )
-        .route(
-            "/provider/auth/:id",
-            get(handlers::provider_auth::get_provider_auth),
-        )
-        .route(
-            "/api/provider/auth",
-            post(handlers::provider_auth::post_api_provider_auth),
-        )
-        .route(
-            "/api/provider/auth/:id",
-            get(handlers::provider_auth::get_api_provider_auth)
-                .delete(handlers::provider_auth::delete_api_provider_auth),
-        )
         // ─── v2 bootstrap (P0.2) ────────────────────────────────
         .route(
             "/api/config",
             get(handlers::bootstrap::get_api_config).patch(handlers::bootstrap::patch_api_config),
         )
+        // Provider group (group-provider.ts, W2) — list + get from config.
         .route("/api/provider", get(handlers::bootstrap::get_api_providers))
         .route(
-            "/api/provider/:id",
+            "/api/provider/:providerID",
             get(handlers::bootstrap::get_api_provider),
+        )
+        // Credential group (group-credential.ts, W3) — update label + remove.
+        .route(
+            "/api/credential/:credentialID",
+            patch(handlers::credential::update_credential)
+                .delete(handlers::credential::remove_credential),
         )
         .route(
             "/api/app/agent",
@@ -153,6 +183,7 @@ pub fn build_router(state: SharedState) -> Router {
         )
         .route("/api/agent", get(handlers::bootstrap::get_api_agents))
         .route("/api/model", get(handlers::bootstrap::get_api_models))
+        .route("/model", get(handlers::bootstrap::get_api_models))
         .route("/api/command", get(handlers::bootstrap::get_api_commands))
         .route("/api/skill", get(handlers::bootstrap::get_api_skills))
         .route(
@@ -182,8 +213,37 @@ pub fn build_router(state: SharedState) -> Router {
             patch(handlers::v2_compat::project_update),
         )
         .route("/api/path", get(handlers::bootstrap::get_api_path))
-        .route("/api/fs/list", get(handlers::bootstrap::get_api_fs_list))
-        .route("/api/fs/find", post(handlers::bootstrap::post_api_fs_find))
+        .route("/api/fs/list", get(handlers::fs::list))
+        .route("/api/fs/read/*path", get(handlers::fs::read))
+        .route("/api/fs/find", get(handlers::fs::find))
+        .route("/api/fs/write", post(handlers::fs::write))
+        .route("/api/fs/delete", post(handlers::fs::delete))
+        .route("/api/fs/rename", post(handlers::fs::rename))
+        .route("/api/fs/mkdir", post(handlers::fs::mkdir))
+        .route("/api/fs/stat", get(handlers::fs::stat))
+
+        // ─── PTY group (group-pty.ts, W3/W4) ─────────────────────
+        // Contract-shaped /api/pty* routes. Handlers live in mcp_pty_file.rs
+        // as honest 501s until handlers/pty.rs ships the full lifecycle.
+        .route(
+            "/api/pty",
+            get(handlers::mcp_pty_file::get_api_pty_list)
+                .post(handlers::mcp_pty_file::post_api_pty),
+        )
+        .route(
+            "/api/pty/:ptyID",
+            get(handlers::mcp_pty_file::get_pty_one)
+                .put(handlers::mcp_pty_file::put_pty_one)
+                .delete(handlers::mcp_pty_file::delete_pty_one),
+        )
+        .route(
+            "/api/pty/:ptyID/connect-token",
+            post(handlers::mcp_pty_file::post_api_pty_connect_token),
+        )
+        .route(
+            "/api/pty/:ptyID/connect",
+            get(handlers::mcp_pty_file::get_api_pty_connect),
+        )
         // ─── VCS (P0.2) ─────────────────────────────────────────
         .route("/vcs", get(handlers::vcs_extra::get_vcs))
         .route("/vcs/status", get(handlers::vcs_extra::get_vcs_status))
@@ -196,6 +256,19 @@ pub fn build_router(state: SharedState) -> Router {
             "/api/vcs/diff/raw",
             get(handlers::vcs_extra::get_vcs_diff_raw),
         )
+        // ─── Git operations (OC-G) ───────────────────────────────
+        .route("/git/check", get(handlers::git::check))
+        .route("/git/stage", post(handlers::git::stage))
+        .route("/git/unstage", post(handlers::git::unstage))
+        .route("/git/commit", post(handlers::git::commit))
+        .route("/git/log", get(handlers::git::log))
+        .route("/git/branches", get(handlers::git::branches))
+        .route("/api/git/check", get(handlers::git::check))
+        .route("/api/git/stage", post(handlers::git::stage))
+        .route("/api/git/unstage", post(handlers::git::unstage))
+        .route("/api/git/commit", post(handlers::git::commit))
+        .route("/api/git/log", get(handlers::git::log))
+        .route("/api/git/branches", get(handlers::git::branches))
         // ─── Health (P0.2, P0.3) ────────────────────────────────
         .route("/api/health", get(handlers::health::get_api_health))
         .route("/global/health", get(handlers::health::get_global_health))
@@ -228,7 +301,7 @@ pub fn build_router(state: SharedState) -> Router {
                 .delete(handlers::session::delete_session),
         )
         .route(
-            "/api/session/:id",
+            "/api/session/:sessionID",
             get(handlers::session::get_session)
                 .patch(handlers::session::patch_session)
                 .delete(handlers::session::delete_session),
@@ -242,7 +315,7 @@ pub fn build_router(state: SharedState) -> Router {
             get(handlers::session::get_session_children),
         )
         .route(
-            "/api/session/:id/children",
+            "/api/session/:sessionID/children",
             get(handlers::session::get_session_children),
         )
         .route(
@@ -262,11 +335,7 @@ pub fn build_router(state: SharedState) -> Router {
             post(handlers::session::post_session_share).delete(handlers::v2_compat::true_value),
         )
         .route(
-            "/session/:id/unrevert",
-            post(handlers::v2_compat::true_value),
-        )
-        .route(
-            "/api/session/:id/share",
+            "/api/session/:sessionID/share",
             post(handlers::session::post_session_share),
         )
         // ─── Session main paths (P1.8, P1.9, P1.10, P1.11, P1.13) ──
@@ -282,48 +351,49 @@ pub fn build_router(state: SharedState) -> Router {
         .route("/session/:id/shell", post(handlers::session::session_shell))
         .route("/session/:id/abort", post(handlers::session::session_abort))
         .route(
-            "/api/session/:id/agent",
+            "/api/session/:sessionID/agent",
             post(handlers::session::api_session_prompt),
         )
+        // Contract (group-session.ts): session.prompt — durable admit one input.
         .route(
-            "/api/session/:id/command",
+            "/api/session/:sessionID/prompt",
+            post(handlers::session::prompt),
+        )
+        .route(
+            "/api/session/:sessionID/command",
             post(handlers::session::api_session_command),
         )
         .route(
-            "/api/session/:id/shell",
+            "/api/session/:sessionID/shell",
             post(handlers::session::api_session_shell),
         )
         .route(
-            "/api/session/:id/interrupt",
+            "/api/session/:sessionID/interrupt",
             post(handlers::session::api_session_interrupt),
         )
         .route(
-            "/api/session/:id/status",
+            "/api/session/:sessionID/status",
             get(handlers::v2_compat::session_status),
         )
         .route(
-            "/api/session/:id/fork",
+            "/api/session/:sessionID/fork",
             post(handlers::session::post_api_session_fork),
         )
         .route(
-            "/api/session/:id/summarize",
+            "/api/session/:sessionID/summarize",
             post(handlers::session::post_api_session_summarize),
         )
         .route(
-            "/api/session/:id/init",
+            "/api/session/:sessionID/init",
             post(handlers::session::post_api_session_init),
-        )
-        .route(
-            "/api/session/:id/revert",
-            post(handlers::session::post_api_session_revert),
         )
         .route(
             "/api/location/snapshot",
             post(handlers::vcs_extra::post_api_location_snapshot),
         )
         .route(
-            "/api/session/:id/event",
-            get(handlers::session::get_api_session_event),
+            "/api/session/:sessionID/event",
+            get(sse::api_session_event_stream),
         )
         .route(
             "/api/session/active",
@@ -346,36 +416,6 @@ pub fn build_router(state: SharedState) -> Router {
             "/api/formatter/status",
             get(handlers::lsp_formatter::get_formatter_status),
         )
-        // ─── Reverts (P2.19) ────────────────────────────────────
-        .route(
-            "/session/:id/revert",
-            post(handlers::revert::post_session_revert),
-        )
-        .route(
-            "/session/:id/revert/stage",
-            get(handlers::revert::get_session_revert_stage),
-        )
-        .route(
-            "/session/:id/revert/clear",
-            post(handlers::revert::post_session_revert_clear),
-        )
-        .route(
-            "/session/:id/revert/commit",
-            post(handlers::revert::post_session_revert_commit),
-        )
-        .route(
-            "/api/session/:id/revert/stage",
-            get(handlers::revert::get_api_session_revert_stage)
-                .post(handlers::revert::post_api_session_revert_stage),
-        )
-        .route(
-            "/api/session/:id/revert/clear",
-            post(handlers::revert::post_api_session_revert_clear),
-        )
-        .route(
-            "/api/session/:id/revert/commit",
-            post(handlers::revert::post_api_session_revert_commit),
-        )
         // ─── Permission (P2.18) ─────────────────────────────────
         .route(
             "/permission",
@@ -389,9 +429,11 @@ pub fn build_router(state: SharedState) -> Router {
             "/api/permission",
             post(handlers::permission::post_api_permission),
         )
+        // Contract (group-permission.ts): GET /api/permission/request lists
+        // pending location-scoped permission requests.
         .route(
             "/api/permission/request",
-            post(handlers::permission::post_api_permission),
+            get(handlers::permission::get_api_permission_pending),
         )
         .route(
             "/api/permission/saved/:id",
@@ -410,7 +452,7 @@ pub fn build_router(state: SharedState) -> Router {
             post(handlers::v2_compat::true_value),
         )
         .route(
-            "/api/session/:id/permissions/:permissionID",
+            "/api/session/:sessionID/permissions/:permissionID",
             post(handlers::v2_compat::true_value),
         )
         // ─── Question (P2.18) ───────────────────────────────────
@@ -427,9 +469,11 @@ pub fn build_router(state: SharedState) -> Router {
             post(handlers::question::post_question_reject),
         )
         .route("/api/question", post(handlers::question::post_api_question))
+        // Contract (group-question.ts): GET /api/question/request lists
+        // pending location-scoped question requests.
         .route(
             "/api/question/request",
-            post(handlers::question::post_api_question),
+            get(handlers::question::get_api_question_pending),
         )
         .route(
             "/api/question/pending",
@@ -454,7 +498,9 @@ pub fn build_router(state: SharedState) -> Router {
             post(handlers::control::post_tui_control_cancel),
         )
         .route("/control/next", post(handlers::control::post_control_next))
-        // ─── MCP/PTY/File/Find (P2.20) ─────────────────────────
+        // ─── MCP auth + File/Find (P2.20) ──────────────────────
+        // NOTE: MCP connect/disconnect removed (W4 — opencode has no
+        // mcp-connect group). MCP auth stubs retained for compat.
         .route(
             "/mcp/:name/auth",
             post(handlers::mcp_pty_file::post_mcp_auth).delete(handlers::v2_compat::true_value),
@@ -464,57 +510,8 @@ pub fn build_router(state: SharedState) -> Router {
             post(handlers::v2_compat::true_value),
         )
         .route(
-            "/mcp/:name/connect",
-            post(handlers::mcp_pty_file::post_mcp_connect),
-        )
-        .route(
-            "/mcp/:name/disconnect",
-            post(handlers::mcp_pty_file::post_mcp_disconnect),
-        )
-        .route(
             "/api/mcp/:name/auth",
             post(handlers::mcp_pty_file::post_api_mcp_auth).delete(handlers::v2_compat::true_value),
-        )
-        .route(
-            "/api/mcp/:name/connect",
-            post(handlers::mcp_pty_file::post_mcp_connect),
-        )
-        .route(
-            "/api/mcp/:name/disconnect",
-            post(handlers::mcp_pty_file::post_mcp_disconnect),
-        )
-        .route(
-            "/pty",
-            get(handlers::mcp_pty_file::get_pty_list).post(handlers::mcp_pty_file::post_pty),
-        )
-        .route(
-            "/pty/:id",
-            get(handlers::mcp_pty_file::get_pty_one)
-                .patch(handlers::mcp_pty_file::patch_pty_one)
-                .delete(handlers::mcp_pty_file::delete_pty_one),
-        )
-        .route(
-            "/api/pty",
-            get(handlers::mcp_pty_file::get_api_pty_list)
-                .post(handlers::mcp_pty_file::post_api_pty),
-        )
-        .route(
-            "/api/pty/:id",
-            get(handlers::mcp_pty_file::get_pty_one)
-                .patch(handlers::mcp_pty_file::patch_pty_one)
-                .delete(handlers::mcp_pty_file::delete_pty_one),
-        )
-        .route("/pty/:id/connect", get(handlers::v2_compat::empty_object))
-        .route("/pty/:id/input", post(handlers::v2_compat::true_value))
-        .route("/pty/:id/resize", patch(handlers::v2_compat::true_value))
-        .route("/api/pty/:id/input", post(handlers::v2_compat::true_value))
-        .route(
-            "/api/pty/:id/resize",
-            patch(handlers::v2_compat::true_value),
-        )
-        .route(
-            "/api/pty/:id/connect",
-            get(handlers::v2_compat::empty_object),
         )
         .route(
             "/file",
@@ -555,11 +552,11 @@ pub fn build_router(state: SharedState) -> Router {
             "/api/find/file",
             get(handlers::mcp_pty_file::get_api_find_file),
         )
+        // ─── Global (P2.23) — keep honest 501 for upgrade/instance ──
         .route(
-            "/worktree",
-            get(handlers::v2_compat::empty_list).post(handlers::v2_compat::empty_object),
+            "/global/upgrade",
+            post(handlers::global_bus::post_global_upgrade),
         )
-        .route("/global/upgrade", post(handlers::v2_compat::true_value))
         .route(
             "/api/instance/dispose",
             post(handlers::v2_compat::instance_dispose),
@@ -621,37 +618,30 @@ pub fn build_router(state: SharedState) -> Router {
             get(handlers::messages::get_session_diff),
         )
         .route(
-            "/api/session/:id/messages",
+            "/api/session/:sessionID/messages",
             get(handlers::messages::get_messages),
         )
         .route(
-            "/api/session/:id/message",
+            "/api/session/:sessionID/message",
             get(handlers::messages::get_api_session_message)
                 .post(handlers::messages::post_api_session_message),
         )
         .route(
-            "/api/session/:id/message/:messageID",
-            delete(handlers::messages::delete_api_session_message),
+            "/api/session/:sessionID/message/:messageID",
+            get(handlers::messages::get_session_message)
+                .delete(handlers::messages::delete_api_session_message),
         )
         .route(
-            "/api/session/:id/message/:messageID/part",
+            "/api/session/:sessionID/message/:messageID/part",
             get(handlers::messages::get_api_session_message_parts),
         )
         .route(
-            "/api/session/:id/message/:messageID/part/:partID",
+            "/api/session/:sessionID/message/:messageID/part/:partID",
             get(handlers::messages::get_api_session_message_part)
                 .patch(handlers::messages::patch_api_session_message_part)
                 .delete(handlers::messages::delete_api_session_message_part),
         )
         // ─── Current v2 SDK aliases (protocol drift compatibility) ──
-        .route(
-            "/experimental/provider/auth",
-            get(handlers::v2_compat::empty_object).post(handlers::v2_compat::true_value),
-        )
-        .route(
-            "/api/experimental/provider/auth",
-            get(handlers::v2_compat::empty_object).post(handlers::v2_compat::true_value),
-        )
         .route("/experimental/agent", get(handlers::v2_compat::empty_list))
         .route(
             "/api/experimental/agent",
@@ -681,32 +671,6 @@ pub fn build_router(state: SharedState) -> Router {
         .route(
             "/api/experimental/tool/ids",
             get(handlers::v2_compat::empty_list),
-        )
-        .route(
-            "/experimental/worktree",
-            get(handlers::v2_compat::empty_list)
-                .post(handlers::v2_compat::empty_object)
-                .delete(handlers::v2_compat::true_value),
-        )
-        .route(
-            "/experimental/worktree/reset",
-            post(handlers::v2_compat::true_value),
-        )
-        .route(
-            "/experimental/worktree/:id",
-            delete(handlers::v2_compat::true_value),
-        )
-        .route(
-            "/experimental/worktree/:id/reset",
-            post(handlers::v2_compat::true_value),
-        )
-        .route(
-            "/api/experimental/worktree",
-            get(handlers::v2_compat::empty_list).post(handlers::v2_compat::empty_object),
-        )
-        .route(
-            "/api/experimental/worktree/:id",
-            delete(handlers::v2_compat::true_value),
         )
         .route(
             "/experimental/session",
@@ -752,22 +716,6 @@ pub fn build_router(state: SharedState) -> Router {
             post(handlers::v2_compat::true_value),
         )
         .route("/api/command/:name", get(handlers::v2_compat::empty_object))
-        .route(
-            "/provider/:id/oauth/authorize",
-            post(handlers::v2_compat::not_implemented),
-        )
-        .route(
-            "/provider/:id/oauth/callback",
-            post(handlers::v2_compat::not_implemented),
-        )
-        .route(
-            "/api/provider/:id/oauth/authorize",
-            post(handlers::v2_compat::not_implemented),
-        )
-        .route(
-            "/api/provider/:id/oauth/callback",
-            post(handlers::v2_compat::not_implemented),
-        )
         .route("/api/model/:id", get(handlers::v2_compat::empty_object))
         .route(
             "/api/reference/workspace",
@@ -802,7 +750,7 @@ pub fn build_router(state: SharedState) -> Router {
             post(handlers::v2_compat::true_value),
         )
         .route(
-            "/api/integration/:name",
+            "/api/integration/:integrationID",
             axum::routing::put(handlers::v2_compat::true_value)
                 .delete(handlers::v2_compat::true_value),
         )
@@ -847,12 +795,63 @@ pub fn build_router(state: SharedState) -> Router {
             "/tui/control/response",
             post(handlers::v2_compat::true_value),
         )
+        // ─── MISSING CONTRACT ROUTES (awaiting W2 handlers) ───
+        // The following opencode v2 endpoints (groups/*.ts) have no handler
+        // yet. Listed as comments so W2 can wire them; kept out of the
+        // Router so the crate stays compiling and no stubs ship.
+        //
+        // ── integration (group-integration.ts) ──
+        // TODO(W2): GET    /api/integration/:integrationID            → handlers::integration::get
+        // TODO(W2): POST   /api/integration/:integrationID/connect/key  → handlers::integration::connect_key
+        // TODO(W2): POST   /api/integration/:integrationID/connect/oauth→ handlers::integration::connect_oauth
+        // TODO(W2): GET    /api/integration/attempt/:attemptID          → handlers::integration::attempt_status
+        // TODO(W2): POST   /api/integration/attempt/:attemptID/complete → handlers::integration::attempt_complete
+        // TODO(W2): DELETE /api/integration/attempt/:attemptID          → handlers::integration::attempt_cancel
+        //
+        // ── fs (group-fs.ts) ──
+        // fs.read/find now registered above with handlers::fs::read/find.
+        // (fs.find GET is registered above as a TODO; see handlers::fs::find)
+        //
+        // ── session (group-session.ts) — switchModel/compact/wait/context/history ──
+        // TODO(W2): POST /api/session/:sessionID/model   → handlers::session::switch_model (switchAgent→/agent wired above)
+        // TODO(W2): POST /api/session/:sessionID/compact → handlers::session::compact
+        // TODO(W2): POST /api/session/:sessionID/wait    → handlers::session::wait
+        // TODO(W2): GET  /api/session/:sessionID/context → handlers::session::get_context
+        // TODO(W2): GET  /api/session/:sessionID/history → handlers::session::get_history
+        //
+        // ── session revert (group-session.ts: session.revert.*) ──
+        // TODO(W2): POST /api/session/:sessionID/revert/stage   → handlers::session::revert_stage
+        // TODO(W2): POST /api/session/:sessionID/revert/clear   → handlers::session::revert_clear
+        // TODO(W2): POST /api/session/:sessionID/revert/commit  → handlers::session::revert_commit
+        //
+        // ── session-scoped permission (group-permission.ts: session.permission.*) ──
+        // TODO(W2): POST /api/session/:sessionID/permission             → handlers::permission::create
+        // TODO(W2): GET  /api/session/:sessionID/permission             → handlers::permission::list_session
+        // TODO(W2): GET  /api/session/:sessionID/permission/:requestID  → handlers::permission::get_session
+        // TODO(W2): POST /api/session/:sessionID/permission/:requestID/reply → handlers::permission::reply_session
+        //
+        // ── session-scoped question (group-question.ts: session.question.*) ──
+        // TODO(W2): GET  /api/session/:sessionID/question                  → handlers::question::list_session
+        // TODO(W2): POST /api/session/:sessionID/question/:requestID/reply → handlers::question::reply_session
+        // TODO(W2): POST /api/session/:sessionID/question/:requestID/reject→ handlers::question::reject_session
+        //
+        // ── project copy (group-project-copy.ts) ──
+        // TODO(W2): POST   /experimental/project/:projectID/copy         → handlers::project_copy::create
+        // TODO(W2): DELETE /experimental/project/:projectID/copy         → handlers::project_copy::remove
+        // TODO(W2): POST   /experimental/project/:projectID/copy/refresh → handlers::project_copy::refresh
+
         // ─── SSE channels (P0.4) ───────────────────────────────
         .route("/event", get(sse::event_stream))
         .route("/global/event", get(sse::event_stream))
         .route("/api/event", get(sse::api_event_stream))
-        // ─── Auth middleware (P0.7) ────────────────────────────
+        // ─── Auth middleware (P0.7 + LS-017) ─────────────────────
+        // `log_authorization_header` records credential presence; `require_valid_token`
+        // enforces an optional bearer token (LOOM_AUTH_TOKEN). When no token is
+        // configured, all requests are allowed (development mode).
+        .layer(middleware::from_fn(require_valid_token))
         .layer(middleware::from_fn(log_authorization_header))
+        // ─── CORS (LS-017) — permissive for local development ──
+        .layer(CorsLayer::very_permissive())
         // ─── Tracing layer (P0.1) ──────────────────────────────
         .layer(TraceLayer::new_for_http())
         .with_state(state)

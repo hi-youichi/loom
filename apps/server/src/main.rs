@@ -37,7 +37,7 @@ struct ServeArgs {
     port: u16,
 
     /// Bind host.
-    #[arg(long, default_value = "127.0.0.1")]
+    #[arg(long = "host", visible_alias = "hostname", default_value = "127.0.0.1")]
     host: String,
 
     /// Optional directory to expose as the active working directory.
@@ -72,7 +72,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let address: SocketAddr = format!("{}:{}", args.host, args.port).parse()?;
     let listener = TcpListener::bind(address).await?;
     let bound = listener.local_addr()?;
-    println!("loom-server listening on http://{bound}");
+    println!("opencode server listening on http://{bound}");
+
+    #[cfg(unix)]
+    {
+        tokio::spawn(async move {
+            use tokio::signal::unix::{signal, SignalKind};
+            let mut sighup = match signal(SignalKind::sighup()) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!("failed to install SIGHUP handler: {e}");
+                    return;
+                }
+            };
+            loop {
+                sighup.recv().await;
+                tracing::info!("SIGHUP received — reloading config.toml");
+                match config::load_full_config("loom") {
+                    Ok(cfg) => {
+                        let count = cfg.providers.len();
+                        let default = cfg
+                            .default_provider
+                            .as_deref()
+                            .unwrap_or("(none)");
+                        tracing::info!(
+                            "SIGHUP reload OK: {count} providers, default={default}"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "SIGHUP reload FAILED — keeping previous config: {e}"
+                        );
+                    }
+                }
+            }
+        });
+    }
 
     axum::serve(listener, app).await?;
     Ok(())
