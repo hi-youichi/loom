@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use axum::{extract::Path, Json};
+use axum::{extract::Path, http::StatusCode, Json};
 use serde_json::{json, Value};
 
 use crate::state::{emit, SharedState};
@@ -50,9 +50,31 @@ pub async fn get_global_version() -> Json<Value> {
     }))
 }
 
-/// `POST /global/instance/update` — apply an update.
-pub async fn post_global_instance_update(Json(_body): Json<Value>) -> Json<Value> {
-    Json(json!({ "ok": true, "updateRequired": false }))
+/// `POST /global/instance/update` — apply an instance update.
+///
+/// **Not supported** (task LS-017): this server runs as an external kernel
+/// launched by the host process and has no self-update capability. Returns
+/// 501 honestly rather than a success-shaped stub that would claim an update
+/// was applied.
+pub async fn post_global_instance_update(
+    Json(_body): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        Json(json!({ "error": "instance update is not supported" })),
+    )
+}
+
+/// `POST /global/upgrade` — upgrade the running instance.
+///
+/// **Not supported** (task LS-017): same rationale as
+/// `post_global_instance_update` — there is no in-process upgrade path for
+/// an externally-launched kernel. Returns 501 honestly.
+pub async fn post_global_upgrade() -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        Json(json!({ "error": "upgrade is not supported" })),
+    )
 }
 
 /// `GET /global/config` — alias of `/config`.

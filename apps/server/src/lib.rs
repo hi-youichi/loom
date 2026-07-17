@@ -8,6 +8,8 @@
 pub mod agent_runner;
 pub mod auth;
 pub mod handlers;
+pub mod location;
+pub mod pty;
 pub mod routes;
 pub mod sse;
 pub mod state;

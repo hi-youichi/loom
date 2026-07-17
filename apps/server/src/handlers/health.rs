@@ -10,14 +10,17 @@ use axum::Json;
 use serde_json::{json, Value};
 
 pub async fn get_api_health() -> Json<Value> {
-    Json(json!({
-        "ok": true,
-        "version": env!("CARGO_PKG_VERSION"),
-    }))
+    // Contract (groups/health.ts:4-14): `GET /api/health` returns a closed
+    // struct `Schema.Struct({ healthy: Schema.Literal(true) })` — exactly
+    // `{ "healthy": true }`, unwrapped (NOT a Location.response). No query,
+    // no payload, no extra fields. The only permitted success value is the
+    // literal `true`.
+    Json(json!({ "healthy": true }))
 }
 
 pub async fn get_global_health() -> Json<Value> {
     Json(json!({
+        "healthy": true,
         "ok": true,
         "kind": "external-kernel",
         "version": env!("CARGO_PKG_VERSION"),

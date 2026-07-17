@@ -4,6 +4,14 @@
 //! listing. We return empty placeholders so the bootstrap resolves; a
 //! follow-up PR can wire real sub-routes when loom has actual
 //! corresponding features.
+//!
+//! ## Worktree lifecycle removed (W4 cleanup)
+//!
+//! opencode has NO worktree group. The previous worktree lifecycle
+//! handlers (`/worktree`, `/experimental/worktree/*`) were removed in
+//! task W4 along with their routes. This server reports the active
+//! directory as informational metadata only — it does not manage a git
+//! worktree lifecycle.
 
 use axum::{extract::Path, Json};
 use serde_json::{json, Value};

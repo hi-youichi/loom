@@ -24,7 +24,7 @@ use std::convert::Infallible;
 use std::time::Duration;
 
 use axum::{
-    extract::State,
+    extract::{Path, Query, State},
     response::sse::{Event, KeepAlive, Sse},
 };
 use futures::{stream, Stream, StreamExt};
@@ -50,6 +50,22 @@ pub async fn api_event_stream(
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let stream = build_stream(state, ChannelKind::V2);
     Sse::new(stream).keep_alive(keepalive())
+}
+
+/// v2 session-scoped handler: `GET /api/session/:id/event`.
+pub async fn api_session_event_stream(
+    State(state): State<SharedState>,
+    Path(session_id): Path<String>,
+    Query(query): Query<EventQuery>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let stream = build_session_stream(state, session_id, query.after);
+    Sse::new(stream).keep_alive(keepalive())
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct EventQuery {
+    #[serde(default)]
+    pub after: Option<String>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -89,6 +105,68 @@ fn build_stream(
     });
 
     seed.chain(stream::select(bus, heartbeat))
+}
+
+fn build_session_stream(
+    state: SharedState,
+    session_id: String,
+    after: Option<String>,
+) -> impl Stream<Item = Result<Event, Infallible>> {
+    let replay_session_id = session_id.clone();
+    let replay = crate::state::snapshot_replay(&state, after.as_deref())
+        .into_iter()
+        .filter(move |event| event_matches_session(event, &replay_session_id))
+        .filter_map(|event| serialize_event(&event, ChannelKind::V2));
+
+    let live_session_id = session_id.clone();
+    let rx = state.event_tx.subscribe();
+    let bus = BroadcastStream::new(rx).filter_map(move |result| {
+        let live_session_id = live_session_id.clone();
+        async move {
+            let event = result.ok()?;
+            if !event_matches_session(&event, &live_session_id) {
+                return None;
+            }
+            serialize_event(&event, ChannelKind::V2)
+        }
+    });
+
+    let connected = connection_event(
+        &state,
+        "server.connected",
+        json!({
+            "sessionID": session_id,
+            "version": env!("CARGO_PKG_VERSION")
+        }),
+    );
+    let seed = stream::once(async move { serialize_event(&connected, ChannelKind::V2) })
+        .filter_map(|event| async move { event });
+
+    let heartbeat_state = state;
+    let heartbeat_session_id = session_id;
+    let heartbeat = IntervalStream::new(tokio::time::interval_at(
+        tokio::time::Instant::now() + HEARTBEAT_INTERVAL,
+        HEARTBEAT_INTERVAL,
+    ))
+    .filter_map(move |_| {
+        let event = connection_event(
+            &heartbeat_state,
+            "server.heartbeat",
+            json!({ "sessionID": heartbeat_session_id }),
+        );
+        async move { serialize_event(&event, ChannelKind::V2) }
+    });
+
+    seed.chain(stream::iter(replay)).chain(stream::select(bus, heartbeat))
+}
+
+fn event_matches_session(event: &GlobalEvent, session_id: &str) -> bool {
+    event
+        .payload
+        .properties
+        .get("sessionID")
+        .and_then(serde_json::Value::as_str)
+        == Some(session_id)
 }
 
 fn connection_event(
@@ -139,6 +217,9 @@ fn serialize(ev: &GlobalEvent, kind: ChannelKind) -> Result<String, serde_json::
             });
             serde_json::to_string(&v1)
         }
+        // V2 uses the custom Serialize impl on GlobalEvent which emits the
+        // contract's flat EventSchema shape (schema/event.ts:54-61):
+        //   { id, metadata?, type, durable?, location?, data }
         ChannelKind::V2 => serde_json::to_string(ev),
     }
 }
@@ -155,9 +236,17 @@ mod tests {
         let snap = crate::state::snapshot_replay(&state, None);
         assert_eq!(snap.len(), 1);
         let serialized_v2 = serialize(&snap[0], ChannelKind::V2).unwrap();
-        assert!(serialized_v2.contains("\"project\""));
-        assert!(serialized_v2.contains("\"directory\""));
-        assert!(serialized_v2.contains("test.event"));
+        // Flat shape: id + type at top level, data (not properties),
+        // location:{directory,workspaceID?}, no payload wrapper, no top-level
+        // directory/project/workspace.
+        let parsed: serde_json::Value =
+            serde_json::from_str(&serialized_v2).expect("valid JSON");
+        assert_eq!(parsed["type"], "test.event");
+        assert_eq!(parsed["data"]["hello"], "world");
+        assert!(parsed["id"].as_str().unwrap().starts_with("evt_"));
+        assert!(parsed["location"]["directory"].is_string());
+        assert!(parsed.get("payload").is_none(), "no payload wrapper");
+        assert!(parsed.get("properties").is_none(), "no properties field");
     }
 
     #[test]
@@ -166,8 +255,10 @@ mod tests {
         emit(&state, "test.event", json!({}));
         let snap = crate::state::snapshot_replay(&state, None);
         let serialized = serialize(&snap[0], ChannelKind::V1).unwrap();
+        // V1 shape: { directory, payload: { type, properties } }.
         assert!(!serialized.contains("\"project\""));
         assert!(serialized.contains("\"directory\""));
+        assert!(serialized.contains("\"payload\""));
         assert!(serialized.contains("test.event"));
     }
 

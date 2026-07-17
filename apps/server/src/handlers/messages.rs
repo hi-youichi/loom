@@ -14,7 +14,7 @@
 //! Spec: `protocols/http/session.md:113-130`.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
@@ -22,7 +22,10 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::state::{emit, new_message_id, new_part_id, SharedState};
+use crate::location::LocationQuery;
+use crate::state::{
+    emit, new_message_id, new_part_id, persist_messages, persist_parts, SharedState,
+};
 
 /// `GET /session/:id/todo` — placeholder for session todo list.
 pub async fn get_session_todo() -> Json<Vec<Value>> {
@@ -79,12 +82,94 @@ pub async fn get_messages(
     )
 }
 
-/// `GET /api/session/:id/message` — v2 SDK path.
+/// Contract query for `GET /api/session/:sessionID/message` (message.ts:7-22).
+/// All fields optional: `limit` (1–200), `order` ("asc"|"desc"), `cursor`.
+#[derive(Deserialize, Default)]
+pub struct SessionMessagesQuery {
+    #[serde(default)]
+    pub limit: Option<u32>,
+    #[serde(default)]
+    pub order: Option<String>,
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+/// Project a stored MessageInfo + its parts into the SessionMessage.Message
+/// shape. Returns `{info, parts}` — a reasonable projection of the tagged
+/// union until a full SessionMessage.Message type is implemented.
+fn project_message(state: &SharedState, message: &crate::state::MessageInfo) -> Value {
+    let parts = state
+        .parts
+        .read()
+        .get(&message.id)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|part| part.data)
+        .collect::<Vec<_>>();
+    json!({
+        "info": serde_json::to_value(message).unwrap_or(Value::Null),
+        "parts": parts,
+    })
+}
+
+/// `GET /api/session/:sessionID/message` — v2 contract (message.ts:26-44).
+/// Returns `{ data: SessionMessage.Message[], cursor: {previous?, next?} }`.
+/// Accepts SessionMessagesQuery (limit/order/cursor) and LocationQuery.
 pub async fn get_api_session_message(
     State(state): State<SharedState>,
-    Path(id): Path<String>,
-) -> Json<Vec<Value>> {
-    get_messages(State(state), Path(id)).await
+    Path(session_id): Path<String>,
+    Query(query): Query<SessionMessagesQuery>,
+    _loc: Query<LocationQuery>,
+) -> Response {
+    // 404 SessionNotFoundError if session doesn't exist.
+    if !state.sessions.read().contains_key(&session_id) {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "_tag": "SessionNotFoundError",
+                "sessionID": session_id,
+                "message": "session not found",
+            })),
+        )
+            .into_response();
+    }
+
+    let messages = state
+        .messages
+        .read()
+        .get(&session_id)
+        .cloned()
+        .unwrap_or_default();
+
+    // Apply ordering (default asc).
+    let mut ordered: Vec<_> = messages;
+    if query.order.as_deref() == Some("desc") {
+        ordered.reverse();
+    }
+
+    // Apply limit (default 50, max 200 per contract).
+    let limit = query.limit.unwrap_or(50).min(200) as usize;
+    let total = ordered.len();
+    let has_more = total > limit;
+    let data: Vec<Value> = ordered
+        .iter()
+        .take(limit)
+        .map(|msg| project_message(&state, msg))
+        .collect();
+
+    // Opaque cursor encoding: offset for the next page as a string.
+    // The contract marks cursors as opaque; clients pass them back verbatim.
+    let next_cursor = if has_more { Some(limit.to_string()) } else { None };
+
+    Json(json!({
+        "data": data,
+        "cursor": {
+            "previous": Value::Null,
+            "next": next_cursor,
+        },
+    }))
+    .into_response()
 }
 
 /// `POST /api/session/:id/message` — append a message. Most TUI flows
@@ -136,6 +221,7 @@ pub async fn post_api_session_message(
         .entry(id.clone())
         .or_default()
         .push(info);
+    persist_messages(&state, &id);
 
     emit(
         &state,
@@ -185,6 +271,7 @@ pub async fn delete_api_session_message(
         removed = list.len() != before;
     }
     if removed {
+        persist_messages(&state, &session_id);
         emit(
             &state,
             "message.removed",
@@ -249,6 +336,7 @@ pub async fn patch_api_session_message_part(
         }
     }
     if let Some(part) = updated {
+        persist_parts(&state, &message_id);
         emit(
             &state,
             "message.part.updated",
@@ -280,6 +368,7 @@ pub async fn patch_api_session_message_part(
             object.insert("type".to_string(), json!(part_type));
         }
         crate::agent_runner::push_part(&state, &message_id, &session_id, &part_type, part.clone());
+        persist_parts(&state, &message_id);
         return Json(part).into_response();
     }
 
@@ -305,6 +394,7 @@ pub async fn delete_api_session_message_part(
         }
     }
     if removed {
+        persist_parts(&state, &message_id);
         emit(
             &state,
             "message.part.removed",
@@ -345,6 +435,7 @@ pub async fn post_api_session_message_part_text(
             part_type: "text".to_string(),
             data: part.clone(),
         });
+    persist_parts(&state, &message_id);
     emit(
         &state,
         "message.part.updated",

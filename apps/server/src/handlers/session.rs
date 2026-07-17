@@ -17,10 +17,25 @@ use chrono::Utc;
 use serde_json::{json, Value};
 
 use crate::agent_runner::{run_agent, RunCompletion};
+use crate::location::LocationQuery;
 use crate::state::{
     begin_run, emit, end_run, lookup_run, make_session, new_message_id, new_part_id,
-    new_session_id, MessageInfo, PartInfo, SessionInfo, SharedState,
+    new_session_id, persist_messages, persist_parts, persist_session, persist_session_cascade,
+    persist_session_delete, MessageInfo, ModelInfo, PartInfo, SessionInfo, SharedState,
 };
+
+/// SessionNotFoundError response body (contract shape: `{sessionID, message}`).
+fn session_not_found(session_id: &str) -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({
+            "_tag": "SessionNotFoundError",
+            "sessionID": session_id,
+            "message": "session not found",
+        })),
+    )
+        .into_response()
+}
 
 // ───────────────────────── v1 session CRUD ─────────────────────────
 
@@ -50,12 +65,14 @@ pub async fn create_session(
     Json(body): Json<Value>,
 ) -> Json<Value> {
     let agent = body["agent"].as_str().map(str::to_string);
-    let session = make_session(&state, agent);
+    let mut session = make_session(&state, agent);
+    apply_session_directory_override(&mut session, &body);
 
     state
         .sessions
         .write()
         .insert(session.id.clone(), session.clone());
+    persist_session(&state, &session);
 
     emit(
         &state,
@@ -85,6 +102,7 @@ pub async fn patch_session(
 
     let cloned = session.clone();
     drop(sessions);
+    persist_session(&state, &cloned);
 
     emit(
         &state,
@@ -106,12 +124,16 @@ pub async fn delete_session(
     let existed = state.sessions.write().remove(&id).is_some();
     if existed {
         // Drop per-session state too so a re-create is clean.
+        let mut msg_ids: Vec<String> = Vec::new();
         if let Some(messages) = state.messages.write().remove(&id) {
             let mut parts = state.parts.write();
             for message in messages {
+                msg_ids.push(message.id.clone());
                 parts.remove(&message.id);
             }
         }
+        persist_session_delete(&state, &id);
+        persist_session_cascade(&state, &id, &msg_ids);
         if let Some(run) = lookup_run(&state, &id) {
             run.cancel();
             end_run(&state, &id, run.generation());
@@ -139,13 +161,224 @@ pub async fn get_session_children(
 
 // ───────────────────────── v1 main path ─────────────────────────
 
-/// `POST /session/:id/prompt` — synchronous run (task P1.10).
+/// `POST /api/session/:sessionID/prompt` (v2 contract) and
+/// `POST /session/:id/prompt` (v1 compat).
+///
+/// Detects the payload format: a v2 prompt (`{ prompt: { text, ... } }`)
+/// triggers non-blocking admission + background agent run per LS-003,
+/// returning `{ data: SessionInput.Admitted }`. A v1 body (`{ parts: [...] }`)
+/// falls through to the synchronous `run_prompt` path.
 pub async fn prompt(
     State(state): State<SharedState>,
     Path(session_id): Path<String>,
     Json(body): Json<Value>,
 ) -> Response {
+    if body.get("prompt").is_some() {
+        return prompt_v2(state, session_id, body).await;
+    }
     run_prompt(state, session_id, body, /*async_mode=*/ false).await
+}
+
+/// Non-blocking v2 prompt admission (session.prompt per LS-003).
+///
+/// Parses `{ prompt: { text, files?, agents? }, delivery?, id?, resume? }`,
+/// creates the user message durably, schedules the agent-loop execution in
+/// the background, and returns immediately with `{ data: SessionInput.Admitted }`.
+async fn prompt_v2(state: SharedState, session_id: String, body: Value) -> Response {
+    let session = state.sessions.read().get(&session_id).cloned();
+    let Some(session) = session else {
+        return session_not_found(&session_id);
+    };
+
+    let prompt_obj = body.get("prompt").cloned().unwrap_or(json!({}));
+    let prompt_text = prompt_obj
+        .get("text")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let delivery = body
+        .get("delivery")
+        .and_then(Value::as_str)
+        .unwrap_or("push");
+
+    let now = Utc::now().timestamp_millis();
+    let message_id = body
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(new_message_id);
+    let admitted_seq = state
+        .messages
+        .read()
+        .get(&session_id)
+        .map(|m| m.len() as u64)
+        .unwrap_or(0);
+
+    // ── Admit the input: create the user message durably ──────────────
+    let agent_name = session
+        .agent
+        .clone()
+        .unwrap_or_else(|| "build".to_string());
+    let user_info = MessageInfo {
+        id: message_id.clone(),
+        session_id: session_id.clone(),
+        role: "user".to_string(),
+        time: json!({"created": now}),
+        agent: agent_name.clone(),
+        model: None,
+        parent_id: None,
+        tool: None,
+        finish: None,
+        provider_id: None,
+        model_id: None,
+        path: None,
+        cost: None,
+        tokens: None,
+        mode: None,
+    };
+    state
+        .messages
+        .write()
+        .entry(session_id.clone())
+        .or_default()
+        .push(user_info.clone());
+    persist_messages(&state, &session_id);
+
+    // Store prompt text as a text part for the user message.
+    let part = json!({"id": new_part_id(), "type": "text", "text": prompt_text});
+    crate::agent_runner::push_part(&state, &message_id, &session_id, "text", part);
+    persist_parts(&state, &message_id);
+
+    emit(
+        &state,
+        "message.updated",
+        json!({"sessionID": &session_id, "info": user_info}),
+    );
+
+    // ── Schedule the agent-loop execution in the background ───────────
+    let state_bg = state.clone();
+    let sid = session_id.clone();
+    let working_directory = session.directory.clone();
+    let mid = message_id.clone();
+    let agent_bg = agent_name.clone();
+    tokio::spawn(async move {
+        let now_bg = Utc::now().timestamp_millis();
+        let assistant_message_id = new_message_id();
+        let assistant_info = MessageInfo {
+            id: assistant_message_id.clone(),
+            session_id: sid.clone(),
+            role: "assistant".to_string(),
+            time: json!({"created": now_bg}),
+            agent: agent_bg.clone(),
+            model: None,
+            parent_id: Some(mid.clone()),
+            tool: None,
+            finish: None,
+            provider_id: None,
+            model_id: None,
+            path: Some(json!({"cwd": &working_directory, "root": &working_directory})),
+            cost: Some(0.0),
+            tokens: Some(json!({"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}})),
+            mode: Some("build".to_string()),
+        };
+        state_bg
+            .messages
+            .write()
+            .entry(sid.clone())
+            .or_default()
+            .push(assistant_info.clone());
+        persist_messages(&state_bg, &sid);
+        emit(
+            &state_bg,
+            "message.updated",
+            json!({"sessionID": &sid, "info": assistant_info}),
+        );
+        emit(
+            &state_bg,
+            "session.status",
+            json!({"sessionID": &sid, "status": {"type": "busy"}}),
+        );
+
+        let cancellation = begin_run(&state_bg, &sid);
+        let generation = cancellation.generation();
+        let model = std::env::var("LOOM_MODEL").ok();
+        let outcome = run_agent(
+            state_bg.clone(),
+            sid.clone(),
+            assistant_message_id.clone(),
+            std::path::PathBuf::from(&working_directory),
+            prompt_text,
+            model,
+            Some(agent_bg),
+            cancellation,
+        )
+        .await;
+
+        if let Ok(RunCompletion::Finished { reply }) = &outcome {
+            let has_text = state_bg
+                .parts
+                .read()
+                .get(&assistant_message_id)
+                .is_some_and(|parts| parts.iter().any(|p| p.part_type == "text"));
+            if !has_text && !reply.is_empty() {
+                crate::agent_runner::push_part(
+                    &state_bg,
+                    &assistant_message_id,
+                    &sid,
+                    "text",
+                    json!({"id": "text-0", "text": reply}),
+                );
+            }
+        }
+
+        let finish = match &outcome {
+            Ok(RunCompletion::Finished { .. }) => "stop",
+            Ok(RunCompletion::Cancelled) => "cancelled",
+            Err(_) => "error",
+        };
+        let completed = Utc::now().timestamp_millis();
+        let final_info = {
+            let mut messages = state_bg.messages.write();
+            let message = messages.get_mut(&sid).and_then(|messages| {
+                messages
+                    .iter_mut()
+                    .find(|m| m.id == assistant_message_id)
+            });
+            if let Some(message) = message {
+                message.finish = Some(finish.to_string());
+                message.time = json!({"created": now_bg, "completed": completed});
+                serde_json::to_value(message).unwrap_or(Value::Null)
+            } else {
+                Value::Null
+            }
+        };
+        persist_messages(&state_bg, &sid);
+        persist_parts(&state_bg, &assistant_message_id);
+        emit(
+            &state_bg,
+            "message.updated",
+            json!({"sessionID": &sid, "info": final_info}),
+        );
+        emit(
+            &state_bg,
+            "session.status",
+            json!({"sessionID": &sid, "status": {"type": "idle"}}),
+        );
+        end_run(&state_bg, &sid, generation);
+    });
+
+    // ── Return the Admitted response immediately ──────────────────────
+    Json(json!({
+        "data": {
+            "admittedSeq": admitted_seq,
+            "id": message_id,
+            "sessionID": session_id,
+            "prompt": prompt_obj,
+            "delivery": delivery,
+            "timeCreated": now,
+        }
+    }))
+    .into_response()
 }
 
 /// `POST /session/:id/prompt_async` — fire-and-forget variant. Used
@@ -168,14 +401,183 @@ pub async fn prompt_async(
 
 // ───────────────────────── v2 main path ─────────────────────────
 
-/// `POST /api/session/:id/agent` — the v2 spec's preferred entry point.
-/// Functionally identical to the v1 prompt handler (task P1.8).
+/// `POST /api/session/:sessionID/agent` — session.switchAgent (contract).
+/// Sets the session's active agent and returns 204 NoContent.
+/// Error: SessionNotFoundError 404 if the session doesn't exist.
 pub async fn api_session_prompt(
     State(state): State<SharedState>,
     Path(session_id): Path<String>,
     Json(body): Json<Value>,
 ) -> Response {
-    run_prompt(state, session_id, body, false).await
+    let mut sessions = state.sessions.write();
+    let Some(session) = sessions.get_mut(&session_id) else {
+        return session_not_found(&session_id);
+    };
+    if let Some(agent) = body.get("agent").and_then(Value::as_str) {
+        session.agent = Some(agent.to_string());
+    }
+    session.time.updated = Utc::now().timestamp_millis();
+    let cloned = session.clone();
+    drop(sessions);
+    persist_session(&state, &cloned);
+    emit(
+        &state,
+        "session.updated",
+        json!({
+            "sessionID": session_id,
+            "info": serde_json::to_value(&cloned).unwrap_or(Value::Null),
+        }),
+    );
+    StatusCode::NO_CONTENT.into_response()
+}
+
+// ───────────────────────── v2 contract session endpoints ─────────────────────────
+
+/// `POST /api/session/:sessionID/model` — session.switchModel (contract).
+/// Sets the session's model and returns 204 NoContent.
+pub async fn switch_model(
+    State(state): State<SharedState>,
+    Path(session_id): Path<String>,
+    Json(body): Json<Value>,
+    _loc: Query<LocationQuery>,
+) -> Response {
+    let mut sessions = state.sessions.write();
+    let Some(session) = sessions.get_mut(&session_id) else {
+        return session_not_found(&session_id);
+    };
+    if let Some(model) = body.get("model") {
+        if let (Some(provider_id), Some(model_id)) = (
+            model.get("providerID").and_then(Value::as_str),
+            model.get("modelID").and_then(Value::as_str),
+        ) {
+            session.model = Some(ModelInfo {
+                provider_id: provider_id.to_string(),
+                model_id: model_id.to_string(),
+                variant: model
+                    .get("variant")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            });
+        }
+    }
+    session.time.updated = Utc::now().timestamp_millis();
+    let cloned = session.clone();
+    drop(sessions);
+    persist_session(&state, &cloned);
+    emit(
+        &state,
+        "session.updated",
+        json!({
+            "sessionID": session_id,
+            "info": serde_json::to_value(&cloned).unwrap_or(Value::Null),
+        }),
+    );
+    StatusCode::NO_CONTENT.into_response()
+}
+
+/// `POST /api/session/:sessionID/compact` — session.compact (contract).
+/// Genuinely unsupported: loom-server has no summarization backend.
+/// Returns 501 Not Implemented (after confirming the session exists for 404).
+pub async fn compact(
+    State(state): State<SharedState>,
+    Path(session_id): Path<String>,
+    _loc: Query<LocationQuery>,
+) -> Response {
+    if !state.sessions.read().contains_key(&session_id) {
+        return session_not_found(&session_id);
+    }
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        Json(json!({
+            "_tag": "ServiceUnavailableError",
+            "message": "compact not implemented: no summarization backend"
+        })),
+    )
+        .into_response()
+}
+
+/// `POST /api/session/:sessionID/wait` — session.wait (contract).
+/// Blocks until the session's agent loop is idle (no active run), then
+/// returns 204 NoContent. Bounded poll with a 5-minute timeout.
+pub async fn wait(
+    State(state): State<SharedState>,
+    Path(session_id): Path<String>,
+    _loc: Query<LocationQuery>,
+) -> Response {
+    if !state.sessions.read().contains_key(&session_id) {
+        return session_not_found(&session_id);
+    }
+    let timeout = tokio::time::Duration::from_secs(300);
+    let _ = tokio::time::timeout(timeout, async {
+        loop {
+            if lookup_run(&state, &session_id).is_none() {
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+    })
+    .await;
+    StatusCode::NO_CONTENT.into_response()
+}
+
+/// `GET /api/session/:sessionID/context` — session.context (contract).
+/// Returns messages after the last compaction point. Since loom-server
+/// has no compaction, all messages are active context.
+/// Success: `{ data: SessionMessage.Message[] }`.
+pub async fn get_context(
+    State(state): State<SharedState>,
+    Path(session_id): Path<String>,
+    _loc: Query<LocationQuery>,
+) -> Response {
+    if !state.sessions.read().contains_key(&session_id) {
+        return session_not_found(&session_id);
+    }
+    let messages = state
+        .messages
+        .read()
+        .get(&session_id)
+        .cloned()
+        .unwrap_or_default();
+    let parts = state.parts.read();
+    let data: Vec<Value> = messages
+        .iter()
+        .map(|msg| {
+            let message_parts = parts
+                .get(&msg.id)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|part| part.data)
+                .collect::<Vec<_>>();
+            json!({
+                "info": serde_json::to_value(msg).unwrap_or(Value::Null),
+                "parts": message_parts,
+            })
+        })
+        .collect();
+    drop(parts);
+    Json(json!({"data": data})).into_response()
+}
+
+/// `GET /api/session/:sessionID/history` — session.history (contract).
+/// Genuinely unsupported: loom-server has no durable session event store.
+/// Returns 501 Not Implemented (after confirming the session exists for 404).
+pub async fn get_history(
+    State(state): State<SharedState>,
+    Path(session_id): Path<String>,
+    _loc: Query<LocationQuery>,
+) -> Response {
+    if !state.sessions.read().contains_key(&session_id) {
+        return session_not_found(&session_id);
+    }
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        Json(json!({
+            "_tag": "UnknownError",
+            "message": "history not implemented: no durable event store"
+        })),
+    )
+        .into_response()
 }
 
 /// `POST /api/session/:id/command` — v2 command dispatch (task P1.9).
@@ -345,6 +747,8 @@ async fn run_shell(state: SharedState, session_id: String, body: Value) -> Respo
         "metadata": {"command": command, "exitCode": exit_code},
     });
     crate::agent_runner::push_part(&state, &message_id, &session_id, "text", part);
+    persist_messages(&state, &session_id);
+    persist_parts(&state, &message_id);
     emit(
         &state,
         "message.updated",
@@ -422,6 +826,7 @@ pub async fn post_session_share(
         session.time.updated = Utc::now().timestamp_millis();
         session.clone()
     };
+    persist_session(&state, &session);
     emit(
         &state,
         "session.updated",
@@ -500,10 +905,17 @@ pub async fn post_api_session_fork(
         child_parts.push((new_message_id.clone(), parts));
     }
     let mut parts = state.parts.write();
-    for (message_id, message_parts) in child_parts {
-        parts.insert(message_id, message_parts);
+    for (message_id, message_parts) in &child_parts {
+        parts.insert(message_id.clone(), message_parts.clone());
     }
     drop(parts);
+
+    // Write-through persistence (task LS-014).
+    persist_session(&state, &child);
+    persist_messages(&state, &id);
+    for (message_id, _message_parts) in &child_parts {
+        persist_parts(&state, message_id);
+    }
 
     emit(
         &state,
@@ -552,37 +964,6 @@ pub async fn post_api_session_revert(
     Json(json!({ "ok": true }))
 }
 
-/// `GET /api/session/:id/event` — incremental replay (task P2.17).
-pub async fn get_api_session_event(
-    State(state): State<SharedState>,
-    Path(session_id): Path<String>,
-    Query(query): Query<EventQuery>,
-) -> Json<Value> {
-    let events = crate::state::snapshot_replay(&state, query.after.as_deref())
-        .into_iter()
-        .filter(|event| {
-            event
-                .payload
-                .properties
-                .get("sessionID")
-                .and_then(Value::as_str)
-                .is_none_or(|id| id == session_id)
-        })
-        .collect::<Vec<_>>();
-    let cursor = events.last().map(|event| event.payload.event_id.clone());
-    Json(json!({
-        "data": events,
-        "cursor": cursor,
-        "hasMore": false,
-    }))
-}
-
-#[derive(serde::Deserialize, Default)]
-pub struct EventQuery {
-    #[serde(default)]
-    pub after: Option<String>,
-}
-
 // ───────────────────────── helpers ─────────────────────────
 
 /// Apply allowed patch keys in-place. Used by both PATCH /session/:id
@@ -600,6 +981,24 @@ fn apply_session_patch(session: &mut SessionInfo, body: &Value) {
     if let Some(parent) = body.get("parentID").and_then(|v| v.as_str()) {
         session.parent_id = Some(parent.to_string());
     }
+    apply_session_directory_override(session, body);
+}
+
+/// Apply a non-empty request `directory` to the session and path envelope.
+fn apply_session_directory_override(session: &mut SessionInfo, body: &Value) {
+    let Some(directory) = body.get("directory").and_then(Value::as_str) else {
+        return;
+    };
+    let directory = directory.trim();
+    if directory.is_empty() {
+        return;
+    }
+
+    session.directory = directory.to_string();
+    if let Some(path) = session.path.as_mut() {
+        path.cwd = directory.to_string();
+        path.root = directory.to_string();
+    }
 }
 
 /// Apply common prompt-handling logic shared by v1 + v2 + async modes.
@@ -612,13 +1011,18 @@ pub(crate) async fn run_prompt(
     body: Value,
     _async_mode: bool,
 ) -> Response {
-    if !state.sessions.read().contains_key(&session_id) {
+    let session = {
+        let sessions = state.sessions.read();
+        sessions.get(&session_id).cloned()
+    };
+    let Some(session) = session else {
         return (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "session not found"})),
         )
             .into_response();
-    }
+    };
+    let working_directory = session.directory.clone();
 
     let input_parts = body
         .get("parts")
@@ -684,7 +1088,7 @@ pub(crate) async fn run_prompt(
         session_id: session_id.clone(),
         role: "assistant".to_string(),
         time: json!({"created": now}),
-        agent: agent_name,
+        agent: agent_name.clone(),
         model: body.get("model").cloned(),
         parent_id: Some(user_message_id.clone()),
         tool: None,
@@ -692,12 +1096,8 @@ pub(crate) async fn run_prompt(
         provider_id,
         model_id,
         path: Some(json!({
-            "cwd": std::env::current_dir()
-                .map(|path| path.to_string_lossy().to_string())
-                .unwrap_or_default(),
-            "root": std::env::current_dir()
-                .map(|path| path.to_string_lossy().to_string())
-                .unwrap_or_default(),
+            "cwd": working_directory.clone(),
+            "root": working_directory.clone(),
         })),
         cost: Some(0.0),
         tokens: Some(json!({
@@ -714,6 +1114,7 @@ pub(crate) async fn run_prompt(
         .entry(session_id.clone())
         .or_default()
         .extend([user_info.clone(), assistant_info.clone()]);
+    persist_messages(&state, &session_id);
 
     let mut stored_user_parts = Vec::new();
     for input in input_parts {
@@ -746,6 +1147,7 @@ pub(crate) async fn run_prompt(
         .parts
         .write()
         .insert(user_message_id.clone(), stored_user_parts.clone());
+    persist_parts(&state, &user_message_id);
 
     emit(
         &state,
@@ -776,8 +1178,10 @@ pub(crate) async fn run_prompt(
         state.clone(),
         session_id.clone(),
         assistant_message_id.clone(),
+        std::path::PathBuf::from(&working_directory),
         text,
         model,
+        Some(agent_name),
         cancellation,
     )
     .await;
@@ -820,6 +1224,8 @@ pub(crate) async fn run_prompt(
             Value::Null
         }
     };
+    persist_messages(&state, &session_id);
+    persist_parts(&state, &assistant_message_id);
     emit(
         &state,
         "message.updated",
@@ -851,10 +1257,18 @@ pub(crate) async fn run_prompt(
         .into_iter()
         .map(|part| part.data)
         .collect::<Vec<_>>();
-    let response = Json(json!({"info": final_info, "parts": parts}));
     match outcome {
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, response).into_response(),
-        _ => response.into_response(),
+        Err(ref error) => {
+            // Include the raw error message in the response body so synchronous
+            // CLI callers can surface it without relying on SSE `session.error`.
+            let response = Json(json!({
+                "info": final_info,
+                "parts": parts,
+                "error": { "message": error }
+            }));
+            (StatusCode::INTERNAL_SERVER_ERROR, response).into_response()
+        }
+        _ => Json(json!({ "info": final_info, "parts": parts })).into_response(),
     }
 }
 
@@ -868,6 +1282,7 @@ pub async fn create_session_with_id(state: &SharedState, id: String) -> SessionI
     with_id.id = id.clone();
     with_id.slug = id.clone();
     state.sessions.write().insert(id.clone(), with_id.clone());
+    persist_session(state, &with_id);
     with_id
 }
 

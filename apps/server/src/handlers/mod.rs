@@ -28,17 +28,23 @@
 
 pub mod bootstrap;
 pub mod control;
+pub mod credential;
+pub mod fs;
 pub mod experimental;
+pub mod git;
 pub mod global_bus;
 pub mod health;
 pub mod instance;
+pub mod integration;
 pub mod lsp_formatter;
 pub mod mcp_pty_file;
 pub mod messages;
 pub mod permission;
 pub mod provider_auth;
+pub mod pty;
 pub mod question;
 pub mod revert;
 pub mod session;
+pub mod settings;
 pub mod v2_compat;
 pub mod vcs_extra;

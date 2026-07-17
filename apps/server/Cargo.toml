@@ -21,7 +21,7 @@ tool-core = { path = "../../agent/tool/tool-core" }
 stream-event = { path = "../../foundation/stream-event" }
 config = { path = "../../foundation/config", features = ["tracing-init"] }
 
-axum = { version = "0.7", features = ["macros"] }
+axum = { version = "0.7", features = ["macros", "ws"] }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
 futures = { workspace = true }
@@ -32,12 +32,16 @@ toml = "0.8"
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
 parking_lot = "0.12"
+portable-pty = "0.8"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
+# PTY wire-protocol helpers (foundation/pty-protocol crate — filled in by W1).
+loom-pty-protocol = { path = "../../foundation/pty-protocol" }
+
 # HTTP middleware (task P0.7)
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["set-header", "trace", "validate-request"] }
+tower-http = { version = "0.6", features = ["cors", "set-header", "trace", "validate-request"] }
 
 # CLI parsing (task P0.1)
 clap = { workspace = true }
