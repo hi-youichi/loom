@@ -21,6 +21,7 @@ Run one subagent to completion.
 | `name`         | string | no       | Short identifier for CLI display                         |
 | `description`  | string | no       | One-line CLI description                                 |
 | `timeout_ms`   | int    | no       | Per-agent timeout                                        |
+| `working_folder` | string | no     | Override the working folder for this agent               |
 
 **result:**
 

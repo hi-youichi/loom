@@ -47,7 +47,11 @@ impl AgentBackend for LoomAgentBackend {
             config.model = Some(model.clone());
         }
 
-        config.working_folder = Some(task.workdir.clone());
+        config.working_folder = Some(
+            task.workdir_override
+                .clone()
+                .unwrap_or_else(|| task.workdir.clone()),
+        );
 
         let output_slot = Arc::new(Mutex::new(None::<Value>));
 
