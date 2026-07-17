@@ -567,7 +567,7 @@ fn build_agent_summaries(events: &[Value], checkpoint: &Value) -> Vec<AgentSumma
         let status = done
             .and_then(|e| e.get("status").and_then(|v| v.as_str()))
             .map(normalise_agent_status)
-            .unwrap_or_else(|| "ok".to_string());
+            .unwrap_or_else(|| "running".to_string());
 
         let elapsed_ms = done
             .and_then(|e| e.get("elapsed_ms").and_then(|v| v.as_u64()))

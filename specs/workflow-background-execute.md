@@ -92,31 +92,62 @@
 
 ## 代码改动
 
-### 1. `tool.rs` 内部结构
+### 1. 模块结构
 
-**文件**：`agent/tool/tool-workflow/src/tool.rs`
+**目录**：`agent/tool/tool-workflow/src/`
 
-保留一个私有共享运行时上下文，避免六个工具重复配置和路径逻辑：
+采用两层架构：接口层（`tool_*.rs`）+ 实现层（`service.rs`）。
+
+```
+src/
+  service.rs         实现层：六个 handler 函数 + 所有 helper + 单元测试
+  tool_start.rs      接口层：WorkflowStartTool (Tool impl + builtin_skill)
+  tool_status.rs     接口层：WorkflowStatusTool (Tool impl)
+  tool_list.rs       接口层：WorkflowListTool (Tool impl)
+  tool_events.rs     接口层：WorkflowEventsTool (Tool impl)
+  tool_source.rs     接口层：WorkflowSourceTool (Tool impl)
+  tool_files.rs      接口层：WorkflowFilesTool (Tool impl)
+  runtime.rs         WorkflowRuntime 共享上下文 (路径布局、finalize、rebuild_summary)
+  common.rs          跨工具 helper (sanitize、truncate、validation、terminal checks)
+```
+
+**runtime.rs** 持有共享运行时上下文，避免六个工具重复配置和路径逻辑：
 
 ```rust
 #[derive(Clone)]
-struct WorkflowRuntime {
-    config_template: agent::agent::AgentConfig,
+pub(crate) struct WorkflowRuntime {
+    pub(crate) config_template: agent::agent::AgentConfig,
 }
 ```
 
-六个公开 struct 都持有 `Arc<WorkflowRuntime>`：
+**tool_*.rs** 中的六个公开 struct 各持有 `Arc<WorkflowRuntime>`，`call()` 仅一行委托：
 
 ```rust
-pub struct WorkflowStartTool { runtime: Arc<WorkflowRuntime> }
-pub struct WorkflowStatusTool { runtime: Arc<WorkflowRuntime> }
-pub struct WorkflowListTool { runtime: Arc<WorkflowRuntime> }
-pub struct WorkflowEventsTool { runtime: Arc<WorkflowRuntime> }
-pub struct WorkflowSourceTool { runtime: Arc<WorkflowRuntime> }
-pub struct WorkflowFilesTool { runtime: Arc<WorkflowRuntime> }
+pub struct WorkflowStartTool { pub(crate) runtime: Arc<WorkflowRuntime> }
+pub struct WorkflowStatusTool { pub(crate) runtime: Arc<WorkflowRuntime> }
+pub struct WorkflowListTool { pub(crate) runtime: Arc<WorkflowRuntime> }
+pub struct WorkflowEventsTool { pub(crate) runtime: Arc<WorkflowRuntime> }
+pub struct WorkflowSourceTool { pub(crate) runtime: Arc<WorkflowRuntime> }
+pub struct WorkflowFilesTool { pub(crate) runtime: Arc<WorkflowRuntime> }
 ```
 
-删除公开的 `WorkflowTool` struct 及其 `Tool` 实现。六个工具各自实现 `Tool::name`、`Tool::spec` 和 `Tool::call`，不再读取 `args.action`。
+```rust
+// tool_status.rs — call() 仅委托到 service
+async fn call(&self, args: Value, _: Option<&ToolCallContext>) -> Result<..> {
+    crate::service::read_status(&self.runtime, &args).await
+}
+```
+
+**service.rs** 集中所有业务逻辑：
+
+```rust
+pub(crate) async fn start_workflow(runtime, args, ctx) -> Result<..>  // tool_start
+pub(crate) async fn read_status(runtime, args) -> Result<..>          // tool_status
+pub(crate) fn list_instances(runtime, args) -> Result<..>             // tool_list
+pub(crate) fn read_events(runtime, args) -> Result<..>               // tool_events
+pub(crate) fn read_source(runtime, args) -> Result<..>               // tool_source
+pub(crate) fn list_workflow_files(runtime) -> Result<..>             // tool_files
+```
 
 六个工具统一使用：
 
@@ -126,7 +157,7 @@ ToolOutputHint::preferred(ToolOutputStrategy::Inline)
 
 ### 2. `workflow_start` 后台化
 
-对应原 `handle_execute` 的启动链路：
+对应 `service::start_workflow` 的启动链路：
 
 1. 校验 `script`/`workflow`、depth、args 和 concurrency；
 2. 构建 Luft；
@@ -150,7 +181,7 @@ ToolOutputHint::preferred(ToolOutputStrategy::Inline)
 
 不能只依赖 `RunDone` broadcast 事件，因为 workflow 可能在后台 task 建立 receiver 前完成。
 
-`background_finalize` 除了等待事件，还每 100ms 检查一次终态 checkpoint：
+`service::background_finalize` 除了等待事件，还每 100ms 检查一次终态 checkpoint：
 
 ```rust
 loop {
@@ -294,6 +325,7 @@ pub const TOOL_WORKFLOW_FILES: &str = "workflow_files";
 `agent/tool/tool-workflow/src/lib.rs`：
 
 - 导出六个独立工具；
+- 声明 `mod service;`（实现层）和 `mod runtime;`（共享上下文）；
 - `default_workflow_tool_provider()` 返回六个工具；
 - `register_workflow_tools()` 注册六个工具；
 - 删除 `WorkflowTool` export；

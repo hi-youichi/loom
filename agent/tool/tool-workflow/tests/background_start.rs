@@ -41,7 +41,7 @@ async fn start_returns_before_terminal_summary_is_available() {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let result = status
-            .call(serde_json::json!({"instance_dir": instance_dir}), None)
+            .call(serde_json::json!({"instance": instance_dir}), None)
             .await
             .expect("workflow status");
         let value: Value = serde_json::from_str(&text(result)).expect("status json");

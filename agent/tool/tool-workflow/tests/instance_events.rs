@@ -86,7 +86,7 @@ async fn events_default_limit_50() {
     let resp = call_text(
         &tool,
         json!({
-            "instance_dir": "inst-1",
+            "instance": "inst-1",
         }),
     )
     .await;
@@ -108,7 +108,7 @@ async fn events_limit_clamped_to_500() {
     let resp = call_text(
         &tool,
         json!({
-            "instance_dir": "inst-clamp",
+            "instance": "inst-clamp",
             "events_limit": 99999,
         }),
     )
@@ -129,7 +129,7 @@ async fn events_offset_skips_matching() {
     let resp = call_text(
         &tool,
         json!({
-            "instance_dir": "inst-offset",
+            "instance": "inst-offset",
             "offset": 2,
         }),
     )
@@ -150,7 +150,7 @@ async fn events_type_filter_includes_only_matching() {
     let resp = call_text(
         &tool,
         json!({
-            "instance_dir": "inst-types",
+            "instance": "inst-types",
             "types": ["agent_started"],
         }),
     )
@@ -174,7 +174,7 @@ async fn events_type_filter_with_multiple_types() {
     let resp = call_text(
         &tool,
         json!({
-            "instance_dir": "inst-multi",
+            "instance": "inst-multi",
             "types": ["agent_started", "agent_done"],
         }),
     )
@@ -198,7 +198,7 @@ async fn events_agent_filter_includes_only_matching_agent() {
     let resp = call_text(
         &tool,
         json!({
-            "instance_dir": "inst-agent",
+            "instance": "inst-agent",
             "agent_id": "a1",
         }),
     )
@@ -222,7 +222,7 @@ async fn events_next_offset_null_on_last_page() {
     let resp = call_text(
         &tool,
         json!({
-            "instance_dir": "inst-last",
+            "instance": "inst-last",
             "offset": 15,
         }),
     )
@@ -245,7 +245,7 @@ async fn events_next_offset_set_when_more_remain() {
     let resp = call_text(
         &tool,
         json!({
-            "instance_dir": "inst-next",
+            "instance": "inst-next",
             "offset": 10,
             "events_limit": 5,
         }),
@@ -259,19 +259,19 @@ async fn events_next_offset_set_when_more_remain() {
 }
 
 #[tokio::test]
-async fn events_missing_instance_dir_invalid_input() {
+async fn events_missing_instance_invalid_input() {
     let tmp = TempDir::new().unwrap();
     let tool = build_tool(tmp.path());
 
     let err = tool
         .call(json!({}), None)
         .await
-        .expect_err("missing instance_dir must error");
+        .expect_err("missing instance must error");
 
     match err {
         ToolSourceError::InvalidInput(msg) => {
             assert!(
-                msg.contains("instance_dir"),
+                msg.contains("'instance'"),
                 "error message should mention instance_dir, got: {msg}"
             );
         }
@@ -291,7 +291,7 @@ async fn events_missing_events_jsonl_returns_empty_array() {
     let resp = call_text(
         &tool,
         json!({
-            "instance_dir": "ghost",
+            "instance": "ghost",
         }),
     )
     .await;
@@ -322,7 +322,7 @@ async fn events_unparseable_line_skipped_silently() {
     let resp = call_text(
         &tool,
         json!({
-            "instance_dir": "noisy",
+            "instance": "noisy",
         }),
     )
     .await;
