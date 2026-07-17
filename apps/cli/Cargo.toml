@@ -32,6 +32,7 @@ stream-event = { path = "../../foundation/stream-event" }
 config = { path = "../../foundation/config", features = ["tracing-init"] }
 base64 = "0.22"
 reqwest = { version = "0.12", features = ["json", "blocking"] }
+futures-core = "0.3"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "net"] }
 clap = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }

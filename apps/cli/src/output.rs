@@ -1,9 +1,16 @@
 //! Shared CLI output helpers for stdout/file and JSON/text modes.
 
-use cli::{Envelope, RunOutput, RunStopReason, StreamOut};
+use cli::RunOutput;
 use serde_json::Value;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+
+/// Event sink type: optionally sends a JSON event to stdout/file.
+pub type EventSink = Option<Arc<Mutex<dyn FnMut(Value) + Send + 'static>>>;
+
+/// Internal: make_stream_out returns the event sink type.
+type StreamOut = EventSink;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct OutputConfig {
@@ -12,6 +19,7 @@ pub(crate) struct OutputConfig {
     pub file: Option<PathBuf>,
 }
 
+#[cfg(test)]
 pub(crate) fn write_json_output(
     value: &Value,
     file: Option<&Path>,
@@ -109,41 +117,47 @@ pub(crate) fn emit_run_output(
     max_reply_len: usize,
     timestamp: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    match output {
-        RunOutput::Reply {
-            reply,
-            reasoning_content,
-            reply_envelope,
-            stop_reason,
-        } => {
-            if config.json {
-                let mut out = reply_value(reply, reasoning_content, reply_envelope);
-                out["stop_reason"] = serde_json::json!(stop_reason_str(stop_reason));
-                if let Some(session_id) = session_id {
-                    out["session_id"] = serde_json::json!(session_id);
-                }
-                append_json_line(&out, config.file.as_deref(), config.pretty)?;
+    // Write collected events (for JSON output mode with events).
+    if let Some(events) = output.events {
+        for event in events {
+            let serialized = if config.pretty {
+                serde_json::to_string_pretty(&event)?
             } else {
-                emit_text_reply(&reply, max_reply_len, timestamp)?;
+                serde_json::to_string(&event)?
+            };
+            let line = format!("{serialized}\n");
+            match &config.file {
+                Some(path) => {
+                    std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(path)?
+                        .write_all(line.as_bytes())?;
+                }
+                None => {
+                    print!("{line}");
+                }
             }
         }
-        RunOutput::Json {
-            events,
-            reply,
-            reasoning_content,
-            reply_envelope,
-            stop_reason,
-        } => {
-            let mut out = serde_json::json!({
-                "events": events,
-                "reply": reply_value(reply, reasoning_content, reply_envelope),
-                "stop_reason": stop_reason_str(stop_reason),
-            });
-            if let Some(session_id) = session_id {
-                out["session_id"] = serde_json::json!(session_id);
-            }
-            write_json_output(&out, config.file.as_deref(), config.pretty)?;
-        }
+    }
+
+    // Write the final reply.
+    let mut reply_out = serde_json::json!({ "reply": output.reply });
+    if let Some(reasoning) = output.reasoning_content {
+        reply_out["reasoning_content"] = serde_json::json!(reasoning);
+    }
+    if let Some(ref envelope) = output.reply_envelope {
+        envelope.inject_into(&mut reply_out);
+    }
+    reply_out["stop_reason"] = serde_json::json!(output.stop_reason);
+    if let Some(sid) = session_id {
+        reply_out["session_id"] = serde_json::json!(sid);
+    }
+
+    if config.json {
+        append_json_line(&reply_out, config.file.as_deref(), config.pretty)?;
+    } else {
+        emit_text_reply(&output.reply, max_reply_len, timestamp)?;
     }
 
     Ok(())
@@ -158,28 +172,6 @@ fn emit_text_reply(
     let _ = max_reply_len;
     let _ = timestamp;
     Ok(())
-}
-
-fn reply_value(
-    reply: String,
-    reasoning_content: Option<String>,
-    reply_envelope: Option<Envelope>,
-) -> Value {
-    let mut out = serde_json::json!({ "reply": reply });
-    if let Some(reasoning_content) = reasoning_content {
-        out["reasoning_content"] = serde_json::json!(reasoning_content);
-    }
-    if let Some(ref envelope) = reply_envelope {
-        envelope.inject_into(&mut out);
-    }
-    out
-}
-
-fn stop_reason_str(stop_reason: RunStopReason) -> &'static str {
-    match stop_reason {
-        RunStopReason::EndTurn => "end_turn",
-        RunStopReason::Cancelled => "cancelled",
-    }
 }
 
 #[cfg(test)]

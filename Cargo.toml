@@ -65,6 +65,8 @@ members = [
 
     "foundation/loom-http-retry",
 
+    "foundation/pty-protocol",
+
     "experimental/codex",
 
 ]

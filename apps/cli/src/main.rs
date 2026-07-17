@@ -2,6 +2,9 @@
 //!
 //! Subcommands: `react` (default ReAct), `dup` (DUP), `tot` (ToT), `got` (GoT), `tool` (list/show tools), `models` (list models), `mcp` (manage MCP servers).
 //! Dispatch lives here; see `args`, `bootstrap`, `display_limits`, `run_flow`, and `subcommands` for implementation.
+//!
+//! When `--server URL` is provided, the CLI acts as a client connecting to a running
+//! loom-server instance via HTTP/SSE instead of running in-process.
 
 mod args;
 mod bootstrap;
@@ -13,10 +16,12 @@ mod logging;
 mod mcp_manager;
 mod output;
 mod repl;
-mod review_history;
 mod review_cmd;
+mod review_history;
 mod review_skill_cmd;
 mod run_flow;
+#[path = "server_transport/run_server_mode.rs"]
+mod server_runner;
 mod session;
 mod session_view;
 mod skill_usage_cmd;
@@ -24,11 +29,9 @@ mod subcommands;
 mod task_cmd;
 mod task_db;
 
-
 pub(crate) use args::Command;
 
 use cli::display;
-
 
 use std::sync::Arc;
 
@@ -38,21 +41,20 @@ use tokio::sync::Notify;
 use args::{AcpCmd, Args, Command as Cmd, GotArgs};
 use bootstrap::{init_logging, preserve_shell_env, print_config_report};
 use display_limits::max_reply_len;
-use tool_core::active_operation::RunCancellation;
 use run_flow::{
     build_run_options, output_config, resolve_user_message, run_interactive_mode,
     run_single_turn_mode,
 };
-use subcommands::{
-    handle_agent_command, handle_curator_command, handle_mcp_command,
-    handle_memory_command, handle_models_command, handle_session_command, handle_skills_command,
-    handle_tool_command,
-};
 use skill_usage_cmd::handle_skill_usage_command;
+use subcommands::{
+    handle_agent_command, handle_curator_command, handle_mcp_command, handle_memory_command,
+    handle_models_command, handle_session_command, handle_skills_command, handle_tool_command,
+};
+use tool_core::active_operation::RunCancellation;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = Args::parse();
+    let mut args = Args::parse();
 
     // Validate tier argument before proceeding
     if let Err(e) = run_flow::validate_tier_arg(&args.tier) {
@@ -196,6 +198,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    // ── Remote server mode ──────────────────────────────────────────────
+    // When --server URL is provided, delegate the entire run to loom-server
+    // over HTTP/SSE instead of running in-process. This path replaces the
+    // normal run_flow path entirely.
+    if args.server.is_some() || std::env::var("LOOM_SERVER_URL").is_ok() {
+        let server_url = args
+            .server
+            .take()
+            .or_else(|| std::env::var("LOOM_SERVER_URL").ok())
+            .unwrap_or_else(|| "http://127.0.0.1:3030".to_string());
+
+        let message = resolve_user_message(&args);
+        if !args.interactive && message.is_none() {
+            eprintln!("loom --server: provide a message via -m/--message or positional args");
+            std::process::exit(1);
+        }
+
+        if let Err(err) = crate::server_runner::run_server_mode(&args, server_url).await {
+            eprintln!("{}", err);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
 
     let message = resolve_user_message(&args);
     if !args.interactive && message.is_none() {

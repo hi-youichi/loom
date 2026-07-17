@@ -5,11 +5,11 @@ use tokio::sync::Notify;
 
 use crate::args::{TaskArgs, TaskCommand};
 use crate::display_limits::{generate_session_id, max_message_len};
-use crate::output::{emit_run_output, make_stream_out, OutputConfig};
+use crate::output::{emit_run_output, make_stream_out, EventSink, OutputConfig};
 use crate::repl::{run_one_turn, run_repl_loop};
 use cli::RunOptions;
-use tool_core::active_operation::RunCancellation;
 use loom_llm::message::UserContent;
+use tool_core::active_operation::RunCancellation;
 
 use crate::args::Command;
 
@@ -162,9 +162,10 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
         }
 
         TaskCommand::Show { id } => {
-            let task = db.show_task(id).await.map_err(|e| {
-                Box::<dyn std::error::Error>::from(e.to_string())
-            })?;
+            let task = db
+                .show_task(id)
+                .await
+                .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
             println!("ID:          {}", task.id);
             println!("Name:        {}", task.name);
             println!("Status:      {}", task.status);
@@ -175,9 +176,10 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
         }
 
         TaskCommand::Continue { id, agent } => {
-            let task = db.show_task(id).await.map_err(|e| {
-                Box::<dyn std::error::Error>::from(e.to_string())
-            })?;
+            let task = db
+                .show_task(id)
+                .await
+                .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
 
             let task_id_short = &task.id[..8.min(task.id.len())];
             eprintln!("resuming task {} ...", task_id_short);
@@ -268,8 +270,6 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
     Ok(())
 }
 
-
-
 fn truncate_name(desc: &str) -> String {
     let line = desc.lines().next().unwrap_or(desc);
     if line.len() <= 60 {
@@ -286,7 +286,7 @@ async fn run_interactive_mode(
     initial_message: Option<String>,
     reply_len: usize,
     output: &OutputConfig,
-    stream_out: cli::StreamOut,
+    stream_out: EventSink,
     force_quit: Arc<Notify>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(session_id) = opts.thread_id.as_deref() {
@@ -314,7 +314,15 @@ async fn run_interactive_mode(
     }
 
     opts.message = message;
-    run_repl_loop(opts, cmd, reply_len, output.clone(), stream_clone, force_quit).await?;
+    run_repl_loop(
+        opts,
+        cmd,
+        reply_len,
+        output.clone(),
+        stream_clone,
+        force_quit,
+    )
+    .await?;
     println!("Bye.");
     Ok(())
 }

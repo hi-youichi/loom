@@ -97,7 +97,7 @@ pub(crate) struct Args {
     #[arg(long = "worktree")]
     pub(crate) worktree: bool,
 
-/// Debug LLM: print full system prompt and messages to stderr before sending to LLM
+    /// Debug LLM: print full system prompt and messages to stderr before sending to LLM
     #[arg(long)]
     pub(crate) debug_llm: bool,
 
@@ -123,6 +123,14 @@ pub(crate) struct Args {
     /// Log output format: text (default) or json
     #[arg(long, global = true, default_value = "text", value_name = "FORMAT")]
     pub(crate) log_format: String,
+
+    /// Connect to a running loom-server instead of running in-process.
+    /// When set, the CLI acts as a client: creates a session with the server,
+    /// sends prompts, and streams events over HTTP/SSE.
+    /// Use `--server URL` to specify the server base URL (default:
+    /// http://127.0.0.1:3030).
+    #[arg(long, global = true, value_name = "URL")]
+    pub(crate) server: Option<String>,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -148,7 +156,7 @@ pub(crate) enum Command {
     /// Run autonomous goal loop with an external coding tool
     Goal(GoalArgs),
     /// Manage skills (list, show, create, edit, delete)
-Skills(SkillsArgs),
+    Skills(SkillsArgs),
     /// Sync, show, and repair skill usage tracking (.usage.json)
     SkillUsage(SkillUsageArgs),
     /// Run and manage skill evolution
@@ -453,7 +461,7 @@ pub(crate) struct GoalArgs {
     #[arg(long, value_name = "TOKENS")]
     pub(crate) token_budget: Option<u32>,
 
-/// Shell command to verify objective after each iteration (e.g. "cargo test")
+    /// Shell command to verify objective after each iteration (e.g. "cargo test")
     #[arg(long, value_name = "CMD")]
     pub(crate) verify: Option<String>,
 
@@ -683,9 +691,7 @@ pub(crate) enum MemoryCommand {
         file: String,
     },
     /// Search memory for a keyword
-    Search {
-        query: String,
-    },
+    Search { query: String },
 }
 
 #[derive(clap::Args, Debug, Clone)]
@@ -730,7 +736,6 @@ pub(crate) enum TaskCommand {
         agent: String,
     },
 }
-
 
 /// Arguments for the `acp` subcommand.
 #[derive(clap::Args, Debug, Clone)]

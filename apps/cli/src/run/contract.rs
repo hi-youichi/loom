@@ -1,100 +1,141 @@
-//! CLI run result types, JSON streaming contract, and in-process dispatch to agent/tool helpers.
+//! CLI run contracts: structured output for `--json` mode.
+//!
+//! Provides the types used by `run_cli_turn` to serialize agent output as
+//! structured JSON events. Each turn emits a sequence of `StreamOut` events
+//! (one per agent event) followed by a final `RunOutput` containing the
+//! reply and metadata.
+//!
+//! The `cli_list_tools` and `cli_show_tool` functions mirror the in-process
+//! tool listing API but are usable from the server-transport runner when the
+//! agent runs remotely.
 
-use crate::model_cmd::{list_all_models, list_provider_models};
-use crate::tool_cmd::{list_tools, show_tool, ToolShowFormat};
-use stream_event::Envelope;
-use agent::run::{RunCmd, RunError};
-use agent::RunOptions;
-use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
-use super::run_agent_wrapper as run_agent;
-use super::{RunAgentOutput, RunStopReason};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-/// Optional sink for JSON stream output (used by `--json`).
-///
-/// - `Some(...)`: events are forwarded immediately as they arrive (stdout or a file).
-/// - `None`: the runner collects events in memory and returns them at the end.
-pub type StreamOut = Option<Arc<Mutex<dyn FnMut(Value) + Send>>>;
+use crate::run::{RunCmd, RunError, RunOptions};
 
-/// Output of a single run.
+/// Callback type for streaming agent events to stdout/stderr.
+type EventCallback = Arc<Mutex<dyn FnMut(Value) + Send>>;
+
+/// Structured JSON output for a single CLI run turn.
 ///
-/// - Without `--json`: callers typically print only the final reply (keep stdout clean).
-/// - With `--json`: the reply is accompanied by a list of stream events (or events are
-///   emitted incrementally via [`StreamOut`]).
+/// Emitted by `run_cli_turn` when `--json` is active:
+/// 1. One `StreamOut::Event` per agent stream event.
+/// 2. One `StreamOut::Done` with the final reply + metadata.
 ///
-/// `reply_envelope`: when using the protocol envelope (`session_id`/`node_id`/`event_id`),
-/// the reply line also includes an envelope so it can be correlated with the event stream.
-#[derive(Debug)]
-pub enum RunOutput {
-    Reply {
-        reply: String,
-        reasoning_content: Option<String>,
-        reply_envelope: Option<Envelope>,
-        stop_reason: RunStopReason,
-    },
-    Json {
-        events: Vec<Value>,
-        reply: String,
-        reasoning_content: Option<String>,
-        reply_envelope: Option<Envelope>,
-        stop_reason: RunStopReason,
-    },
+/// The variant determines what appears in the JSON object:
+/// ```json
+/// // Event variant:
+/// { "type": "event", "event": { ... } }
+/// // Done variant:
+/// { "type": "done", "reply": "...", "stop_reason": "end_turn", ... }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum RunEvent {
+    /// An agent stream event (message chunk, tool call, etc.).
+    Event { event: Value },
+    /// The run completed with a final reply.
+    Done { output: RunOutput },
 }
 
-/// Streaming contract:
-/// - `stream_out = Some`: MUST NOT accumulate events; forward each event immediately and
-///   return `RunOutput::Reply { .. }`.
-/// - `stream_out = None`: may accumulate events. If `opts.output_json` is true, return
-///   `RunOutput::Json { .. }`; otherwise return `RunOutput::Reply`.
+/// Unified output type for a completed CLI run turn.
+///
+/// Always emitted as `StreamOut::Done` at the end of a run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunOutput {
+    /// The final assistant reply text.
+    pub reply: String,
+    /// Opaque reasoning content (e.g. chain-of-thought), if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
+    /// Why the run stopped: `end_turn` or `cancelled`.
+    pub stop_reason: String,
+    /// All stream events collected during the run (only when not streaming).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub events: Option<Vec<Value>>,
+    /// Token usage summary, if available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<UsageInfo>,
+    /// Reply envelope with additional metadata (not serialized, handled separately by output.rs).
+    #[serde(skip)]
+    pub reply_envelope: Option<crate::Envelope>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageInfo {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
+}
+
+/// Runs one CLI agent turn and yields structured JSON events.
+///
+/// - **`output_json=false`**: runs in-process with stderr display, returns
+///   `RunOutput` directly (for the normal non-JSON path).
+/// - **`output_json=true`**: collects all stream events into a `Vec<Value>`
+///   and returns `RunOutput` with `events` populated.
+///
+/// The `stream_sender` receives raw agent events (used for logging/debugging
+/// during the run). The returned `RunOutput` always contains the final reply.
 pub async fn run_cli_turn(
     opts: &RunOptions,
     cmd: &RunCmd,
-    stream_out: StreamOut,
+    stream_sender: Option<EventCallback>,
 ) -> Result<RunOutput, RunError> {
-    let output = run_agent(opts, cmd, stream_out).await?;
-    let RunAgentOutput {
-        reply,
-        reasoning_content,
-        events,
-        reply_envelope,
-        stop_reason,
-    } = output;
-    Ok(match events {
-        Some(ev) => RunOutput::Json {
-            events: ev,
-            reply,
-            reasoning_content,
-            reply_envelope,
-            stop_reason,
+    use super::agent::run_agent_wrapper;
+
+    let events: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
+
+    // Wrap each call to `stream_sender` to also store events in `events`.
+    let sink: Option<EventCallback> = match stream_sender {
+        Some(sender) => {
+            let events_clone = events.clone();
+            let sender = sender;
+            Some(Arc::new(Mutex::new(move |v: Value| {
+                if let Ok(mut guard) = events_clone.lock() {
+                    guard.push(v.clone());
+                }
+                if let Ok(mut s) = sender.lock() {
+                    s(v);
+                }
+            })))
+        }
+        None => None,
+    };
+
+    let result = run_agent_wrapper(opts, cmd, sink).await?;
+
+    let stop_reason_str = match result.stop_reason {
+        super::agent::RunStopReason::EndTurn => "end_turn",
+        super::agent::RunStopReason::Cancelled => "cancelled",
+    };
+
+    let output = RunOutput {
+        reply: result.reply,
+        reasoning_content: result.reasoning_content,
+        stop_reason: stop_reason_str.to_string(),
+        events: if opts.output_json {
+            Some(events.lock().map(|v| v.clone()).unwrap_or_default())
+        } else {
+            None
         },
-        None => RunOutput::Reply {
-            reply,
-            reasoning_content,
-            reply_envelope,
-            stop_reason,
-        },
-    })
+        usage: None,
+        reply_envelope: result.reply_envelope,
+    };
+
+    Ok(output)
 }
 
-pub async fn cli_list_tools(opts: &RunOptions) -> Result<(), RunError> {
-    list_tools(opts).await
-}
+// ─── Re-export CLI entry points for server-transport runner ────────────────────
+//
+// These functions are defined in `tool_cmd` and `model_cmd` and re-exported here
+// so the server-transport runner (and other consumers) can import them from one
+// place: `crate::run::cli_list_tools`, etc.
 
-pub async fn cli_show_tool(
-    opts: &RunOptions,
-    name: &str,
-    format: ToolShowFormat,
-) -> Result<(), RunError> {
-    show_tool(name, format, opts).await
-}
-
-pub async fn cli_list_models(
-    opts: &RunOptions,
-    provider_name: Option<&str>,
-) -> Result<(), RunError> {
-    match provider_name {
-        Some(name) => list_provider_models(name, opts.output_json).await,
-        None => list_all_models(opts.output_json).await,
-    }
-}
+pub use crate::tool_cmd::list_tools as cli_list_tools;
+pub use crate::tool_cmd::show_tool as cli_show_tool;
