@@ -17,8 +17,7 @@ use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 use crate::backend::LoomAgentBackend;
 use crate::common::{
-    instance_dir_arg, is_terminal_checkpoint, read_json_value, running_receipt,
-    sanitize_instance_for_public, truncate_for_preview,
+    read_json_value, sanitize_instance_for_public, truncate_for_preview, validate_instance_dir_name,
 };
 use crate::event_bridge::luft_event_to_json;
 use crate::runtime::WorkflowRuntime;
@@ -269,7 +268,14 @@ pub(crate) async fn read_status(
     runtime: &WorkflowRuntime,
     args: &Value,
 ) -> Result<ToolCallContent, ToolSourceError> {
-    let dir = instance_dir_arg(args, "workflow_status")?;
+    let dir = args
+        .get("instance")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            ToolSourceError::InvalidInput("'instance' is required for workflow_status.".into())
+        })?;
+    validate_instance_dir_name(dir)?;
+
     let new_path = runtime.instances_root().join(dir);
     let legacy_path = runtime.runs_root().join(dir);
 
@@ -300,23 +306,50 @@ pub(crate) async fn read_status(
     let checkpoint_path = resolved.join("checkpoint.json");
 
     if checkpoint_path.is_file() {
-        let should_rebuild = if resolved == new_path {
-            is_terminal_checkpoint(&checkpoint_path).unwrap_or(false)
-        } else {
-            true
-        };
-        if should_rebuild {
-            return runtime.rebuild_summary(dir, &checkpoint_path).await;
-        }
+        return runtime.rebuild_summary(dir, &checkpoint_path).await;
     }
 
     if resolved == new_path {
-        return Ok(running_receipt(dir));
+        return Ok(running_status(dir, &checkpoint_path));
     }
 
     Err(ToolSourceError::ToolError(format!(
         "Instance '{dir}' is incomplete (missing checkpoint)"
     )))
+}
+
+/// Build a running-state response with the same InstanceMeta shape as terminal state.
+fn running_status(dir: &str, checkpoint_path: &Path) -> ToolCallContent {
+    let ckpt = read_json_value(checkpoint_path);
+    let instance_id = ckpt
+        .as_ref()
+        .and_then(|c| c.get("run_id"))
+        .and_then(|v| v.as_str())
+        .unwrap_or(dir);
+    let created_at = ckpt
+        .as_ref()
+        .and_then(|c| c.get("created_at"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    let payload = json!({
+        "schema_version": crate::instance::SCHEMA_VERSION,
+        "instance_id": instance_id,
+        "instance_dir": dir,
+        "workflow": { "kind": "file", "name": dir },
+        "status": "running",
+        "created_at": created_at,
+        "completed_at": 0,
+        "total_tokens": 0,
+        "total_elapsed_ms": 0,
+        "agent_count": 0,
+        "agents": [],
+        "phase_spans": [],
+        "event_stats": { "total": 0, "by_type": {} },
+        "report": {},
+    });
+    let sanitized = sanitize_instance_for_public(payload);
+    ToolCallContent::Text(serde_json::to_string_pretty(&sanitized).unwrap_or_default())
 }
 
 // ── List ────────────────────────────────────────────────────────────────────
@@ -541,7 +574,13 @@ pub(crate) fn read_events(
     runtime: &WorkflowRuntime,
     args: &Value,
 ) -> Result<ToolCallContent, ToolSourceError> {
-    let dir = instance_dir_arg(args, "workflow_events")?;
+    let dir = args
+        .get("instance")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            ToolSourceError::InvalidInput("'instance' is required for workflow_events.".into())
+        })?;
+    validate_instance_dir_name(dir)?;
     let path = runtime
         .resolve_instance_path(dir)
         .ok_or_else(|| ToolSourceError::InvalidInput(format!("Instance '{dir}' not found")))?;
@@ -670,7 +709,13 @@ pub(crate) fn read_source(
     runtime: &WorkflowRuntime,
     args: &Value,
 ) -> Result<ToolCallContent, ToolSourceError> {
-    let dir = instance_dir_arg(args, "workflow_source")?;
+    let dir = args
+        .get("instance")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            ToolSourceError::InvalidInput("'instance' is required for workflow_source.".into())
+        })?;
+    validate_instance_dir_name(dir)?;
     let resolved = runtime
         .resolve_instance_path(dir)
         .ok_or_else(|| ToolSourceError::InvalidInput(format!("Instance '{dir}' not found")))?;
@@ -1113,7 +1158,7 @@ mod tests {
         .unwrap();
 
         let rt = runtime_with(tmp.path());
-        let result = block_on(read_status(&rt, &json!({"instance_dir": instance_dir}))).unwrap();
+        let result = block_on(read_status(&rt, &json!({"instance": instance_dir}))).unwrap();
         let text = match result {
             ToolCallContent::Text(s) => s,
             _ => panic!("expected text output"),
@@ -1138,13 +1183,18 @@ mod tests {
         std::fs::create_dir_all(&dir_path).unwrap();
 
         let rt = runtime_with(tmp.path());
-        let result = block_on(read_status(&rt, &json!({"instance_dir": instance_dir}))).unwrap();
+        let result = block_on(read_status(&rt, &json!({"instance": instance_dir}))).unwrap();
         let text = match result {
             ToolCallContent::Text(s) => s,
             _ => panic!("expected text output"),
         };
         let v: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(v["status"], "running");
+        assert_eq!(v["instance_dir"], instance_dir);
+        assert_eq!(v["agent_count"], 0);
+        assert!(v["agents"].is_array());
+        assert!(v["phase_spans"].is_array());
+        assert!(v["report"].is_object());
     }
 
     #[test]
@@ -1155,7 +1205,7 @@ mod tests {
         std::fs::create_dir_all(&dir_path).unwrap();
 
         let rt = runtime_with(tmp.path());
-        let err = block_on(read_status(&rt, &json!({"instance_dir": instance_dir}))).unwrap_err();
+        let err = block_on(read_status(&rt, &json!({"instance": instance_dir}))).unwrap_err();
         let msg = format!("{err:?}");
         assert!(
             msg.contains("corrupt") || msg.contains("missing checkpoint"),
@@ -1164,12 +1214,21 @@ mod tests {
     }
 
     #[test]
-    fn status_errors_on_unknown_instance_dir() {
+    fn status_errors_on_unknown_instance() {
         let tmp = tempfile::tempdir().unwrap();
         let rt = runtime_with(tmp.path());
-        let err = block_on(read_status(&rt, &json!({"instance_dir": "does-not-exist"}))).unwrap_err();
+        let err = block_on(read_status(&rt, &json!({"instance": "does-not-exist"}))).unwrap_err();
         let msg = format!("{err:?}");
         assert!(msg.contains("not found"));
+    }
+
+    #[test]
+    fn status_errors_on_missing_instance_param() {
+        let tmp = tempfile::tempdir().unwrap();
+        let rt = runtime_with(tmp.path());
+        let err = block_on(read_status(&rt, &json!({}))).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("'instance' is required"));
     }
 
     // -- source handler --
@@ -1187,7 +1246,7 @@ mod tests {
         std::fs::write(dir.join("workflow.lua"), "function main() end").unwrap();
 
         let rt = runtime_with(tmp.path());
-        let result = read_source(&rt, &json!({"instance_dir": instance_dir})).unwrap();
+        let result = read_source(&rt, &json!({"instance": instance_dir})).unwrap();
         let text = match result {
             ToolCallContent::Text(s) => s,
             _ => panic!("expected text output"),
@@ -1211,7 +1270,7 @@ mod tests {
         std::fs::write(dir.join("workflow.lua"), &big).unwrap();
 
         let rt = runtime_with(tmp.path());
-        let result = read_source(&rt, &json!({"instance_dir": instance_dir})).unwrap();
+        let result = read_source(&rt, &json!({"instance": instance_dir})).unwrap();
         let text = match result {
             ToolCallContent::Text(s) => s,
             _ => panic!("expected text output"),
@@ -1235,7 +1294,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
 
         let rt = runtime_with(tmp.path());
-        let err = read_source(&rt, &json!({"instance_dir": instance_dir})).unwrap_err();
+        let err = read_source(&rt, &json!({"instance": instance_dir})).unwrap_err();
         let msg = format!("{err:?}");
         assert!(msg.contains("Failed to read workflow source"));
     }
@@ -1244,7 +1303,7 @@ mod tests {
     fn source_errors_on_unknown_instance_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let rt = runtime_with(tmp.path());
-        let err = read_source(&rt, &json!({"instance_dir": "no-such-thing"})).unwrap_err();
+        let err = read_source(&rt, &json!({"instance": "no-such-thing"})).unwrap_err();
         let msg = format!("{err:?}");
         assert!(msg.contains("not found"));
     }

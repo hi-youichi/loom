@@ -1,12 +1,10 @@
 //! Cross-tool helpers shared by the six specialized workflow tools:
 //! argument parsing, instance-dir validation, terminal-status helpers,
-//! public-output sanitization, and the "running" receipt.
+//! and public-output sanitization.
 
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::path::Path;
-use tool_core::{ToolCallContent, ToolSourceError};
-
-use crate::runtime::TERMINAL_STATUSES;
+use tool_core::ToolSourceError;
 
 pub(crate) fn validate_instance_dir_name(name: &str) -> Result<&str, ToolSourceError> {
     if name.is_empty() || name.contains('/') || name.contains('\\') {
@@ -15,31 +13,6 @@ pub(crate) fn validate_instance_dir_name(name: &str) -> Result<&str, ToolSourceE
         )));
     }
     Ok(name)
-}
-
-pub(crate) fn instance_dir_arg<'a>(
-    args: &'a Value,
-    action: &str,
-) -> Result<&'a str, ToolSourceError> {
-    let dir = args
-        .get("instance_dir")
-        .and_then(|value| value.as_str())
-        .ok_or_else(|| {
-            ToolSourceError::InvalidInput(format!("'instance_dir' is required for {action}."))
-        })?;
-    validate_instance_dir_name(dir)?;
-    Ok(dir)
-}
-
-pub(crate) fn is_terminal_status(status: &str) -> bool {
-    TERMINAL_STATUSES.contains(&status.to_ascii_lowercase().as_str())
-}
-
-pub(crate) fn is_terminal_checkpoint(path: &Path) -> Option<bool> {
-    let bytes = std::fs::read(path).ok()?;
-    let value: Value = serde_json::from_slice(&bytes).ok()?;
-    let status = value.get("status").and_then(Value::as_str)?;
-    Some(is_terminal_status(status))
 }
 
 pub(crate) fn truncate_for_preview(s: &str, max_bytes: usize) -> String {
@@ -54,14 +27,6 @@ pub(crate) fn truncate_for_preview(s: &str, max_bytes: usize) -> String {
     out.push_str(&s[..cut]);
     out.push('…');
     out
-}
-
-pub(crate) fn running_receipt(instance_dir: &str) -> ToolCallContent {
-    let payload = json!({
-        "instance_dir": instance_dir,
-        "status": "running",
-    });
-    ToolCallContent::Text(serde_json::to_string_pretty(&payload).unwrap_or_default())
 }
 
 pub fn sanitize_instance_for_public(mut value: Value) -> Value {

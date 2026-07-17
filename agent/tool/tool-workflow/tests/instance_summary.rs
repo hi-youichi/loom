@@ -146,7 +146,7 @@ fn status_reads_existing_instance_json_and_sanitizes() {
     fs::write(dir.join("instance.json"), &pre).unwrap();
 
     let tool = tool_with(tmp.path().to_path_buf());
-    let body = text_of(call(&tool, json!({"instance_dir": instance_dir})).expect("call"));
+    let body = text_of(call(&tool, json!({"instance": instance_dir})).expect("call"));
 
     let parsed: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(parsed["schema_version"], 42);
@@ -170,7 +170,7 @@ fn status_rebuilds_in_memory_when_checkpoint_present() {
     assert!(!dir.join("instance.json").exists());
 
     let tool = tool_with(tmp.path().to_path_buf());
-    let body = text_of(call(&tool, json!({"instance_dir": instance_dir})).expect("call"));
+    let body = text_of(call(&tool, json!({"instance": instance_dir})).expect("call"));
 
     let parsed: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(parsed["instance_dir"], instance_dir);
@@ -201,7 +201,7 @@ fn status_rebuild_does_not_write_instance_json_back_to_disk() {
     write_run_fixture(&dir);
 
     let tool = tool_with(tmp.path().to_path_buf());
-    call(&tool, json!({"instance_dir": instance_dir})).expect("call");
+    call(&tool, json!({"instance": instance_dir})).expect("call");
 
     assert!(
         !dir.join("instance.json").exists(),
@@ -221,7 +221,7 @@ fn status_excludes_raw_events_array() {
     write_run_fixture(&dir);
 
     let tool = tool_with(tmp.path().to_path_buf());
-    let body = text_of(call(&tool, json!({"instance_dir": instance_dir})).expect("call"));
+    let body = text_of(call(&tool, json!({"instance": instance_dir})).expect("call"));
     let parsed: Value = serde_json::from_str(&body).unwrap();
 
     assert!(
@@ -242,7 +242,7 @@ fn status_event_stats_present_after_rebuild() {
     write_run_fixture(&dir);
 
     let tool = tool_with(tmp.path().to_path_buf());
-    let body = text_of(call(&tool, json!({"instance_dir": instance_dir})).expect("call"));
+    let body = text_of(call(&tool, json!({"instance": instance_dir})).expect("call"));
     let parsed: Value = serde_json::from_str(&body).unwrap();
 
     let stats = parsed
@@ -261,7 +261,7 @@ fn status_rebuilds_from_legacy_run_dir() {
     write_run_fixture(&dir);
 
     let tool = tool_with(tmp.path().to_path_buf());
-    let body = text_of(call(&tool, json!({"instance_dir": LEGACY_TS})).expect("call"));
+    let body = text_of(call(&tool, json!({"instance": LEGACY_TS})).expect("call"));
     let parsed: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(parsed["instance_dir"], LEGACY_TS);
     assert_eq!(parsed["status"], "completed");
@@ -273,7 +273,7 @@ fn status_invalid_instance_dir_returns_invalid_input() {
     let tmp = TempDir::new().unwrap();
 
     let tool = tool_with(tmp.path().to_path_buf());
-    let err = call(&tool, json!({"instance_dir": "ghost-instance_404"}))
+    let err = call(&tool, json!({"instance": "ghost-instance_404"}))
         .expect_err("missing instance_dir must error");
 
     assert!(
@@ -281,7 +281,7 @@ fn status_invalid_instance_dir_returns_invalid_input() {
         "expected InvalidInput, got {err:?}"
     );
 
-    let err2 = call(&tool, json!({"instance_dir": "../../etc/passwd"}))
+    let err2 = call(&tool, json!({"instance": "../../etc/passwd"}))
         .expect_err("path traversal must error");
     assert!(matches!(err2, tool_core::ToolSourceError::InvalidInput(_)));
 }
@@ -298,7 +298,7 @@ fn status_returns_running_when_only_dir_exists() {
     fs::create_dir_all(&dir).unwrap();
 
     let tool = tool_with(tmp.path().to_path_buf());
-    let body = text_of(call(&tool, json!({"instance_dir": instance_dir})).expect("call"));
+    let body = text_of(call(&tool, json!({"instance": instance_dir})).expect("call"));
     let parsed: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(parsed["status"], "running");
 }
@@ -326,13 +326,14 @@ fn status_returns_running_when_checkpoint_non_terminal() {
     .unwrap();
 
     let tool = tool_with(tmp.path().to_path_buf());
-    let body = text_of(call(&tool, json!({"instance_dir": instance_dir})).expect("call"));
+    let body = text_of(call(&tool, json!({"instance": instance_dir})).expect("call"));
     let parsed: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(parsed["instance_dir"], instance_dir);
     assert_eq!(parsed["status"], "running");
-    assert!(parsed.get("agents").is_none());
-    assert!(parsed.get("workflow").is_none());
-    assert!(parsed.get("instance_id").is_none());
+    assert!(parsed["agents"].is_array());
+    assert!(parsed["agents"].as_array().unwrap().is_empty());
+    assert!(parsed["workflow"].is_object());
+    assert!(parsed["instance_id"].is_string());
 }
 
 #[test]
@@ -343,7 +344,7 @@ fn status_errors_on_legacy_dir_without_checkpoint() {
     fs::create_dir_all(&dir).unwrap();
 
     let tool = tool_with(tmp.path().to_path_buf());
-    let err = call(&tool, json!({"instance_dir": instance_dir}))
+    let err = call(&tool, json!({"instance": instance_dir}))
         .expect_err("legacy dir without checkpoint must error");
     let msg = format!("{err:?}");
     assert!(
@@ -382,7 +383,7 @@ fn status_sanitizes_per_agent_output_refs() {
     .unwrap();
 
     let tool = tool_with(tmp.path().to_path_buf());
-    let body = text_of(call(&tool, json!({"instance_dir": instance_dir})).expect("call"));
+    let body = text_of(call(&tool, json!({"instance": instance_dir})).expect("call"));
     let parsed: Value = serde_json::from_str(&body).unwrap();
 
     assert!(parsed["workflow"].get("path").is_none());

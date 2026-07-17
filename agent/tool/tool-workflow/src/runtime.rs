@@ -258,5 +258,3 @@ impl WorkflowRuntime {
         Ok(ToolCallContent::Text(pretty))
     }
 }
-
-pub(crate) const TERMINAL_STATUSES: [&str; 3] = ["completed", "failed", "cancelled"];

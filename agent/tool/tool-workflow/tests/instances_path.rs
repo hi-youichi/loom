@@ -40,10 +40,10 @@ fn six_tool_names_and_input_schemas_match_constants() {
 
     let expected: [(&str, Option<&str>); 6] = [
         (TOOL_WORKFLOW_START, Some("script")),
-        (TOOL_WORKFLOW_STATUS, Some("instance_dir")),
+        (TOOL_WORKFLOW_STATUS, Some("instance")),
         (TOOL_WORKFLOW_LIST, Some("limit")),
-        (TOOL_WORKFLOW_EVENTS, Some("instance_dir")),
-        (TOOL_WORKFLOW_SOURCE, Some("instance_dir")),
+        (TOOL_WORKFLOW_EVENTS, Some("instance")),
+        (TOOL_WORKFLOW_SOURCE, Some("instance")),
         (TOOL_WORKFLOW_FILES, None),
     ];
 

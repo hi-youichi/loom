@@ -39,12 +39,12 @@ impl Tool for WorkflowSourceTool {
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "instance_dir": {
+                    "instance": {
                         "type": "string",
                         "description": "Instance directory name returned by workflow_start or workflow_list."
                     }
                 },
-                "required": ["instance_dir"]
+                "required": ["instance"]
             }),
             output_hint: Some(ToolOutputHint::preferred(ToolOutputStrategy::Inline)),
         }

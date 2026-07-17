@@ -41,7 +41,7 @@ impl Tool for WorkflowEventsTool {
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "instance_dir": {
+                    "instance": {
                         "type": "string",
                         "description": "Instance directory name returned by workflow_start or workflow_list."
                     },
@@ -68,7 +68,7 @@ impl Tool for WorkflowEventsTool {
                         "description": "Restrict returned events to those with this `agent_id`."
                     }
                 },
-                "required": ["instance_dir"]
+                "required": ["instance"]
             }),
             output_hint: Some(ToolOutputHint::preferred(ToolOutputStrategy::Inline)),
         }
