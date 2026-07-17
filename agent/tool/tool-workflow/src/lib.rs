@@ -4,6 +4,7 @@ mod event_bridge;
 mod instance;
 mod json_to_lua;
 mod runtime;
+mod service;
 mod structured_output;
 mod tool_events;
 mod tool_files;
@@ -21,7 +22,6 @@ pub use instance::{
 pub use structured_output::StructuredOutputTool;
 pub use tool_events::WorkflowEventsTool;
 pub use tool_files::WorkflowFilesTool;
-pub use common::sanitize_instance_for_public;
 pub use tool_list::WorkflowListTool;
 pub use tool_source::WorkflowSourceTool;
 pub use tool_start::WorkflowStartTool;
