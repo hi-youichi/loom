@@ -63,7 +63,8 @@ pub use run::{
 
 // Runner common
 pub use runner_common::{
-    load_from_checkpoint_or_build, run_stream_with_config, StreamRunError, StreamRunOutcome,
+    load_from_checkpoint_or_build, resume_from_checkpoint, run_stream_with_config, StreamRunError,
+    StreamRunOutcome,
 };
 
 // Core run_types (agent-internal, different from CLI RunOptions)
