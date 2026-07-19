@@ -20,7 +20,7 @@ use tool_core::active_operation::RunCancellation;
 use tool_core::ToolRegistryLocked;
 
 use super::error::RunError;
-use super::initial_state::build_react_initial_state;
+use super::initial_state::{build_react_initial_state, build_react_initial_state_for_resume};
 use super::options::{resolve_run_agent_options, AgentOptions};
 use crate::agent::react::act_node::ActNode;
 
@@ -34,8 +34,10 @@ pub struct ReactRunner {
     runnable_config: Option<RunnableConfig>,
     system_prompt: String,
     cancellation: Option<RunCancellation>,
-    any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
+    any_stream_event_sender:
+        Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
     title_provider: Arc<dyn LlmProvider>,
+    resume_mode: bool,
 }
 
 impl ReactRunner {
@@ -48,6 +50,14 @@ impl ReactRunner {
     /// Used to query the current `thread_id` and `checkpoint_id`.
     pub fn runnable_config(&self) -> Option<RunnableConfig> {
         self.runnable_config.clone()
+    }
+
+    /// Set to true when this runner is used for workflow crash resume.
+    /// When true, the initial state is loaded from checkpoint without
+    /// appending the user message (it's already in history).
+    pub fn with_resume_mode(mut self, resume: bool) -> Self {
+        self.resume_mode = resume;
+        self
     }
 
     /// Returns a reference to the checkpointer, if any.
@@ -147,6 +157,7 @@ impl ReactRunner {
             cancellation,
             any_stream_event_sender,
             title_provider,
+            resume_mode: false,
         })
     }
 
@@ -172,13 +183,22 @@ impl ReactRunner {
     {
         let user_content = user_message.into();
         let run_config = config.or_else(|| self.runnable_config.clone());
-        let state = build_react_initial_state(
-            &user_content,
-            self.checkpointer.as_deref(),
-            run_config.as_ref(),
-            &self.system_prompt,
-        )
-        .await?;
+        let state = if self.resume_mode {
+            build_react_initial_state_for_resume(
+                self.checkpointer.as_deref(),
+                run_config.as_ref(),
+                &self.system_prompt,
+            )
+            .await?
+        } else {
+            build_react_initial_state(
+                &user_content,
+                self.checkpointer.as_deref(),
+                run_config.as_ref(),
+                &self.system_prompt,
+            )
+            .await?
+        };
         let result = runner_common::run_stream_with_config(
             &self.compiled,
             state,

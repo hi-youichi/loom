@@ -88,6 +88,10 @@ pub struct ReactBuildConfig {
     pub env_context: Option<EnvContext>,
     pub reasoning_effort: Option<String>,
 
+    /// When true, the agent loads state from checkpoint without appending
+    /// a user message (used by workflow crash resume).
+    pub resume_mode: bool,
+
     /// When true, the `llm` tool is registered, giving the agent direct
     /// LLM invocation with provider/model discovery.
     pub llm_tool_enabled: bool,
@@ -166,6 +170,7 @@ impl Default for ReactBuildConfig {
             memory_prompt: None,
             env_context: None,
             reasoning_effort: None,
+            resume_mode: false,
             llm_tool_enabled: false,
         }
     }
@@ -266,6 +271,7 @@ impl ReactBuildConfig {
             memory_prompt: None,
             env_context: None,
             reasoning_effort: None,
+            resume_mode: false,
             llm_tool_enabled: std::env::var("LOOM_LLM_TOOL_ENABLED")
                 .ok()
                 .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))

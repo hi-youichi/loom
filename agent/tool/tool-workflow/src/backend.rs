@@ -46,6 +46,7 @@ impl AgentBackend for LoomAgentBackend {
         let thread_id = task.thread_id.clone();
         if thread_id.is_some() {
             config.thread_id = thread_id.clone();
+            config.resume_mode = true;
         }
 
         if let Some(ref model) = task.model {

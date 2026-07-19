@@ -160,7 +160,8 @@ pub async fn build_react_runner(
         title_provider,
         title_headers,
         any_stream_event_sender,
-    )?;
+    )?
+    .with_resume_mode(config.resume_mode);
     Ok(runner)
 }
 
