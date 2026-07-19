@@ -86,38 +86,75 @@ fn translate_stream_event<S: Clone + Send + Sync + std::fmt::Debug + 'static>(
         StreamEvent::Messages { chunk, .. } => {
             translate_chunk(chunk, session_id, assistant_msg_id, state);
         }
-        StreamEvent::TaskStart { node_id, .. } => {
-            // Tool/node start → emit a pending tool part so TUI shows a spinner.
-            emit_tool_part(
+        StreamEvent::ToolCall {
+            call_id,
+            name,
+            arguments,
+        } => {
+            // LLM decided to invoke a tool. Materialise a pending tool part
+            // carrying the tool name + arguments as `input`. Subsequent
+            // ToolStart / ToolOutput / ToolEnd for the same `call_id`
+            // coalesce onto this part.
+            create_or_update_tool_part(
                 state,
                 assistant_msg_id,
                 session_id,
-                node_id,
-                json!({ "status": "pending", "input": {} }),
+                call_id.as_deref(),
+                name,
+                ToolTransition::Create {
+                    input: arguments.clone(),
+                },
             );
         }
-        StreamEvent::TaskEnd {
-            node_id, result, ..
+        StreamEvent::ToolStart { call_id, name } => {
+            // Tool execution started (Act node entered). Transition
+            // pending → running.
+            create_or_update_tool_part(
+                state,
+                assistant_msg_id,
+                session_id,
+                call_id.as_deref(),
+                name,
+                ToolTransition::Start,
+            );
+        }
+        StreamEvent::ToolOutput {
+            call_id,
+            name,
+            content,
         } => {
-            let state_payload = if result.is_ok() {
-                json!({
-                    "status": "completed",
-                    "input": {},
-                    "output": "",
-                    "title": node_id,
-                    "metadata": {},
-                    "time": {"start": 0, "end": chrono::Utc::now().timestamp_millis()},
-                })
-            } else {
-                json!({
-                    "status": "error",
-                    "input": {},
-                    "error": result.as_ref().err().cloned().unwrap_or_default(),
-                    "metadata": {},
-                    "time": {"start": 0, "end": chrono::Utc::now().timestamp_millis()},
-                })
-            };
-            emit_tool_part(state, assistant_msg_id, session_id, node_id, state_payload);
+            // Tool incremental output during execution. Many events per
+            // tool call — accumulate onto `state.output`.
+            create_or_update_tool_part(
+                state,
+                assistant_msg_id,
+                session_id,
+                call_id.as_deref(),
+                name,
+                ToolTransition::AppendOutput(content.clone()),
+            );
+        }
+        StreamEvent::ToolEnd {
+            call_id,
+            name,
+            result,
+            is_error,
+            raw_result,
+        } => {
+            // Final overwrite. `raw_result` (when present) is the
+            // un-normalised output that the TUI should render;
+            // `result` is a head/tail excerpt used only as a fallback.
+            create_or_update_tool_part(
+                state,
+                assistant_msg_id,
+                session_id,
+                call_id.as_deref(),
+                name,
+                ToolTransition::Finish {
+                    output: raw_result.clone().unwrap_or_else(|| result.clone()),
+                    is_error: *is_error,
+                },
+            );
         }
         StreamEvent::Usage {
             prompt_tokens,
@@ -148,60 +185,213 @@ fn translate_stream_event<S: Clone + Send + Sync + std::fmt::Debug + 'static>(
     }
 }
 
-/// Emit (or update in place) a tool part for the given graph node id.
+/// State machine for a tool part over its lifecycle. Each `Tool*` event
+/// transitions the part into a new shape.
+#[derive(Debug)]
+enum ToolTransition {
+    /// First event for this tool call: create the part with `input`.
+    Create { input: serde_json::Value },
+    /// Execution actually started. Transitions pending → running.
+    Start,
+    /// Append one chunk of output. Many events per tool call.
+    AppendOutput(String),
+    /// Final state. `output` overwrites whatever was accumulated.
+    Finish { output: String, is_error: bool },
+}
+
+/// Materialise (or update in place) a tool part for the given call.
 ///
-/// The part id is a stable `tool-{node_id}` so that a `TaskStart` followed
-/// by a `TaskEnd` for the **same** node coalesce onto one part whose `state`
-/// transitions pending → completed/error — instead of leaving a stale pending
-/// part behind. This mirrors the cumulative-update pattern used by
-/// `translate_chunk`.
-fn emit_tool_part(
+/// Part id strategy:
+/// - Prefer the explicit `call_id` (stable across the full lifecycle).
+/// - Fall back to `tool-{name}-{now_ms}` so concurrent tools of the same
+///   name without a `call_id` still get unique parts.
+fn create_or_update_tool_part(
     state: &SharedState,
     assistant_msg_id: &str,
     session_id: &str,
-    node_id: &str,
-    part_state: serde_json::Value,
+    call_id: Option<&str>,
+    tool_name: &str,
+    transition: ToolTransition,
 ) {
-    let part_id = format!("tool-{node_id}");
+    let part_id = match call_id {
+        Some(id) => format!("tool-{id}"),
+        None => format!("tool-{tool_name}-{}", chrono::Utc::now().timestamp_millis()),
+    };
 
-    // Coalesce: transition an existing part with the same stable id.
-    {
+    // Try to update an existing part first. Hot path for ToolOutput.
+    let updated = {
         let mut parts = state.parts.write();
         if let Some(list) = parts.get_mut(assistant_msg_id) {
-            for p in list.iter_mut() {
-                if p.id == part_id {
-                    p.data["state"] = part_state;
-                    let payload = p.data.clone();
-                    drop(parts);
-                    emit(
-                        state,
-                        "message.part.updated",
-                        json!({
-                            "sessionID": session_id,
-                            "part": payload,
-                            "time": chrono::Utc::now().timestamp_millis(),
-                        }),
-                    );
-                    return;
+            if let Some(p) = list.iter_mut().find(|p| p.id == part_id) {
+                apply_transition(&mut p.data, &transition);
+                let payload = p.data.clone();
+                drop(parts);
+                Some(payload)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+    if let Some(payload) = updated {
+        emit(
+            state,
+            "message.part.updated",
+            json!({
+                "sessionID": session_id,
+                "part": payload,
+                "time": chrono::Utc::now().timestamp_millis(),
+            }),
+        );
+        return;
+    }
+
+    // No existing part. Materialise one — orphan events still get
+    // surfaced so the output isn't silently swallowed.
+    let now = chrono::Utc::now().timestamp_millis();
+    let mut data = json!({
+        "id": part_id,
+        "type": "tool",
+        "callID": call_id.unwrap_or(part_id.as_str()),
+        "tool": tool_name,
+        "time": { "start": now },
+    });
+    if matches!(transition, ToolTransition::Create { .. }) {
+        apply_transition(&mut data, &transition);
+    } else {
+        data["state"] = json!({
+            "status": "pending",
+            "input": {},
+            "output": "",
+            "metadata": {},
+            "time": { "start": now },
+        });
+        apply_transition(&mut data, &transition);
+    }
+    push_part(state, assistant_msg_id, session_id, "tool", data);
+}
+
+/// Mutate a tool part's `state` (and `part.time`) per the transition.
+fn apply_transition(data: &mut serde_json::Value, transition: &ToolTransition) {
+    match transition {
+        ToolTransition::Create { input } => {
+            data["state"] = json!({
+                "status": "pending",
+                "input": input,
+                "output": "",
+                "title": data.get("tool").cloned().unwrap_or(json!("tool")),
+                "metadata": {},
+                "time": { "start": chrono::Utc::now().timestamp_millis() },
+            });
+        }
+        ToolTransition::Start => {
+            let obj = data["state"].as_object_mut().expect("state object");
+            obj.insert("status".into(), json!("running"));
+        }
+        ToolTransition::AppendOutput(content) => {
+            let obj = data["state"].as_object_mut().expect("state object");
+            let existing = obj
+                .get("output")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            obj.insert("output".into(), json!(format!("{existing}{content}")));
+        }
+        ToolTransition::Finish { output, is_error } => {
+            let end = chrono::Utc::now().timestamp_millis();
+            {
+                let obj = data["state"].as_object_mut().expect("state object");
+                obj.insert(
+                    "status".into(),
+                    json!(if *is_error { "error" } else { "completed" }),
+                );
+                obj.insert("output".into(), json!(output));
+                if *is_error {
+                    obj.insert("error".into(), json!(output));
                 }
+                if let Some(state_time) = obj.get_mut("time").and_then(|v| v.as_object_mut())
+                {
+                    state_time.insert("end".into(), json!(end));
+                }
+            }
+            if let Some(time) = data.get_mut("time").and_then(|v| v.as_object_mut()) {
+                time.insert("end".into(), json!(end));
             }
         }
     }
-
-    // No existing part — create a fresh tool part carrying tool name + state.
-    push_part(
-        state,
-        assistant_msg_id,
-        session_id,
-        "tool",
-        json!({
-            "id": part_id,
-            "type": "tool",
-            "callID": node_id,
-            "tool": node_id,
-            "state": part_state,
-        }),
-    );
+}
+/// Close any open (streaming/pending) text and reasoning parts on the
+/// assistant message. Called at the end of a run to stamp `time.end`
+/// and flip status to `completed`, so the TUI's duration renderer
+/// (`part.time.end`) no longer sees an undefined field.
+///
+/// Tool parts are intentionally **not** touched here — they have their
+/// own lifecycle (`ToolCall` → `ToolStart` → `ToolOutput*` → `ToolEnd`)
+/// and transition status via `create_or_update_tool_part`. A run that
+/// ends without `ToolEnd` (e.g. crash, cancellation) leaves the tool
+/// part in its current state for the user to inspect.
+pub fn close_open_text_parts(
+    state: &SharedState,
+    session_id: &str,
+    assistant_msg_id: &str,
+    ended_at_ms: i64,
+) {
+    let updated_parts: Vec<serde_json::Value> = {
+        let mut parts = state.parts.write();
+        let Some(list) = parts.get_mut(assistant_msg_id) else {
+            return;
+        };
+        let mut updated = Vec::new();
+        for p in list.iter_mut() {
+            // Only touch streaming text/reasoning parts — tools keep
+            // their own state machine.
+            if p.part_type != "text" && p.part_type != "reasoning" {
+                continue;
+            }
+            let Some(state_obj) = p.data.get_mut("state").and_then(|v| v.as_object_mut())
+            else {
+                continue;
+            };
+            let status = state_obj
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if status != "pending" && status != "running" && status != "streaming" {
+                continue;
+            }
+            state_obj.insert("status".into(), json!("completed"));
+            if let Some(time) = state_obj.get_mut("time").and_then(|v| v.as_object_mut()) {
+                if !time.contains_key("end") {
+                    time.insert("end".into(), json!(ended_at_ms));
+                }
+            } else {
+                state_obj.insert(
+                    "time".into(),
+                    json!({"start": ended_at_ms, "end": ended_at_ms}),
+                );
+           }
+            if let Some(part_time) = p.data.get_mut("time").and_then(|v| v.as_object_mut()) {
+                if !part_time.contains_key("end") {
+                    part_time.insert("end".into(), json!(ended_at_ms));
+                }
+            }
+            updated.push(p.data.clone());
+        }
+        updated
+    };
+    // Emit one message.part.updated per changed part so the TUI's
+    // reactive store re-renders them with the new time.end.
+    for payload in updated_parts {
+        emit(
+            state,
+            "message.part.updated",
+            json!({
+                "sessionID": session_id,
+                "part": payload,
+                "time": ended_at_ms,
+            }),
+        );
+    }
 }
 
 fn translate_chunk(
@@ -245,7 +435,15 @@ fn translate_chunk(
             }
         }
     }
-    // Or create a fresh streaming part.
+// Or create a fresh streaming part.
+    //
+    // Top-level `time` is required: the opencode TUI reads
+    // `props.part.time.end` for reasoning/text `isDone` / `duration` memos
+    // in `packages/tui/src/routes/session/index.tsx:1585,1588` and crashes
+    // with `undefined is not an object (evaluating 'props.part.time.end')`
+    // if the field is absent. `close_open_text_parts` only stamps `time.end`
+    // at run completion; the `start` timestamp must exist from the moment
+    // the part is created so the TUI's duration counter is well-defined.
     push_part(
         state,
         assistant_msg_id,
@@ -255,6 +453,7 @@ fn translate_chunk(
             "id": part_id,
             "type": part_type,
             "text": chunk.content,
+            "time": { "start": chrono::Utc::now().timestamp_millis() },
         }),
     );
 }
@@ -368,28 +567,39 @@ mod tests {
                 vec!["message.part.updated"],
             ),
             (
-                "TaskStart",
-                StreamEvent::TaskStart {
-                    node_id: "n1".to_string(),
-                    namespace: None,
+                "ToolCall",
+                StreamEvent::ToolCall {
+                    call_id: Some("c1".into()),
+                    name: "bash".into(),
+                    arguments: json!({"cmd": "ls"}),
                 },
                 vec!["message.part.updated"],
             ),
             (
-                "TaskEnd(ok)",
-                StreamEvent::TaskEnd {
-                    node_id: "n1".to_string(),
-                    result: Ok(()),
-                    namespace: None,
+                "ToolStart",
+                StreamEvent::ToolStart {
+                    call_id: Some("c1".into()),
+                    name: "bash".into(),
                 },
                 vec!["message.part.updated"],
             ),
             (
-                "TaskEnd(err)",
-                StreamEvent::TaskEnd {
-                    node_id: "n1".to_string(),
-                    result: Err("boom".to_string()),
-                    namespace: None,
+                "ToolOutput",
+                StreamEvent::ToolOutput {
+                    call_id: Some("c1".into()),
+                    name: "bash".into(),
+                    content: "first chunk\n".into(),
+                },
+                vec!["message.part.updated"],
+            ),
+            (
+                "ToolEnd(ok)",
+                StreamEvent::ToolEnd {
+                    call_id: Some("c1".into()),
+                    name: "bash".into(),
+                    result: "first chunk\n".into(),
+                    is_error: false,
+                    raw_result: Some("first chunk\n".into()),
                 },
                 vec!["message.part.updated"],
             ),
@@ -497,37 +707,27 @@ mod tests {
                     edges_added: 0,
                 },
             ),
-            (
-                "ToolCall",
-                StreamEvent::ToolCall {
-                    call_id: None,
-                    name: "bash".to_string(),
-                    arguments: json!({}),
+(
+                "TaskStart",
+                StreamEvent::TaskStart {
+                    node_id: "n1".to_string(),
+                    namespace: None,
                 },
             ),
             (
-                "ToolStart",
-                StreamEvent::ToolStart {
-                    call_id: None,
-                    name: "bash".to_string(),
+                "TaskEnd(ok)",
+                StreamEvent::TaskEnd {
+                    node_id: "n1".to_string(),
+                    result: Ok(()),
+                    namespace: None,
                 },
             ),
             (
-                "ToolOutput",
-                StreamEvent::ToolOutput {
-                    call_id: None,
-                    name: "bash".to_string(),
-                    content: "out".to_string(),
-                },
-            ),
-            (
-                "ToolEnd",
-                StreamEvent::ToolEnd {
-                    call_id: None,
-                    name: "bash".to_string(),
-                    result: "done".to_string(),
-                    is_error: false,
-                    raw_result: None,
+                "TaskEnd(err)",
+                StreamEvent::TaskEnd {
+                    node_id: "n1".to_string(),
+                    result: Err("boom".to_string()),
+                    namespace: None,
                 },
             ),
         ];
@@ -543,7 +743,7 @@ mod tests {
 
     // ─────────────── content-verification tests ───────────────
 
-    #[test]
+#[test]
     fn messages_text_event_creates_text_part_with_content() {
         let state = new_state();
         translate_stream_event(
@@ -564,13 +764,115 @@ mod tests {
         assert_eq!(part.data["text"], "hello world");
     }
 
+    /// Regression: the opencode TUI reads `props.part.time.end` for every
+    /// part type (see `routes/session/index.tsx:1585,1588`) and crashes
+    /// with `undefined is not an object (evaluating 'props.part.time.end')`
+    /// if the field is absent. Lock the contract: text/reasoning parts
+    /// MUST carry `time.start` from creation.
     #[test]
-    fn task_start_creates_pending_tool_part() {
+    fn messages_chunks_stamp_top_level_time_start_on_creation() {
+        let state = new_state();
+        translate_chunk(&MessageChunk::message("hello"), "sess", "msg", &state);
+        translate_chunk(&MessageChunk::thinking("plan"), "sess", "msg", &state);
+
+        let parts = state.parts.read();
+        let list = parts.get("msg").expect("translated parts");
+        for part in list {
+            assert!(
+                part.data.get("time").is_some(),
+                "{} part must carry top-level `time` for TUI duration rendering (got {})",
+                part.part_type,
+                part.data,
+            );
+            assert!(
+                part.data["time"]["start"].as_i64().is_some(),
+                "{} part must carry `time.start` (got {})",
+                part.part_type,
+                part.data["time"],
+            );
+        }
+    }
+
+    /// Regression: subsequent chunks on an already-existing part must NOT
+    /// clobber the original `time.start` (or strip `time` altogether).
+    /// The first create path stamps `start`; the append-in-place path
+    /// (`translate_chunk`) must preserve it so the TUI's duration
+    /// counter stays consistent across the run.
+    #[test]
+    fn appending_to_text_part_preserves_top_level_time_start() {
+        let state = new_state();
+        translate_chunk(&MessageChunk::message("hello "), "sess", "msg", &state);
+        let start_first = state.parts.read().get("msg").unwrap()[0].data["time"]["start"]
+            .as_i64()
+            .expect("first chunk must stamp time.start");
+        translate_chunk(&MessageChunk::message("world"), "sess", "msg", &state);
+        let start_second = state.parts.read().get("msg").unwrap()[0].data["time"]["start"]
+            .as_i64()
+            .expect("append must preserve time.start");
+        assert_eq!(
+            start_first, start_second,
+            "appending chunks must not overwrite time.start"
+        );
+    }
+
+    #[test]
+    fn tool_call_to_end_coalesces_into_one_part_with_input_and_output() {
         let state = new_state();
         translate_stream_event(
-            &StreamEvent::<TestState>::TaskStart {
-                node_id: "my-tool".to_string(),
-                namespace: None,
+            &StreamEvent::<TestState>::ToolCall {
+                call_id: Some("c-read".into()),
+                name: "read_file".into(),
+                arguments: json!({"path": "/tmp/x"}),
+            },
+            "sess",
+            "msg",
+            &state,
+        );
+        translate_stream_event(
+            &StreamEvent::<TestState>::ToolOutput {
+                call_id: Some("c-read".into()),
+                name: "read_file".into(),
+                content: "the file".into(),
+            },
+            "sess",
+            "msg",
+            &state,
+        );
+        translate_stream_event(
+            &StreamEvent::<TestState>::ToolEnd {
+                call_id: Some("c-read".into()),
+                name: "read_file".into(),
+                result: "head/tail".into(),
+                is_error: false,
+                raw_result: Some("the file content".into()),
+            },
+            "sess",
+            "msg",
+            &state,
+        );
+
+        let parts = state.parts.read();
+        let list = parts.get("msg").expect("parts exist");
+        assert_eq!(list.len(), 1, "tool lifecycle must coalesce onto one part");
+        let part = &list[0];
+        assert_eq!(part.id, "tool-c-read");
+        assert_eq!(part.data["state"]["status"], "completed");
+        assert_eq!(part.data["state"]["input"]["path"], "/tmp/x");
+        assert_eq!(
+            part.data["state"]["output"], "the file content",
+            "ToolEnd prefers raw_result over result (head/tail excerpt)"
+        );
+        assert!(part.data["time"]["end"].as_i64().is_some());
+    }
+
+    #[test]
+    fn tool_call_input_is_stored_verbatim_for_tui_argument_rendering() {
+        let state = new_state();
+        translate_stream_event(
+            &StreamEvent::<TestState>::ToolCall {
+                call_id: Some("c-bash".into()),
+                name: "bash".into(),
+                arguments: json!({"command": "ls -la", "timeout": 5000}),
             },
             "sess",
             "msg",
@@ -580,18 +882,32 @@ mod tests {
         let part = parts
             .get("msg")
             .and_then(|l| l.first())
-            .expect("tool part created");
-        assert_eq!(part.part_type, "tool");
-        assert_eq!(part.data["state"]["status"], "pending");
-        assert_eq!(part.data["tool"], "my-tool");
+            .expect("tool part");
+        assert_eq!(part.data["tool"], "bash");
+        assert_eq!(part.data["state"]["input"]["command"], "ls -la");
+        assert_eq!(part.data["state"]["input"]["timeout"], 5000);
     }
 
     #[test]
-    fn task_end_ok_creates_completed_tool_part() {
+    fn task_start_and_task_end_are_intentionally_dropped() {
+        // The agent layer (agent::map_stream_event) already filters these
+        // out for its own consumers because `node_id` like "think"/"observe"
+        // is graph-internal orchestration, not a real tool. The translator
+        // mirrors that filtering here so the chat panel doesn't render empty
+        // `tool-{node_id}` blocks with `output: ""`.
         let state = new_state();
         translate_stream_event(
+            &StreamEvent::<TestState>::TaskStart {
+                node_id: "think".into(),
+                namespace: None,
+            },
+            "sess",
+            "msg",
+            &state,
+        );
+        translate_stream_event(
             &StreamEvent::<TestState>::TaskEnd {
-                node_id: "my-tool".to_string(),
+                node_id: "think".into(),
                 result: Ok(()),
                 namespace: None,
             },
@@ -600,33 +916,17 @@ mod tests {
             &state,
         );
         let parts = state.parts.read();
-        let part = parts
-            .get("msg")
-            .and_then(|l| l.first())
-            .expect("tool part created");
-        assert_eq!(part.data["state"]["status"], "completed");
-    }
-
-    #[test]
-    fn task_end_err_creates_error_tool_part() {
-        let state = new_state();
-        translate_stream_event(
-            &StreamEvent::<TestState>::TaskEnd {
-                node_id: "my-tool".to_string(),
-                result: Err("tool failed".to_string()),
-                namespace: None,
-            },
-            "sess",
-            "msg",
-            &state,
+        let list = parts.get("msg");
+        assert!(
+            list.map(|l| l.is_empty()).unwrap_or(true),
+            "TaskStart/TaskEnd must not create tool parts"
         );
-        let parts = state.parts.read();
-        let part = parts
-            .get("msg")
-            .and_then(|l| l.first())
-            .expect("tool part created");
-        assert_eq!(part.data["state"]["status"], "error");
-        assert_eq!(part.data["state"]["error"], "tool failed");
+        let events = snapshot_replay(&state, None);
+        assert!(
+            events.is_empty(),
+            "TaskStart/TaskEnd must not emit any SSE events, got {:?}",
+            events.iter().map(|e| &e.payload.event_type).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -657,98 +957,4 @@ mod tests {
         assert_eq!(props["messageID"], "msg");
     }
 
-    // ─────────────── tool-part lifecycle (LS-009) ───────────────
-    //
-    // TaskStart → TaskEnd for the same node must coalesce onto a single
-    // stable tool part whose state transitions pending → completed/error.
-
-    #[test]
-    fn task_lifecycle_start_then_end_coalesces_into_one_part() {
-        let state = new_state();
-        // Start: pending.
-        translate_stream_event(
-            &StreamEvent::<TestState>::TaskStart {
-                node_id: "read_file".to_string(),
-                namespace: None,
-            },
-            "sess",
-            "msg",
-            &state,
-        );
-        // End: completed — same node id.
-        translate_stream_event(
-            &StreamEvent::<TestState>::TaskEnd {
-                node_id: "read_file".to_string(),
-                result: Ok(()),
-                namespace: None,
-            },
-            "sess",
-            "msg",
-            &state,
-        );
-        let parts = state.parts.read();
-        let list = parts.get("msg").expect("parts exist");
-        assert_eq!(
-            list.len(),
-            1,
-            "start+end must coalesce into a single tool part"
-        );
-        let part = &list[0];
-        assert_eq!(part.id, "tool-read_file", "stable id derived from node id");
-        assert_eq!(part.part_type, "tool");
-        assert_eq!(part.data["state"]["status"], "completed");
-        assert_eq!(part.data["tool"], "read_file");
     }
-
-    #[test]
-    fn task_lifecycle_start_then_error_coalesces_into_one_part() {
-        let state = new_state();
-        translate_stream_event(
-            &StreamEvent::<TestState>::TaskStart {
-                node_id: "write_file".to_string(),
-                namespace: None,
-            },
-            "sess",
-            "msg",
-            &state,
-        );
-        translate_stream_event(
-            &StreamEvent::<TestState>::TaskEnd {
-                node_id: "write_file".to_string(),
-                result: Err("disk full".to_string()),
-                namespace: None,
-            },
-            "sess",
-            "msg",
-            &state,
-        );
-        let parts = state.parts.read();
-        let list = parts.get("msg").expect("parts exist");
-        assert_eq!(list.len(), 1, "start+error must coalesce into one part");
-        let part = &list[0];
-        assert_eq!(part.id, "tool-write_file");
-        assert_eq!(part.data["state"]["status"], "error");
-        assert_eq!(part.data["state"]["error"], "disk full");
-    }
-
-    #[test]
-    fn distinct_node_ids_produce_distinct_stable_tool_parts() {
-        let state = new_state();
-        for node in ["alpha", "beta"] {
-            translate_stream_event(
-                &StreamEvent::<TestState>::TaskStart {
-                    node_id: node.to_string(),
-                    namespace: None,
-                },
-                "sess",
-                "msg",
-                &state,
-            );
-        }
-        let parts = state.parts.read();
-        let list = parts.get("msg").expect("parts exist");
-        assert_eq!(list.len(), 2, "two distinct tools → two distinct parts");
-        assert_eq!(list[0].id, "tool-alpha");
-        assert_eq!(list[1].id, "tool-beta");
-    }
-}

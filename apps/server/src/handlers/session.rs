@@ -18,6 +18,7 @@ use serde_json::{json, Value};
 
 use crate::agent_runner::{run_agent, RunCompletion};
 use crate::location::LocationQuery;
+use crate::translator;
 use crate::state::{
     begin_run, emit, end_run, lookup_run, make_session, new_message_id, new_part_id,
     new_session_id, persist_messages, persist_parts, persist_session, persist_session_cascade,
@@ -314,6 +315,7 @@ async fn prompt_v2(state: SharedState, session_id: String, body: Value) -> Respo
         )
         .await;
 
+        let completed = Utc::now().timestamp_millis();
         if let Ok(RunCompletion::Finished { reply }) = &outcome {
             let has_text = state_bg
                 .parts
@@ -326,7 +328,11 @@ async fn prompt_v2(state: SharedState, session_id: String, body: Value) -> Respo
                     &assistant_message_id,
                     &sid,
                     "text",
-                    json!({"id": "text-0", "text": reply}),
+                    json!({
+                        "id": "text-0",
+                        "text": reply,
+                        "time": {"start": completed, "end": completed},
+                    }),
                 );
             }
         }
@@ -336,7 +342,6 @@ async fn prompt_v2(state: SharedState, session_id: String, body: Value) -> Respo
             Ok(RunCompletion::Cancelled) => "cancelled",
             Err(_) => "error",
         };
-        let completed = Utc::now().timestamp_millis();
         let final_info = {
             let mut messages = state_bg.messages.write();
             let message = messages.get_mut(&sid).and_then(|messages| {
@@ -358,6 +363,12 @@ async fn prompt_v2(state: SharedState, session_id: String, body: Value) -> Respo
             &state_bg,
             "message.updated",
             json!({"sessionID": &sid, "info": final_info}),
+        );
+        translator::close_open_text_parts(
+            &state_bg,
+            &sid,
+            &assistant_message_id,
+            completed,
         );
         emit(
             &state_bg,
@@ -809,6 +820,40 @@ pub async fn api_session_interrupt(
     session_abort(State(state), Path(session_id)).await
 }
 
+/// `GET /api/session/:sessionID/status` — v2 session run status.
+/// Returns actual session model/provider/agent from state.
+pub async fn session_status(
+    State(state): State<SharedState>,
+    Path(session_id): Path<String>,
+) -> Response {
+    let sessions = state.sessions.read();
+    let Some(session) = sessions.get(&session_id) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let (model_id, provider_id) = session
+        .model
+        .as_ref()
+        .map(|m| (m.model_id.clone(), m.provider_id.clone()))
+        .unwrap_or_default();
+    let agent = session.agent.clone().unwrap_or_else(|| "build".to_string());
+    let state_field = if crate::state::lookup_run(&state, &session_id).is_some() {
+        "busy"
+    } else {
+        "idle"
+    };
+    drop(sessions);
+    Json(json!({
+        "id": session_id,
+        "state": state_field,
+        "modelID": model_id,
+        "providerID": provider_id,
+        "agent": agent,
+        "startedAt": chrono::Utc::now().timestamp_millis(),
+        "updatedAt": chrono::Utc::now().timestamp_millis(),
+    }))
+    .into_response()
+}
+
 // ───────────────────────── session lifecycle (P1.13) ─────────────────────────
 
 /// `POST /session/:id/share` — mark a session as shared.
@@ -962,6 +1007,55 @@ pub async fn post_api_session_revert(
 ) -> Json<Value> {
     emit(&state, "session.revert", json!({ "sessionID": session_id }));
     Json(json!({ "ok": true }))
+}
+
+/// `DELETE /session/:id/share` — unshare a session.
+pub async fn delete_session_share(
+    State(state): State<SharedState>,
+    Path(session_id): Path<String>,
+) -> Response {
+    let session = {
+        let mut sessions = state.sessions.write();
+        let Some(session) = sessions.get_mut(&session_id) else {
+            return StatusCode::NOT_FOUND.into_response();
+        };
+        session.share = None;
+        session.time.updated = Utc::now().timestamp_millis();
+        session.clone()
+    };
+    persist_session(&state, &session);
+    emit(
+        &state,
+        "session.updated",
+        json!({"sessionID": session_id, "info": session}),
+    );
+    StatusCode::NO_CONTENT.into_response()
+}
+
+/// `GET /session/:id/todo` — return todo list for a session.
+pub async fn get_session_todo(
+    State(state): State<SharedState>,
+    Path(session_id): Path<String>,
+) -> Response {
+    let sessions = state.sessions.read();
+    if !sessions.contains_key(&session_id) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    drop(sessions);
+    Json(json!({ "sessionID": session_id, "todos": [] })).into_response()
+}
+
+/// `GET /session/:id/diff` — return diff data for a session.
+pub async fn get_session_diff(
+    State(state): State<SharedState>,
+    Path(session_id): Path<String>,
+) -> Response {
+    let sessions = state.sessions.read();
+    if !sessions.contains_key(&session_id) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    drop(sessions);
+    Json(json!({ "sessionID": session_id, "diff": [] })).into_response()
 }
 
 // ───────────────────────── helpers ─────────────────────────
@@ -1186,6 +1280,7 @@ pub(crate) async fn run_prompt(
     )
     .await;
 
+    let completed = Utc::now().timestamp_millis();
     if let Ok(RunCompletion::Finished { reply }) = &outcome {
         let has_text = state
             .parts
@@ -1198,7 +1293,11 @@ pub(crate) async fn run_prompt(
                 &assistant_message_id,
                 &session_id,
                 "text",
-                json!({"id": "text-0", "text": reply}),
+                json!({
+                    "id": "text-0",
+                    "text": reply,
+                    "time": {"start": completed, "end": completed},
+                }),
             );
         }
     }
@@ -1208,7 +1307,6 @@ pub(crate) async fn run_prompt(
         Ok(RunCompletion::Cancelled) => "cancelled",
         Err(_) => "error",
     };
-    let completed = Utc::now().timestamp_millis();
     let final_info = {
         let mut messages = state.messages.write();
         let message = messages.get_mut(&session_id).and_then(|messages| {
@@ -1230,6 +1328,12 @@ pub(crate) async fn run_prompt(
         &state,
         "message.updated",
         json!({"sessionID": session_id, "info": final_info}),
+    );
+    translator::close_open_text_parts(
+        &state,
+        &session_id,
+        &assistant_message_id,
+        completed,
     );
     emit(
         &state,

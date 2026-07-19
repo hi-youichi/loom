@@ -19,12 +19,7 @@ pub async fn get_api_health() -> Json<Value> {
 }
 
 pub async fn get_global_health() -> Json<Value> {
-    Json(json!({
-        "healthy": true,
-        "ok": true,
-        "kind": "external-kernel",
-        "version": env!("CARGO_PKG_VERSION"),
-    }))
+    Json(json!({ "healthy": true }))
 }
 
 pub async fn get_permission_saved() -> Json<Value> {

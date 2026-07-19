@@ -115,19 +115,15 @@ pub async fn patch_global_config(
         }
         emit(
             &state,
-            "server.instance.disposed",
-            json!({"reason": "config.changed"}),
+            "server.config.changed",
+            json!({}),
         );
     }
     response
 }
 
 fn loom_config_path() -> PathBuf {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."));
-    home.join(".loom").join("config.toml")
+    config::home::loom_home().join("config.toml")
 }
 
 /// `POST /session/:id/init` — project init handler (task P1.13).

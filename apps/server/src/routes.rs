@@ -91,6 +91,9 @@ pub fn build_router(state: SharedState) -> Router {
             get(handlers::v2_compat::empty_list),
         )
         .route("/command", get(handlers::bootstrap::get_command_list))
+        // Note: `/api/command` (list) is registered below in the v2 SDK
+        // aliases block since `get_api_commands` returns the contract-shaped
+        // `Location.response` envelope and uses `bootstrap::get_api_commands`.
         .route(
             "/mcp",
             get(handlers::mcp_pty_file::get_api_mcp_status)
@@ -98,6 +101,10 @@ pub fn build_router(state: SharedState) -> Router {
         )
         .route(
             "/mcp/status",
+            get(handlers::mcp_pty_file::get_mcp_status_legacy),
+        )
+        .route(
+            "/api/mcp/status",
             get(handlers::mcp_pty_file::get_mcp_status_legacy),
         )
         .route(
@@ -121,7 +128,15 @@ pub fn build_router(state: SharedState) -> Router {
             get(handlers::messages::get_session_status),
         )
         .route(
+            "/api/session/status",
+            get(handlers::messages::get_session_status),
+        )
+        .route(
             "/experimental/capabilities",
+            get(handlers::experimental::get_capabilities),
+        )
+        .route(
+            "/api/experimental/capabilities",
             get(handlers::experimental::get_capabilities),
         )
         .route(
@@ -129,11 +144,30 @@ pub fn build_router(state: SharedState) -> Router {
             get(handlers::experimental::get_console),
         )
         .route(
+            // v2 SDK client prefix: the TUI's `sync.tsx:458` calls
+            // `sdk.client.experimental.console.get(...)` which resolves
+            // to `/api/experimental/console` (not the v1 `/experimental/console`).
+            // Without this alias, the request 404s, `x.data` is undefined,
+            // `reconcile(undefined)` writes `undefined` into
+            // `sync.data.console_state`, and `dialog-provider.tsx:135` crashes
+            // with `undefined is not an object (evaluating 'consoleManagedProviders.has')`.
+            "/api/experimental/console",
+            get(handlers::experimental::get_console),
+        )
+        .route(
             "/experimental/console/orgs",
             get(handlers::experimental::get_console_orgs),
         )
         .route(
+            "/api/experimental/console/orgs",
+            get(handlers::experimental::get_console_orgs),
+        )
+        .route(
             "/experimental/console/org",
+            post(handlers::experimental::post_console_org),
+        )
+        .route(
+            "/api/experimental/console/org",
             post(handlers::experimental::post_console_org),
         )
         .route(
@@ -150,7 +184,15 @@ pub fn build_router(state: SharedState) -> Router {
             get(handlers::experimental::get_resource_list),
         )
         .route(
+            "/api/experimental/resource/list",
+            get(handlers::experimental::get_resource_list),
+        )
+        .route(
             "/experimental/eval",
+            post(handlers::experimental::post_eval),
+        )
+        .route(
+            "/api/experimental/eval",
             post(handlers::experimental::post_eval),
         )
         // ─── v2 bootstrap (P0.2) ────────────────────────────────
@@ -286,6 +328,7 @@ pub fn build_router(state: SharedState) -> Router {
                 .delete(handlers::v2_compat::instance_dispose),
         )
         .route("/auth", get(handlers::instance::get_auth))
+        .route("/api/auth", get(handlers::instance::get_auth))
         // ─── Session CRUD (P1.13, P1.14) ───────────────────────
         .route(
             "/session",
@@ -309,7 +352,7 @@ pub fn build_router(state: SharedState) -> Router {
         )
         .route(
             "/global/session/:id",
-            delete(handlers::global_bus::delete_global_session),
+            delete(handlers::session::delete_session),
         )
         .route(
             "/session/:id/children",
@@ -333,16 +376,22 @@ pub fn build_router(state: SharedState) -> Router {
         )
         .route(
             "/session/:id/share",
-            post(handlers::session::post_session_share).delete(handlers::v2_compat::true_value),
+            post(handlers::session::post_session_share)
+                .delete(handlers::session::delete_session_share),
         )
         .route(
             "/api/session/:sessionID/share",
-            post(handlers::session::post_session_share),
+            post(handlers::session::post_session_share)
+                .delete(handlers::session::delete_session_share),
         )
         // ─── Session main paths (P1.8, P1.9, P1.10, P1.11, P1.13) ──
         .route("/session/:id/prompt", post(handlers::session::prompt))
         .route(
             "/session/:id/prompt_async",
+            post(handlers::session::prompt_async),
+        )
+        .route(
+            "/api/session/:sessionID/prompt_async",
             post(handlers::session::prompt_async),
         )
         .route(
@@ -374,7 +423,7 @@ pub fn build_router(state: SharedState) -> Router {
         )
         .route(
             "/api/session/:sessionID/status",
-            get(handlers::v2_compat::session_status),
+            get(handlers::session::session_status),
         )
         .route(
             "/api/session/:sessionID/fork",
@@ -612,11 +661,19 @@ pub fn build_router(state: SharedState) -> Router {
         )
         .route(
             "/session/:id/todo",
-            get(handlers::messages::get_session_todo),
+            get(handlers::session::get_session_todo),
+        )
+        .route(
+            "/api/session/:sessionID/todo",
+            get(handlers::session::get_session_todo),
         )
         .route(
             "/session/:id/diff",
-            get(handlers::messages::get_session_diff),
+            get(handlers::session::get_session_diff),
+        )
+        .route(
+            "/api/session/:sessionID/diff",
+            get(handlers::session::get_session_diff),
         )
         .route(
             "/api/session/:sessionID/messages",

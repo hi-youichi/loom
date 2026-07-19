@@ -30,7 +30,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use tokio::sync::broadcast;
 use tool_core::active_operation::RunCancellation;
 
@@ -39,6 +39,33 @@ use tool_core::active_operation::RunCancellation;
 /// enough; we only need uniqueness within a single SSE session per the
 /// spec (`protocols/sse-events.md:75-91`).
 static NEXT_EVENT_ID: parking_lot::Mutex<u64> = parking_lot::Mutex::new(1);
+
+/// Serialize `Option<T>` as `T` (when `Some`) or explicit JSON `null`
+/// (when `None`). Use via `#[serde(serialize_with = "serialize_optional")]`
+/// in place of `#[serde(skip_serializing_if = "Option::is_none")]`
+/// whenever the wire consumer is expected to *see* the field, not skip
+/// it.
+///
+/// Why we have this:
+///
+/// The opencode/openchamber TUI reads nested map keys with
+/// `Object.has(info, 'parentID')`, `info.tool.has(...)`, `info.model.has(...)`,
+/// etc. When `Option::is_none` makes those fields disappear entirely from the
+/// serialized JSON, the lookup target is `undefined` and the first keypress
+/// that triggers a SolidJS re-render crashes the TUI with
+/// `undefined is not an object (evaluating 'U.has')`. Emitting `null` instead
+/// keeps the field present so the JS check sees `Object.has(info, 'parentID')
+/// === false` instead of throwing.
+pub fn serialize_optional<T, S>(value: &Option<T>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    T: Serialize,
+    S: Serializer,
+{
+    match value {
+        Some(v) => serializer.serialize_some(v),
+        None => serializer.serialize_none(),
+    }
+}
 
 /// Shared handle handed to every route via `axum::extract::State`.
 pub type SharedState = Arc<AppState>;
@@ -106,11 +133,11 @@ const EVENT_BUFFER_CAP: usize = 512;
 /// shape; we keep our MVP scaffold small and add fields as handlers need them.
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct ConfigInfo {
-    #[serde(skip_serializing_if = "Option::is_none")]
+#[serde(default, serialize_with = "serialize_optional")]
     pub theme: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub provider: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub providers: Vec<serde_json::Value>,
@@ -125,9 +152,9 @@ pub struct ProjectInfo {
     pub id: String,
     pub worktree: String,
     pub directory: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+#[serde(default, serialize_with = "serialize_optional")]
     pub vcs: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub workspace_id: Option<String>,
 }
 
@@ -165,31 +192,31 @@ pub struct SessionInfo {
     pub title: String,
     #[serde(default)]
     pub version: String,
-    #[serde(skip_serializing_if = "Option::is_none", rename = "parentID")]
+#[serde(default, rename = "parentID", serialize_with = "serialize_optional")]
     pub parent_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", rename = "workspaceID")]
+    #[serde(default, rename = "workspaceID", serialize_with = "serialize_optional")]
     pub workspace_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub path: Option<PathInfo>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub summary: Option<SummaryInfo>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub cost: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub tokens: Option<TokensInfo>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub share: Option<ShareInfo>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub permission: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub revert: Option<serde_json::Value>,
     /// Allowed optional fields per spec; represented as flat extras for
     /// MVP to avoid extending the schema every iteration.
     #[serde(flatten)]
     pub extras: HashMap<String, serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+#[serde(default, serialize_with = "serialize_optional")]
     pub agent: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub model: Option<ModelInfo>,
     #[serde(default)]
     pub time: TimeInfo,
@@ -235,7 +262,7 @@ pub struct ModelInfo {
     pub provider_id: String,
     #[serde(rename = "modelID")]
     pub model_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+#[serde(default, serialize_with = "serialize_optional")]
     pub variant: Option<String>,
 }
 
@@ -243,9 +270,9 @@ pub struct ModelInfo {
 pub struct TimeInfo {
     pub created: i64,
     pub updated: i64,
-    #[serde(skip_serializing_if = "Option::is_none", rename = "compacting")]
+#[serde(default, rename = "compacting", serialize_with = "serialize_optional")]
     pub compacting: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none", rename = "archived")]
+    #[serde(default, rename = "archived", serialize_with = "serialize_optional")]
     pub archived: Option<i64>,
 }
 
@@ -262,25 +289,25 @@ pub struct MessageInfo {
     pub time: serde_json::Value,
     #[serde(default)]
     pub agent: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+#[serde(default, serialize_with = "serialize_optional")]
     pub model: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none", rename = "parentID")]
+    #[serde(default, rename = "parentID", serialize_with = "serialize_optional")]
     pub parent_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", rename = "tool")]
+    #[serde(default, rename = "tool", serialize_with = "serialize_optional")]
     pub tool: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub finish: Option<String>,
-    #[serde(rename = "providerID", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "providerID", serialize_with = "serialize_optional")]
     pub provider_id: Option<String>,
-    #[serde(rename = "modelID", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "modelID", serialize_with = "serialize_optional")]
     pub model_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub path: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub cost: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub tokens: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub mode: Option<String>,
 }
 
@@ -551,14 +578,14 @@ pub enum CredentialValue {
         refresh: String,
         access: String,
         expires: u64,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default, serialize_with = "serialize_optional")]
         metadata: Option<serde_json::Value>,
     },
     /// `Credential.Key` — raw API key.
     #[serde(rename = "key")]
     Key {
         key: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default, serialize_with = "serialize_optional")]
         metadata: Option<serde_json::Value>,
     },
 }
@@ -569,7 +596,7 @@ pub enum CredentialValue {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CredentialEntry {
     pub label: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub value: Option<CredentialValue>,
 }
 
@@ -599,7 +626,7 @@ pub struct PtyInfo {
     /// `"running"` | `"exited"`.
     pub status: String,
     pub pid: u32,
-    #[serde(rename = "exitCode", skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "exitCode", serialize_with = "serialize_optional")]
     pub exit_code: Option<u32>,
 }
 
@@ -862,7 +889,206 @@ mod cancellation_tests {
             Some(second.generation())
         );
 
-        end_run(&state, "sess_test", second.generation());
+end_run(&state, "sess_test", second.generation());
         assert!(lookup_run(&state, "sess_test").is_none());
+    }
+}
+
+#[cfg(test)]
+mod optional_field_serialization {
+    //! Regression tests for the `U.has` TUI crash.
+    //!
+    //! The opencode/openchamber TUI does `Object.has(info, 'parentID')`,
+    //! `info.tool.has(...)`, etc. on every reactive re-render. If those
+    //! fields are *omitted* (rather than serialized as JSON `null`), the
+    //! JS lookup target becomes `undefined` and the first keypress crashes
+    //! the TUI with `undefined is not an object (evaluating 'U.has')`.
+    //!
+    //! These tests pin the contract: every `Option<T>` on `SessionInfo`,
+    //! `MessageInfo`, and friends is serialized as a stable field whose
+    //! value is either the inner `T` or `null`, never absent.
+
+    use super::*;
+
+    fn assert_field_present(value: &serde_json::Value, key: &str) {
+        assert!(
+            value.get(key).is_some(),
+            "field `{key}` must be present in serialized JSON (got {})",
+            value,
+        );
+    }
+
+    fn assert_field_null(value: &serde_json::Value, key: &str) {
+        assert_field_present(value, key);
+        assert_eq!(
+            value.get(key),
+            Some(&serde_json::Value::Null),
+            "field `{key}` must be serialized as JSON null when the Rust \
+             `Option<T>` is `None` (got {})",
+            value,
+        );
+    }
+
+    #[test]
+    fn session_info_none_option_fields_serialize_as_null() {
+        let state = new_state();
+        let mut session = make_session(&state, None);
+        session.parent_id = None;
+        session.workspace_id = None;
+        session.summary = None;
+        session.share = None;
+        session.permission = None;
+        session.revert = None;
+        session.agent = None;
+        session.model = None;
+
+        let json = serde_json::to_value(&session).expect("serialize session");
+
+        for key in [
+            "parentID",
+            "workspaceID",
+            "summary",
+            "share",
+            "permission",
+            "revert",
+            "agent",
+            "model",
+        ] {
+            assert_field_null(&json, key);
+        }
+        // These are explicitly Some — keep them as a positive control so a
+        // blanket-all-null mistake doesn't slip past.
+        assert_field_present(&json, "id");
+        assert!(json["id"].is_string());
+    }
+
+    #[test]
+    fn message_info_none_option_fields_serialize_as_null() {
+        let info = MessageInfo {
+            id: "msg_x".into(),
+            session_id: "sess_x".into(),
+            role: "assistant".into(),
+            time: serde_json::json!({}),
+            agent: "build".into(),
+            model: None,
+            parent_id: None,
+            tool: None,
+            finish: None,
+            provider_id: None,
+            model_id: None,
+            path: None,
+            cost: None,
+            tokens: None,
+            mode: None,
+        };
+
+        let json = serde_json::to_value(&info).expect("serialize message");
+
+        for key in [
+            "model",
+            "parentID",
+            "tool",
+            "finish",
+            "providerID",
+            "modelID",
+            "path",
+            "cost",
+            "tokens",
+            "mode",
+        ] {
+            assert_field_null(&json, key);
+        }
+        assert_eq!(json["role"], "assistant");
+        assert_eq!(json["sessionID"], "sess_x");
+    }
+
+    #[test]
+    fn message_info_some_option_fields_serialize_as_inner_value() {
+        let info = MessageInfo {
+            id: "msg_x".into(),
+            session_id: "sess_x".into(),
+            role: "user".into(),
+            time: serde_json::json!({}),
+            agent: "build".into(),
+            model: Some(serde_json::json!({"providerID": "p", "modelID": "m"})),
+            parent_id: Some("msg_parent".into()),
+            tool: Some(serde_json::json!({"name": "bash"})),
+            finish: Some("stop".into()),
+            provider_id: Some("p".into()),
+            model_id: Some("m".into()),
+            path: Some(serde_json::json!({"cwd": "/tmp"})),
+            cost: Some(0.42),
+            tokens: Some(serde_json::json!({"input": 1, "output": 2})),
+            mode: Some("build".into()),
+        };
+
+        let json = serde_json::to_value(&info).expect("serialize message");
+
+        // The `Some` branch must keep using the inner T — not fall back to
+        // `serialize_none`. Verifies the helper is wired correctly.
+        assert_eq!(json["parentID"], "msg_parent");
+        assert_eq!(json["finish"], "stop");
+        assert_eq!(json["providerID"], "p");
+        assert_eq!(json["modelID"], "m");
+        assert_eq!(json["cost"], 0.42);
+        assert_eq!(json["mode"], "build");
+        assert_eq!(json["model"]["providerID"], "p");
+        assert_eq!(json["tool"]["name"], "bash");
+    }
+
+    #[test]
+    fn time_info_optional_subfields_serialize_as_null() {
+        let info = TimeInfo {
+            created: 1,
+            updated: 2,
+            compacting: None,
+            archived: None,
+        };
+
+        let json = serde_json::to_value(&info).expect("serialize time");
+        assert_field_null(&json, "compacting");
+        assert_field_null(&json, "archived");
+        assert_eq!(json["created"], 1);
+        assert_eq!(json["updated"], 2);
+    }
+
+    #[test]
+    fn pty_info_exit_code_absent_while_running_serializes_as_null() {
+        let info = PtyInfo {
+            id: "pty_x".into(),
+            title: "t".into(),
+            command: "bash".into(),
+            args: vec![],
+            cwd: "/".into(),
+            status: "running".into(),
+            pid: 1234,
+            exit_code: None,
+        };
+
+        let json = serde_json::to_value(&info).expect("serialize pty");
+        assert_field_null(&json, "exitCode");
+        assert_eq!(json["status"], "running");
+    }
+
+    #[test]
+    fn deserialization_tolerates_missing_option_fields() {
+        // Round-trip guarantee: an external client that omits (instead of
+        // nullifying) optional fields must still parse back into a usable
+        // Rust value. The `default` attribute on every `Option<T>` field
+        // makes this work.
+        let bare: serde_json::Value = serde_json::json!({
+            "id": "sess_x",
+            "slug": "sess_x",
+            "projectID": "proj_x",
+            "directory": "/tmp",
+            "title": "t",
+        });
+
+        let parsed: SessionInfo =
+            serde_json::from_value(bare).expect("deserialize bare session");
+        assert_eq!(parsed.id, "sess_x");
+        assert!(parsed.parent_id.is_none());
+        assert!(parsed.summary.is_none());
+        assert!(parsed.model.is_none());
     }
 }
