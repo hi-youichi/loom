@@ -289,7 +289,7 @@ impl SkillViewTool {
                 "skills directory not found: {}",
                 skills_dir.display()
             )));
-}
+        }
 
         let mut temp_registry = SkillRegistry::empty();
         temp_registry.skills =
@@ -400,20 +400,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn view_filesystem_skill_still_works() {
+    async fn view_filesystem_skill_with_file_path_works() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let skill_dir = tmp.path().join("my-skill");
-        std::fs::create_dir_all(&skill_dir).expect("mkdir");
+        let skill_dir = tmp.path().join("disk-skill");
+        let refs_dir = skill_dir.join("references");
+        std::fs::create_dir_all(&refs_dir).expect("mkdir references");
         std::fs::write(
             skill_dir.join("SKILL.md"),
-            "---\nname: my-skill\ndescription: disk version\n---\n\n# My Skill\n\nDisk body content.\n",
+            "---\nname: disk-skill\ndescription: disk version\n---\n\n# Disk Skill\n",
         )
         .expect("write SKILL.md");
+        std::fs::write(
+            refs_dir.join("api.md"),
+            "# API Reference\n\nEndpoint: POST /v1/foo\n",
+        )
+        .expect("write references/api.md");
 
         let mut registry = SkillRegistry::empty();
         registry.skills.push(SkillEntry {
             metadata: skill::utils::SkillMetadata {
-                name: "my-skill".to_string(),
+                name: "disk-skill".to_string(),
                 description: "disk version".to_string(),
                 ..Default::default()
             },
@@ -426,12 +432,67 @@ mod tests {
 
         let tool = make_view_tool(Arc::new(registry));
         let result = tool
-            .call(serde_json::json!({"name": "my-skill"}), None)
+            .call(
+                serde_json::json!({"name": "disk-skill", "file_path": "references/api.md"}),
+                None,
+            )
             .await
-            .expect("view filesystem skill should succeed");
+            .expect("filesystem skill + file_path should still succeed");
 
         let body = extract_text(result);
-        assert!(body.contains("Disk body content"), "body: {}", body);
-        assert!(body.contains("# My Skill"), "body: {}", body);
+        assert!(
+            body.contains("Endpoint: POST /v1/foo"),
+            "filesystem sub-file content should be returned: {}",
+            body
+        );
+        assert!(
+            body.contains("references/api.md"),
+            "file attribute should appear in output: {}",
+            body
+        );
+    }
+
+    #[tokio::test]
+    async fn view_filesystem_skill_rejects_path_traversal() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let skill_dir = tmp.path().join("disk-skill");
+        std::fs::create_dir_all(&skill_dir).expect("mkdir");
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: disk-skill\n---\n\nbody\n",
+        )
+        .expect("write SKILL.md");
+        let secret = tmp.path().join("secret.txt");
+        std::fs::write(&secret, "top secret\n").expect("write secret");
+
+        let mut registry = SkillRegistry::empty();
+        registry.skills.push(SkillEntry {
+            metadata: skill::utils::SkillMetadata {
+                name: "disk-skill".to_string(),
+                description: String::new(),
+                ..Default::default()
+            },
+            base_path: skill_dir.clone(),
+            skill_file: skill_dir.join("SKILL.md"),
+            source: SkillSource::Project,
+            embedded_content: None,
+            embedded_files: None,
+        });
+
+        let tool = make_view_tool(Arc::new(registry));
+        let err = tool
+            .call(
+                serde_json::json!({"name": "disk-skill", "file_path": "../secret.txt"}),
+                None,
+            )
+            .await
+            .expect_err("path traversal should be blocked");
+
+        let msg = format!("{}", err);
+        assert!(
+            msg.contains("path traversal") || msg.contains("not found") || msg.contains("outside"),
+            "error should mention traversal/block: {}",
+            msg
+        );
     }
 }
