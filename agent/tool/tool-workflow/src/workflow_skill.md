@@ -7,23 +7,27 @@ triggers:
   - lua script
   - workflow_list
   - workflow_status
+  - workflow_cancel
   - workflow_events
   - debug workflow
   - workflow failed
   - workflow status
   - resume workflow
   - crashed instance
+  - stop workflow
 metadata:
   conditions:
     requires_tools:
       - workflow_start
       - workflow_status
+      - workflow_cancel
 tags:
   - workflow
   - orchestration
   - lua
   - instance
   - resume
+  - cancellation
 ---
 
 # Workflow DSL Reference
@@ -38,6 +42,7 @@ The workflow surface has six focused tools:
 | --- | --- | --- |
 | Start a new multi-agent task | `workflow_start` | `script` or `workflow` |
 | Resume a crashed / interrupted instance | `workflow_start` | `resume_from_id` |
+| Cancel a running instance | `workflow_cancel` | `instance` |
 | Find a completed instance | `workflow_list` | optional `limit`, `cursor`, `status_filter` |
 | Check one instance | `workflow_status` | `instance_dir` |
 | Inspect detailed execution events | `workflow_events` | `instance_dir` |
@@ -82,6 +87,18 @@ Then poll `workflow_status` on the **new** `instance_dir`. The two identifiers a
 Use `workflow_list` when the instance identifier is unavailable. Use `workflow_events` only after `workflow_status` identifies a failure or suspicious phase. Use `workflow_source` when reviewing the executed Lua is relevant. `workflow_files` lists definitions available to start; it is not a workflow-result inspection tool.
 
 All workflow tools provide their results directly. Do not use a file-reading tool to follow execution, find reports, or inspect outputs.
+
+### Cancelling a running instance
+
+If a workflow needs to be stopped (wrong arguments, user changed mind, stuck on an agent), use `workflow_cancel`:
+
+```json
+{ "instance": "workflow_1783957281" }
+```
+
+The in-flight agent (if any) finishes its current turn and returns a `Cancelled` error; the checkpoint is then marked `"cancelled"` instead of `"completed"`. There is no way to resume a cancelled run — restart the workflow with `workflow_start({ script: "..." })` or `workflow_start({ resume_from_id: "<id>" })` after starting a fresh instance.
+
+The lookup targets the same in-memory registry that `workflow_start` uses, so cancel works only for runs owned by the current process. After the run reaches a terminal state (or belongs to a different process), cancel returns `result="not_found_or_terminal"` — verify with `workflow_status` first if unsure.
 
 ## 2. Execution model
 

@@ -1,6 +1,6 @@
 # Workflow Tool Usage
 
-The workflow surface contains six focused tools. Tool responses are the only interface needed by the caller; do not inspect internal storage or use file-reading tools to follow an execution.
+The workflow surface contains seven focused tools. Tool responses are the only interface needed by the caller; do not inspect internal storage or use file-reading tools to follow an execution.
 
 ## `workflow_start`
 
@@ -64,6 +64,25 @@ Terminal response includes:
 - `phase_spans`: phase timing
 - `event_stats`: event totals grouped by type
 - `report`: inline content or a bounded preview, without internal references
+
+## `workflow_cancel`
+
+Signals cancellation for a workflow owned by the current process. The in-flight
+agent (if any) returns a `Cancelled` error after its current turn; the
+checkpoint is then marked `"cancelled"` instead of `"completed"`.
+
+Parameters:
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `instance` | string | yes | Identifier returned by `workflow_start`. Falls back to `instance_dir` if both are present. |
+
+Returns:
+
+- `result: "cancelling"` when the signal was accepted — poll `workflow_status` to observe the terminal state.
+- `result: "not_found_or_terminal"` when no active run matches — the workflow may already be terminal, or may belong to a different process.
+
+There is no way to resume a cancelled run; restart with `workflow_start({ script: "..." })` after fixing what made you cancel.
 
 ## `workflow_list`
 
