@@ -215,32 +215,10 @@ pub fn build_react_config(
     base.working_folder = Some(working_folder.clone());
     base.thread_id = effective_opts.thread_id.clone().or(base.thread_id.clone());
 
-    // Resolve default extra tools (e.g. the workflow tool) BEFORE the skill
-    // registry is built. Their `builtin_skill()` hooks are picked up by
-    // `inject_builtin_skills` below — see [`run::types::ExtraToolsProvider`]
-    // for the design rationale. Putting this AFTER `build_react_config`
-    // returns (the old `register_extra_tools` pattern) silently dropped the
-    // builtin skills.
-    if let Some(provider) = effective_opts.default_extra_tools_provider.as_ref() {
-        let default_tools = provider(&base);
-        if !default_tools.is_empty() {
-            let mut tools = base
-                .extra_tools
-                .as_ref()
-                .map(|v| v.as_ref().clone())
-                .unwrap_or_default();
-            for t in default_tools {
-                tools.push(t);
-            }
-            base.extra_tools = Some(Arc::new(tools));
-        }
-    }
-
-    let profile_role = profile
-        .as_ref()
-        .and_then(|p| p.role.as_ref().and_then(|r| r.content.clone()));
-
     // MCP config: CLI > profile > LOOM_MCP_CONFIG_PATH > discover
+    // NOTE: must load BEFORE the default-extra-tools provider below, so that
+    // the workflow (Luft) tool's config_template captures `base.mcp_servers`
+    // and inner spawned agents inherit MCP servers (e.g. chrome-devtools-mcp).
     let override_path = effective_opts.mcp_config_path.clone().or_else(|| {
         std::env::var("LOOM_MCP_CONFIG_PATH")
             .ok()
@@ -276,6 +254,32 @@ pub fn build_react_config(
             base.mcp_servers = Some(merged);
         }
     }
+
+    // Resolve default extra tools (e.g. the workflow tool) BEFORE the skill
+    // registry is built. Their `builtin_skill()` hooks are picked up by
+    // `inject_builtin_skills` below — see [`run::types::ExtraToolsProvider`]
+    // for the design rationale. Putting this AFTER `build_react_config`
+    // returns (the old `register_extra_tools` pattern) silently dropped the
+    // builtin skills. Done AFTER MCP loading above so the provider's cloned
+    // config_template carries mcp_servers for inner agents.
+    if let Some(provider) = effective_opts.default_extra_tools_provider.as_ref() {
+        let default_tools = provider(&base);
+        if !default_tools.is_empty() {
+            let mut tools = base
+                .extra_tools
+                .as_ref()
+                .map(|v| v.as_ref().clone())
+                .unwrap_or_default();
+            for t in default_tools {
+                tools.push(t);
+            }
+            base.extra_tools = Some(Arc::new(tools));
+        }
+    }
+
+    let profile_role = profile
+        .as_ref()
+        .and_then(|p| p.role.as_ref().and_then(|r| r.content.clone()));
 
     let skill_registry = {
         let extra_dirs: Vec<PathBuf> = profile
