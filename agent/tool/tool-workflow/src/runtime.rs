@@ -7,8 +7,11 @@
 //! in-memory summary rebuilds.
 
 use serde_json::Value;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use tool_core::{ToolCallContent, ToolSourceError};
+use tokio_util::sync::CancellationToken;
 
 use crate::common::sanitize_instance_for_public;
 use crate::instance::{
@@ -18,11 +21,47 @@ use crate::instance::{
 #[derive(Clone)]
 pub(crate) struct WorkflowRuntime {
     pub(crate) config_template: agent::agent::AgentConfig,
+    pub(crate) active_runs:
+        Arc<Mutex<HashMap<String, Arc<CancellationToken>>>>,
 }
 
 impl WorkflowRuntime {
     pub(crate) fn new(config_template: agent::agent::AgentConfig) -> Self {
-        Self { config_template }
+        Self {
+            config_template,
+            active_runs: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub(crate) fn register_run(&self, dir_name: String) -> Arc<CancellationToken> {
+        let token = Arc::new(CancellationToken::new());
+        self.active_runs
+            .lock()
+            .expect("active_runs mutex poisoned")
+            .insert(dir_name, token.clone());
+        token
+    }
+
+    pub(crate) fn cancel_run(&self, dir_name: &str) -> bool {
+        if let Some(token) = self
+            .active_runs
+            .lock()
+            .expect("active_runs mutex poisoned")
+            .get(dir_name)
+            .cloned()
+        {
+            token.cancel();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn unregister_run(&self, dir_name: &str) {
+        self.active_runs
+            .lock()
+            .expect("active_runs mutex poisoned")
+            .remove(dir_name);
     }
 
     pub(crate) fn working_folder(&self) -> PathBuf {

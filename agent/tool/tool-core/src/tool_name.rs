@@ -151,6 +151,7 @@ pub const TOOL_TODO_WRITE: &str = "todo_write";
 
 pub const TOOL_WORKFLOW_START: &str = "workflow_start";
 pub const TOOL_WORKFLOW_STATUS: &str = "workflow_status";
+pub const TOOL_WORKFLOW_CANCEL: &str = "workflow_cancel";
 pub const TOOL_WORKFLOW_LIST: &str = "workflow_list";
 pub const TOOL_WORKFLOW_EVENTS: &str = "workflow_events";
 pub const TOOL_WORKFLOW_SOURCE: &str = "workflow_source";

@@ -12,6 +12,7 @@ mod tool_list;
 mod tool_source;
 mod tool_start;
 mod tool_status;
+mod tool_cancel;
 mod workflow_resolver;
 
 pub use backend::LoomAgentBackend;
@@ -26,6 +27,7 @@ pub use tool_list::WorkflowListTool;
 pub use tool_source::WorkflowSourceTool;
 pub use tool_start::WorkflowStartTool;
 pub use tool_status::WorkflowStatusTool;
+pub use tool_cancel::WorkflowCancelTool;
 pub use workflow_resolver::resolve_workflow;
 
 use std::sync::Arc;
@@ -37,6 +39,9 @@ pub async fn register_workflow_tools(
 ) {
     registry
         .register_async(Box::new(WorkflowStartTool::new(config.clone())))
+        .await;
+    registry
+        .register_async(Box::new(WorkflowCancelTool::new(config.clone())))
         .await;
     registry
         .register_async(Box::new(WorkflowStatusTool::new(config.clone())))
@@ -60,6 +65,7 @@ pub fn default_workflow_tool_provider() -> agent::run::ExtraToolsProvider {
         let cfg = config.clone();
         vec![
             Arc::new(WorkflowStartTool::new(cfg.clone())) as Arc<dyn Tool>,
+            Arc::new(WorkflowCancelTool::new(cfg.clone())) as Arc<dyn Tool>,
             Arc::new(WorkflowStatusTool::new(cfg.clone())) as Arc<dyn Tool>,
             Arc::new(WorkflowListTool::new(cfg.clone())) as Arc<dyn Tool>,
             Arc::new(WorkflowEventsTool::new(cfg.clone())) as Arc<dyn Tool>,
@@ -74,15 +80,16 @@ mod tests {
     use super::*;
     use agent::agent::AgentConfig;
     use tool_core::tool_name::{
-        TOOL_WORKFLOW_EVENTS, TOOL_WORKFLOW_FILES, TOOL_WORKFLOW_LIST, TOOL_WORKFLOW_SOURCE,
-        TOOL_WORKFLOW_START, TOOL_WORKFLOW_STATUS,
+        TOOL_WORKFLOW_CANCEL, TOOL_WORKFLOW_EVENTS, TOOL_WORKFLOW_FILES, TOOL_WORKFLOW_LIST,
+        TOOL_WORKFLOW_SOURCE, TOOL_WORKFLOW_START, TOOL_WORKFLOW_STATUS,
     };
     use tool_core::ToolOutputStrategy;
 
     #[test]
-    fn six_tool_names_and_specs_match_constants() {
+    fn seven_tool_names_and_specs_match_constants() {
         let cfg = AgentConfig::default();
         let start = WorkflowStartTool::new(cfg.clone());
+        let cancel = WorkflowCancelTool::new(cfg.clone());
         let status = WorkflowStatusTool::new(cfg.clone());
         let list = WorkflowListTool::new(cfg.clone());
         let events = WorkflowEventsTool::new(cfg.clone());
@@ -90,6 +97,7 @@ mod tests {
         let files = WorkflowFilesTool::new(cfg);
 
         assert_eq!(start.name(), TOOL_WORKFLOW_START);
+        assert_eq!(cancel.name(), TOOL_WORKFLOW_CANCEL);
         assert_eq!(status.name(), TOOL_WORKFLOW_STATUS);
         assert_eq!(list.name(), TOOL_WORKFLOW_LIST);
         assert_eq!(events.name(), TOOL_WORKFLOW_EVENTS);
@@ -97,6 +105,7 @@ mod tests {
         assert_eq!(files.name(), TOOL_WORKFLOW_FILES);
 
         assert_eq!(start.spec().name, TOOL_WORKFLOW_START);
+        assert_eq!(cancel.spec().name, TOOL_WORKFLOW_CANCEL);
         assert_eq!(status.spec().name, TOOL_WORKFLOW_STATUS);
         assert_eq!(list.spec().name, TOOL_WORKFLOW_LIST);
         assert_eq!(events.spec().name, TOOL_WORKFLOW_EVENTS);
@@ -105,6 +114,7 @@ mod tests {
 
         for tool in [
             &start as &dyn Tool,
+            &cancel,
             &status,
             &list,
             &events,

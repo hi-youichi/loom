@@ -132,14 +132,36 @@ pub(crate) async fn start_workflow(
     let workflow_arg_owned = workflow.map(|s| s.to_string());
 
     let sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
-    let cancel_token = ctx
+    // Workflow cancel orchestration: the runtime owns an in-memory
+    // registry of active runs (instance_dir -> CancellationToken) so
+    // `workflow_cancel` (a tool that may be called by any other agent
+    // on this same `WorkflowRuntime`) can signal completion. We register
+    // the run *before* spawning the finalize task, then either
+    // propagate the caller's cancellation into the runtime token, or
+    // use the runtime token directly when there is no caller token.
+    let runtime_cancel_token = runtime.register_run(run_dir_name.clone());
+    let caller_cancel_token = ctx
         .and_then(|c| c.run_cancellation.as_ref())
-        .map(|c| c.token())
-        .unwrap_or_default();
+        .map(|c| c.token());
+    let cancel_token = match caller_cancel_token {
+        Some(caller_token) => {
+            // Mirror: when the caller fires, the runtime token also fires
+            // (preserves the registry look-up path for `workflow_cancel`).
+            let caller_owned = caller_token.clone();
+            let mine = runtime_cancel_token.clone();
+            tokio::spawn(async move {
+                caller_owned.cancelled().await;
+                mine.cancel();
+            });
+            caller_token
+        }
+        None => runtime_cancel_token.as_ref().clone(),
+    };
     let rt = runtime.clone();
+    let dir_for_cleanup = run_dir_name.clone();
     tokio::spawn(async move {
         background_finalize(
-            rt,
+            rt.clone(),
             run_handle,
             sender,
             cancel_token,
@@ -148,6 +170,7 @@ pub(crate) async fn start_workflow(
             workflow_arg_owned,
         )
         .await;
+        rt.unregister_run(&dir_for_cleanup);
     });
 
     let mut payload = json!({
@@ -376,6 +399,59 @@ fn running_status(dir: &str, checkpoint_path: &Path) -> ToolCallContent {
     });
     let sanitized = sanitize_instance_for_public(payload);
     ToolCallContent::Text(serde_json::to_string_pretty(&sanitized).unwrap_or_default())
+}
+
+// ── Cancel ──────────────────────────────────────────────────────────────────
+
+/// Look up an active run and signal its cancellation token.
+///
+/// The runtime owns an in-memory registry mapping `instance_dir` to the
+/// `Arc<CancellationToken>` passed into `background_finalize`. If the run
+/// is still active, the cancel token is fired (and `run_handle.cancel()`
+/// is invoked inside the finalize loop); if not, we report `not_found_or_terminal`.
+///
+/// The "force" parameter is accepted by the schema but reserved for future use
+/// (e.g. forceful kill of the agent task). For now all cancels are graceful —
+/// the agent returns a `Cancelled` error after the in-flight LLM call
+/// completes (or its turn is interrupted) and the checkpoint is marked
+/// "cancelled" instead of "completed".
+pub(crate) fn cancel_workflow(
+    runtime: &WorkflowRuntime,
+    args: &Value,
+) -> Result<ToolCallContent, ToolSourceError> {
+    let dir = args
+        .get("instance")
+        .or_else(|| args.get("instance_dir"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            ToolSourceError::InvalidInput(
+                "'instance' (or 'instance_dir') is required for workflow_cancel.".into(),
+            )
+        })?
+        .to_string();
+    validate_instance_dir_name(&dir)?;
+
+    // Determine an outcome tag. If the runtime registry knows about the
+    // instance, cancellation is in-flight (`cancelling`); the runtime's
+    // finalize loop will mark the checkpoint as `cancelled` once the
+    // agent returns Cancelled. If the registry does not know about it, the
+    // run is unknown / terminal — we surface that so the LLM can react.
+    let result = if runtime.cancel_run(&dir) {
+        json!({
+            "instance_dir": dir,
+            "result": "cancelling",
+            "note": "Cancellation has been signalled; poll workflow_status to observe the terminal state.",
+        })
+    } else {
+        json!({
+            "instance_dir": dir,
+            "result": "not_found_or_terminal",
+            "note": "No active workflow with this identifier — it may already be in a terminal state (completed/failed/cancelled), or the run belongs to a different process.",
+        })
+    };
+    Ok(ToolCallContent::Text(
+        serde_json::to_string_pretty(&result).unwrap_or_default(),
+    ))
 }
 
 // ── List ────────────────────────────────────────────────────────────────────
