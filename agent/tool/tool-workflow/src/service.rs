@@ -137,6 +137,73 @@ pub(crate) async fn start_workflow(
     ))
 }
 
+// ── Resume ──────────────────────────────────────────────────────────────────
+
+pub(crate) async fn resume_workflow(
+    runtime: &Arc<WorkflowRuntime>,
+    args: Value,
+    ctx: Option<&ToolCallContext>,
+) -> Result<ToolCallContent, ToolSourceError> {
+    let dir = args
+        .get("instance_dir")
+        .and_then(|v| v.as_str())
+        .or_else(|| args.get("instance").and_then(|v| v.as_str()))
+        .ok_or_else(|| {
+            ToolSourceError::InvalidInput("'instance_dir' is required.".into())
+        })?
+        .to_string();
+    validate_instance_dir_name(&dir)?;
+
+    let base_dir = runtime.instances_root();
+    let config = runtime.config_template.clone();
+    let backend = LoomAgentBackend::new(config);
+
+    let luft = LuftBuilder::new()
+        .backend(backend)
+        .base_dir(&base_dir)
+        .concurrency(DEFAULT_CONCURRENCY)
+        .build()
+        .map_err(|e| {
+            ToolSourceError::ToolError(format!("Workflow engine build failed: {e}"))
+        })?;
+
+    let run_handle = luft
+        .start_resume(&dir)
+        .await
+        .map_err(|e| ToolSourceError::ToolError(format!("Failed to resume workflow: {e}")))?;
+
+    let run_dir_name = run_handle.run_dir_name().to_string();
+    let sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
+    let cancel_token = ctx
+        .and_then(|c| c.run_cancellation.as_ref())
+        .map(|c| c.token())
+        .unwrap_or_default();
+    let rt = runtime.clone();
+    let dir_clone = dir.clone();
+    tokio::spawn(async move {
+        background_finalize(
+            rt,
+            run_handle,
+            sender,
+            cancel_token,
+            dir_clone,
+            false,
+            None,
+        )
+        .await;
+    });
+
+    let payload = json!({
+        "instance_dir": run_dir_name,
+        "resumed_from": &dir,
+        "status": "running",
+        "note": "Use workflow_status with `instance_dir` to follow progress.",
+    });
+    Ok(ToolCallContent::Text(
+        serde_json::to_string_pretty(&payload).unwrap_or_default(),
+    ))
+}
+
 async fn background_finalize(
     runtime: Arc<WorkflowRuntime>,
     run_handle: luft::RunHandle,

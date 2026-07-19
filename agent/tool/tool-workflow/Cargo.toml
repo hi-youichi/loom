@@ -34,3 +34,7 @@ tempfile = "3"
 luft = { version = "0.3", features = ["testing"] }
 luft-core = { version = "0.3", features = ["testing"] }
 skill = { path = "../../skill" }
+
+[[bin]]
+name = "resume_child"
+path = "tests/resume_child.rs"

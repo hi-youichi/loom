@@ -43,6 +43,11 @@ impl AgentBackend for LoomAgentBackend {
     async fn run(&self, task: AgentTask, ctx: RunContext) -> Result<AgentResult, BackendError> {
         let mut config = self.config_template.clone();
 
+        let thread_id = task.thread_id.clone();
+        if thread_id.is_some() {
+            config.thread_id = thread_id.clone();
+        }
+
         if let Some(ref model) = task.model {
             config.model = Some(model.clone());
         }
@@ -133,6 +138,7 @@ impl AgentBackend for LoomAgentBackend {
                     tokens_used: *tokens.lock().unwrap(),
                     artifacts: vec![],
                     logs: LogRef::default(),
+                    thread_id,
                 });
             }
         };
@@ -155,6 +161,7 @@ impl AgentBackend for LoomAgentBackend {
             tokens_used,
             artifacts: vec![],
             logs: LogRef::default(),
+            thread_id,
         })
     }
 
