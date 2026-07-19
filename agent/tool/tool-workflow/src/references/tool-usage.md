@@ -4,21 +4,32 @@ The workflow surface contains six focused tools. Tool responses are the only int
 
 ## `workflow_start`
 
-Starts a Lua workflow in the background and returns immediately. It does not wait for agents to finish.
+Starts a Lua workflow in the background and returns immediately. It does not wait for agents to finish. The same tool is also used to resume a crashed or interrupted instance — pass `resume_from_id` instead of `script` / `workflow`.
 
-Parameters:
+Parameters (one of `script`, `workflow`, or `resume_from_id` is required; the three are mutually exclusive):
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `script` | string | one of `script`/`workflow` | Inline Lua source |
-| `workflow` | string | one of `script`/`workflow` | Workflow name or source path |
-| `args` | object | no | Values exposed to the script as `_G._args` |
+| `script` | string | one of three | Inline Lua source for a fresh run |
+| `workflow` | string | one of three | Workflow name or source path for a fresh run |
+| `resume_from_id` | string | one of three | Instance identifier of a prior crashed or interrupted run; loads its checkpoint and sub-agent history |
+| `args` | object | no | Values exposed to the script as `_G._args` (fresh-run only) |
 | `concurrency` | integer | no | Maximum concurrent agents, `1..=64`, default `4` |
 
-Returns:
+Returns (fresh run):
 
 ```json
 { "instance_dir": "loom-instance_1783783769", "status": "running" }
+```
+
+Returns (resume):
+
+```json
+{
+  "instance_dir": "loom-instance_1783998200",
+  "resumed_from": "loom-instance_1783783769",
+  "status": "running"
+}
 ```
 
 After this call, run a shell wait before checking status:
