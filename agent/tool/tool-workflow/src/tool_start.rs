@@ -41,21 +41,27 @@ impl Tool for WorkflowStartTool {
         ToolSpec {
             name: TOOL_WORKFLOW_START.to_string(),
             description: Some(
-                "Start a Lua workflow in the background. Returns immediately with \
-                 { instance_dir, status: 'running' }. Poll `workflow_status` to follow \
-                 progress, or call `workflow_events` / `workflow_source` to inspect \
+                "Start or resume a Lua workflow in the background. Returns immediately \
+                 with { instance_dir, status: 'running' }. Poll `workflow_status` to \
+                 follow progress, or `workflow_events` / `workflow_source` to inspect \
                  the resulting instance.\n\n\
-                 Provide one of:\n\
-                 - script: inline Lua source.\n\
-                 - workflow: name or path of a .lua workflow file.\n\n\
+                 Three modes (mutually exclusive):\n\
+                 - script: inline Lua source for a fresh run.\n\
+                 - workflow: name or path of a .lua workflow file (fresh run).\n\
+                 - resume_from_id: instance identifier returned by a prior run. The \
+                   prior instance's checkpoint and sub-agent conversation history are \
+                   loaded; already-completed phases are skipped via journal cache, and \
+                   mid-flight agents continue from their last successful LLM turn via \
+                   SqliteSaver. Mutually exclusive with `script` / `workflow`.\n\n\
                  Other inputs:\n\
-                 - args (object): exposed to the script as `_G._args`.\n\
+                 - args (object): exposed to the script as `_G._args` (fresh-run only).\n\
                  - concurrency (1..=64): maximum concurrent agents (default 4).\n\n\
                  This tool never blocks waiting for the workflow to finish — use \
                  `workflow_status` to wait. To wait several seconds before checking \
                  status, run a shell tool (`sleep 5` or PowerShell \
                  `Start-Sleep -Seconds 5`) and then call `workflow_status` with the \
-                 returned `instance_dir`."
+                 returned `instance_dir`. When resuming, the returned `instance_dir` \
+                 is the new run's directory; `resumed_from` echoes the prior id."
                     .to_string(),
             ),
             input_schema: json!({
@@ -69,9 +75,13 @@ impl Tool for WorkflowStartTool {
                         "type": "string",
                         "description": "Name or path of a .lua workflow file."
                     },
+                    "resume_from_id": {
+                        "type": "string",
+                        "description": "Instance identifier of a prior crashed or interrupted run. Restart from the last successful phase, reusing sub-agent conversation history. Mutually exclusive with script and workflow."
+                    },
                     "args": {
                         "type": "object",
-                        "description": "Exposed as `_G._args` inside the script.",
+                        "description": "Exposed as `_G._args` inside the script (fresh-run only).",
                         "additionalProperties": true
                     },
                     "concurrency": {
@@ -82,10 +92,17 @@ impl Tool for WorkflowStartTool {
                         "description": "Maximum number of concurrent agents. Default: 4."
                     }
                 },
-                "oneOf": [
+                "anyOf": [
                     {"required": ["script"]},
-                    {"required": ["workflow"]}
-                ]
+                    {"required": ["workflow"]},
+                    {"required": ["resume_from_id"]}
+                ],
+                "not": {
+                    "anyOf": [
+                        {"required": ["resume_from_id", "script"]},
+                        {"required": ["resume_from_id", "workflow"]}
+                    ]
+                }
             }),
             output_hint: Some(ToolOutputHint::preferred(ToolOutputStrategy::Inline)),
         }

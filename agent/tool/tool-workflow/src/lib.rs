@@ -9,7 +9,6 @@ mod structured_output;
 mod tool_events;
 mod tool_files;
 mod tool_list;
-mod tool_resume;
 mod tool_source;
 mod tool_start;
 mod tool_status;
@@ -27,7 +26,6 @@ pub use tool_list::WorkflowListTool;
 pub use tool_source::WorkflowSourceTool;
 pub use tool_start::WorkflowStartTool;
 pub use tool_status::WorkflowStatusTool;
-pub use tool_resume::WorkflowResumeTool;
 pub use workflow_resolver::resolve_workflow;
 
 use std::sync::Arc;
@@ -53,10 +51,7 @@ pub async fn register_workflow_tools(
         .register_async(Box::new(WorkflowSourceTool::new(config.clone())))
         .await;
     registry
-        .register_async(Box::new(WorkflowFilesTool::new(config.clone())))
-        .await;
-    registry
-        .register_async(Box::new(WorkflowResumeTool::new(config)))
+        .register_async(Box::new(WorkflowFilesTool::new(config)))
         .await;
 }
 
@@ -70,7 +65,6 @@ pub fn default_workflow_tool_provider() -> agent::run::ExtraToolsProvider {
             Arc::new(WorkflowEventsTool::new(cfg.clone())) as Arc<dyn Tool>,
             Arc::new(WorkflowSourceTool::new(cfg.clone())) as Arc<dyn Tool>,
             Arc::new(WorkflowFilesTool::new(cfg.clone())) as Arc<dyn Tool>,
-            Arc::new(WorkflowResumeTool::new(cfg)) as Arc<dyn Tool>,
         ]
     })
 }
@@ -135,10 +129,7 @@ mod tests {
             ..Default::default()
         };
         let rt = Arc::new(crate::runtime::WorkflowRuntime::new(cfg));
-        assert_eq!(
-            rt.instances_root(),
-            tmp.path().join(".loom").join("instances")
-        );
+        assert_eq!(rt.instances_root(), tmp.path().join(".loom").join("instances"));
         assert_eq!(rt.runs_root(), tmp.path().join(".luft").join("runs"));
         assert_eq!(
             rt.workflows_dir(),

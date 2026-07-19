@@ -50,12 +50,30 @@ pub(crate) async fn start_workflow(
         ));
     }
 
+    let resume_from_id = args
+        .get("resume_from_id")
+        .or_else(|| args.get("instance"))
+        .or_else(|| args.get("instance_dir"))
+        .and_then(|v| v.as_str());
     let script = args.get("script").and_then(|v| v.as_str());
     let workflow = args.get("workflow").and_then(|v| v.as_str());
 
-    let (lua_source, display_name) = match (script, workflow) {
-        (Some(s), _) => (s.to_string(), "inline script".to_string()),
-        (None, Some(w)) => {
+    // Validate mutual exclusion: resume vs script/workflow
+    if resume_from_id.is_some() && (script.is_some() || workflow.is_some()) {
+        return Err(ToolSourceError::InvalidInput(
+            "`resume_from_id` is mutually exclusive with `script` and `workflow`.".into(),
+        ));
+    }
+
+    let (lua_source, display_name) = match (script, workflow, resume_from_id) {
+        (_, _, Some(id)) => {
+            // Resume: luft reads script + history from the prior instance's checkpoint.
+            // No script source needs to be loaded here.
+            validate_instance_dir_name(id)?;
+            (String::new(), format!("resumed:{id}"))
+        }
+        (Some(s), _, None) => (s.to_string(), "inline script".to_string()),
+        (None, Some(w), None) => {
             let working_folder = runtime.working_folder();
             let path =
                 resolve_workflow(w, &working_folder).map_err(ToolSourceError::InvalidInput)?;
@@ -69,9 +87,9 @@ pub(crate) async fn start_workflow(
                 .unwrap_or_else(|| "workflow".to_string());
             (source, display_name)
         }
-        (None, None) => {
+        (None, None, None) => {
             return Err(ToolSourceError::InvalidInput(
-                "Either 'script' or 'workflow' must be provided.".to_string(),
+                "Provide one of: `script`, `workflow`, or `resume_from_id`.".to_string(),
             ));
         }
     };
@@ -99,10 +117,15 @@ pub(crate) async fn start_workflow(
             ToolSourceError::ToolError(format!("Workflow engine build failed: {e}"))
         })?;
 
-    let run_handle = luft
-        .start_script(&lua_source)
-        .await
-        .map_err(|e| ToolSourceError::ToolError(format!("Failed to start workflow: {e}")))?;
+    let run_handle = if let Some(id) = resume_from_id {
+        luft.start_resume(id)
+            .await
+            .map_err(|e| ToolSourceError::ToolError(format!("Failed to resume workflow: {e}")))?
+    } else {
+        luft.start_script(&lua_source)
+            .await
+            .map_err(|e| ToolSourceError::ToolError(format!("Failed to start workflow: {e}")))?
+    };
 
     let run_dir_name = run_handle.run_dir_name().to_string();
     let is_inline_script = script.is_some();
@@ -127,78 +150,14 @@ pub(crate) async fn start_workflow(
         .await;
     });
 
-    let payload = json!({
+    let mut payload = json!({
         "instance_dir": run_dir_name,
         "status": "running",
         "note": "Use workflow_status with `instance_dir` to follow progress.",
     });
-    Ok(ToolCallContent::Text(
-        serde_json::to_string_pretty(&payload).unwrap_or_default(),
-    ))
-}
-
-// ── Resume ──────────────────────────────────────────────────────────────────
-
-pub(crate) async fn resume_workflow(
-    runtime: &Arc<WorkflowRuntime>,
-    args: Value,
-    ctx: Option<&ToolCallContext>,
-) -> Result<ToolCallContent, ToolSourceError> {
-    let dir = args
-        .get("instance_dir")
-        .and_then(|v| v.as_str())
-        .or_else(|| args.get("instance").and_then(|v| v.as_str()))
-        .ok_or_else(|| {
-            ToolSourceError::InvalidInput("'instance_dir' is required.".into())
-        })?
-        .to_string();
-    validate_instance_dir_name(&dir)?;
-
-    let base_dir = runtime.instances_root();
-    let config = runtime.config_template.clone();
-    let backend = LoomAgentBackend::new(config);
-
-    let luft = LuftBuilder::new()
-        .backend(backend)
-        .base_dir(&base_dir)
-        .concurrency(DEFAULT_CONCURRENCY)
-        .build()
-        .map_err(|e| {
-            ToolSourceError::ToolError(format!("Workflow engine build failed: {e}"))
-        })?;
-
-    let run_handle = luft
-        .start_resume(&dir)
-        .await
-        .map_err(|e| ToolSourceError::ToolError(format!("Failed to resume workflow: {e}")))?;
-
-    let run_dir_name = run_handle.run_dir_name().to_string();
-    let sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
-    let cancel_token = ctx
-        .and_then(|c| c.run_cancellation.as_ref())
-        .map(|c| c.token())
-        .unwrap_or_default();
-    let rt = runtime.clone();
-    let dir_clone = dir.clone();
-    tokio::spawn(async move {
-        background_finalize(
-            rt,
-            run_handle,
-            sender,
-            cancel_token,
-            dir_clone,
-            false,
-            None,
-        )
-        .await;
-    });
-
-    let payload = json!({
-        "instance_dir": run_dir_name,
-        "resumed_from": &dir,
-        "status": "running",
-        "note": "Use workflow_status with `instance_dir` to follow progress.",
-    });
+    if let Some(id) = resume_from_id {
+        payload["resumed_from"] = json!(id);
+    }
     Ok(ToolCallContent::Text(
         serde_json::to_string_pretty(&payload).unwrap_or_default(),
     ))

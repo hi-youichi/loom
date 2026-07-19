@@ -155,7 +155,6 @@ pub const TOOL_WORKFLOW_LIST: &str = "workflow_list";
 pub const TOOL_WORKFLOW_EVENTS: &str = "workflow_events";
 pub const TOOL_WORKFLOW_SOURCE: &str = "workflow_source";
 pub const TOOL_WORKFLOW_FILES: &str = "workflow_files";
-pub const TOOL_WORKFLOW_RESUME: &str = "workflow_resume";
 
 // ============================================================================
 // Experimental tools
