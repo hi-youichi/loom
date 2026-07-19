@@ -208,7 +208,7 @@ pub use agent::{LoomAcpAgent, ModelOption, ModelProvider};
 pub use content::{content_blocks_to_message, ContentBlockLike, ContentError};
 pub use high_freq_usage::{HighFreqUsageTracker, UsageUpdateInfo};
 pub use session::{SessionConfig, SessionEntry, SessionId, SessionStore};
-pub use stdio_loop::{run_stdio_loop, StdioLoopResult};
+pub use stdio_loop::{run_stdio_loop, run_transport, run_transport_with_agent, StdioLoopResult};
 pub use stream_bridge::{
     loom_event_to_updates, stream_update_to_session_notification, StreamUpdate,
 };

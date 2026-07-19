@@ -48,6 +48,8 @@ pub type SharedState = Arc<AppState>;
 /// sender is unbounded enough for our 1024-message buffer, and event
 /// replay uses a separate bounded ring buffer.
 pub struct AppState {
+    /// Durable ACP sessions and notification routing for `/acp` reconnects.
+    pub acp_hub: Arc<crate::acp_hub::AcpHub>,
     /// `sess_*` → session metadata (matches opencode's v2 `Session.Info` shape).
     pub sessions: RwLock<HashMap<String, SessionInfo>>,
     /// `sess_*` → ordered list of `MessageInfo` (user + assistant turns).
@@ -776,6 +778,7 @@ fn new_state_with_store(
 ) -> SharedState {
     let (event_tx, _) = broadcast::channel(1024);
     let state = Arc::new(AppState {
+        acp_hub: Arc::new(crate::acp_hub::AcpHub::default()),
         sessions: RwLock::new(HashMap::new()),
         messages: RwLock::new(HashMap::new()),
         parts: RwLock::new(HashMap::new()),

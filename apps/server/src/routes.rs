@@ -26,6 +26,7 @@ pub fn build_router(state: SharedState) -> Router {
             "/config",
             get(handlers::bootstrap::get_api_config).patch(handlers::bootstrap::patch_api_config),
         )
+        .route("/acp", get(handlers::acp::connect))
         .route(
             "/config/providers",
             get(handlers::bootstrap::get_config_providers),

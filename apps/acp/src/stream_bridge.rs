@@ -530,7 +530,7 @@ pub struct SessionNotifier {
     /// input/output/cached/total tokens across all LLM calls in this prompt.
     usage_acc: Option<Arc<Mutex<TurnUsage>>>,
     /// High-frequency usage tracker for real-time token updates.
-    high_freq_tracker: Arc<Mutex<Option<HighFreqUsageTracker>>>,
+    pub(crate) high_freq_tracker: Arc<Mutex<Option<HighFreqUsageTracker>>>,
 }
 
 impl SessionNotifier {
@@ -969,13 +969,15 @@ impl SessionNotifier {
         // Acquire the update data within lock scope
         let update_opt = {
             let mut tracker_opt = self.high_freq_tracker.lock().unwrap();
-            if let Some(tracker) = tracker_opt.as_mut() {
+            let update = if let Some(tracker) = tracker_opt.as_mut() {
                 tracker.force_update().map(|info| {
                     (info.used, info.size, info.increment)
                 })
             } else {
                 None
-            }
+            };
+            *tracker_opt = None;
+            update
         };
         
         // Send update outside of lock scope

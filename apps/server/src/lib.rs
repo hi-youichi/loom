@@ -14,3 +14,4 @@ pub mod routes;
 pub mod sse;
 pub mod state;
 pub mod translator;
+pub mod acp_hub;

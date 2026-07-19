@@ -50,7 +50,8 @@ use agent_client_protocol::schema::v1::{
     // Model selection is now routed via SetSessionConfigOptionRequest (configId="model").
 };
 use agent_client_protocol::{
-    on_receive_notification, on_receive_request, Agent, Client, ConnectionTo, Lines, Responder,
+    on_receive_notification, on_receive_request, Agent, Client, ConnectTo, ConnectionTo, Lines,
+    Responder,
 };
 use futures::channel::mpsc;
 use futures::sink::unfold;
@@ -118,7 +119,8 @@ pub async fn run_stdio_loop() -> Result<StdioLoopResult, Box<dyn std::error::Err
 
             let drain_task = spawn_drain_task(rx, conn_shared.clone());
 
-            register_handlers_and_connect(agent.clone(), conn_shared).await?;
+            let (transport, eof_signal) = build_stdio_transport();
+            register_handlers_and_connect(agent.clone(), conn_shared, transport, eof_signal).await?;
 
             agent.cancel_all();
             // Give cancelled tasks and pending session notifications a brief grace period
@@ -167,7 +169,7 @@ fn spawn_drain_task(
     mut rx: tokio_mpsc::Receiver<SessionNotification>,
     conn_shared: Arc<tokio::sync::RwLock<Option<ConnectionTo<Client>>>>,
 ) -> tokio::task::JoinHandle<()> {
-    tokio::task::spawn_local(async move {
+    tokio::spawn(async move {
         while let Some(n) = rx.recv().await {
             let guard = conn_shared.read().await;
             if let Some(conn) = guard.as_ref() {
@@ -257,10 +259,47 @@ fn build_stdio_transport() -> (
 
 /// Register all ACP request / notification handlers on the builder, then drive
 /// `connect_to` to completion over stdin/stdout.
-async fn register_handlers_and_connect(
+pub async fn run_transport<T, F>(
+    transport: T,
+    shutdown: F,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+where
+    T: ConnectTo<Agent> + 'static,
+    F: Future<Output = ()> + Send + 'static,
+{
+    let (agent, rx) = build_agent_and_channel()?;
+    run_transport_with_agent(agent, rx, transport, shutdown).await
+}
+
+/// Serve one transport using a host-owned agent. The host may retain this
+/// agent (and therefore its sessions) while replacing transports on reconnect.
+pub async fn run_transport_with_agent<T, F>(
+    agent: Arc<LoomAcpAgent>,
+    rx: tokio_mpsc::Receiver<SessionNotification>,
+    transport: T,
+    shutdown: F,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+where
+    T: ConnectTo<Agent> + 'static,
+    F: Future<Output = ()> + Send + 'static,
+{
+    let conn_shared = Arc::new(tokio::sync::RwLock::new(None));
+    let drain_task = spawn_drain_task(rx, conn_shared.clone());
+    let result = register_handlers_and_connect(agent, conn_shared, transport, shutdown).await;
+    let _ = tokio::time::timeout(Duration::from_millis(200), drain_task).await;
+    result.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+}
+
+async fn register_handlers_and_connect<T, F>(
     agent: Arc<LoomAcpAgent>,
     conn_shared: Arc<tokio::sync::RwLock<Option<ConnectionTo<Client>>>>,
-) -> Result<(), agent_client_protocol::Error> {
+    transport: T,
+    shutdown: F,
+) -> Result<(), agent_client_protocol::Error>
+where
+    T: ConnectTo<Agent> + 'static,
+    F: Future<Output = ()> + Send + 'static,
+{
     // Each handler closure is `move`, so we need one Arc clone per handler.
     let a_init = agent.clone();
     let a_auth = agent.clone();
@@ -274,8 +313,6 @@ async fn register_handlers_and_connect(
     // a_model removed: SetSessionModelRequest is gone in 0.14.0; model selection flows through SetSessionConfigOptionRequest.
     let a_cancel = agent.clone();
     let conn_for_init = conn_shared.clone();
-
-    let (transport, eof_signal) = build_stdio_transport();
 
     Agent
         .builder()
@@ -292,8 +329,9 @@ async fn register_handlers_and_connect(
                         let mut guard = conn_for_init.write().await;
                         *guard = Some(conn);
                     }
-                    let conn_shared_clone = conn_for_init.clone();
-                    crate::tools::set_connection(conn_shared_clone);
+                    agent.set_client_bridge(Arc::new(crate::tools::AcpClientBridge::new(
+                        conn_for_init.clone(),
+                    )));
                     Ok(())
                 }
             },
@@ -328,16 +366,16 @@ async fn register_handlers_and_connect(
         .on_receive_request(
             move |req: PromptRequest,
                   responder: Responder<PromptResponse>,
-                  conn: ConnectionTo<Client>| {
+                  _conn: ConnectionTo<Client>| {
                 let agent = a_prompt.clone();
-                // Spawn the prompt task to avoid blocking the event loop
-                let _ = conn.spawn(async move {
+                // Runs belong to the ACP session, not to a transient transport.
+                // A server host may replace its WebSocket while this task keeps
+                // running; only the response delivery is connection-scoped.
+                tokio::spawn(async move {
                     let result = agent.prompt(req).await;
-                    // Ignore "receiver dropped" errors - connection may have closed
+                    // The original request can have gone away after a reconnect.
                     let _ = responder.respond_with_result(result);
-                    Ok(())
                 });
-                // Return immediately to unblock the IO loop
                 async { Ok(()) }
             },
             on_receive_request!(),
@@ -420,7 +458,7 @@ async fn register_handlers_and_connect(
             on_receive_notification!(),
         )
         .connect_with(transport, move |_conn: ConnectionTo<Client>| async move {
-            eof_signal.await;
+            shutdown.await;
             // Brief grace period for pending request handlers to finish and
             // flush their responses before the background actors are dropped.
             tokio::time::sleep(Duration::from_millis(200)).await;

@@ -175,6 +175,18 @@ impl SessionStore {
     /// Begin a new prompt generation and return a fresh runtime cancellation handle.
     pub fn begin_prompt(&self, session_id: &SessionId) -> Option<RunCancellation> {
         if let Some(entry) = recover_read(&self.inner).get(session_id) {
+            // ACP turns are serialized per session. Replacing an active turn
+            // would orphan its cancellation token and interleave updates.
+            if entry
+                .cancellation
+                .current_turn
+                .read()
+                .ok()
+                .and_then(|turn| turn.as_ref().cloned())
+                .is_some()
+            {
+                return None;
+            }
             let generation = entry
                 .cancellation
                 .current_generation
@@ -337,5 +349,15 @@ mod tests {
             .read()
             .expect("read current turn")
             .is_none());
+    }
+
+    #[test]
+    fn begin_prompt_rejects_overlapping_turns() {
+        let store = SessionStore::new();
+        let id = store.create(None);
+        let first = store.begin_prompt(&id).expect("first prompt");
+        assert!(store.begin_prompt(&id).is_none());
+        store.finish_prompt(&id, first.generation());
+        assert!(store.begin_prompt(&id).is_some());
     }
 }

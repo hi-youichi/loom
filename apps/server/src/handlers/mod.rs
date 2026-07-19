@@ -48,3 +48,4 @@ pub mod session;
 pub mod settings;
 pub mod v2_compat;
 pub mod vcs_extra;
+pub mod acp;

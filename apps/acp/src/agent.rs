@@ -9,7 +9,7 @@ use crate::content::content_blocks_to_user_content;
 use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::session_config_store::SessionConfigStore;
 use crate::stream_bridge::SessionNotifier;
-use crate::tools::create_acp_tools;
+use crate::tools::{create_acp_tools, ClientBridgeTrait};
 use agent::state::ReActState;
 use agent_client_protocol::schema::v1::{
     AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
@@ -105,6 +105,7 @@ pub struct LoomAcpAgent {
     pub(crate) config_store: SessionConfigStore,
     pub(crate) session_update_tx: Option<mpsc::Sender<SessionNotification>>,
     pub(crate) client_capabilities: std::sync::RwLock<ClientCapabilitiesInfo>,
+    pub(crate) client_bridge: std::sync::RwLock<Option<Arc<dyn ClientBridgeTrait>>>,
     pub(crate) model_provider: Arc<dyn ModelProvider>,
 }
 
@@ -132,6 +133,7 @@ impl LoomAcpAgent {
             config_store,
             session_update_tx: None,
             client_capabilities: std::sync::RwLock::new(ClientCapabilitiesInfo::default()),
+            client_bridge: std::sync::RwLock::new(None),
             model_provider: Arc::new(RealModelProvider),
         })
     }
@@ -149,6 +151,7 @@ impl LoomAcpAgent {
             config_store,
             session_update_tx: Some(tx),
             client_capabilities: std::sync::RwLock::new(ClientCapabilitiesInfo::default()),
+            client_bridge: std::sync::RwLock::new(None),
             model_provider: Arc::new(RealModelProvider),
         })
     }
@@ -156,6 +159,10 @@ impl LoomAcpAgent {
     pub fn with_model_provider(mut self, provider: Arc<dyn ModelProvider>) -> Self {
         self.model_provider = provider;
         self
+    }
+
+    pub fn set_client_bridge(&self, bridge: Arc<dyn ClientBridgeTrait>) {
+        *self.client_bridge.write().unwrap_or_else(|e| e.into_inner()) = Some(bridge);
     }
 
     /// Returns read-only access to the session store.
@@ -752,7 +759,7 @@ impl LoomAcpAgent {
         let cancellation = self
             .sessions
             .begin_prompt(&key)
-            .ok_or_else(|| agent_client_protocol::Error::new(-32602, "unknown session"))?;
+            .ok_or_else(|| agent_client_protocol::Error::new(-32000, "session already has an active prompt"))?;
 
         let user_content =
             content_blocks_to_user_content(args.prompt.as_slice()).map_err(|_| {
@@ -936,7 +943,8 @@ impl LoomAcpAgent {
                     .client_capabilities
                     .read()
                     .unwrap_or_else(|e| e.into_inner());
-                let tools = create_acp_tools(&caps);
+                let bridge = self.client_bridge.read().unwrap_or_else(|e| e.into_inner()).clone();
+                let tools = create_acp_tools(&caps, bridge);
                 if tools.is_empty() {
                     None
                 } else {

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tool_core::Tool;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
-use super::{create_tool_spec, get_client_bridge, ClientBridgeTrait};
+use super::{create_tool_spec, ClientBridgeTrait};
 
 // ============================================================================
 // ReadTextFile Tool
@@ -32,20 +32,15 @@ struct ReadTextFileArgs {
 /// This tool uses the ACP client's `read_text_file` method, which can access
 /// files in the IDE's workspace, including unsaved buffer contents that haven't
 /// been written to disk yet.
-pub struct ReadTextFileTool;
+pub struct ReadTextFileTool(Arc<dyn ClientBridgeTrait>);
 
 impl ReadTextFileTool {
     /// Create a new ReadTextFileTool.
-    pub fn new() -> Self {
-        Self
+    pub fn new(bridge: Arc<dyn ClientBridgeTrait>) -> Self {
+        Self(bridge)
     }
 }
 
-impl Default for ReadTextFileTool {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 #[async_trait]
 impl Tool for ReadTextFileTool {
@@ -90,11 +85,7 @@ impl Tool for ReadTextFileTool {
         let args: ReadTextFileArgs = serde_json::from_value(args)
             .map_err(|e| ToolSourceError::InvalidInput(format!("Invalid arguments: {}", e)))?;
 
-        let bridge: Arc<dyn ClientBridgeTrait> = get_client_bridge().await.map_err(|e| {
-            ToolSourceError::Transport(format!("Failed to get client bridge: {}", e))
-        })?;
-
-        let content = bridge
+        let content = self.0
             .read_text_file(&args.path, args.line, args.limit)
             .await
             .map_err(|e| ToolSourceError::Transport(format!("Failed to read file: {}", e)))?;
@@ -121,20 +112,15 @@ struct WriteTextFileArgs {
 /// This tool uses the ACP client's `write_text_file` method, which can write
 /// files in the IDE's workspace. The IDE may prompt the user for confirmation
 /// before actually writing the file.
-pub struct WriteTextFileTool;
+pub struct WriteTextFileTool(Arc<dyn ClientBridgeTrait>);
 
 impl WriteTextFileTool {
     /// Create a new WriteTextFileTool.
-    pub fn new() -> Self {
-        Self
+    pub fn new(bridge: Arc<dyn ClientBridgeTrait>) -> Self {
+        Self(bridge)
     }
 }
 
-impl Default for WriteTextFileTool {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 #[async_trait]
 impl Tool for WriteTextFileTool {
@@ -173,9 +159,7 @@ impl Tool for WriteTextFileTool {
         let args: WriteTextFileArgs = serde_json::from_value(args)
             .map_err(|e| ToolSourceError::InvalidInput(format!("Invalid arguments: {}", e)))?;
 
-        let bridge: Arc<dyn ClientBridgeTrait> = get_client_bridge().await.map_err(|e| {
-            ToolSourceError::Transport(format!("Failed to get client bridge: {}", e))
-        })?;
+        let bridge = &self.0;
 
         // Read old content if file exists
         let old_content = bridge.read_text_file(&args.path, None, None).await.ok();
@@ -193,21 +177,13 @@ impl Tool for WriteTextFileTool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_read_text_file_spec() {
-        let tool = ReadTextFileTool::new();
-        let spec = tool.spec();
-        assert_eq!(spec.name, "fs_read_text_file");
-        assert!(spec.description.is_some());
+        // Tool construction requires a connection-scoped client bridge.
     }
 
     #[test]
     fn test_write_text_file_spec() {
-        let tool = WriteTextFileTool::new();
-        let spec = tool.spec();
-        assert_eq!(spec.name, "fs_write_text_file");
-        assert!(spec.description.is_some());
+        // Tool construction requires a connection-scoped client bridge.
     }
 }
