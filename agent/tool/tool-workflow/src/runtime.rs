@@ -19,21 +19,21 @@ use crate::instance::{
 };
 
 #[derive(Clone)]
-pub(crate) struct WorkflowRuntime {
+pub struct WorkflowRuntime {
     pub(crate) config_template: agent::agent::AgentConfig,
     pub(crate) active_runs:
         Arc<Mutex<HashMap<String, Arc<CancellationToken>>>>,
 }
 
 impl WorkflowRuntime {
-    pub(crate) fn new(config_template: agent::agent::AgentConfig) -> Self {
+    pub fn new(config_template: agent::agent::AgentConfig) -> Self {
         Self {
             config_template,
             active_runs: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    pub(crate) fn register_run(&self, dir_name: String) -> Arc<CancellationToken> {
+    pub fn register_run(&self, dir_name: String) -> Arc<CancellationToken> {
         let token = Arc::new(CancellationToken::new());
         self.active_runs
             .lock()
@@ -42,7 +42,7 @@ impl WorkflowRuntime {
         token
     }
 
-    pub(crate) fn cancel_run(&self, dir_name: &str) -> bool {
+    pub fn cancel_run(&self, dir_name: &str) -> bool {
         if let Some(token) = self
             .active_runs
             .lock()
@@ -57,7 +57,7 @@ impl WorkflowRuntime {
         }
     }
 
-    pub(crate) fn unregister_run(&self, dir_name: &str) {
+    pub fn unregister_run(&self, dir_name: &str) {
         self.active_runs
             .lock()
             .expect("active_runs mutex poisoned")
@@ -100,7 +100,7 @@ impl WorkflowRuntime {
         None
     }
 
-    pub(crate) async fn terminal_checkpoint_status(
+    pub async fn terminal_checkpoint_status(
         &self,
         run_dir_name: &str,
     ) -> Option<&'static str> {

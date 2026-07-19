@@ -2,12 +2,13 @@
 //! `WorkflowStartTool::builtin_skill() -> SkillRegistry::add_builtin() -> load_skill_with_dir()`
 
 use skill::discovery::{SkillRegistry, SkillSource};
+use std::sync::Arc;
 use tool_core::Tool;
-use tool_workflow::WorkflowStartTool;
+use tool_workflow::{WorkflowRuntime, WorkflowStartTool};
 
 fn make_tool() -> WorkflowStartTool {
     use agent::agent::AgentConfig;
-    WorkflowStartTool::new(AgentConfig::default())
+    WorkflowStartTool::new(Arc::new(WorkflowRuntime::new(AgentConfig::default())))
 }
 
 #[test]

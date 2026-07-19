@@ -7,13 +7,13 @@ use agent::agent::AgentConfig;
 use skill::discovery::{SkillRegistry, SkillSource};
 use std::sync::Arc;
 use tool_core::Tool;
-use tool_workflow::WorkflowStartTool;
+use tool_workflow::{WorkflowRuntime, WorkflowStartTool};
 
 fn main() {
     println!("=== Workflow builtin skill: runtime validation ===\n");
 
     // 1. WorkflowStartTool exposes the builtin skill
-    let tool = WorkflowStartTool::new(AgentConfig::default());
+    let tool = WorkflowStartTool::new(Arc::new(WorkflowRuntime::new(AgentConfig::default())));
     let skill = tool
         .builtin_skill()
         .expect("WorkflowStartTool must expose builtin_skill()");
@@ -130,7 +130,7 @@ fn main() {
         },
     );
     let entries_before = registry.list().len();
-    let tool2 = WorkflowStartTool::new(AgentConfig::default());
+    let tool2 = WorkflowStartTool::new(Arc::new(WorkflowRuntime::new(AgentConfig::default())));
     if let Some(s) = tool2.builtin_skill() {
         registry.add_builtin(
             &s.name,
@@ -164,7 +164,7 @@ fn main() {
 
     // 8. apply_toolset_filters: hides when workflow_start tool missing
     let mut registry2 = SkillRegistry::empty();
-    if let Some(s) = WorkflowStartTool::new(AgentConfig::default()).builtin_skill() {
+    if let Some(s) = WorkflowStartTool::new(Arc::new(WorkflowRuntime::new(AgentConfig::default()))).builtin_skill() {
         registry2.add_builtin(
             &s.name,
             &s.description,

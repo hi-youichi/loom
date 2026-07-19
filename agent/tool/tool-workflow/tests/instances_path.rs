@@ -6,6 +6,7 @@
 //! and that the legacy action-dispatch enum is gone.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use agent::agent::AgentConfig;
 use tool_core::tool_name::{
@@ -14,8 +15,8 @@ use tool_core::tool_name::{
 };
 use tool_core::{Tool, ToolCallContent};
 use tool_workflow::{
-    WorkflowEventsTool, WorkflowFilesTool, WorkflowListTool, WorkflowSourceTool, WorkflowStartTool,
-    WorkflowStatusTool,
+    WorkflowEventsTool, WorkflowFilesTool, WorkflowListTool, WorkflowRuntime, WorkflowSourceTool,
+    WorkflowStartTool, WorkflowStatusTool,
 };
 
 fn make_tools(working_folder: &Path) -> [Box<dyn Tool>; 6] {
@@ -23,13 +24,14 @@ fn make_tools(working_folder: &Path) -> [Box<dyn Tool>; 6] {
         working_folder: Some(working_folder.to_path_buf()),
         ..Default::default()
     };
+    let runtime = std::sync::Arc::new(WorkflowRuntime::new(cfg.clone()));
     [
-        Box::new(WorkflowStartTool::new(cfg.clone())) as Box<dyn Tool>,
-        Box::new(WorkflowStatusTool::new(cfg.clone())) as Box<dyn Tool>,
-        Box::new(WorkflowListTool::new(cfg.clone())) as Box<dyn Tool>,
-        Box::new(WorkflowEventsTool::new(cfg.clone())) as Box<dyn Tool>,
-        Box::new(WorkflowSourceTool::new(cfg.clone())) as Box<dyn Tool>,
-        Box::new(WorkflowFilesTool::new(cfg)) as Box<dyn Tool>,
+        Box::new(WorkflowStartTool::new(runtime.clone())) as Box<dyn Tool>,
+        Box::new(WorkflowStatusTool::new(runtime.clone())) as Box<dyn Tool>,
+        Box::new(WorkflowListTool::new(runtime.clone())) as Box<dyn Tool>,
+        Box::new(WorkflowEventsTool::new(runtime.clone())) as Box<dyn Tool>,
+        Box::new(WorkflowSourceTool::new(runtime.clone())) as Box<dyn Tool>,
+        Box::new(WorkflowFilesTool::new(runtime)) as Box<dyn Tool>,
     ]
 }
 
@@ -109,7 +111,7 @@ fn workflow_list_walks_both_current_and_legacy_instance_dirs() {
             working_folder: Some(temp.path().to_path_buf()),
             ..Default::default()
         };
-        let tool = WorkflowListTool::new(cfg);
+        let tool = WorkflowListTool::new(Arc::new(WorkflowRuntime::new(cfg)));
 
         let content = tool
             .call(serde_json::json!({}), None)

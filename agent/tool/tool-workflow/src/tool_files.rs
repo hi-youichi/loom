@@ -15,11 +15,7 @@ pub struct WorkflowFilesTool {
 }
 
 impl WorkflowFilesTool {
-    pub fn new(config_template: agent::agent::AgentConfig) -> Self {
-        Self {
-            runtime: Arc::new(WorkflowRuntime::new(config_template)),
-        }
-    }
+    pub fn new(runtime: Arc<WorkflowRuntime>) -> Self { Self { runtime } }
 }
 
 #[async_trait]

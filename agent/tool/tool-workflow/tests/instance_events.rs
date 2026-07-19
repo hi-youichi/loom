@@ -11,9 +11,10 @@ use agent::agent::AgentConfig;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tempfile::TempDir;
 use tool_core::{Tool, ToolSourceError};
-use tool_workflow::WorkflowEventsTool;
+use tool_workflow::{WorkflowEventsTool, WorkflowRuntime};
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -50,7 +51,7 @@ fn build_tool(dir: &Path) -> WorkflowEventsTool {
         working_folder: Some(dir.to_path_buf()),
         ..AgentConfig::default()
     };
-    WorkflowEventsTool::new(cfg)
+    WorkflowEventsTool::new(Arc::new(WorkflowRuntime::new(cfg)))
 }
 
 fn setup_instance(dir: &Path, instance_dir: &str) -> WorkflowEventsTool {

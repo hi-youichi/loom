@@ -43,6 +43,7 @@ impl AgentBackend for CapturingBackend {
             tokens_used: TokenUsage::default(),
             artifacts: vec![],
             logs: LogRef::default(),
+            thread_id: task.thread_id.clone(),
         })
     }
 

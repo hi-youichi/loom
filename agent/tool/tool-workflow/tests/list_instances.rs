@@ -11,19 +11,20 @@
 
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use agent::agent::AgentConfig;
 use serde_json::{json, Value};
 use tempfile::tempdir;
 use tool_core::{Tool, ToolCallContent};
-use tool_workflow::WorkflowListTool;
+use tool_workflow::{WorkflowListTool, WorkflowRuntime};
 
 fn build_tool(working_folder: PathBuf) -> WorkflowListTool {
     let cfg = AgentConfig {
         working_folder: Some(working_folder),
         ..Default::default()
     };
-    WorkflowListTool::new(cfg)
+    WorkflowListTool::new(Arc::new(WorkflowRuntime::new(cfg)))
 }
 
 async fn call_list(tool: &WorkflowListTool, args: Value) -> Result<ToolCallContent, String> {

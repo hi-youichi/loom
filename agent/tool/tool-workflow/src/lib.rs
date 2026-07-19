@@ -30,6 +30,8 @@ pub use tool_status::WorkflowStatusTool;
 pub use tool_cancel::WorkflowCancelTool;
 pub use workflow_resolver::resolve_workflow;
 
+pub use runtime::WorkflowRuntime;
+
 use std::sync::Arc;
 use tool_core::{Tool, ToolRegistryLocked};
 
@@ -37,42 +39,47 @@ pub async fn register_workflow_tools(
     registry: &ToolRegistryLocked,
     config: agent::agent::AgentConfig,
 ) {
+    let runtime = Arc::new(WorkflowRuntime::new(config));
     registry
-        .register_async(Box::new(WorkflowStartTool::new(config.clone())))
+        .register_async(Box::new(WorkflowStartTool::new(runtime.clone())))
         .await;
     registry
-        .register_async(Box::new(WorkflowCancelTool::new(config.clone())))
+        .register_async(Box::new(WorkflowCancelTool::new(runtime.clone())))
         .await;
     registry
-        .register_async(Box::new(WorkflowStatusTool::new(config.clone())))
+        .register_async(Box::new(WorkflowStatusTool::new(runtime.clone())))
         .await;
     registry
-        .register_async(Box::new(WorkflowListTool::new(config.clone())))
+        .register_async(Box::new(WorkflowListTool::new(runtime.clone())))
         .await;
     registry
-        .register_async(Box::new(WorkflowEventsTool::new(config.clone())))
+        .register_async(Box::new(WorkflowEventsTool::new(runtime.clone())))
         .await;
     registry
-        .register_async(Box::new(WorkflowSourceTool::new(config.clone())))
+        .register_async(Box::new(WorkflowSourceTool::new(runtime.clone())))
         .await;
     registry
-        .register_async(Box::new(WorkflowFilesTool::new(config)))
+        .register_async(Box::new(WorkflowFilesTool::new(runtime)))
         .await;
 }
 
 pub fn default_workflow_tool_provider() -> agent::run::ExtraToolsProvider {
     Arc::new(|config: &agent::ReactBuildConfig| {
-        let cfg = config.clone();
+        let runtime = Arc::new(WorkflowRuntime::new(config_to_agent_config(config)));
         vec![
-            Arc::new(WorkflowStartTool::new(cfg.clone())) as Arc<dyn Tool>,
-            Arc::new(WorkflowCancelTool::new(cfg.clone())) as Arc<dyn Tool>,
-            Arc::new(WorkflowStatusTool::new(cfg.clone())) as Arc<dyn Tool>,
-            Arc::new(WorkflowListTool::new(cfg.clone())) as Arc<dyn Tool>,
-            Arc::new(WorkflowEventsTool::new(cfg.clone())) as Arc<dyn Tool>,
-            Arc::new(WorkflowSourceTool::new(cfg.clone())) as Arc<dyn Tool>,
-            Arc::new(WorkflowFilesTool::new(cfg.clone())) as Arc<dyn Tool>,
+            Arc::new(WorkflowStartTool::new(runtime.clone())) as Arc<dyn Tool>,
+            Arc::new(WorkflowCancelTool::new(runtime.clone())) as Arc<dyn Tool>,
+            Arc::new(WorkflowStatusTool::new(runtime.clone())) as Arc<dyn Tool>,
+            Arc::new(WorkflowListTool::new(runtime.clone())) as Arc<dyn Tool>,
+            Arc::new(WorkflowEventsTool::new(runtime.clone())) as Arc<dyn Tool>,
+            Arc::new(WorkflowSourceTool::new(runtime.clone())) as Arc<dyn Tool>,
+            Arc::new(WorkflowFilesTool::new(runtime.clone())) as Arc<dyn Tool>,
         ]
     })
+}
+
+fn config_to_agent_config(config: &agent::ReactBuildConfig) -> agent::agent::AgentConfig {
+    config.clone()
 }
 
 #[cfg(test)]
@@ -88,13 +95,14 @@ mod tests {
     #[test]
     fn seven_tool_names_and_specs_match_constants() {
         let cfg = AgentConfig::default();
-        let start = WorkflowStartTool::new(cfg.clone());
-        let cancel = WorkflowCancelTool::new(cfg.clone());
-        let status = WorkflowStatusTool::new(cfg.clone());
-        let list = WorkflowListTool::new(cfg.clone());
-        let events = WorkflowEventsTool::new(cfg.clone());
-        let source = WorkflowSourceTool::new(cfg.clone());
-        let files = WorkflowFilesTool::new(cfg);
+        let runtime = Arc::new(WorkflowRuntime::new(cfg));
+        let start = WorkflowStartTool::new(runtime.clone());
+        let cancel = WorkflowCancelTool::new(runtime.clone());
+        let status = WorkflowStatusTool::new(runtime.clone());
+        let list = WorkflowListTool::new(runtime.clone());
+        let events = WorkflowEventsTool::new(runtime.clone());
+        let source = WorkflowSourceTool::new(runtime.clone());
+        let files = WorkflowFilesTool::new(runtime);
 
         assert_eq!(start.name(), TOOL_WORKFLOW_START);
         assert_eq!(cancel.name(), TOOL_WORKFLOW_CANCEL);

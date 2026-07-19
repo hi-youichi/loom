@@ -1,10 +1,11 @@
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use agent::agent::AgentConfig;
 use serde_json::Value;
 use tempfile::tempdir;
 use tool_core::{Tool, ToolCallContent};
-use tool_workflow::{WorkflowStartTool, WorkflowStatusTool};
+use tool_workflow::{WorkflowRuntime, WorkflowStartTool, WorkflowStatusTool};
 
 fn text(content: ToolCallContent) -> String {
     match content {
@@ -20,7 +21,7 @@ async fn start_returns_before_terminal_summary_is_available() {
         working_folder: Some(temp.path().to_path_buf()),
         ..AgentConfig::default()
     };
-    let start = WorkflowStartTool::new(config.clone());
+    let start = WorkflowStartTool::new(Arc::new(WorkflowRuntime::new(config.clone())));
     let started_at = Instant::now();
     let result = start
         .call(
@@ -37,7 +38,7 @@ async fn start_returns_before_terminal_summary_is_available() {
     assert_eq!(receipt["status"], "running");
     let instance_dir = receipt["instance_dir"].as_str().expect("instance_dir");
 
-    let status = WorkflowStatusTool::new(config);
+    let status = WorkflowStatusTool::new(Arc::new(WorkflowRuntime::new(config)));
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let result = status

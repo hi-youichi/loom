@@ -17,12 +17,13 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use agent::agent::AgentConfig;
 use serde_json::{json, Value};
 use tempfile::TempDir;
 use tool_core::{Tool, ToolCallContent};
-use tool_workflow::WorkflowStatusTool;
+use tool_workflow::{WorkflowRuntime, WorkflowStatusTool};
 
 const LEGACY_TS: &str = "loom-instance_1783783769";
 const NEW_TS: &str = "loom-instance_1700000000";
@@ -32,7 +33,7 @@ fn tool_with(working_folder: PathBuf) -> WorkflowStatusTool {
         working_folder: Some(working_folder),
         ..AgentConfig::default()
     };
-    WorkflowStatusTool::new(cfg)
+    WorkflowStatusTool::new(Arc::new(WorkflowRuntime::new(cfg)))
 }
 
 fn call(
