@@ -36,7 +36,10 @@ pub fn is_excluded_skill_path(path: &std::path::Path) -> bool {
     // store (those are internal markers, not bundled skills).
     for ancestor in path.ancestors() {
         if let Some(name) = ancestor.file_name().and_then(|n| n.to_str()) {
-            if name == ".loom" || name == ".archive" {
+            if name.starts_with('.') {
+                return true;
+            }
+            if name.starts_with('_') && name != "_" {
                 return true;
             }
         }

@@ -413,7 +413,7 @@ pub fn validate_skill_path(path: &str) -> ValidationResult {
     // `.git/` or executable payload through `handle_write_file`. Reject any
     // top-level subdirectory segment that is outside the canonical skill
     // layout.
-    const ALLOWED_SUBDIRS: &[&str] = &["references", "templates", "scripts", "assets"];
+    const ALLOWED_SUBDIRS: &[&str] = &["skills", "references", "templates", "scripts", "assets"];
     // Hermes parity (`skill_manager_tool.py:401-426`): Hermes rejects
     // single-segment paths that look like executable filenames (`.sh`,
     // `.exe`, …) even though it accepts bare skill names. The old early-
