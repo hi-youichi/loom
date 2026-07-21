@@ -61,7 +61,7 @@ use serde_json::json;
 use stream_event::{types::message::MessageChunk, StreamEvent};
 
 use crate::agent_runner::push_part;
-use crate::state::{emit, SharedState};
+use crate::state::{emit, new_part_id, SharedState};
 
 /// Translate a `TypedAnyStreamEvent` into opencode SSE events on `state`.
 /// `assistant_msg_id` is the message id the agent loop assigned.
@@ -344,36 +344,39 @@ pub fn close_open_text_parts(
         let mut updated = Vec::new();
         for p in list.iter_mut() {
             // Only touch streaming text/reasoning parts — tools keep
-            // their own state machine.
+            // their own state machine (`ToolEnd` already stamps `time.end`
+            // via `apply_transition`).
+            //
+            // NOTE: text/reasoning parts created by `translate_chunk` carry
+            // top-level `time` only (no `state.status`). We deliberately do
+            // NOT require a `state` object here so the existing logic that
+            // was previously only reachable for tool parts is exercised
+            // for text/reasoning too. The previous `continue` early-out
+            // (when `state` was absent) meant `time.end` was never stamped
+            // for streaming text/reasoning and the TUI's duration counter
+            // saw `undefined` — see `routes/session/index.tsx:1585,1588`.
             if p.part_type != "text" && p.part_type != "reasoning" {
                 continue;
             }
-            let Some(state_obj) = p.data.get_mut("state").and_then(|v| v.as_object_mut())
-            else {
-                continue;
-            };
-            let status = state_obj
-                .get("status")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if status != "pending" && status != "running" && status != "streaming" {
-                continue;
-            }
-            state_obj.insert("status".into(), json!("completed"));
-            if let Some(time) = state_obj.get_mut("time").and_then(|v| v.as_object_mut()) {
-                if !time.contains_key("end") {
-                    time.insert("end".into(), json!(ended_at_ms));
-                }
-            } else {
-                state_obj.insert(
-                    "time".into(),
-                    json!({"start": ended_at_ms, "end": ended_at_ms}),
-                );
-           }
+            // Stamp v1 `time.end` and v2 `time.completed` on the top-level
+            // `time` field. Both schemas leave them optional; consumers on
+            // either version compute duration from these.
             if let Some(part_time) = p.data.get_mut("time").and_then(|v| v.as_object_mut()) {
                 if !part_time.contains_key("end") {
                     part_time.insert("end".into(), json!(ended_at_ms));
                 }
+                if !part_time.contains_key("completed") {
+                    part_time.insert("completed".into(), json!(ended_at_ms));
+                }
+            } else {
+                // No `time` object at all — synthesize one so consumers
+                // never see `props.part.time` undefined.
+                p.data["time"] = json!({
+                    "start": ended_at_ms,
+                    "end": ended_at_ms,
+                    "created": ended_at_ms,
+                    "completed": ended_at_ms,
+                });
             }
             updated.push(p.data.clone());
         }
@@ -405,18 +408,19 @@ fn translate_chunk(
     } else {
         "text"
     };
-    let part_id = if chunk.is_thinking() {
-        "reasoning-0"
-    } else {
-        "text-0"
-    };
 
-    // Append-in-place: find existing text/reasoning part and append.
+    // Append-in-place: find existing streaming text/reasoning part in this
+    // message by `part_type` (not by id) and append. Using `part_type` as the
+    // match key lets us mint a fresh `prt_<uuid>` id on first creation
+    // (satisfies opencode v1 schema `Schema.isStartsWith("prt")`) without
+    // fragmenting the same logical part across multiple id's on subsequent
+    // chunks — the TUI state machine would otherwise treat each as a new
+    // part and discard the previous text.
     {
         let mut parts = state.parts.write();
         if let Some(list) = parts.get_mut(assistant_msg_id) {
             for p in list.iter_mut() {
-                if p.id == part_id {
+                if p.part_type == part_type {
                     let existing = p.data["text"].as_str().unwrap_or("").to_string();
                     p.data["text"] = json!(format!("{existing}{}", chunk.content));
                     let payload = p.data.clone();
@@ -436,24 +440,32 @@ fn translate_chunk(
         }
     }
 // Or create a fresh streaming part.
-    //
-    // Top-level `time` is required: the opencode TUI reads
-    // `props.part.time.end` for reasoning/text `isDone` / `duration` memos
-    // in `packages/tui/src/routes/session/index.tsx:1585,1588` and crashes
-    // with `undefined is not an object (evaluating 'props.part.time.end')`
-    // if the field is absent. `close_open_text_parts` only stamps `time.end`
-    // at run completion; the `start` timestamp must exist from the moment
-    // the part is created so the TUI's duration counter is well-defined.
+//
+// Top-level `time` is required: the opencode TUI reads
+// `props.part.time.end` for reasoning/text `isDone` / `duration` memos
+// in `packages/tui/src/routes/session/index.tsx:1585,1588` and crashes
+// with `undefined is not an object (evaluating 'props.part.time.end')`
+// if the field is absent. `close_open_text_parts` only stamps `time.end`
+// at run completion; the `start` timestamp must exist from the moment
+// the part is created so the TUI's duration counter is well-defined.
+//
+// Both v1 (`start` / `end`) and v2 (`created` / `completed`) time field
+// names are emitted with the same timestamp so consumers on either schema
+// version can compute duration without conditional handling.
+    let now_ms = chrono::Utc::now().timestamp_millis();
     push_part(
         state,
         assistant_msg_id,
         session_id,
         part_type,
         json!({
-            "id": part_id,
+            "id": new_part_id(),
             "type": part_type,
             "text": chunk.content,
-            "time": { "start": chrono::Utc::now().timestamp_millis() },
+            "time": {
+                "start": now_ms,
+                "created": now_ms,
+            },
         }),
     );
 }
@@ -496,7 +508,7 @@ pub(crate) fn last_assistant_reply(_state: &SharedState) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{translate_chunk, translate_stream_event};
+    use super::{close_open_text_parts, translate_chunk, translate_stream_event};
     use crate::state::{new_state, snapshot_replay};
     use serde_json::json;
     use stream_event::types::message::MessageChunk;
@@ -536,10 +548,42 @@ mod tests {
         let parts = state.parts.read();
         let parts = parts.get("msg").expect("translated parts");
         assert_eq!(parts.len(), 2);
-        assert_eq!(parts[0].id, "text-0");
+        // IDs are `prt_<uuid>` (opencode v1 schema `Schema.isStartsWith("prt")`),
+        // minted fresh on first chunk creation. Verify the prefix only.
+        assert!(parts[0].id.starts_with("prt_"), "text part id must satisfy opencode v1 schema `prt_` prefix (got {})", parts[0].id);
+        assert!(parts[1].id.starts_with("prt_"), "reasoning part id must satisfy opencode v1 schema `prt_` prefix (got {})", parts[1].id);
+        assert_eq!(parts[0].part_type, "text");
         assert_eq!(parts[0].data["text"], "hello world");
-        assert_eq!(parts[1].id, "reasoning-0");
+        assert_eq!(parts[1].part_type, "reasoning");
         assert_eq!(parts[1].data["text"], "plan");
+        // P0 #3: dual time fields — both v1 `start` and v2 `created` must be
+        // stamped from creation so consumers on either schema version compute
+        // duration from t=0.
+        assert!(parts[0].data["time"]["start"].as_i64().is_some());
+        assert!(parts[0].data["time"]["created"].as_i64().is_some());
+        assert_eq!(
+            parts[0].data["time"]["start"], parts[0].data["time"]["created"],
+            "v1 start and v2 created must share the same millisecond stamp"
+        );
+        assert_eq!(
+            parts[1].data["time"]["start"], parts[1].data["time"]["created"],
+            "v1 start and v2 created must share the same millisecond stamp"
+        );
+    }
+
+    /// P0 #3: at run close, `close_open_text_parts` mirrors `time.end` to
+    /// `time.completed` so v2 consumers can read either field.
+    #[test]
+    fn close_stamps_both_time_end_and_time_completed() {
+        let state = new_state();
+        translate_chunk(&MessageChunk::message("hello"), "sess", "msg", &state);
+        translate_chunk(&MessageChunk::thinking("plan"), "sess", "msg", &state);
+        close_open_text_parts(&state, "sess", "msg", 9876543210);
+        let parts = state.parts.read();
+        for p in parts.get("msg").unwrap() {
+            assert_eq!(p.data["time"]["end"], 9876543210i64);
+            assert_eq!(p.data["time"]["completed"], 9876543210i64);
+        }
     }
 
     // ─────────────── table-driven: handled events ───────────────
