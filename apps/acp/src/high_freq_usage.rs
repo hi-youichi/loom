@@ -351,15 +351,16 @@ mod tests {
 // Integration tests with SessionNotifier
 #[cfg(test)]
 mod session_notifier_integration_tests {
-    use super::*;
-    use agent_client_protocol::schema::v1::SessionNotification;
-    use async_channel::mpsc;
+    
+    use agent_client_protocol::schema::v1::SessionId;
+    use crate::stream_bridge::SessionNotifier;
+    
     use std::time::Duration;
-    use tokio;
+    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn test_high_freq_tracking_with_notifier() {
-        let (tx, mut rx) = mpsc::channel(100);
+        let (tx, _rx) = mpsc::channel(100);
         let session_id = SessionId::new("test_session");
 
         let notifier = SessionNotifier::new(tx, session_id);
@@ -371,10 +372,7 @@ mod session_notifier_integration_tests {
 
         for i in 1..=5 {
             let delta = i * 20; // 20, 40, 60, 80, 100 tokens
-            if let Some(update_info) = {
-                let mut tracker = notifier.high_freq_tracker.lock().unwrap();
-                tracker.as_mut().unwrap().update_tokens(delta)
-            } {
+            if let Some(update_info) = notifier.test_update_high_freq_tokens(delta) {
                 total_increment += update_info.increment;
                 updates_received += 1;
             }
@@ -388,16 +386,13 @@ mod session_notifier_integration_tests {
         );
 
         // Verify final state
-        let final_usage = {
-            let tracker = notifier.high_freq_tracker.lock().unwrap();
-            tracker.as_ref().unwrap().get_current_usage()
-        };
+        let final_usage = notifier.get_high_freq_tracker_status().unwrap().0;
         assert_eq!(final_usage, 1300, "Final usage should be 1000 + 300");
     }
 
     #[tokio::test]
     async fn test_percentage_trigger_in_notifier() {
-        let (tx, mut rx) = mpsc::channel(100);
+        let (tx, _rx) = mpsc::channel(100);
         let session_id = SessionId::new("test_session");
 
         let notifier = SessionNotifier::new(tx, session_id);
@@ -406,10 +401,7 @@ mod session_notifier_integration_tests {
         let mut updates_received = 0;
 
         // Trigger 50% threshold (5000/10000)
-        if let Some(_) = {
-            let mut tracker = notifier.high_freq_tracker.lock().unwrap();
-            tracker.as_mut().unwrap().update_tokens(1000)
-        } {
+        if let Some(_) = notifier.test_update_high_freq_tokens(1000) {
             updates_received += 1;
         }
 
@@ -418,7 +410,7 @@ mod session_notifier_integration_tests {
 
     #[tokio::test]
     async fn test_time_interval_trigger_in_notifier() {
-        let (tx, mut rx) = mpsc::channel(100);
+        let (tx, _rx) = mpsc::channel(100);
         let session_id = SessionId::new("test_session");
 
         let notifier = SessionNotifier::new(tx, session_id);
@@ -427,10 +419,7 @@ mod session_notifier_integration_tests {
         let mut updates_received = 0;
 
         // Add small tokens (below increment threshold)
-        if let Some(_) = {
-            let mut tracker = notifier.high_freq_tracker.lock().unwrap();
-            tracker.as_mut().unwrap().update_tokens(10)
-        } {
+        if let Some(_) = notifier.test_update_high_freq_tokens(10) {
             updates_received += 1;
         }
 
@@ -443,10 +432,7 @@ mod session_notifier_integration_tests {
         tokio::time::sleep(Duration::from_millis(110)).await;
 
         // Add more small tokens
-        if let Some(_) = {
-            let mut tracker = notifier.high_freq_tracker.lock().unwrap();
-            tracker.as_mut().unwrap().update_tokens(10)
-        } {
+        if let Some(_) = notifier.test_update_high_freq_tokens(10) {
             updates_received += 1;
         }
 
@@ -455,7 +441,7 @@ mod session_notifier_integration_tests {
 
     #[tokio::test]
     async fn test_custom_configuration_in_notifier() {
-        let (tx, mut rx) = mpsc::channel(100);
+        let (tx, _rx) = mpsc::channel(100);
         let session_id = SessionId::new("test_session");
 
         let notifier = SessionNotifier::new(tx, session_id);
@@ -465,10 +451,7 @@ mod session_notifier_integration_tests {
 
         // Should trigger with smaller threshold
         for i in 1..=3 {
-            if let Some(_) = {
-                let mut tracker = notifier.high_freq_tracker.lock().unwrap();
-                tracker.as_mut().unwrap().update_tokens(i * 10)
-            } {
+            if let Some(_) = notifier.test_update_high_freq_tokens(i * 10) {
                 updates_received += 1;
             }
         }
@@ -481,71 +464,49 @@ mod session_notifier_integration_tests {
 
     #[tokio::test]
     async fn test_disable_high_freq_tracking() {
-        let (tx, mut rx) = mpsc::channel(100);
+        let (tx, _rx) = mpsc::channel(100);
         let session_id = SessionId::new("test_session");
 
         let notifier = SessionNotifier::new(tx, session_id);
         notifier.enable_high_freq_tracking(1000, 10000);
 
         // Add some tokens
-        {
-            let mut tracker = notifier.high_freq_tracker.lock().unwrap();
-            tracker.as_mut().unwrap().update_tokens(50);
-        }
+        notifier.test_update_high_freq_tokens(50);
 
         // Disable tracking
         notifier.disable_high_freq_tracking().await;
 
         // Verify tracker is cleared
-        let tracker_opt = {
-            let tracker = notifier.high_freq_tracker.lock().unwrap();
-            tracker.is_some()
-        };
+        let tracker_opt = notifier.test_is_high_freq_enabled();
 
         assert!(!tracker_opt, "Tracker should be cleared after disable");
     }
 
     #[tokio::test]
     async fn test_adaptive_frequency_adjustment() {
-        let (tx, mut rx) = mpsc::channel(100);
+        let (tx, _rx) = mpsc::channel(100);
         let session_id = SessionId::new("test_session");
 
         let notifier = SessionNotifier::new(tx, session_id);
         notifier.enable_high_freq_tracking(1000, 10000);
 
         // Simulate high system load
-        {
-            let mut tracker = notifier.high_freq_tracker.lock().unwrap();
-            tracker
-                .as_mut()
-                .unwrap()
-                .adjust_frequency_based_on_load(0.9);
-        }
+        notifier.test_adjust_freq_based_on_load(0.9);
 
         // Verify adjustment to high load
         {
-            let tracker = notifier.high_freq_tracker.lock().unwrap();
-            let tracker_ref = tracker.as_ref().unwrap();
-            assert_eq!(tracker_ref.get_current_usage(), 1000);
+            let status = notifier.get_high_freq_tracker_status().unwrap();
+            assert_eq!(status.0, 1000);
             // The internal thresholds should be adjusted (verified through behavior)
         }
 
         // Simulate low system load
-        {
-            let mut tracker = notifier.high_freq_tracker.lock().unwrap();
-            tracker
-                .as_mut()
-                .unwrap()
-                .adjust_frequency_based_on_load(0.2);
-        }
+        notifier.test_adjust_freq_based_on_load(0.2);
 
         // More aggressive updates should work with low load
         let mut updates_received = 0;
         for i in 1..=10 {
-            if let Some(_) = {
-                let mut tracker = notifier.high_freq_tracker.lock().unwrap();
-                tracker.as_mut().unwrap().update_tokens(i * 5)
-            } {
+            if let Some(_) = notifier.test_update_high_freq_tokens(i * 5) {
                 updates_received += 1;
             }
         }
@@ -558,7 +519,7 @@ mod session_notifier_integration_tests {
 
     #[tokio::test]
     async fn test_high_freq_tracker_status_query() {
-        let (tx, mut rx) = mpsc::channel(100);
+        let (tx, _rx) = mpsc::channel(100);
         let session_id = SessionId::new("test_session");
 
         let notifier = SessionNotifier::new(tx, session_id);

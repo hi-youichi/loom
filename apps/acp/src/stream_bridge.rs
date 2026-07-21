@@ -973,13 +973,16 @@ impl SessionNotifier {
         // Acquire the update data within lock scope
         let update_opt = {
             let mut tracker_opt = self.high_freq_tracker.lock().unwrap();
-            if let Some(tracker) = tracker_opt.as_mut() {
+            let result = if let Some(tracker) = tracker_opt.as_mut() {
                 tracker
                     .force_update()
                     .map(|info| (info.used, info.size, info.increment))
             } else {
                 None
-            }
+            };
+            // Clear the tracker
+            *tracker_opt = None;
+            result
         };
 
         // Send update outside of lock scope
@@ -1001,6 +1004,29 @@ impl SessionNotifier {
         })
     }
 
+
+    /// Test-only helper: update tokens on the internal high-freq tracker.
+    #[cfg(test)]
+    pub(crate) fn test_update_high_freq_tokens(&self, delta: u64) -> Option<crate::high_freq_usage::UsageUpdateInfo> {
+        let mut tracker = self.high_freq_tracker.lock().unwrap();
+        tracker.as_mut().and_then(|t| t.update_tokens(delta))
+    }
+
+    /// Test-only helper: adjust frequency based on system load.
+    #[cfg(test)]
+    pub(crate) fn test_adjust_freq_based_on_load(&self, system_load: f64) {
+        let mut tracker = self.high_freq_tracker.lock().unwrap();
+        if let Some(t) = tracker.as_mut() {
+            t.adjust_frequency_based_on_load(system_load);
+        }
+    }
+
+    /// Test-only helper: check if high-freq tracker is enabled.
+    #[cfg(test)]
+    pub(crate) fn test_is_high_freq_enabled(&self) -> bool {
+        let tracker = self.high_freq_tracker.lock().unwrap();
+        tracker.is_some()
+    }
     /// Send usage update notification with enhanced metadata.
     async fn send_usage_update(&self, used: u64, size: u64, increment: u64) {
         let meta = self.snapshot_token_usage_meta();
