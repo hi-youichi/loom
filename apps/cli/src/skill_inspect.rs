@@ -195,7 +195,8 @@ pub fn build_inspect_registry(
 
     // Inject WorkflowStartTool builtin (the only tool currently implementing builtin_skill).
     // Construction pattern matches `agent/tool/tool-workflow/tests/builtin_skill.rs`.
-    let tool = tool_workflow::WorkflowStartTool::new(agent::agent::AgentConfig::default());
+    let runtime = std::sync::Arc::new(tool_workflow::WorkflowRuntime::new(agent::agent::AgentConfig::default()));
+    let tool = tool_workflow::WorkflowStartTool::new(runtime);
     if let Some(builtin) = tool.builtin_skill() {
         registry.add_builtin(
             &builtin.name,
