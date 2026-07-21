@@ -641,6 +641,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = SkillUsageStore::new(dir.path());
 
+        store.mark_agent_created("skill-a");
         store.bump_use("skill-a");
         store.bump_use("skill-a");
         store.bump_view("skill-a");
@@ -655,6 +656,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = SkillUsageStore::new(dir.path());
 
+        store.mark_agent_created("s1");
         store.bump_use("s1");
         let entry = store.get("s1").unwrap();
         assert!(entry.last_used_at.is_some());
@@ -666,6 +668,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = SkillUsageStore::new(dir.path());
 
+        store.mark_agent_created("s1");
         store.bump_patch("s1");
         store.bump_patch("s1");
         store.bump_patch("s1");
@@ -766,6 +769,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = SkillUsageStore::new(dir.path());
 
+        store.mark_agent_created("s1");
         store.bump_use("s1");
         store.bump_use("s1");
         store.bump_view("s1");
