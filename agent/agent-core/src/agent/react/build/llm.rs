@@ -32,21 +32,6 @@ pub use model_spec_core::{DefaultTierResolver, ResolvedTierModel, TierResolver};
 pub(crate) fn model_entry_from_config(
     config: &ReactBuildConfig,
 ) -> Result<ModelEntry, BuildRunnerError> {
-    let api_key = config
-        .openai_api_key
-        .clone()
-        .or_else(|| std::env::var("OPENAI_API_KEY").ok())
-        .ok_or_else(|| {
-            BuildRunnerError::Context(GraphError::ExecutionFailed(
-                "OPENAI_API_KEY is not set".to_string(),
-            ))
-        })?;
-
-    let base_url = config
-        .openai_base_url
-        .clone()
-        .or_else(|| std::env::var("OPENAI_BASE_URL").ok());
-
     tracing::debug!("🎯 Frontend config model: {:?}", config.model);
 
     let raw_model = config
@@ -59,27 +44,62 @@ pub(crate) fn model_entry_from_config(
 
     tracing::info!("✅ Final model to use: {}", raw_model);
 
-    tracing::debug!("🎯 Config provider type: {:?}", config.llm_provider);
-
-    let inferred_provider_type = parse_provider_model(&raw_model).map(|(provider, _)| {
-        if provider.eq_ignore_ascii_case("openai") {
-            "openai".to_string()
-        } else {
-            "openai_compat".to_string()
-        }
-    });
-    let _provider_type = config.llm_provider.clone().or(inferred_provider_type);
-
     let (provider_from_model, model) = parse_provider_model(&raw_model)
         .map(|(p, m)| (Some(p), m))
         .unwrap_or_else(|| (None, raw_model.as_str()));
 
-    let provider = match config.llm_provider.as_deref().or(provider_from_model) {
+    // ── Provider routing: look up [[providers]] from config.toml ──
+    let providers = env_config::load_provider_configs_from_xdg().unwrap_or_default();
+    let matched = provider_from_model.as_ref().and_then(|hint| {
+        providers.iter().find(|p| {
+            p.name == *hint
+                || p.name.eq_ignore_ascii_case(hint)
+        })
+    });
+
+    if let Some(ref mp) = matched {
+        tracing::info!(
+            provider = %mp.name,
+            model = %model,
+            "📦 Provider routing: matched [[providers]] entry from config.toml"
+        );
+    }
+
+    // Resolve credentials with provider routing priority:
+    //   1. Matched [[providers]] api_key/base_url  (provider routing)
+    //   2. Explicit config override                (ReactBuildConfig)
+    //   3. Environment variable                    (fallback)
+    let api_key = matched
+        .and_then(|p| p.api_key.clone())
+        .or_else(|| config.openai_api_key.clone())
+        .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+        .ok_or_else(|| {
+            BuildRunnerError::Context(GraphError::ExecutionFailed(
+                "OPENAI_API_KEY is not set".to_string(),
+            ))
+        })?;
+
+    let base_url = matched
+        .and_then(|p| p.base_url.clone())
+        .or_else(|| config.openai_base_url.clone())
+        .or_else(|| std::env::var("OPENAI_BASE_URL").ok());
+
+    // Resolve provider type (controls LLM client implementation):
+    //   1. Explicit config override (ReactBuildConfig.llm_provider)
+    //   2. Matched [[providers]] provider_type
+    let provider_type = config
+        .llm_provider
+        .clone()
+        .or_else(|| matched.and_then(|p| p.provider_type.clone()));
+
+    // Provider display name follows the standard type mapping.
+    // The matched provider name is logged above for traceability.
+    let provider = match provider_type.as_deref().or(provider_from_model) {
         Some("bigmodel") => "bigmodel".to_string(),
         Some("openai_compat") => "openai_compat".to_string(),
         Some(other) => other.to_string(),
         None => {
-            let base = config.openai_base_url.as_deref().unwrap_or("");
+            let base = base_url.as_deref().unwrap_or("");
             if base.is_empty() || base.contains("api.openai.com") {
                 "openai".to_string()
             } else {
@@ -111,7 +131,7 @@ pub(crate) fn model_entry_from_config(
         provider,
         base_url,
         api_key: Some(api_key),
-        provider_type: config.llm_provider.clone(),
+        provider_type,
         temperature,
         max_tokens: None,
         family: None,
