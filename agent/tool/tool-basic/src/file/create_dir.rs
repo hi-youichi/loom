@@ -12,7 +12,7 @@ use serde_json::json;
 use tool_core::Tool;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
-use super::path::resolve_path_under;
+use super::path::resolve_path;
 
 /// Tool name for creating a directory.
 pub const TOOL_CREATE_DIR: &str = "create_dir";
@@ -25,12 +25,13 @@ pub const TOOL_CREATE_DIR: &str = "create_dir";
 pub struct CreateDirTool {
     /// Canonical working folder path (shared with other file tools).
     pub(crate) working_folder: Arc<std::path::PathBuf>,
+    pub(crate) allow_outside: bool,
 }
 
 impl CreateDirTool {
     /// Creates a new CreateDirTool with the given working folder.
-    pub fn new(working_folder: Arc<std::path::PathBuf>) -> Self {
-        Self { working_folder }
+    pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
+        Self { working_folder, allow_outside }
     }
 }
 
@@ -80,7 +81,7 @@ impl Tool for CreateDirTool {
             .get("exist_ok")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
-        let path = resolve_path_under(self.working_folder.as_ref(), path_param)?;
+        let path = resolve_path(self.working_folder.as_ref(), path_param, self.allow_outside)?;
         if path.exists() {
             if path.is_dir() {
                 if exist_ok {

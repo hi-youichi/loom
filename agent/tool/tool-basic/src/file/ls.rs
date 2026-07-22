@@ -17,7 +17,7 @@ use walkdir::WalkDir;
 use tool_core::Tool;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
-use super::path::resolve_path_under;
+use super::path::resolve_path;
 
 /// Tool name for tree-style directory listing.
 pub const TOOL_LS: &str = "ls";
@@ -65,14 +65,15 @@ fn is_default_ignored(name: &str) -> bool {
 pub struct LsTool {
     /// Canonical working folder path (shared with other file tools).
     pub(crate) working_folder: Arc<std::path::PathBuf>,
+    pub(crate) allow_outside: bool,
 }
 
 impl LsTool {
     /// Creates a new LsTool with the given working folder.
     ///
     /// The path is not canonicalized here; the caller must pass a canonical path.
-    pub fn new(working_folder: Arc<std::path::PathBuf>) -> Self {
-        Self { working_folder }
+    pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
+        Self { working_folder, allow_outside }
     }
 }
 
@@ -125,7 +126,7 @@ impl Tool for LsTool {
             path_param
         };
 
-        let search_root = resolve_path_under(self.working_folder.as_ref(), path_param)?;
+        let search_root = resolve_path(self.working_folder.as_ref(), path_param, self.allow_outside)?;
         if !search_root.is_dir() {
             return Err(ToolSourceError::InvalidInput(format!(
                 "not a directory: {}",
@@ -330,14 +331,14 @@ mod tests {
     #[test]
     fn test_ls_tool_new() {
         let dir = tempfile::tempdir().unwrap();
-        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()), false);
         assert_eq!(tool.working_folder.as_ref(), dir.path());
     }
 
     #[tokio::test]
     async fn test_ls_tool_name_and_spec() {
         let dir = tempfile::tempdir().unwrap();
-        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()), false);
         assert_eq!(tool.name(), "ls");
 
         let spec = tool.spec();
@@ -350,7 +351,7 @@ mod tests {
     #[tokio::test]
     async fn test_ls_lists_files_in_tree_format() {
         let dir = setup_test_dir();
-        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()), false);
         let result = tool.call(serde_json::json!({}), None).await.unwrap();
         let text = result.as_text().unwrap();
 
@@ -366,7 +367,7 @@ mod tests {
     #[tokio::test]
     async fn test_ls_with_path_param() {
         let dir = setup_test_dir();
-        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()), false);
         let result = tool
             .call(serde_json::json!({"path": "src"}), None)
             .await
@@ -381,7 +382,7 @@ mod tests {
     #[tokio::test]
     async fn test_ls_with_ignore_patterns() {
         let dir = setup_test_dir();
-        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()), false);
         let result = tool
             .call(serde_json::json!({"ignore": ["*.txt"]}), None)
             .await
@@ -396,7 +397,7 @@ mod tests {
     #[tokio::test]
     async fn test_ls_with_complex_ignore_patterns() {
         let dir = setup_test_dir();
-        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()), false);
         let result = tool
             .call(serde_json::json!({"ignore": ["src/*", "*.txt"]}), None)
             .await
@@ -414,7 +415,7 @@ mod tests {
         let file_path = dir.path().join("file.txt");
         fs::write(&file_path, "content").unwrap();
 
-        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()), false);
         let result = tool
             .call(serde_json::json!({"path": "file.txt"}), None)
             .await;
@@ -433,7 +434,7 @@ mod tests {
         let empty_dir = dir.path().join("empty");
         fs::create_dir(&empty_dir).unwrap();
 
-        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()), false);
         let result = tool
             .call(serde_json::json!({"path": "empty"}), None)
             .await
@@ -447,7 +448,7 @@ mod tests {
     #[tokio::test]
     async fn test_ls_default_path_is_dot() {
         let dir = setup_test_dir();
-        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         // Test with no path argument (should default to ".")
         let result1 = tool.call(serde_json::json!({}), None).await.unwrap();
@@ -471,7 +472,7 @@ mod tests {
     #[tokio::test]
     async fn test_ls_empty_path_defaults_to_dot() {
         let dir = setup_test_dir();
-        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         // Test with empty path argument (should default to ".")
         let result = tool
@@ -488,7 +489,7 @@ mod tests {
     #[tokio::test]
     async fn test_ls_with_whitespace_path() {
         let dir = setup_test_dir();
-        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         // Test with whitespace path argument (should default to ".")
         let result = tool
@@ -505,7 +506,7 @@ mod tests {
     #[tokio::test]
     async fn test_ls_spec_json_schema() {
         let dir = tempfile::tempdir().unwrap();
-        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()), false);
         let spec = tool.spec();
 
         // Check input schema structure
@@ -531,7 +532,7 @@ mod tests {
     #[tokio::test]
     async fn test_ls_tree_structure_format() {
         let dir = setup_test_dir();
-        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()), false);
         let result = tool.call(serde_json::json!({}), None).await.unwrap();
         let text = result.as_text().unwrap();
 
@@ -555,7 +556,7 @@ mod tests {
     #[tokio::test]
     async fn test_ls_multiple_ignore_patterns() {
         let dir = setup_test_dir();
-        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         // Add more test files for testing multiple patterns
         fs::write(dir.path().join("test.py"), "print('hello')").unwrap();
@@ -583,7 +584,7 @@ mod tests {
     #[tokio::test]
     async fn test_ls_invalid_ignore_patterns() {
         let dir = setup_test_dir();
-        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = LsTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         // Invalid glob patterns should be ignored without error
         let result = tool

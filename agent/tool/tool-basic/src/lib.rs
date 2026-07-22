@@ -39,6 +39,7 @@ pub async fn register_bash_tools(registry: &ToolRegistryLocked) {
 pub fn register_file_tools(
     aggregate: &ToolRegistryLocked,
     working_folder: impl AsRef<Path>,
+    allow_outside: bool,
     _skill_registry: Option<Arc<::skill::SkillRegistry>>,
     _skill_usage: Option<::skill::SkillUsageStore>,
     is_background_review: bool,
@@ -56,17 +57,17 @@ pub fn register_file_tools(
         ));
     }
     let working_folder = Arc::new(canonical);
-    aggregate.register_sync(Box::new(file::LsTool::new(working_folder.clone())));
-    aggregate.register_sync(Box::new(file::ReadFileTool::new(working_folder.clone())));
-    aggregate.register_sync(Box::new(file::WriteFileTool::new(working_folder.clone())));
-    aggregate.register_sync(Box::new(file::EditFileTool::new(working_folder.clone())));
-    aggregate.register_sync(Box::new(file::MultieditTool::new(working_folder.clone())));
-    aggregate.register_sync(Box::new(file::ApplyPatchTool::new(working_folder.clone())));
-    aggregate.register_sync(Box::new(file::MoveFileTool::new(working_folder.clone())));
-    aggregate.register_sync(Box::new(file::DeleteFileTool::new(working_folder.clone())));
-    aggregate.register_sync(Box::new(file::CreateDirTool::new(working_folder.clone())));
-    aggregate.register_sync(Box::new(file::GlobTool::new(working_folder.clone())));
-    aggregate.register_sync(Box::new(file::GrepTool::new(working_folder.clone())));
+    aggregate.register_sync(Box::new(file::LsTool::new(working_folder.clone(), allow_outside)));
+    aggregate.register_sync(Box::new(file::ReadFileTool::new(working_folder.clone(), allow_outside)));
+    aggregate.register_sync(Box::new(file::WriteFileTool::new(working_folder.clone(), allow_outside)));
+    aggregate.register_sync(Box::new(file::EditFileTool::new(working_folder.clone(), allow_outside)));
+    aggregate.register_sync(Box::new(file::MultieditTool::new(working_folder.clone(), allow_outside)));
+    aggregate.register_sync(Box::new(file::ApplyPatchTool::new(working_folder.clone(), allow_outside)));
+    aggregate.register_sync(Box::new(file::MoveFileTool::new(working_folder.clone(), allow_outside)));
+    aggregate.register_sync(Box::new(file::DeleteFileTool::new(working_folder.clone(), allow_outside)));
+    aggregate.register_sync(Box::new(file::CreateDirTool::new(working_folder.clone(), allow_outside)));
+    aggregate.register_sync(Box::new(file::GlobTool::new(working_folder.clone(), allow_outside)));
+    aggregate.register_sync(Box::new(file::GrepTool::new(working_folder.clone(), allow_outside)));
     aggregate.register_sync(Box::new(todo::TodoWriteTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(todo::TodoReadTool::new(working_folder.clone())));
     aggregate.register_sync(Box::new(date::DateTool::new()));

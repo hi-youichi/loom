@@ -12,7 +12,7 @@ use tool_core::Tool;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 use super::edit_file::replace as edit_replace;
-use super::path::resolve_path_under;
+use super::path::resolve_path;
 
 /// Tool name for multi-edit.
 pub const TOOL_MULTIEDIT: &str = "multiedit";
@@ -20,11 +20,12 @@ pub const TOOL_MULTIEDIT: &str = "multiedit";
 /// Tool that applies multiple edits to one file in a single call.
 pub struct MultieditTool {
     pub(crate) working_folder: Arc<std::path::PathBuf>,
+    pub(crate) allow_outside: bool,
 }
 
 impl MultieditTool {
-    pub fn new(working_folder: Arc<std::path::PathBuf>) -> Self {
-        Self { working_folder }
+    pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
+        Self { working_folder, allow_outside }
     }
 }
 
@@ -78,7 +79,7 @@ impl Tool for MultieditTool {
             .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolSourceError::InvalidInput("missing path".to_string()))?;
-        let path = resolve_path_under(self.working_folder.as_ref(), path_param)?;
+        let path = resolve_path(self.working_folder.as_ref(), path_param, self.allow_outside)?;
 
         let edits = args
             .get("edits")
@@ -191,7 +192,7 @@ mod tests {
     use std::sync::Arc;
 
     fn tool(dir: &tempfile::TempDir) -> MultieditTool {
-        MultieditTool::new(Arc::new(dir.path().to_path_buf()))
+        MultieditTool::new(Arc::new(dir.path().to_path_buf()), false)
     }
 
     #[test]

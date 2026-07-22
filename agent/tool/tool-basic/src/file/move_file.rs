@@ -12,7 +12,7 @@ use serde_json::json;
 use tool_core::Tool;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
-use super::path::resolve_path_under;
+use super::path::resolve_path;
 
 /// Tool name for moving or renaming a file or directory.
 pub const TOOL_MOVE_FILE: &str = "move_file";
@@ -24,12 +24,13 @@ pub const TOOL_MOVE_FILE: &str = "move_file";
 pub struct MoveFileTool {
     /// Canonical working folder path (shared with other file tools).
     pub(crate) working_folder: Arc<std::path::PathBuf>,
+    pub(crate) allow_outside: bool,
 }
 
 impl MoveFileTool {
     /// Creates a new MoveFileTool with the given working folder.
-    pub fn new(working_folder: Arc<std::path::PathBuf>) -> Self {
-        Self { working_folder }
+    pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
+        Self { working_folder, allow_outside }
     }
 }
 
@@ -78,8 +79,8 @@ impl Tool for MoveFileTool {
             .get("target")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolSourceError::InvalidInput("missing target".to_string()))?;
-        let source = resolve_path_under(self.working_folder.as_ref(), source_param)?;
-        let target = resolve_path_under(self.working_folder.as_ref(), target_param)?;
+        let source = resolve_path(self.working_folder.as_ref(), source_param, self.allow_outside)?;
+        let target = resolve_path(self.working_folder.as_ref(), target_param, self.allow_outside)?;
         if !source.exists() {
             return Err(ToolSourceError::InvalidInput(format!(
                 "source not found: {}",

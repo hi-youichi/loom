@@ -16,7 +16,7 @@ use walkdir::WalkDir;
 use tool_core::Tool;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
-use super::path::resolve_path_under;
+use super::path::resolve_path;
 
 /// Tool name for glob file search.
 pub use tool_core::tool_name::TOOL_GLOB;
@@ -35,6 +35,7 @@ fn path_str_for_glob(p: &Path) -> String {
 pub struct GlobTool {
     /// Canonical working folder path (shared with other file tools).
     pub(crate) working_folder: Arc<std::path::PathBuf>,
+    pub(crate) allow_outside: bool,
 }
 
 impl GlobTool {
@@ -42,8 +43,8 @@ impl GlobTool {
     ///
     /// The path is not canonicalized here; the caller must pass a canonical path
     /// (e.g. from [`FileToolSource::new`](tool_core::FileToolSource::new)).
-    pub fn new(working_folder: Arc<std::path::PathBuf>) -> Self {
-        Self { working_folder }
+    pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
+        Self { working_folder, allow_outside }
     }
 }
 
@@ -117,7 +118,7 @@ impl Tool for GlobTool {
             path_param
         };
 
-        let search_root = resolve_path_under(self.working_folder.as_ref(), path_param)?;
+        let search_root = resolve_path(self.working_folder.as_ref(), path_param, self.allow_outside)?;
         if !search_root.is_dir() {
             return Err(ToolSourceError::InvalidInput(format!(
                 "path is not a directory: {}",
@@ -239,21 +240,21 @@ mod tests {
     #[test]
     fn test_glob_tool_new() {
         let dir = tempfile::tempdir().unwrap();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
         assert_eq!(tool.working_folder.as_ref(), dir.path());
     }
 
     #[tokio::test]
     async fn test_glob_tool_name() {
         let dir = tempfile::tempdir().unwrap();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
         assert_eq!(tool.name(), "glob");
     }
 
     #[tokio::test]
     async fn test_glob_tool_spec() {
         let dir = tempfile::tempdir().unwrap();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
         let spec = tool.spec();
 
         assert_eq!(spec.name, "glob");
@@ -287,7 +288,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_simple_pattern() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         let result = tool
             .call(serde_json::json!({"pattern": "*.rs"}), None)
@@ -302,7 +303,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_recursive_pattern() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         let result = tool
             .call(serde_json::json!({"pattern": "**/*.rs"}), None)
@@ -324,7 +325,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_pattern_no_matches_empty_result() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         let result = tool
             .call(serde_json::json!({"pattern": "*.nonexistent"}), None)
@@ -338,7 +339,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_with_specific_path() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         let result = tool
             .call(serde_json::json!({"pattern": "*.rs", "path": "src"}), None)
@@ -355,7 +356,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_with_include_parameter() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         let result = tool
             .call(
@@ -380,7 +381,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_empty_pattern_error() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         let result = tool.call(serde_json::json!({"pattern": ""}), None).await;
 
@@ -395,7 +396,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_missing_pattern_error() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         let result = tool.call(serde_json::json!({}), None).await;
 
@@ -410,7 +411,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_pattern_with_double_dot_error() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         let result = tool
             .call(serde_json::json!({"pattern": "../secret"}), None)
@@ -427,7 +428,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_invalid_pattern_error() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         let result = tool
             .call(serde_json::json!({"pattern": "[invalid"}), None)
@@ -444,7 +445,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_non_existent_path_error() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         let result = tool
             .call(
@@ -464,7 +465,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_path_is_file_error() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         let result = tool
             .call(
@@ -484,7 +485,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_empty_path_defaults_to_dot() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         // Test with empty path argument (should default to ".")
         let result = tool
@@ -500,7 +501,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_whitespace_path_defaults_to_dot() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         // Test with whitespace path argument (should default to ".")
         let result = tool
@@ -516,7 +517,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_default_path_is_dot() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         // Test with no path argument (should default to ".")
         let result1 = tool
@@ -540,7 +541,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_results_are_sorted() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         let result = tool
             .call(serde_json::json!({"pattern": "**/*.rs"}), None)
@@ -558,7 +559,7 @@ mod tests {
     #[tokio::test]
     async fn test_glob_subdirectory_pattern() {
         let dir = setup_test_dir();
-        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()), false);
 
         let result = tool
             .call(serde_json::json!({"pattern": "src/models/*.rs"}), None)

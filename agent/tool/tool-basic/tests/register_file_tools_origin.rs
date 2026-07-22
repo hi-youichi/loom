@@ -14,7 +14,7 @@ fn make_registry(is_bg: bool) -> (TempDir, ToolRegistryLocked) {
     let dir = tempfile::tempdir().expect("tempdir");
     let wf = dir.path().canonicalize().expect("canonicalize");
     let aggregate = ToolRegistryLocked::new();
-    register_file_tools(&aggregate, &wf, None, None, is_bg).expect("register_file_tools");
+    register_file_tools(&aggregate, &wf, false, None, None, is_bg).expect("register_file_tools");
     (dir, aggregate)
 }
 
