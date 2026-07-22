@@ -36,6 +36,7 @@ use serde_json::{json, Value};
 
 use crate::location::{location_response, LocationInfo, LocationQuery};
 use crate::state::SharedState;
+use model_spec_core::model_registry::ModelRegistry;
 
 /// App name used to locate `~/<app>/config.toml`.
 const CONFIG_APP_NAME: &str = "loom";
@@ -84,7 +85,48 @@ pub async fn patch_api_location(
 /// `GET /api/config` — v2 global config (alias of v1 `/config`).
 pub async fn get_api_config(State(state): State<SharedState>) -> Json<Value> {
     let cfg = state.config.read().clone();
-    Json(serde_json::to_value(&cfg).unwrap_or(Value::Null))
+    let mut val = serde_json::to_value(&cfg).unwrap_or(Value::Null);
+
+    if let Some(obj) = val.as_object_mut() {
+        if !obj.contains_key("$schema") {
+            obj.insert("$schema".to_string(), json!("https://opencode.ai/config.json"));
+        }
+        if !obj.contains_key("shell") {
+            let shell = if cfg!(target_os = "windows") {
+                std::env::var("COMSPEC").unwrap_or_else(|_| "powershell".to_string())
+            } else {
+                std::env::var("SHELL").unwrap_or_else(|_| "sh".to_string())
+            };
+            obj.insert("shell".to_string(), json!(shell));
+        }
+        if !obj.contains_key("logLevel") {
+            obj.insert("logLevel".to_string(), json!("info"));
+        }
+        if !obj.contains_key("agent") {
+            obj.insert("agent".to_string(), json!({}));
+        }
+        if !obj.contains_key("instructions") {
+            obj.insert("instructions".to_string(), json!([]));
+        }
+        if !obj.contains_key("username") {
+            let username = if cfg!(target_os = "windows") {
+                std::env::var("USERNAME").or_else(|_| std::env::var("USER"))
+            } else {
+                std::env::var("USER").or_else(|_| std::env::var("USERNAME"))
+            };
+            if let Ok(u) = username {
+                obj.insert("username".to_string(), json!(u));
+            }
+        }
+        if !obj.contains_key("default_agent") {
+            obj.insert("default_agent".to_string(), json!("default"));
+        }
+        if !obj.contains_key("permissions") {
+            obj.insert("permissions".to_string(), json!({}));
+        }
+    }
+
+    Json(val)
 }
 
 /// `PATCH /api/config` — partial update of `AppState::config` (task P2.23).
@@ -165,13 +207,12 @@ pub async fn get_api_agents(
 /// `GET /api/model` — list of available model configurations.
 ///
 /// Returns the `Location.response` envelope with `Model.Info[]`. Models are
-/// read from `~/.loom/config.toml` providers (declared `[[providers.models]]`
-/// and default `model` fields) — real data, not stubs.
+/// fetched from models.dev and merged with config.toml providers.
 pub async fn get_api_models(
     State(state): State<SharedState>,
     Query(_loc): Query<LocationQuery>,
 ) -> Json<Value> {
-    let models = build_model_infos();
+    let models = build_model_infos_with_models_dev(&state).await;
     location_response(&state, Value::Array(models))
 }
 
@@ -432,61 +473,94 @@ pub async fn get_v2_agent_list() -> Json<Value> {
     }]))
 }
 
-pub async fn get_v2_model_list() -> Json<Value> {
-    Json(json!([]))
+pub async fn get_v2_model_list(
+    State(state): State<SharedState>,
+) -> Json<Value> {
+    let models = build_model_infos_with_models_dev(&state).await;
+    Json(Value::Array(models))
 }
 
 pub async fn get_v2_provider_list() -> Json<Value> {
     Json(json!([]))
 }
 
-/// Load `~/.loom/config.toml` and build `Model.Info[]` from declared
-/// `[[providers.models]]` specs and each provider's default `model` field.
-/// Returns an empty `Vec` when config is missing or has no models.
-fn build_model_infos() -> Vec<Value> {
+/// Build `Model.Info[]` using [`ModelRegistry`] — the same code path the
+/// CLI and ACP agent use. Delegates model discovery (models.dev + provider
+/// API fetching + config declared models + dedup + caching) entirely to
+/// the registry, then enriches each entry with full spec metadata
+/// (modalities, limits, tool support) when available.
+async fn build_model_infos_with_models_dev(_state: &SharedState) -> Vec<Value> {
     let cfg = match config::load_full_config(CONFIG_APP_NAME) {
         Ok(c) => c,
         Err(_) => return Vec::new(),
     };
-    let mut result = Vec::new();
-    for def in &cfg.providers {
-        if !def.models.is_empty() {
-            for m in &def.models {
-                result.push(json!({
-                    "id": m.id,
-                    "providerID": def.name,
-                    "name": m.id,
-                    "api": { "id": m.id, "type": "native", "settings": {} },
-                    "capabilities": { "tools": true, "input": [], "output": [] },
-                    "request": { "headers": {}, "body": {} },
-                    "variants": [],
-                    "time": { "released": 0 },
-                    "cost": [],
-                    "status": "active",
-                    "enabled": true,
-                    "limit": { "context": m.context_limit, "output": m.output_limit },
-                }));
-            }
-        } else if let Some(ref model) = def.model {
-            // Provider has a default model but no declared specs — emit a
-            // Model.Info.empty() for it.
-            result.push(json!({
-                "id": model,
-                "providerID": def.name,
-                "name": model,
-                "api": { "id": model, "type": "native", "settings": {} },
-                "capabilities": { "tools": true, "input": [], "output": [] },
-                "request": { "headers": {}, "body": {} },
-                "variants": [],
-                "time": { "released": 0 },
-                "cost": [],
-                "status": "active",
-                "enabled": true,
-                "limit": { "context": 0, "output": 0 },
-            }));
-        }
+
+    let provider_configs: Vec<model_spec_core::ProviderConfig> = cfg
+        .providers
+        .iter()
+        .map(|p| model_spec_core::ProviderConfig {
+            name: p.name.clone(),
+            base_url: p.base_url.clone(),
+            api_key: p.api_key.clone(),
+            provider_type: p.provider_type.clone(),
+            fetch_models: p.fetch_models.unwrap_or(false),
+            cache_ttl: None,
+            enable_tier_resolution: true,
+            declared_models: p.models.iter().map(|m| m.id.clone()).collect(),
+        })
+        .collect();
+
+    let registry = ModelRegistry::global();
+    let entries = registry.list_all_models(&provider_configs).await;
+
+    let spec_providers = registry.get_spec_providers().await.ok().unwrap_or_default();
+
+    let mut result = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let pid = &entry.provider;
+        let mid = &entry.name;
+
+        let (tools, input_types, output_types, attachment, context, output) = spec_providers
+            .get(&ModelRegistry::normalize_provider_name(pid))
+            .and_then(|sp| sp.models.get(mid))
+            .map(|m| {
+                let inp: Vec<&str> = m.modalities.input.iter().map(modality_str).collect();
+                let out: Vec<&str> = m.modalities.output.iter().map(modality_str).collect();
+                (m.tool_call, inp, out, m.attachment, m.limit.context, m.limit.output)
+            })
+            .unwrap_or((true, vec![], vec![], false, 0u32, 0u32));
+
+        result.push(json!({
+            "id": mid,
+            "providerID": pid,
+            "name": mid,
+            "api": { "id": mid, "type": "native", "settings": {} },
+            "capabilities": {
+                "tools": tools,
+                "input": input_types,
+                "output": output_types,
+                "attachments": attachment,
+            },
+            "request": { "headers": {}, "body": {} },
+            "variants": [],
+            "time": { "released": 0 },
+            "cost": [],
+            "status": "active",
+            "enabled": true,
+            "limit": { "context": context, "output": output },
+        }));
     }
     result
+}
+
+fn modality_str(m: &model_spec_core::ModalityType) -> &'static str {
+    match m {
+        model_spec_core::ModalityType::Text => "text",
+        model_spec_core::ModalityType::Image => "image",
+        model_spec_core::ModalityType::Audio => "audio",
+        model_spec_core::ModalityType::Video => "video",
+        model_spec_core::ModalityType::Pdf => "pdf",
+    }
 }
 
 /// v1 `/command` response.

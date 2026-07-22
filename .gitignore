@@ -75,3 +75,15 @@ test-results/
 # Reference repos
 typescript-sdk
 .loom/worktrees/
+
+# Temp logs and config
+*.log
+*.err
+.loom-server.build.log
+cli-log-tmp.log
+config-tmp.toml
+count_cli_tests.ps1
+count_tests.ps1
+list_tests.ps1
+playwright-report/
+node_modules/
