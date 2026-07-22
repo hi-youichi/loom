@@ -211,6 +211,7 @@ fn serialize(ev: &GlobalEvent, kind: ChannelKind) -> Result<String, serde_json::
             let v1 = serde_json::json!({
                 "directory": ev.directory,
                 "payload": {
+                    "id": ev.payload.event_id,
                     "type": ev.payload.event_type,
                     "properties": ev.payload.properties,
                 },

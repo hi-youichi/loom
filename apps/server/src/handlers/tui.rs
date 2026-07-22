@@ -105,6 +105,7 @@ pub async fn post_tui_submit_prompt(
             cost: None,
             tokens: None,
             mode: None,
+            ..Default::default()
         });
     }
     persist_messages(&state, session_id);

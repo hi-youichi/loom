@@ -284,18 +284,14 @@ pub async fn get_question_pending() -> Json<Value> {
 /// `POST /question/:requestID/reply` — user replies to a question (v1).
 pub async fn post_question_reply(
     Path(request_id): Path<String>,
-    Json(body): Json<Value>,
+    Json(_body): Json<Value>,
 ) -> Json<Value> {
     let mut store = questions_store().write();
     if let Some(q) = store.get_mut(&request_id) {
         q.status = "answered".to_string();
     }
     drop(store);
-    Json(json!({
-        "ok": true,
-        "requestID": request_id,
-        "answers": body.get("answers").cloned().unwrap_or(json!([])),
-    }))
+    Json(json!(true))
 }
 
 /// `POST /api/question/:requestID/reply` — v2 global alias.

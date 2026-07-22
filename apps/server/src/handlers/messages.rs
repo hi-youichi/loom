@@ -209,6 +209,7 @@ pub async fn post_api_session_message(
         cost: None,
         tokens: None,
         mode: None,
+        ..Default::default()
     };
 
     // Optionally include extra fields.

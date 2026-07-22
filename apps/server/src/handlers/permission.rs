@@ -248,10 +248,7 @@ fn transition_permission(
         }),
     );
 
-    (
-        StatusCode::OK,
-        Json(to_contract_request(&updated)),
-    )
+    (StatusCode::OK, Json(json!(true)))
 }
 
 // ===========================================================================
