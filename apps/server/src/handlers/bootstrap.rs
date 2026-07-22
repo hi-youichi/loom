@@ -315,24 +315,39 @@ fn mask_key(key: &Option<String>) -> String {
     }
 }
 
-/// Build a models object map `{ modelId: { id, providerID, name } }` from a provider def.
-fn build_models_map(def: &config::ProviderDef) -> Value {
+/// Build a models object map `{ modelId: { id, providerID, name } }` for a provider,
+/// enriched with models.dev entries and provider-API-fetched models via
+/// [`ModelRegistry`].
+async fn build_models_map(def: &config::ProviderDef) -> Value {
     let mut map = serde_json::Map::new();
-    if !def.models.is_empty() {
-        for m in &def.models {
-            map.insert(m.id.clone(), json!({
-                "id": m.id,
-                "providerID": def.name,
-                "name": m.id,
-            }));
-        }
-    } else if let Some(ref model) = def.model {
-        map.insert(model.clone(), json!({
-            "id": model,
-            "providerID": def.name,
-            "name": model,
-        }));
+
+    let registry = ModelRegistry::global();
+    let provider_config = model_spec_core::ProviderConfig {
+        name: def.name.clone(),
+        base_url: def.base_url.clone(),
+        api_key: def.api_key.clone(),
+        provider_type: def.provider_type.clone(),
+        fetch_models: def.fetch_models.unwrap_or(false),
+        cache_ttl: None,
+        enable_tier_resolution: true,
+        declared_models: def.models.iter().map(|m| m.id.clone()).collect(),
+    };
+
+    let entries = registry
+        .list_all_models(std::slice::from_ref(&provider_config))
+        .await;
+
+    for entry in entries {
+        map.insert(
+            entry.name.clone(),
+            json!({
+                "id": entry.name,
+                "providerID": entry.provider,
+                "name": entry.name,
+            }),
+        );
     }
+
     Value::Object(map)
 }
 
@@ -344,17 +359,18 @@ pub async fn get_config_providers() -> Json<Value> {
         Err(_) => return Json(json!({"providers": [], "default": {}})),
     };
 
-    let providers: Vec<Value> = cfg.providers.iter().map(|def| {
-        json!({
+    let mut providers = Vec::new();
+    for def in &cfg.providers {
+        providers.push(json!({
             "id": def.name,
             "name": def.name,
             "source": "api",
             "env": ["OPENAI_API_KEY"],
             "key": mask_key(&def.api_key),
             "options": {},
-            "models": build_models_map(def),
-        })
-    }).collect();
+            "models": build_models_map(def).await,
+        }));
+    }
 
     let mut default = serde_json::Map::new();
     if let Some(ref name) = cfg.default_provider {
@@ -382,23 +398,23 @@ pub async fn get_provider_list() -> Json<Value> {
         Err(_) => return Json(json!({"all": [], "default": {}, "connected": []})),
     };
 
-    let build_entry = |def: &config::ProviderDef| {
-        json!({
+    let mut all = Vec::new();
+    let mut connected = Vec::new();
+    for def in &cfg.providers {
+        let entry = json!({
             "id": def.name,
             "name": def.name,
             "source": "api",
             "env": ["OPENAI_API_KEY"],
             "key": mask_key(&def.api_key),
             "options": {},
-            "models": build_models_map(def),
-        })
-    };
-
-    let all: Vec<Value> = cfg.providers.iter().map(build_entry).collect();
-    let connected: Vec<Value> = cfg.providers.iter()
-        .filter(|p| p.api_key.is_some())
-        .map(build_entry)
-        .collect();
+            "models": build_models_map(def).await,
+        });
+        all.push(entry.clone());
+        if def.api_key.is_some() {
+            connected.push(entry);
+        }
+    }
 
     let mut default = serde_json::Map::new();
     if let Some(ref name) = cfg.default_provider {
