@@ -196,6 +196,7 @@ mod tests {
             cost: None,
             tokens: None,
             mode: None,
+            ..Default::default()
         };
         store.save_messages("sess_1", &[msg.clone()]);
         assert_eq!(store.load_messages().get("sess_1").unwrap().len(), 1);

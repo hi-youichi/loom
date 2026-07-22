@@ -121,7 +121,7 @@ pub async fn patch_session(
 pub async fn delete_session(
     State(state): State<SharedState>,
     Path(id): Path<String>,
-) -> StatusCode {
+) -> Response {
     let existed = state.sessions.write().remove(&id).is_some();
     if existed {
         // Drop per-session state too so a re-create is clean.
@@ -140,9 +140,9 @@ pub async fn delete_session(
             end_run(&state, &id, run.generation());
         }
         emit(&state, "session.deleted", json!({"sessionID": id}));
-        StatusCode::NO_CONTENT
+        Json(json!({ "success": true })).into_response()
     } else {
-        StatusCode::NOT_FOUND
+        StatusCode::NOT_FOUND.into_response()
     }
 }
 
@@ -236,6 +236,7 @@ async fn prompt_v2(state: SharedState, session_id: String, body: Value) -> Respo
         cost: None,
         tokens: None,
         mode: None,
+        ..Default::default()
     };
     state
         .messages
@@ -281,6 +282,7 @@ async fn prompt_v2(state: SharedState, session_id: String, body: Value) -> Respo
             cost: Some(0.0),
             tokens: Some(json!({"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}})),
             mode: Some("build".to_string()),
+            ..Default::default()
         };
         state_bg
             .messages
@@ -400,14 +402,14 @@ pub async fn prompt_async(
     State(state): State<SharedState>,
     Path(session_id): Path<String>,
     Json(body): Json<Value>,
-) -> Json<Value> {
+) -> StatusCode {
     let state_for_bg = state.clone();
     let body_clone = body.clone();
     let sid = session_id.clone();
     tokio::spawn(async move {
         let _ = run_prompt(state_for_bg, sid, body_clone, /*async_mode=*/ true).await;
     });
-    Json(json!({ "ok": true }))
+    StatusCode::NO_CONTENT
 }
 
 // ───────────────────────── v2 main path ─────────────────────────
@@ -744,6 +746,7 @@ async fn run_shell(state: SharedState, session_id: String, body: Value) -> Respo
             "cache": {"read": 0, "write": 0}
         })),
         mode: Some("shell".to_string()),
+        ..Default::default()
     };
     state
         .messages
@@ -791,13 +794,12 @@ pub async fn session_abort(
     State(state): State<SharedState>,
     Path(session_id): Path<String>,
 ) -> Json<Value> {
-    let cancelled = match lookup_run(&state, &session_id) {
+    match lookup_run(&state, &session_id) {
         Some(token) => {
             token.cancel();
-            true
         }
-        None => false,
-    };
+        None => {}
+    }
     if let Some(ref token) = lookup_run(&state, &session_id) {
         end_run(&state, &session_id, token.generation());
     }
@@ -809,15 +811,16 @@ pub async fn session_abort(
             "status": { "type": "idle" }
         }),
     );
-    Json(json!({ "ok": true, "cancelled": cancelled }))
+    Json(json!(true))
 }
 
 /// `POST /api/session/:id/interrupt` — v2 alias of `/session/:id/abort`.
 pub async fn api_session_interrupt(
     State(state): State<SharedState>,
     Path(session_id): Path<String>,
-) -> Json<Value> {
-    session_abort(State(state), Path(session_id)).await
+) -> StatusCode {
+    let _ = session_abort(State(state), Path(session_id)).await;
+    StatusCode::NO_CONTENT
 }
 
 /// `GET /api/session/:sessionID/status` — v2 session run status.
@@ -1042,7 +1045,7 @@ pub async fn get_session_todo(
         return StatusCode::NOT_FOUND.into_response();
     }
     drop(sessions);
-    Json(json!({ "sessionID": session_id, "todos": [] })).into_response()
+    Json(json!([])).into_response()
 }
 
 /// `GET /session/:id/diff` — return diff data for a session.
@@ -1055,7 +1058,7 @@ pub async fn get_session_diff(
         return StatusCode::NOT_FOUND.into_response();
     }
     drop(sessions);
-    Json(json!({ "sessionID": session_id, "diff": [] })).into_response()
+    Json(json!([])).into_response()
 }
 
 // ───────────────────────── helpers ─────────────────────────
@@ -1176,6 +1179,7 @@ pub(crate) async fn run_prompt(
         cost: None,
         tokens: None,
         mode: None,
+        ..Default::default()
     };
     let assistant_info = MessageInfo {
         id: assistant_message_id.clone(),
@@ -1201,6 +1205,7 @@ pub(crate) async fn run_prompt(
             "cache": {"read": 0, "write": 0},
         })),
         mode: Some("build".to_string()),
+        ..Default::default()
     };
     state
         .messages

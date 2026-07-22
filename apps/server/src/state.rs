@@ -56,6 +56,22 @@ static NEXT_EVENT_ID: parking_lot::Mutex<u64> = parking_lot::Mutex::new(1);
 /// `undefined is not an object (evaluating 'U.has')`. Emitting `null` instead
 /// keeps the field present so the JS check sees `Object.has(info, 'parentID')
 /// === false` instead of throwing.
+pub fn serialize_path_as_string<S>(value: &Option<PathInfo>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(pi) => {
+            let rel = std::path::Path::new(&pi.cwd)
+                .strip_prefix(&pi.root)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| pi.cwd.clone());
+            serializer.serialize_str(&rel)
+        }
+        None => serializer.serialize_none(),
+    }
+}
+
 pub fn serialize_optional<T, S>(value: &Option<T>, serializer: S) -> Result<S::Ok, S::Error>
 where
     T: Serialize,
@@ -196,7 +212,7 @@ pub struct SessionInfo {
     pub parent_id: Option<String>,
     #[serde(default, rename = "workspaceID", serialize_with = "serialize_optional")]
     pub workspace_id: Option<String>,
-    #[serde(default, serialize_with = "serialize_optional")]
+    #[serde(default, serialize_with = "serialize_path_as_string")]
     pub path: Option<PathInfo>,
     #[serde(default, serialize_with = "serialize_optional")]
     pub summary: Option<SummaryInfo>,
@@ -260,7 +276,7 @@ pub struct ShareInfo {
 pub struct ModelInfo {
     #[serde(rename = "providerID")]
     pub provider_id: String,
-    #[serde(rename = "modelID")]
+    #[serde(rename = "id")]
     pub model_id: String,
 #[serde(default, serialize_with = "serialize_optional")]
     pub variant: Option<String>,
@@ -279,7 +295,7 @@ pub struct TimeInfo {
 /// Minimal message shape — TUI primarily cares about `id`, `sessionID`,
 /// `role`, `time`, `agent` for chat rendering and `parentID`/`finish`
 /// for assistant turns.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct MessageInfo {
     pub id: String,
     #[serde(rename = "sessionID")]
@@ -309,6 +325,20 @@ pub struct MessageInfo {
     pub tokens: Option<serde_json::Value>,
     #[serde(default, serialize_with = "serialize_optional")]
     pub mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structured: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "summary")]
+    pub summary_flag: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools: Option<serde_json::Value>,
 }
 
 /// We store the full opencode part payload as a `Value` blob and also
@@ -539,12 +569,40 @@ pub fn new_session_id() -> String {
     format!("sess_{}", uuid::Uuid::new_v4().simple())
 }
 
+static LAST_ID_TS: parking_lot::Mutex<(u64, u16)> = parking_lot::Mutex::new((0, 0));
+const ID_CHARS: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+fn ascending_id(prefix: &str) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let (ts, counter) = {
+        let mut guard = LAST_ID_TS.lock();
+        if now == guard.0 {
+            guard.1 = guard.1.wrapping_add(1);
+            (guard.0, guard.1)
+        } else {
+            *guard = (now, 1);
+            (now, 1)
+        }
+    };
+    let current = ts * 0x1000 + counter as u64;
+    let time_hex = format!("{current:012x}");
+    let uuid = uuid::Uuid::new_v4();
+    let rand_bytes = uuid.as_bytes();
+    let suffix: String = (0..14)
+        .map(|i| ID_CHARS[(rand_bytes[i % 16] % 62) as usize] as char)
+        .collect();
+    format!("{prefix}{time_hex}{suffix}")
+}
+
 pub fn new_message_id() -> String {
-    format!("msg_{}", uuid::Uuid::new_v4().simple())
+    ascending_id("msg_")
 }
 
 pub fn new_part_id() -> String {
-    format!("prt_{}", uuid::Uuid::new_v4().simple())
+    ascending_id("prt_")
 }
 
 pub fn new_permission_id() -> String {
@@ -980,6 +1038,7 @@ mod optional_field_serialization {
             cost: None,
             tokens: None,
             mode: None,
+            ..Default::default()
         };
 
         let json = serde_json::to_value(&info).expect("serialize message");
@@ -1020,6 +1079,7 @@ mod optional_field_serialization {
             cost: Some(0.42),
             tokens: Some(serde_json::json!({"input": 1, "output": 2})),
             mode: Some("build".into()),
+            ..Default::default()
         };
 
         let json = serde_json::to_value(&info).expect("serialize message");

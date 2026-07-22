@@ -276,9 +276,11 @@ fn create_or_update_tool_part(
 fn apply_transition(data: &mut serde_json::Value, transition: &ToolTransition) {
     match transition {
         ToolTransition::Create { input } => {
+            let raw = serde_json::to_string(input).unwrap_or_default();
             data["state"] = json!({
                 "status": "pending",
                 "input": input,
+                "raw": raw,
                 "output": "",
                 "title": data.get("tool").cloned().unwrap_or(json!("tool")),
                 "metadata": {},
@@ -317,6 +319,14 @@ fn apply_transition(data: &mut serde_json::Value, transition: &ToolTransition) {
             if let Some(time) = data.get_mut("time").and_then(|v| v.as_object_mut()) {
                 time.insert("end".into(), json!(end));
             }
+            // DEBUG: trace what we're actually emitting
+            tracing::info!(
+                tool = %data.get("tool").and_then(|v| v.as_str()).unwrap_or("?"),
+                output_len = output.len(),
+                output_preview = %output.chars().take(200).collect::<String>(),
+                is_error = is_error,
+                "ToolEnd Finish transition"
+            );
         }
     }
 }
@@ -409,21 +419,20 @@ fn translate_chunk(
         "text"
     };
 
-    // Append-in-place: find existing streaming text/reasoning part in this
-    // message by `part_type` (not by id) and append. Using `part_type` as the
-    // match key lets us mint a fresh `prt_<uuid>` id on first creation
-    // (satisfies opencode v1 schema `Schema.isStartsWith("prt")`) without
-    // fragmenting the same logical part across multiple id's on subsequent
-    // chunks — the TUI state machine would otherwise treat each as a new
-    // part and discard the previous text.
+    // Append-in-place: only append to the LAST part in the list when its
+    // type matches. This keeps consecutive chunks within the same LLM turn
+    // accumulating into one part, but creates a fresh part after a tool
+    // call (the last part would be a tool part, not text/reasoning).
     {
         let mut parts = state.parts.write();
         if let Some(list) = parts.get_mut(assistant_msg_id) {
-            for p in list.iter_mut() {
-                if p.part_type == part_type {
-                    let existing = p.data["text"].as_str().unwrap_or("").to_string();
-                    p.data["text"] = json!(format!("{existing}{}", chunk.content));
-                    let payload = p.data.clone();
+            if let Some(last) = list.last_mut() {
+                if last.part_type == part_type {
+                    let existing =
+                        last.data["text"].as_str().unwrap_or("").to_string();
+                    last.data["text"] =
+                        json!(format!("{existing}{}", chunk.content));
+                    let payload = last.data.clone();
                     drop(parts);
                     emit(
                         state,
