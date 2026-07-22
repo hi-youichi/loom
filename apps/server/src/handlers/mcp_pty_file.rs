@@ -191,22 +191,6 @@ fn fs_error_response(error: &std::io::Error) -> (StatusCode, Json<Value>) {
     (status, Json(json!({"error": error.to_string()})))
 }
 
-/// Describe a directory entry as JSON with name, type, and size.
-fn entry_value(entry: &std::fs::DirEntry) -> Option<Value> {
-    let name = entry.file_name().to_string_lossy().to_string();
-    let meta = entry.metadata().ok()?;
-    let (kind, size) = if meta.is_dir() {
-        ("directory", 0_i64)
-    } else {
-        ("file", meta.len() as i64)
-    };
-    Some(json!({
-        "name": name,
-        "type": kind,
-        "size": size,
-    }))
-}
-
 /// Extract the trailing file-name component from a path string.
 fn path_file_name(path: &str) -> String {
     StdPath::new(path)
@@ -275,9 +259,86 @@ fn find_files(root: &StdPath, pattern: &str) -> Vec<Value> {
     walk_find(root, root, pattern, 0)
 }
 
+/// Recursive content search (like ripgrep) returning `LegacyMatch[]` entries.
+/// Searches file contents line-by-line for `pattern` (case-insensitive).
+fn grep_content(root: &StdPath, pattern: &str) -> Vec<Value> {
+    fn grep_recursive(
+        root: &StdPath,
+        dir: &StdPath,
+        needle: &str,
+        results: &mut Vec<Value>,
+        depth: u8,
+    ) {
+        if depth > 10 || results.len() > 500 {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.')
+                || matches!(name.as_str(), "node_modules" | "target" | ".git")
+            {
+                continue;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                grep_recursive(root, &path, needle, results, depth + 1);
+            } else {
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .to_string();
+                let Ok(content) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                let needle_lower = needle.to_lowercase();
+                let mut byte_offset = 0usize;
+                for (line_idx, line) in content.split('\n').enumerate() {
+                    let line_start = byte_offset;
+                    let line_lower = line.to_lowercase();
+                    if let Some(first_hit) = line_lower.find(&needle_lower) {
+                        let mut submatches = Vec::new();
+                        let mut search_from = 0usize;
+                        while let Some(pos) =
+                            line_lower[search_from..].find(&needle_lower)
+                        {
+                            let abs_start = search_from + pos;
+                            let abs_end = abs_start + needle.len();
+                            submatches.push(json!({
+                                "match": &line[abs_start..abs_end.min(line.len())],
+                                "start": abs_start,
+                                "end": abs_end.min(line.len()),
+                            }));
+                            search_from = abs_end;
+                            if search_from >= line.len() {
+                                break;
+                            }
+                        }
+                        results.push(json!({
+                            "path": rel,
+                            "lines": { "text": line },
+                            "line_number": line_idx + 1,
+                            "absolute_offset": line_start + first_hit,
+                            "submatches": submatches,
+                        }));
+                    }
+                    byte_offset += line.len() + 1;
+                }
+            }
+        }
+    }
+    let mut results = Vec::new();
+    grep_recursive(root, root, pattern, &mut results, 0);
+    results
+}
+
 // ───────────────────────── File ─────────────────────────
 
-/// `GET /file?path=...` — read a text file's content within the workspace.
+/// `GET /file?path=...` — directory listing if path is a directory,
+/// file content if path is a file. Directory listings return `LegacyEntry[]`.
 pub async fn get_file(
     State(state): State<SharedState>,
     Query(q): Query<FileQuery>,
@@ -287,6 +348,33 @@ pub async fn get_file(
         Ok(p) => p,
         Err(resp) => return resp.into_response(),
     };
+    if path.is_dir() {
+        let entries: Vec<Value> = match std::fs::read_dir(&path) {
+            Ok(rd) => rd
+                .flatten()
+                .filter_map(|e| {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    let meta = e.metadata().ok()?;
+                    let abs = e.path();
+                    let rel = abs
+                        .strip_prefix(&root)
+                        .unwrap_or(&abs)
+                        .to_string_lossy()
+                        .to_string();
+                    let kind = if meta.is_dir() { "directory" } else { "file" };
+                    Some(json!({
+                        "name": name,
+                        "path": rel,
+                        "absolute": abs.to_string_lossy(),
+                        "type": kind,
+                        "ignored": false,
+                    }))
+                })
+                .collect(),
+            Err(e) => return fs_error_response(&e).into_response(),
+        };
+        return Json(json!(entries)).into_response();
+    }
     match std::fs::read_to_string(&path) {
         Ok(content) => Json(json!({
             "content": content,
@@ -361,16 +449,18 @@ pub async fn get_file_status() -> Json<Value> {
 
 // ───────────────────────── Find ─────────────────────────
 
-/// `GET /find?pattern=...` — recursive filesystem search for file names
-/// matching `pattern` (case-insensitive substring) within the workspace.
-/// Uses ripgrep if available, otherwise falls back to a recursive walk.
+/// `GET /find?pattern=...` — content search (like ripgrep) returning
+/// `LegacyMatch[]` entries within the workspace.
 pub async fn get_find(
     State(state): State<SharedState>,
     Query(query): Query<FindQuery>,
 ) -> Response {
     let root = project_root(&state);
     let pattern = query.pattern.as_deref().unwrap_or("");
-    let matches = find_files(&root, pattern);
+    if pattern.is_empty() {
+        return Json(json!([])).into_response();
+    }
+    let matches = grep_content(&root, pattern);
     Json(json!(matches)).into_response()
 }
 
@@ -413,8 +503,8 @@ pub async fn get_api_find_symbol() -> Json<Value> {
     get_find_symbol().await
 }
 
-/// `GET /find/file` — list files in the project directory (or a sub-path).
-/// Returns entries with name, type (file/dir), and size.
+/// `GET /find/file` — list file paths in the project directory (or a sub-path).
+/// Returns bare `string[]` of relative file paths.
 pub async fn get_find_file(
     State(state): State<SharedState>,
     Query(q): Query<FileQuery>,
@@ -424,11 +514,22 @@ pub async fn get_find_file(
         Ok(p) => p,
         Err(resp) => return resp.into_response(),
     };
-    let entries: Vec<Value> = match std::fs::read_dir(&dir) {
-        Ok(rd) => rd.flatten().filter_map(|e| entry_value(&e)).collect(),
+    let files: Vec<String> = match std::fs::read_dir(&dir) {
+        Ok(rd) => rd
+            .flatten()
+            .filter_map(|e| {
+                let abs = e.path();
+                let rel = abs
+                    .strip_prefix(&root)
+                    .unwrap_or(&abs)
+                    .to_string_lossy()
+                    .to_string();
+                Some(rel)
+            })
+            .collect(),
         Err(e) => return fs_error_response(&e).into_response(),
     };
-    Json(json!({"data": entries})).into_response()
+    Json(json!(files)).into_response()
 }
 
 /// `GET /api/find/file` — v2 alias.
