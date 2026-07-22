@@ -25,6 +25,6 @@ pub use grep::{GrepTool, TOOL_GREP};
 pub use ls::{LsTool, TOOL_LS};
 pub use move_file::{MoveFileTool, TOOL_MOVE_FILE};
 pub use multiedit::{MultieditTool, TOOL_MULTIEDIT};
-pub use path::resolve_path_under;
+pub use path::{resolve_path, resolve_path_under};
 pub use read_file::{ReadFileTool, TOOL_READ_FILE};
 pub use write_file::{WriteFileTool, TOOL_WRITE_FILE};

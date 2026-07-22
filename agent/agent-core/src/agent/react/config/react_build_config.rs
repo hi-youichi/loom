@@ -55,6 +55,7 @@ pub struct ReactBuildConfig {
     pub embedding_base_url: Option<String>,
     pub embedding_model: Option<String>,
     pub working_folder: Option<PathBuf>,
+    pub allow_paths_outside_workdir: bool,
     pub compaction_config: Option<CompactionConfig>,
     pub tot_config: TotRunnerConfig,
     pub got_config: GotRunnerConfig,
@@ -144,6 +145,7 @@ impl Default for ReactBuildConfig {
             embedding_base_url: None,
             embedding_model: None,
             working_folder: None,
+            allow_paths_outside_workdir: true,
             compaction_config: None,
             tot_config: TotRunnerConfig::default(),
             got_config: GotRunnerConfig::default(),
@@ -223,6 +225,7 @@ impl ReactBuildConfig {
             embedding_base_url: std::env::var("EMBEDDING_BASE_URL").ok(),
             embedding_model: std::env::var("EMBEDDING_MODEL").ok(),
             working_folder: std::env::var("WORKING_FOLDER").ok().map(PathBuf::from),
+            allow_paths_outside_workdir: true,
             compaction_config: None,
             tot_config: TotRunnerConfig::default(),
             got_config: GotRunnerConfig {

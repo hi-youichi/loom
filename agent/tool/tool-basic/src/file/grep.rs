@@ -24,7 +24,7 @@ use loom_util::text::truncate::truncate;
 use tool_core::Tool;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
-use super::path::resolve_path_under;
+use super::path::resolve_path;
 
 /// Tool name for grep file content search.
 pub use tool_core::tool_name::TOOL_GREP;
@@ -52,14 +52,15 @@ struct Match {
 pub struct GrepTool {
     /// Canonical working folder path (shared with other file tools).
     pub(crate) working_folder: Arc<std::path::PathBuf>,
+    pub(crate) allow_outside: bool,
 }
 
 impl GrepTool {
     /// Creates a new GrepTool with the given working folder.
     ///
     /// The caller must pass a canonical, existing directory path.
-    pub fn new(working_folder: Arc<std::path::PathBuf>) -> Self {
-        Self { working_folder }
+    pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
+        Self { working_folder, allow_outside }
     }
 }
 
@@ -165,7 +166,7 @@ impl Tool for GrepTool {
             path_param
         };
 
-        let search_root = resolve_path_under(self.working_folder.as_ref(), path_param)?;
+        let search_root = resolve_path(self.working_folder.as_ref(), path_param, self.allow_outside)?;
         if !search_root.is_dir() {
             return Err(ToolSourceError::InvalidInput(format!(
                 "path is not a directory: {}",

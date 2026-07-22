@@ -45,6 +45,20 @@ pub fn resolve_path_under(
     working_folder: &Path,
     path_param: &str,
 ) -> Result<PathBuf, ToolSourceError> {
+    resolve_path(working_folder, path_param, false)
+}
+
+/// Resolves a path parameter with optional unrestricted access.
+///
+/// When `allow_outside` is `true`, the containment check is skipped and
+/// the resolved path may fall outside `working_folder`.
+///
+/// See [`resolve_path_under`] for the sandboxed variant (default behaviour).
+pub fn resolve_path(
+    working_folder: &Path,
+    path_param: &str,
+    allow_outside: bool,
+) -> Result<PathBuf, ToolSourceError> {
     let base_canonical = working_folder.canonicalize().map_err(|e| {
         ToolSourceError::InvalidInput(format!(
             "working folder not found or not a directory: {}",
@@ -58,8 +72,25 @@ pub fn resolve_path_under(
     } else {
         path_param
     };
-    let full = base_canonical.join(path_param);
+
+    // Unrestricted mode: resolve absolute paths as-is; resolve relative paths
+    // against the working folder.
+    let full = if allow_outside && Path::new(path_param).is_absolute() {
+        PathBuf::from(path_param)
+    } else {
+        base_canonical.join(path_param)
+    };
     let normalized = normalize_path(&full);
+
+    if allow_outside {
+        return if normalized.exists() {
+            normalized
+                .canonicalize()
+                .map_err(|e| ToolSourceError::Transport(format!("failed to resolve path: {}", e)))
+        } else {
+            Ok(normalized)
+        };
+    }
 
     let under_base = if normalized.starts_with(&base_canonical) {
         true

@@ -11,7 +11,7 @@ use tool_core::Tool;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 use super::edit_file::replace as edit_replace;
-use super::path::resolve_path_under;
+use super::path::resolve_path;
 
 /// Tool name for apply_patch.
 pub use tool_core::tool_name::TOOL_APPLY_PATCH;
@@ -143,11 +143,12 @@ fn parse_patch(patch_text: &str) -> Result<Vec<Hunk>, String> {
 /// Tool that applies a patch (Add/Update/Delete/Move) under the working folder.
 pub struct ApplyPatchTool {
     pub(crate) working_folder: Arc<std::path::PathBuf>,
+    pub(crate) allow_outside: bool,
 }
 
 impl ApplyPatchTool {
-    pub fn new(working_folder: Arc<std::path::PathBuf>) -> Self {
-        Self { working_folder }
+    pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
+        Self { working_folder, allow_outside }
     }
 }
 
@@ -200,7 +201,7 @@ impl Tool for ApplyPatchTool {
         for hunk in hunks {
             match hunk {
                 Hunk::Add { path, contents } => {
-                    let p = resolve_path_under(self.working_folder.as_ref(), &path)?;
+                    let p = resolve_path(self.working_folder.as_ref(), &path, self.allow_outside)?;
                     if let Some(parent) = p.parent() {
                         let parent_path: &Path = parent;
                         if !parent_path.exists() {
@@ -215,7 +216,7 @@ impl Tool for ApplyPatchTool {
                     applied += 1;
                 }
                 Hunk::Delete { path } => {
-                    let p = resolve_path_under(self.working_folder.as_ref(), &path)?;
+                    let p = resolve_path(self.working_folder.as_ref(), &path, self.allow_outside)?;
                     if p.exists() {
                         if p.is_dir() {
                             std::fs::remove_dir_all(&p).map_err(|e| {
@@ -242,7 +243,7 @@ impl Tool for ApplyPatchTool {
                     move_path,
                     chunks,
                 } => {
-                    let p = resolve_path_under(self.working_folder.as_ref(), &path)?;
+                    let p = resolve_path(self.working_folder.as_ref(), &path, self.allow_outside)?;
                     if !p.exists() || p.is_dir() {
                         return Err(ToolSourceError::InvalidInput(format!(
                             "update target not a file: {}",
@@ -269,7 +270,7 @@ impl Tool for ApplyPatchTool {
                         ToolSourceError::Transport(format!("write {}: {}", p.display(), e))
                     })?;
                     if let Some(move_to) = move_path {
-                        let dest = resolve_path_under(self.working_folder.as_ref(), &move_to)?;
+                        let dest = resolve_path(self.working_folder.as_ref(), &move_to, self.allow_outside)?;
                         if let Some(parent) = dest.parent() {
                             if !parent.exists() {
                                 std::fs::create_dir_all(parent).map_err(|e| {
@@ -459,7 +460,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn tool_call_missing_patch_text() {
         let dir = tempfile::tempdir().unwrap();
-        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()), false);
         let result = tool.call(json!({}), None).await;
         assert!(result.is_err());
     }
@@ -467,7 +468,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn tool_call_empty_patch() {
         let dir = tempfile::tempdir().unwrap();
-        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()), false);
         let result = tool
             .call(json!({"patchText": "*** Begin Patch\n*** End Patch"}), None)
             .await;
@@ -477,7 +478,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn tool_call_add_file() {
         let dir = tempfile::tempdir().unwrap();
-        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()), false);
         let patch = "*** Begin Patch\n*** Add File: hello.txt\n+hello world\n*** End Patch";
         let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
         assert!(result.as_text().unwrap().contains("1 hunk"));
@@ -491,7 +492,7 @@ mod tests {
     async fn tool_call_delete_file() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("to_delete.txt"), "content").unwrap();
-        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()), false);
         let patch = "*** Begin Patch\n*** Delete File: to_delete.txt\n*** End Patch";
         let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
         assert!(result.as_text().unwrap().contains("1 hunk"));
@@ -503,7 +504,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("subdir")).unwrap();
         std::fs::write(dir.path().join("subdir/f.txt"), "x").unwrap();
-        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()), false);
         let patch = "*** Begin Patch\n*** Delete File: subdir\n*** End Patch";
         let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
         assert!(result.as_text().unwrap().contains("1 hunk"));
@@ -514,7 +515,7 @@ mod tests {
     async fn tool_call_update_file() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("main.rs"), "fn main() {\n    old();\n}\n").unwrap();
-        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()), false);
         let patch = "\
 *** Begin Patch
 *** Update File: main.rs
@@ -535,7 +536,7 @@ mod tests {
     async fn tool_call_update_with_move() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("a.txt"), "old line").unwrap();
-        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()), false);
         let patch = "\
 *** Begin Patch
 *** Update File: a.txt
@@ -557,7 +558,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn tool_call_update_nonexistent_file() {
         let dir = tempfile::tempdir().unwrap();
-        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()), false);
         let patch = "\
 *** Begin Patch
 *** Update File: nonexistent.rs
@@ -572,7 +573,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn tool_call_add_creates_subdirs() {
         let dir = tempfile::tempdir().unwrap();
-        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()), false);
         let patch = "*** Begin Patch\n*** Add File: deep/nested/file.txt\n+content\n*** End Patch";
         let result = tool.call(json!({"patchText": patch}), None).await.unwrap();
         assert!(result.as_text().unwrap().contains("1 hunk"));
@@ -582,7 +583,7 @@ mod tests {
     #[test]
     fn tool_name_and_spec() {
         let dir = tempfile::tempdir().unwrap();
-        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()), false);
         assert_eq!(tool.name(), "apply_patch");
         let spec = tool.spec();
         assert_eq!(spec.name, "apply_patch");
@@ -598,7 +599,7 @@ mod tests {
     async fn tool_call_update_append_when_old_empty() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("f.txt"), "existing").unwrap();
-        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()));
+        let tool = ApplyPatchTool::new(Arc::new(dir.path().to_path_buf()), false);
         let patch = "\
 *** Begin Patch
 *** Update File: f.txt

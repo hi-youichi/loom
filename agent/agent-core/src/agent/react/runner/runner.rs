@@ -13,7 +13,7 @@ use crate::runner_common;
 use crate::state::ReActState;
 use checkpoint::{Checkpointer, RunnableConfig, Store};
 use checkpoint_sqlite_store::user_message::UserMessageStore;
-use loom_llm::message::UserContent;
+use loom_llm::message::{Message, UserContent};
 use loom_llm::LlmProvider;
 use stream_event::StreamEvent;
 use tool_core::active_operation::RunCancellation;
@@ -209,30 +209,39 @@ impl ReactRunner {
         .await;
 
         // Fire-and-forget title generation after graph completes.
-        // No more `wait_for_title(30s)` blocking the return path.
+        // Only on the first turn of a session to avoid redundant LLM calls.
         if let Ok(runner_common::StreamRunOutcome::Finished(ref s)) = result {
+            let is_first_turn = s
+                .messages
+                .iter()
+                .filter(|m| matches!(m, Message::User(_)))
+                .count()
+                <= 1;
             let provider = Arc::clone(&self.title_provider);
             let messages = s.messages.clone();
             let sender = self.any_stream_event_sender.clone();
-            tokio::spawn(async move {
-                if let Some(title) =
-                    crate::agent::react::title_generator::generate_title(&provider, &messages).await
-                {
-                    if let Some(ref sender) = sender {
-                        let snapshot = ReActState {
-                            summary: Some(title),
-                            ..Default::default()
-                        };
-                        sender(crate::run::TypedAnyStreamEvent::React(
-                            StreamEvent::Updates {
-                                node_id: "title".to_string(),
-                                state: snapshot,
-                                namespace: None,
-                            },
-                        ));
+            if is_first_turn {
+                tokio::spawn(async move {
+                    if let Some(title) =
+                        crate::agent::react::title_generator::generate_title(&provider, &messages)
+                            .await
+                    {
+                        if let Some(ref sender) = sender {
+                            let snapshot = ReActState {
+                                summary: Some(title),
+                                ..Default::default()
+                            };
+                            sender(crate::run::TypedAnyStreamEvent::React(
+                                StreamEvent::Updates {
+                                    node_id: "title".to_string(),
+                                    state: snapshot,
+                                    namespace: None,
+                                },
+                            ));
+                        }
                     }
-                }
-            });
+                });
+            }
         }
 
         // Only reachable when `result` is `Ok(Finished(_))` (returned early

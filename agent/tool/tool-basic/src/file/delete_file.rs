@@ -12,7 +12,7 @@ use serde_json::json;
 use tool_core::Tool;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
-use super::path::resolve_path_under;
+use super::path::resolve_path;
 
 /// Tool name for deleting a file or directory.
 pub use tool_core::tool_name::TOOL_DELETE_FILE;
@@ -24,12 +24,13 @@ pub use tool_core::tool_name::TOOL_DELETE_FILE;
 pub struct DeleteFileTool {
     /// Canonical working folder path (shared with other file tools).
     pub(crate) working_folder: Arc<std::path::PathBuf>,
+    pub(crate) allow_outside: bool,
 }
 
 impl DeleteFileTool {
     /// Creates a new DeleteFileTool with the given working folder.
-    pub fn new(working_folder: Arc<std::path::PathBuf>) -> Self {
-        Self { working_folder }
+    pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
+        Self { working_folder, allow_outside }
     }
 }
 
@@ -79,7 +80,7 @@ impl Tool for DeleteFileTool {
             .get("recursive")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let path = resolve_path_under(self.working_folder.as_ref(), path_param)?;
+        let path = resolve_path(self.working_folder.as_ref(), path_param, self.allow_outside)?;
         if !path.exists() {
             return Err(ToolSourceError::InvalidInput(format!(
                 "path not found: {}",

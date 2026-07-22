@@ -13,7 +13,7 @@ use loom_util::text::truncate::truncate;
 use tool_core::Tool;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
-use super::path::resolve_path_under;
+use super::path::resolve_path;
 
 /// Tool name for reading a file.
 pub use tool_core::tool_name::TOOL_READ_FILE;
@@ -28,12 +28,13 @@ const MAX_LINE_LENGTH: usize = 2000;
 pub struct ReadFileTool {
     /// Canonical working folder path (shared with other file tools).
     pub(crate) working_folder: Arc<std::path::PathBuf>,
+    pub(crate) allow_outside: bool,
 }
 
 impl ReadFileTool {
     /// Creates a new ReadFileTool with the given working folder.
-    pub fn new(working_folder: Arc<std::path::PathBuf>) -> Self {
-        Self { working_folder }
+    pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
+        Self { working_folder, allow_outside }
     }
 }
 
@@ -90,7 +91,7 @@ impl Tool for ReadFileTool {
             .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolSourceError::InvalidInput("missing path".to_string()))?;
-        let path = resolve_path_under(self.working_folder.as_ref(), path_param)?;
+        let path = resolve_path(self.working_folder.as_ref(), path_param, self.allow_outside)?;
         if !path.exists() {
             return Err(ToolSourceError::InvalidInput(format!(
                 "file not found: {}",
@@ -152,7 +153,7 @@ mod tests {
         let file = tmp.path().join("cjk.txt");
         std::fs::write(&file, format!("{}\nshort\n", long_cjk)).unwrap();
 
-        let tool = ReadFileTool::new(Arc::new(tmp.path().to_path_buf()));
+        let tool = ReadFileTool::new(Arc::new(tmp.path().to_path_buf()), false);
         let res = tool
             .call(json!({"path": "cjk.txt"}), None)
             .await
@@ -181,7 +182,7 @@ mod tests {
         let file = tmp.path().join("hi.txt");
         std::fs::write(&file, "你好世界\n").unwrap();
 
-        let tool = ReadFileTool::new(Arc::new(tmp.path().to_path_buf()));
+        let tool = ReadFileTool::new(Arc::new(tmp.path().to_path_buf()), false);
         let res = tool
             .call(json!({"path": "hi.txt"}), None)
             .await

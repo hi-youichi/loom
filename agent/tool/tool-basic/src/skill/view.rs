@@ -142,10 +142,27 @@ impl SkillViewTool {
 
         if let Some(fp) = file_path {
             if entry.embedded_content.is_some() {
+                if let Some(ref files) = entry.embedded_files {
+                    if let Some((_, content)) = files.iter().find(|(n, _)| n == fp) {
+                        return Ok(ToolCallContent::text(format!(
+                            "<skill_content name=\"{}\" file=\"{}\">\n{}\n</skill_content>",
+                            name, fp, content
+                        )));
+                    }
+                }
                 return Err(ToolSourceError::InvalidInput(format!(
-                    "skill '{}' is a builtin skill and has no on-disk files; \
-                     omit file_path to read its embedded content",
-                    name
+                    "skill '{}' is a builtin skill; file '{}' not found in embedded references. \
+                     Available: {}",
+                    name,
+                    fp,
+                    entry
+                        .embedded_files
+                        .as_ref()
+                        .map(|f| f.iter()
+                            .map(|(n, _)| n.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", "))
+                        .unwrap_or_default()
                 )));
             }
             return self.view_sub_file(base_path, fp, name);
@@ -374,6 +391,29 @@ mod tests {
         );
     }
 
+    fn builtin_registry_with_refs() -> Arc<SkillRegistry> {
+        let mut registry = SkillRegistry::empty();
+        registry.add_builtin(
+            "workflow",
+            "Lua DSL reference for writing multi-agent workflows",
+            "---\nname: workflow\ndescription: Lua DSL reference\n---\n\n\
+             # Workflow DSL Reference\n\nThis is the builtin workflow skill body.\n",
+            vec!["workflow".to_string(), "multi-agent".to_string()],
+            vec!["workflow_start".to_string()],
+            vec![
+                (
+                    "references/dsl-reference.md".to_string(),
+                    "# DSL Reference\n\nphase(), report(), agent()\n".to_string(),
+                ),
+                (
+                    "references/examples.md".to_string(),
+                    "# Examples\n\nExample workflow scripts.\n".to_string(),
+                ),
+            ],
+        );
+        Arc::new(registry)
+    }
+
     #[tokio::test]
     async fn view_builtin_skill_with_file_path_errors() {
         let tool = make_view_tool(builtin_registry());
@@ -384,7 +424,7 @@ mod tests {
                 None,
             )
             .await
-            .expect_err("file_path on builtin skill should error");
+            .expect_err("file_path on builtin skill with no embedded files should error");
 
         let msg = format!("{}", err);
         assert!(
@@ -395,6 +435,52 @@ mod tests {
         assert!(
             msg.contains("workflow"),
             "error should mention skill name: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn view_builtin_skill_with_file_path_succeeds() {
+        let tool = make_view_tool(builtin_registry_with_refs());
+
+        let result = tool
+            .call(
+                serde_json::json!({"name": "workflow", "file_path": "references/dsl-reference.md"}),
+                None,
+            )
+            .await
+            .expect("file_path on builtin skill with matching embedded file should succeed");
+
+        let body = extract_text(result);
+        assert!(
+            body.contains("phase(), report(), agent()"),
+            "should return embedded file content: {}",
+            body
+        );
+        assert!(
+            body.contains("references/dsl-reference.md"),
+            "should include file attribute: {}",
+            body
+        );
+    }
+
+    #[tokio::test]
+    async fn view_builtin_skill_with_wrong_file_path_errors() {
+        let tool = make_view_tool(builtin_registry_with_refs());
+
+        let err = tool
+            .call(
+                serde_json::json!({"name": "workflow", "file_path": "references/nonexistent.md"}),
+                None,
+            )
+            .await
+            .expect_err("non-existent file_path should error");
+
+        let msg = format!("{}", err);
+        assert!(msg.contains("not found"), "error should say not found: {}", msg);
+        assert!(
+            msg.contains("references/dsl-reference.md"),
+            "error should list available files: {}",
             msg
         );
     }

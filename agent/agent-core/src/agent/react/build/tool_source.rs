@@ -82,6 +82,7 @@ pub(crate) async fn build_tool_source(
         register_file_tools(
             aggregate.as_ref(),
             wf,
+            config.allow_paths_outside_workdir,
             config.skill_registry.clone(),
             Some(SkillUsageStore::new(&wf.join(".loom/skills"))),
             config.is_background_review,
