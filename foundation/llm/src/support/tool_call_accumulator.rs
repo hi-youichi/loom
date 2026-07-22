@@ -61,25 +61,27 @@ impl ToolCallAccumulator {
         self.map.is_empty()
     }
 
-    /// Consume the accumulator and produce sorted `Vec<ToolCall>`.
-    ///
-    /// Tool calls are sorted by name for deterministic order.
+    /// Consume the accumulator and produce `Vec<ToolCall>` ordered by the
+    /// streaming index (the order the LLM sent them).
     pub fn finish(self) -> Vec<ToolCall> {
-        let mut tool_calls: Vec<ToolCall> = self
+        let mut entries: Vec<(u32, ToolCall)> = self
             .map
-            .into_values()
-            .map(|(id, name, arguments)| {
+            .into_iter()
+            .map(|(index, (id, name, arguments))| {
                 let sanitized_args =
                     sanitize_arguments(if id.is_empty() { None } else { Some(&id) }, &name, &arguments);
-                ToolCall {
-                    name,
-                    arguments: sanitized_args,
-                    id: if id.is_empty() { None } else { Some(id) },
-                }
+                (
+                    index,
+                    ToolCall {
+                        name,
+                        arguments: sanitized_args,
+                        id: if id.is_empty() { None } else { Some(id) },
+                    },
+                )
             })
             .collect();
-        tool_calls.sort_by_key(|a| a.name.clone());
-        tool_calls
+        entries.sort_by_key(|(index, _)| *index);
+        entries.into_iter().map(|(_, tc)| tc).collect()
     }
 
     /// Replace all accumulated tool calls with an externally-provided list.
@@ -181,23 +183,23 @@ mod tests {
     }
 
     #[test]
-    fn finish_sorts_by_name() {
+    fn finish_preserves_index_order() {
         let mut a = ToolCallAccumulator::new();
         a.push(RawToolCallDelta {
             index: 1,
             id: None,
-            name: Some("z".into()),
+            name: Some("a".into()),
             arguments: None,
         });
         a.push(RawToolCallDelta {
             index: 0,
             id: None,
-            name: Some("a".into()),
+            name: Some("z".into()),
             arguments: None,
         });
         let v = a.finish();
-        assert_eq!(v[0].name, "a");
-        assert_eq!(v[1].name, "z");
+        assert_eq!(v[0].name, "z", "index 0 must come first");
+        assert_eq!(v[1].name, "a", "index 1 must come second");
     }
 
     #[test]
