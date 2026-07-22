@@ -5,154 +5,162 @@
 //! rather than defining their own local constants.
 
 // ============================================================================
-    // File tools
-    // ============================================================================
+// File tools
+// ============================================================================
 
-    /// read — read text content of a file under the working folder.
-    pub const TOOL_READ_FILE: &str = "read";
+/// read — read text content of a file under the working folder.
+pub const TOOL_READ_FILE: &str = "read";
 
-    /// write_file — write text content to a file under the working folder.
-    pub const TOOL_WRITE_FILE: &str = "write_file";
+/// write_file — write text content to a file under the working folder.
+pub const TOOL_WRITE_FILE: &str = "write_file";
 
-    /// ls — list files and directories in a given path.
-    pub const TOOL_LS: &str = "ls";
+/// ls — list files and directories in a given path.
+pub const TOOL_LS: &str = "ls";
 
-    /// grep — search file contents using regular expressions.
-    pub const TOOL_GREP: &str = "grep";
+/// grep — search file contents using regular expressions.
+pub const TOOL_GREP: &str = "grep";
 
-    /// glob — fast file pattern matching.
-    pub const TOOL_GLOB: &str = "glob";
+/// glob — fast file pattern matching.
+pub const TOOL_GLOB: &str = "glob";
 
-    /// edit — apply a single find-and-replace to a file.
-    pub const TOOL_EDIT_FILE: &str = "edit";
+/// edit — apply a single find-and-replace to a file.
+pub const TOOL_EDIT_FILE: &str = "edit";
 
-    /// delete_file — delete a file or empty directory.
-    pub const TOOL_DELETE_FILE: &str = "delete_file";
+/// delete_file — delete a file or empty directory.
+pub const TOOL_DELETE_FILE: &str = "delete_file";
 
-    /// multiedit — apply multiple find-and-replace edits to a single file.
-    pub const TOOL_MULTIEDIT: &str = "multiedit";
+/// multiedit — apply multiple find-and-replace edits to a single file.
+pub const TOOL_MULTIEDIT: &str = "multiedit";
 
-    /// move_file — move or rename a file or directory.
-    pub const TOOL_MOVE_FILE: &str = "move_file";
+/// move_file — move or rename a file or directory.
+pub const TOOL_MOVE_FILE: &str = "move_file";
 
-    /// create_dir — create a directory; parent directories are created if needed.
-    pub const TOOL_CREATE_DIR: &str = "create_dir";
+/// create_dir — create a directory; parent directories are created if needed.
+pub const TOOL_CREATE_DIR: &str = "create_dir";
 
-    /// apply_patch — apply a multi-file patch in opencode format.
-    pub const TOOL_APPLY_PATCH: &str = "apply_patch";
+/// apply_patch — apply a multi-file patch in opencode format.
+pub const TOOL_APPLY_PATCH: &str = "apply_patch";
 
-    // ============================================================================
-    // Task tools
-    // ============================================================================
+// ============================================================================
+// Task tools
+// ============================================================================
 
-    /// task_create — create a new task in the task management system.
-    pub const TOOL_TASK_CREATE: &str = "task_create";
+/// task_create — create a new task in the task management system.
+pub const TOOL_TASK_CREATE: &str = "task_create";
 
-    /// task_show — show a task by its ID or prefix.
-    pub const TOOL_TASK_SHOW: &str = "task_show";
+/// task_show — show a task by its ID or prefix.
+pub const TOOL_TASK_SHOW: &str = "task_show";
 
-    /// task_list — list tasks with optional filters, sorting, and pagination.
-    pub const TOOL_TASK_LIST: &str = "task_list";
+/// task_list — list tasks with optional filters, sorting, and pagination.
+pub const TOOL_TASK_LIST: &str = "task_list";
 
-    /// task_update — update an existing task (status, name, description, etc.).
-    pub const TOOL_TASK_UPDATE: &str = "task_update";
+/// task_update — update an existing task (status, name, description, etc.).
+pub const TOOL_TASK_UPDATE: &str = "task_update";
 
-    /// task_delete — delete a task by ID.
-    pub const TOOL_TASK_DELETE: &str = "task_delete";
+/// task_delete — delete a task by ID.
+pub const TOOL_TASK_DELETE: &str = "task_delete";
 
-    // ============================================================================
-    // Memory tools
-    // ============================================================================
+// ============================================================================
+// Memory tools
+// ============================================================================
 
-    /// remember — store information in long-term memory.
-    pub const TOOL_REMEMBER: &str = "remember";
+/// remember — store information in long-term memory.
+pub const TOOL_REMEMBER: &str = "remember";
 
-    /// recall — retrieve a specific memory by ID.
-    pub const TOOL_RECALL: &str = "recall";
+/// recall — retrieve a specific memory by ID.
+pub const TOOL_RECALL: &str = "recall";
 
-    /// search_memories — search memory store with query.
-    pub const TOOL_SEARCH_MEMORIES: &str = "search_memories";
+/// search_memories — search memory store with query.
+pub const TOOL_SEARCH_MEMORIES: &str = "search_memories";
 
-    /// list_memories — list all stored memories.
-    pub const TOOL_LIST_MEMORIES: &str = "list_memories";
+/// list_memories — list all stored memories.
+pub const TOOL_LIST_MEMORIES: &str = "list_memories";
 
-    // ============================================================================
-    // Shell / execution tools
-    // ============================================================================
+// ============================================================================
+// Shell / execution tools
+// ============================================================================
 
-    /// bash — run a shell command (Unix).
-    pub const TOOL_BASH: &str = "bash";
+/// bash — run a shell command (Unix).
+pub const TOOL_BASH: &str = "bash";
 
-    /// powershell — run a PowerShell command (Windows).
-    pub const TOOL_POWERSHELL: &str = "powershell";
+/// powershell — run a PowerShell command (Windows).
+pub const TOOL_POWERSHELL: &str = "powershell";
 
-    // ============================================================================
-    // Web / external tools
-    // ============================================================================
+// ============================================================================
+// Web / external tools
+// ============================================================================
 
-    /// web_fetcher — HTTP GET/POST requests to URLs.
-    pub const TOOL_WEB_FETCHER: &str = "web_fetcher";
+/// web_fetcher — HTTP GET/POST requests to URLs.
+pub const TOOL_WEB_FETCHER: &str = "web_fetcher";
 
-    /// websearch — search the web using Exa.
-    pub const TOOL_WEBSEARCH: &str = "websearch";
+/// websearch — search the web using Exa.
+pub const TOOL_WEBSEARCH: &str = "websearch";
 
-    /// codesearch — search code using Exa.
-    pub const TOOL_CODESEARCH: &str = "codesearch";
+/// codesearch — search code using Exa.
+pub const TOOL_CODESEARCH: &str = "codesearch";
 
-    // ============================================================================
-    // Other tools
-    // ============================================================================
+// ============================================================================
+// Other tools
+// ============================================================================
 
-    /// date — returns the current date and time.
-    pub const TOOL_DATE: &str = "date";
+/// date — returns the current date and time.
+pub const TOOL_DATE: &str = "date";
 
-    /// lsp — Language Server Protocol for code intelligence.
-    pub const TOOL_LSP: &str = "lsp";
+/// lsp — Language Server Protocol for code intelligence.
+pub const TOOL_LSP: &str = "lsp";
 
-    /// skill_list — list all available skills with descriptions.
-    pub const TOOL_SKILL_LIST: &str = "skill_list";
+/// skill_list — list all available skills with descriptions.
+pub const TOOL_SKILL_LIST: &str = "skill_list";
 
-    /// skill_view — load a skill's full content by name.
-    pub const TOOL_SKILL_VIEW: &str = "skill_view";
+/// skill_view — load a skill's full content by name.
+pub const TOOL_SKILL_VIEW: &str = "skill_view";
 
-    /// help — show help information about Loom, Skills, and MCP.
-    pub const TOOL_HELP: &str = "help";
+/// help — show help information about Loom, Skills, and MCP.
+pub const TOOL_HELP: &str = "help";
 
-    /// batch — execute multiple independent tool calls in parallel.
-    pub const TOOL_BATCH: &str = "batch";
+/// batch — execute multiple independent tool calls in parallel.
+pub const TOOL_BATCH: &str = "batch";
 
-    /// agent — delegate work to a sub-agent, or query async agent results.
-    pub const TOOL_AGENT: &str = "agent";
+/// agent — delegate work to a sub-agent, or query async agent results.
+pub const TOOL_AGENT: &str = "agent";
 
-    /// Legacy alias kept for backward compatibility during migration.
-    pub const TOOL_INVOKE_AGENT: &str = TOOL_AGENT;
+/// Legacy alias kept for backward compatibility during migration.
+pub const TOOL_INVOKE_AGENT: &str = TOOL_AGENT;
 
-    /// agent_get — query async agent status or list all agents.
-    pub const TOOL_AGENT_GET: &str = "agent_get";
+/// agent_get — query async agent status or list all agents.
+pub const TOOL_AGENT_GET: &str = "agent_get";
 
-    /// agent_cancel — cancel a running or background agent.
-    pub const TOOL_AGENT_CANCEL: &str = "agent_cancel";
+/// agent_cancel — cancel a running or background agent.
+pub const TOOL_AGENT_CANCEL: &str = "agent_cancel";
 
-    /// thread_get — query thread information and agents.
-    pub const TOOL_THREAD_GET: &str = "thread_get";
+/// thread_get — query thread information and agents.
+pub const TOOL_THREAD_GET: &str = "thread_get";
 
-    /// git_worktree — manage git worktrees for isolated parallel execution.
-    pub const TOOL_GIT_WORKTREE: &str = "git_worktree";
+/// git_worktree — manage git worktrees for isolated parallel execution.
+pub const TOOL_GIT_WORKTREE: &str = "git_worktree";
 
-    // ============================================================================
-    // Todo tools
-    // ============================================================================
+// ============================================================================
+// Todo tools
+// ============================================================================
 
-    /// todo_read — read the current to-do list for the session.
-    pub const TOOL_TODO_READ: &str = "todo_read";
+/// todo_read — read the current to-do list for the session.
+pub const TOOL_TODO_READ: &str = "todo_read";
 
-    /// todo_write — create and manage a structured task list.
-    pub const TOOL_TODO_WRITE: &str = "todo_write";
+/// todo_write — create and manage a structured task list.
+pub const TOOL_TODO_WRITE: &str = "todo_write";
 
-    // ============================================================================
-    // Experimental tools
-    // ============================================================================
+pub const TOOL_WORKFLOW_START: &str = "workflow_start";
+pub const TOOL_WORKFLOW_STATUS: &str = "workflow_status";
+pub const TOOL_WORKFLOW_CANCEL: &str = "workflow_cancel";
+pub const TOOL_WORKFLOW_LIST: &str = "workflow_list";
+pub const TOOL_WORKFLOW_EVENTS: &str = "workflow_events";
+pub const TOOL_WORKFLOW_SOURCE: &str = "workflow_source";
+pub const TOOL_WORKFLOW_FILES: &str = "workflow_files";
 
-    /// llm — direct LLM invocation with multimodal inputs and provider/model
-    /// discovery (queries models.dev for pricing and capabilities).
-    pub const TOOL_LLM: &str = "llm";
+// ============================================================================
+// Experimental tools
+// ============================================================================
+
+/// llm — direct LLM invocation with multimodal inputs and provider/model
+/// discovery (queries models.dev for pricing and capabilities).
+pub const TOOL_LLM: &str = "llm";

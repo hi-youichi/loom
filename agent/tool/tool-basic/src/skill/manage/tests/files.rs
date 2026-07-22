@@ -13,9 +13,16 @@ async fn write_file_succeeds() {
     .await
     .unwrap();
 
-    let script_path = dir.path().join("auto").join("my-skill").join("scripts").join("setup.sh");
+    let script_path = dir
+        .path()
+        .join("auto")
+        .join("my-skill")
+        .join("scripts")
+        .join("setup.sh");
     assert!(script_path.exists());
-    assert!(std::fs::read_to_string(&script_path).unwrap().contains("echo hi"));
+    assert!(std::fs::read_to_string(&script_path)
+        .unwrap()
+        .contains("echo hi"));
 }
 
 #[tokio::test]
@@ -45,11 +52,19 @@ async fn remove_file_succeeds() {
     storage.write_file("my-skill", "scripts/a.sh", "x").unwrap();
     let tool = make_tool(storage);
 
-    let script_path = dir.path().join("auto").join("my-skill").join("scripts").join("a.sh");
+    let script_path = dir
+        .path()
+        .join("auto")
+        .join("my-skill")
+        .join("scripts")
+        .join("a.sh");
     assert!(script_path.exists());
 
-    tool.call(json!({"action": "remove_file", "name": "my-skill", "file_path": "scripts/a.sh"}), None)
-        .await
-        .unwrap();
+    tool.call(
+        json!({"action": "remove_file", "name": "my-skill", "file_path": "scripts/a.sh"}),
+        None,
+    )
+    .await
+    .unwrap();
     assert!(!script_path.exists());
 }

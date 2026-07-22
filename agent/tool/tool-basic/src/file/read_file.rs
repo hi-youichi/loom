@@ -10,8 +10,8 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use loom_util::text::truncate::truncate;
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 use super::path::resolve_path_under;
 

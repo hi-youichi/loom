@@ -21,8 +21,7 @@ use lsp_types::{DocumentSymbol, DocumentSymbolResponse, SymbolKind, Url};
 
 /// Wrap Url::from_file_path's `()` error into a Box<dyn Error>.
 fn to_url(path: &Path) -> Result<Url, Box<dyn std::error::Error>> {
-    Url::from_file_path(path)
-        .map_err(|()| format!("invalid file path: {}", path.display()).into())
+    Url::from_file_path(path).map_err(|()| format!("invalid file path: {}", path.display()).into())
 }
 
 // ─── Data structures ──────────────────────────────────────────────────────
@@ -123,11 +122,7 @@ fn output_json(workspace_root: &Path, unused: &[UnusedType], total_checked: usiz
     let mut handle = stdout.lock();
 
     let _ = writeln!(handle, "{{");
-    let _ = writeln!(
-        handle,
-        "  \"total_checked\": {},",
-        total_checked
-    );
+    let _ = writeln!(handle, "  \"total_checked\": {},", total_checked);
     let _ = writeln!(handle, "  \"unused_count\": {},", unused.len());
     let _ = writeln!(handle, "  \"unused_types\": [");
     for (i, ty) in unused.iter().enumerate() {
@@ -291,7 +286,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(None) => {}
             Err(e) => {
                 if !json_output {
-                    eprintln!("  [WARN] document_symbols failed for {}: {}", file.display(), e);
+                    eprintln!(
+                        "  [WARN] document_symbols failed for {}: {}",
+                        file.display(),
+                        e
+                    );
                 }
             }
         }
@@ -380,10 +379,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if json_output {
         output_json(&workspace_root, &unused_types, total);
     } else {
-        println!(
-            "\nPhase 2 done in {:.2}s\n",
-            phase2_elapsed.as_secs_f64()
-        );
+        println!("\nPhase 2 done in {:.2}s\n", phase2_elapsed.as_secs_f64());
 
         println!("{}", "=".repeat(72));
         println!("UNUSED TYPES REPORT");
@@ -399,16 +395,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 current_kind = &ty.kind_label;
                 println!("\n── {} ──", current_kind);
             }
-            let rel = ty
-                .file
-                .strip_prefix(&workspace_root)
-                .unwrap_or(&ty.file);
-            println!(
-                "  {}:{}  {}",
-                rel.display(),
-                ty.line + 1,
-                ty.name
-            );
+            let rel = ty.file.strip_prefix(&workspace_root).unwrap_or(&ty.file);
+            println!("  {}:{}  {}", rel.display(), ty.line + 1, ty.name);
         }
 
         let pct = if total == 0 {
@@ -425,9 +413,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             pct,
             phase2_elapsed.as_secs_f64()
         );
-        println!(
-            "Note: 'pub' types may be part of the public API and used externally."
-        );
+        println!("Note: 'pub' types may be part of the public API and used externally.");
     }
 
     // ── Shutdown ──

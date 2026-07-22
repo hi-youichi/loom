@@ -39,9 +39,7 @@ pub fn is_malformed_db_error(e: &rusqlite::Error) -> bool {
 /// Returns the (possibly re-opened) connection. The corrupt file is
 /// kept on disk so the user can recover state if they have a recent
 /// backup.
-pub fn repair_state_db_schema(
-    path: &Path,
-) -> Result<rusqlite::Connection, String> {
+pub fn repair_state_db_schema(path: &Path) -> Result<rusqlite::Connection, String> {
     let conn = rusqlite::Connection::open(path);
     match conn {
         Ok(c) => Ok(c),
@@ -101,14 +99,21 @@ mod tests {
 
     fn tmp_path(name: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
-        p.push(format!("loom_repair_test_{}_{}.db", std::process::id(), name));
+        p.push(format!(
+            "loom_repair_test_{}_{}.db",
+            std::process::id(),
+            name
+        ));
         p
     }
 
     #[test]
     fn detect_malformed_truncated_file() {
         let p = tmp_path("trunc");
-        std::fs::File::create(&p).unwrap().write_all(b"not a sqlite file").unwrap();
+        std::fs::File::create(&p)
+            .unwrap()
+            .write_all(b"not a sqlite file")
+            .unwrap();
         let res = rusqlite::Connection::open(&p);
         if let Err(e) = res {
             assert!(is_malformed_db_error(&e), "expected malformed, got {}", e);
@@ -130,7 +135,10 @@ mod tests {
     #[test]
     fn repair_corrupt_file_produces_usable_db() {
         let p = tmp_path("repair");
-        std::fs::File::create(&p).unwrap().write_all(b"\0\0garbage\0\0").unwrap();
+        std::fs::File::create(&p)
+            .unwrap()
+            .write_all(b"\0\0garbage\0\0")
+            .unwrap();
         let conn = repair_state_db_schema(&p).expect("repair should succeed");
         conn.execute_batch("CREATE TABLE t(x INTEGER); INSERT INTO t VALUES (42);")
             .unwrap();
@@ -148,7 +156,9 @@ mod tests {
         drop(conn);
         // repair should return a usable connection without renaming.
         let conn2 = repair_state_db_schema(&p).expect("healthy db should re-open");
-        let v: i64 = conn2.query_row("SELECT x FROM t", [], |r| r.get(0)).unwrap();
+        let v: i64 = conn2
+            .query_row("SELECT x FROM t", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(v, 1);
         let _ = std::fs::remove_file(&p);
     }

@@ -853,7 +853,8 @@ mod tests {
 
     #[test]
     fn diff_edit_basic() {
-        let args = r##"{"path":"panel_format.rs","oldString":"fn main()","newString":"fn hello()"}"##;
+        let args =
+            r##"{"path":"panel_format.rs","oldString":"fn main()","newString":"fn hello()"}"##;
         let output = format_diff("edit", args, "", false).unwrap();
         // Note: format_removed_line/add_line uses "- " prefix (with space)
         assert!(output.contains("- fn main()"));

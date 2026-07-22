@@ -2,15 +2,14 @@
 
 use std::sync::Arc;
 
-use loom_llm::LlmClient;
 use crate::agent::ReactBuildConfig;
+use loom_llm::LlmClient;
 
-use crate::got::{GotRunner, GotState};
 use crate::agent::react::build::{
-    build_react_run_context, build_default_llm_with_tool_source, resolve_memory_db_path,
-    build_checkpointer_for_state, BuildRunnerError,
-    BoxedLlmClient,
+    build_checkpointer_for_state, build_default_llm_with_tool_source, build_react_run_context,
+    resolve_memory_db_path, BoxedLlmClient, BuildRunnerError,
 };
+use crate::got::{GotRunner, GotState};
 
 pub async fn build_got_runner(
     config: &ReactBuildConfig,
@@ -20,7 +19,14 @@ pub async fn build_got_runner(
     let ctx = build_react_run_context(config).await?;
     let llm = match llm {
         Some(l) => l,
-        None => build_default_llm_with_tool_source(config, ctx.tool_source.as_ref(), ctx.audit_log.clone()).await?,
+        None => {
+            build_default_llm_with_tool_source(
+                config,
+                ctx.tool_source.as_ref(),
+                ctx.audit_log.clone(),
+            )
+            .await?
+        }
     };
     let llm_arc: Arc<dyn LlmClient> = Arc::new(BoxedLlmClient(llm));
 

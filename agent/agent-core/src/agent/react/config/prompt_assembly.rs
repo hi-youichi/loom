@@ -81,9 +81,7 @@ pub fn assemble_system_prompt(inputs: &SystemPromptInputs<'_>) -> String {
     }
 
     // 6. Base prompt content
-    let base_content = inputs
-        .base_prompt_override
-        .unwrap_or(REACT_SYSTEM_PROMPT);
+    let base_content = inputs.base_prompt_override.unwrap_or(REACT_SYSTEM_PROMPT);
 
     // 7. Workdir section (when working_folder is present)
     let final_prompt = if let Some(workdir) = inputs.working_folder {

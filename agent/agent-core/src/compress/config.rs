@@ -18,16 +18,23 @@ pub struct CompactionConfig {
 impl Default for CompactionConfig {
     fn default() -> Self {
         Self {
-            auto: true, prune: true,
-            max_context_tokens: 128_000, reserve_tokens: 4096,
-            prune_keep_tokens: 40_000, prune_minimum: Some(20_000),
-            compact_keep_recent: 20, compact_tier: ModelTier::Light,
+            auto: true,
+            prune: true,
+            max_context_tokens: 128_000,
+            reserve_tokens: 4096,
+            prune_keep_tokens: 40_000,
+            prune_minimum: Some(20_000),
+            compact_keep_recent: 20,
+            compact_tier: ModelTier::Light,
         }
     }
 }
 
 impl CompactionConfig {
     pub fn with_max_context_tokens(max_context_tokens: u32) -> Self {
-        Self { max_context_tokens, ..Self::default() }
+        Self {
+            max_context_tokens,
+            ..Self::default()
+        }
     }
 }

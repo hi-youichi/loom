@@ -53,10 +53,12 @@ impl BotManager {
         const GET_ME_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
         let me = tokio::time::timeout(GET_ME_TIMEOUT, bot.get_me())
             .await
-            .map_err(|_| BotError::Config(format!(
-                "telegram get_me() timed out after {}s — continuing with empty username",
-                GET_ME_TIMEOUT.as_secs()
-            )))
+            .map_err(|_| {
+                BotError::Config(format!(
+                    "telegram get_me() timed out after {}s — continuing with empty username",
+                    GET_ME_TIMEOUT.as_secs()
+                ))
+            })
             .and_then(|res| res.map_err(BotError::Network));
         let bot_username = match me {
             Ok(m) => m.username.clone().unwrap_or_default(),

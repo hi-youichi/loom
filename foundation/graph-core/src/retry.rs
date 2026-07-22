@@ -92,8 +92,9 @@ impl RetryPolicy {
                 if attempt > self.max_attempts() {
                     return None;
                 }
-                
-                let delay_ms = initial_interval.as_millis() as f64 * multiplier.powi(attempt as i32 - 1);
+
+                let delay_ms =
+                    initial_interval.as_millis() as f64 * multiplier.powi(attempt as i32 - 1);
                 let max_ms = max_interval.as_millis() as f64;
                 let clamped_ms = delay_ms.min(max_ms);
                 Some(Duration::from_millis(clamped_ms as u64))
@@ -103,17 +104,21 @@ impl RetryPolicy {
 
     /// Checks if this policy allows retries.
     pub fn allows_retries(&self) -> bool {
-        matches!(self, RetryPolicy::Fixed { .. } | RetryPolicy::Exponential { .. })
+        matches!(
+            self,
+            RetryPolicy::Fixed { .. } | RetryPolicy::Exponential { .. }
+        )
     }
-    
+
     /// Checks if we should retry for the given attempt number.
     pub fn should_retry(&self, attempt: usize) -> bool {
         attempt < self.max_attempts()
     }
-    
+
     /// Gets the delay for a given attempt number.
     pub fn delay(&self, attempt: usize) -> std::time::Duration {
-        self.delay_for_attempt(attempt).unwrap_or(std::time::Duration::ZERO)
+        self.delay_for_attempt(attempt)
+            .unwrap_or(std::time::Duration::ZERO)
     }
 }
 
@@ -135,9 +140,18 @@ mod tests {
         let policy = RetryPolicy::fixed(3, Duration::from_millis(100));
         assert!(policy.allows_retries());
         assert_eq!(policy.max_attempts(), 3);
-        assert_eq!(policy.delay_for_attempt(1), Some(Duration::from_millis(100)));
-        assert_eq!(policy.delay_for_attempt(2), Some(Duration::from_millis(100)));
-        assert_eq!(policy.delay_for_attempt(3), Some(Duration::from_millis(100)));
+        assert_eq!(
+            policy.delay_for_attempt(1),
+            Some(Duration::from_millis(100))
+        );
+        assert_eq!(
+            policy.delay_for_attempt(2),
+            Some(Duration::from_millis(100))
+        );
+        assert_eq!(
+            policy.delay_for_attempt(3),
+            Some(Duration::from_millis(100))
+        );
         assert_eq!(policy.delay_for_attempt(4), None);
     }
 
@@ -151,19 +165,31 @@ mod tests {
         );
         assert!(policy.allows_retries());
         assert_eq!(policy.max_attempts(), 4);
-        
+
         // First retry: 100ms * 2^0 = 100ms
-        assert_eq!(policy.delay_for_attempt(1), Some(Duration::from_millis(100)));
-        
+        assert_eq!(
+            policy.delay_for_attempt(1),
+            Some(Duration::from_millis(100))
+        );
+
         // Second retry: 100ms * 2^1 = 200ms
-        assert_eq!(policy.delay_for_attempt(2), Some(Duration::from_millis(200)));
-        
+        assert_eq!(
+            policy.delay_for_attempt(2),
+            Some(Duration::from_millis(200))
+        );
+
         // Third retry: 100ms * 2^2 = 400ms
-        assert_eq!(policy.delay_for_attempt(3), Some(Duration::from_millis(400)));
-        
+        assert_eq!(
+            policy.delay_for_attempt(3),
+            Some(Duration::from_millis(400))
+        );
+
         // Fourth retry: 100ms * 2^3 = 800ms
-        assert_eq!(policy.delay_for_attempt(4), Some(Duration::from_millis(800)));
-        
+        assert_eq!(
+            policy.delay_for_attempt(4),
+            Some(Duration::from_millis(800))
+        );
+
         // Fifth retry exceeds max_attempts
         assert_eq!(policy.delay_for_attempt(5), None);
     }
@@ -176,9 +202,15 @@ mod tests {
             Duration::from_millis(5000), // Cap at 5 seconds
             2.0,
         );
-        
+
         // These delays should be capped at 5 seconds
-        assert_eq!(policy.delay_for_attempt(5), Some(Duration::from_millis(5000)));
-        assert_eq!(policy.delay_for_attempt(10), Some(Duration::from_millis(5000)));
+        assert_eq!(
+            policy.delay_for_attempt(5),
+            Some(Duration::from_millis(5000))
+        );
+        assert_eq!(
+            policy.delay_for_attempt(10),
+            Some(Duration::from_millis(5000))
+        );
     }
 }

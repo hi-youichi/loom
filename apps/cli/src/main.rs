@@ -24,6 +24,7 @@ mod run_flow;
 mod server_runner;
 mod session;
 mod session_view;
+mod skill_inspect;
 mod skill_usage_cmd;
 mod subcommands;
 mod task_cmd;
@@ -145,7 +146,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     if let Some(Cmd::Skills(sa)) = &args.cmd {
-        if let Err(err) = handle_skills_command(sa, args.json) {
+        if let Err(err) = handle_skills_command(sa, args.json, args.pretty, args.file.as_deref()) {
             eprintln!("{}", err);
             std::process::exit(1);
         }

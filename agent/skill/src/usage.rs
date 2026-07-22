@@ -178,7 +178,7 @@ impl SkillUsageStore {
         });
     }
 
-/// Mark a skill as agent-created.
+    /// Mark a skill as agent-created.
     ///
     /// Hermes-aligned provenance guard (matches `skill_usage.py:171-195,
     /// 290-293`): a skill that appears in `.bundled_manifest` or is owned by
@@ -270,7 +270,7 @@ impl SkillUsageStore {
         });
     }
 
-/// Set the pinned status of a skill.
+    /// Set the pinned status of a skill.
     pub fn set_pinned(&self, name: &str, pinned: bool) {
         self.update(name, |u| {
             u.pinned = pinned;
@@ -346,7 +346,7 @@ impl SkillUsageStore {
         self.forget_with_intent(name, None);
     }
 
-/// Remove usage data for a skill, recording where it was absorbed into.
+    /// Remove usage data for a skill, recording where it was absorbed into.
     pub fn forget_with_intent(&self, name: &str, absorbed_into: Option<&str>) {
         match self.load() {
             Ok(mut data) => {
@@ -486,15 +486,15 @@ impl SkillUsageStore {
             return Ok(HashMap::new());
         }
         let raw = fs::read_to_string(&self.path)?;
+        let raw = raw.trim_start_matches('\u{feff}');
         if raw.trim().is_empty() {
             return Ok(HashMap::new());
         }
-        serde_json::from_str(&raw).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
-        })
+        serde_json::from_str(raw)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
     }
 
-/// Save all usage data to the store.
+    /// Save all usage data to the store.
     ///
     /// Uses `atomic_write_text` so the destination is never observed in a
     /// half-written state, even if the process is killed mid-write. The helper
@@ -514,10 +514,11 @@ impl SkillUsageStore {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let json = serde_json::to_string_pretty(data).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
-        })?;
-        with_usage_lock(&self.path, || crate::storage::atomic_write_text(&self.path, &json))
+        let json = serde_json::to_string_pretty(data)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+        with_usage_lock(&self.path, || {
+            crate::storage::atomic_write_text(&self.path, &json)
+        })
     }
 
     /// Save a single entry (load existing, update, save).
@@ -527,7 +528,7 @@ impl SkillUsageStore {
         self.save(&data)
     }
 
-fn update(&self, name: &str, f: impl FnOnce(&mut SkillUsage)) {
+    fn update(&self, name: &str, f: impl FnOnce(&mut SkillUsage)) {
         match self.load() {
             Ok(mut data) => {
                 let entry = data
@@ -640,6 +641,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = SkillUsageStore::new(dir.path());
 
+        store.mark_agent_created("skill-a");
         store.bump_use("skill-a");
         store.bump_use("skill-a");
         store.bump_view("skill-a");
@@ -654,6 +656,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = SkillUsageStore::new(dir.path());
 
+        store.mark_agent_created("s1");
         store.bump_use("s1");
         let entry = store.get("s1").unwrap();
         assert!(entry.last_used_at.is_some());
@@ -665,6 +668,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = SkillUsageStore::new(dir.path());
 
+        store.mark_agent_created("s1");
         store.bump_patch("s1");
         store.bump_patch("s1");
         store.bump_patch("s1");
@@ -746,10 +750,26 @@ mod tests {
     }
 
     #[test]
+    fn load_accepts_utf8_bom() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SkillUsageStore::new(dir.path());
+        let mut usage = SkillUsage::new("agent-skill");
+        usage.created_by = Some("agent".to_string());
+        let data = HashMap::from([("agent-skill".to_string(), usage)]);
+        let json = serde_json::to_string(&data).unwrap();
+        fs::write(dir.path().join(".usage.json"), format!("\u{feff}{json}")).unwrap();
+
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert!(store.is_agent_created("agent-skill"));
+    }
+
+    #[test]
     fn activity_count_sums_all() {
         let dir = tempfile::tempdir().unwrap();
         let store = SkillUsageStore::new(dir.path());
 
+        store.mark_agent_created("s1");
         store.bump_use("s1");
         store.bump_use("s1");
         store.bump_view("s1");

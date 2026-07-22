@@ -1,7 +1,7 @@
 #[cfg(test)]
 pub(crate) mod shared_client {
-    use std::sync::OnceLock;
     use reqwest::Client;
+    use std::sync::OnceLock;
 
     static CLIENT: OnceLock<Client> = OnceLock::new();
 

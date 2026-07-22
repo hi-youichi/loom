@@ -83,9 +83,7 @@ pub fn prune(messages: Vec<Message>, config: &CompactionConfig) -> Vec<Message> 
     for i in &to_prune {
         match out.get_mut(*i) {
             Some(Message::User(_)) => {
-                out[*i] = Message::user(UserContent::Text(
-                    PRUNE_PLACEHOLDER.to_string(),
-                ));
+                out[*i] = Message::user(UserContent::Text(PRUNE_PLACEHOLDER.to_string()));
             }
             Some(Message::Tool { tool_call_id, .. }) => {
                 let id = tool_call_id.clone();
@@ -243,9 +241,9 @@ mod tests {
 
     #[test]
     fn is_tool_result_user_with_prefix() {
-        assert!(is_tool_result_message(&Message::User(
-            UserContent::Text("Tool bash returned: ok".to_string())
-        )));
+        assert!(is_tool_result_message(&Message::User(UserContent::Text(
+            "Tool bash returned: ok".to_string()
+        ))));
     }
 
     #[test]

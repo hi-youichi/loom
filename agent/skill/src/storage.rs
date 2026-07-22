@@ -36,7 +36,10 @@ pub fn is_excluded_skill_path(path: &std::path::Path) -> bool {
     // store (those are internal markers, not bundled skills).
     for ancestor in path.ancestors() {
         if let Some(name) = ancestor.file_name().and_then(|n| n.to_str()) {
-            if name == ".loom" || name == ".archive" {
+            if name.starts_with('.') {
+                return true;
+            }
+            if name.starts_with('_') && name != "_" {
                 return true;
             }
         }
@@ -54,9 +57,7 @@ mod excluded_path_tests {
         assert!(is_excluded_skill_path(Path::new(
             "/skills/.archive/old-skill/SKILL.md"
         )));
-        assert!(is_excluded_skill_path(Path::new(
-            "/skills/.git/HEAD"
-        )));
+        assert!(is_excluded_skill_path(Path::new("/skills/.git/HEAD")));
     }
 
     #[test]
@@ -78,17 +79,15 @@ mod excluded_path_tests {
 
     #[test]
     fn accepts_normal_skill_paths() {
-        assert!(!is_excluded_skill_path(Path::new(
-            "/skills/plan/SKILL.md"
-        )));
+        assert!(!is_excluded_skill_path(Path::new("/skills/plan/SKILL.md")));
         assert!(!is_excluded_skill_path(Path::new(
             "/skills/code-review/SKILL.md"
         )));
     }
 }
+use crate::usage::SkillUsageStore;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
-use crate::usage::SkillUsageStore;
 
 /// Atomically write `text` to `path` via a unique sibling tempfile + fsync + rename.
 ///
@@ -111,9 +110,7 @@ pub fn atomic_write_text(path: &Path, text: &str) -> std::io::Result<()> {
         "tmp.{}.{}.{}",
         pid,
         nanos,
-        path.extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
+        path.extension().and_then(|e| e.to_str()).unwrap_or("")
     ));
     {
         let mut f = fs::File::create(&tmp)?;
@@ -285,7 +282,9 @@ fn sanitize_category(raw: &str) -> String {
     {
         return "_invalid".to_string();
     }
-    let reserved = ["con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "lpt1", "lpt2"];
+    let reserved = [
+        "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "lpt1", "lpt2",
+    ];
     if reserved.contains(&trimmed.as_str()) {
         return "_invalid".to_string();
     }
@@ -654,7 +653,10 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
         // directory and clobbered each other.
         let dir = if let Some(cat) = content.category.as_deref().filter(|c| !c.is_empty()) {
             let sanitized = sanitize_category(cat);
-            self.base_dir.join(content.source.dir_name()).join(&sanitized).join(name)
+            self.base_dir
+                .join(content.source.dir_name())
+                .join(&sanitized)
+                .join(name)
         } else {
             match self.find_skill_dir(name) {
                 Some(existing) => existing,
@@ -724,7 +726,7 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
         Ok(())
     }
 
-/// Delete a skill from the registry.
+    /// Delete a skill from the registry.
     ///
     /// Searches the entire tree for the skill directory and removes it.
     pub fn delete(&self, name: &str) -> Result<(), SkillError> {
@@ -779,11 +781,7 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
     /// Set the `lifecycle` of a skill by updating its SKILL.md frontmatter.
     ///
     /// Used by `curator restore` to move a skill back to Active.
-    pub fn set_lifecycle(
-        &self,
-        name: &str,
-        lifecycle: Lifecycle,
-    ) -> Result<(), SkillError> {
+    pub fn set_lifecycle(&self, name: &str, lifecycle: Lifecycle) -> Result<(), SkillError> {
         if let Some(dir) = self.find_skill_dir(name) {
             let path = dir.join("SKILL.md");
             if path.exists() {
@@ -982,7 +980,11 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
     }
 
     /// Find skills matching a query string.
-    pub fn find_matching(&self, query: &str, threshold: f64) -> Result<Vec<SkillContent>, SkillError> {
+    pub fn find_matching(
+        &self,
+        query: &str,
+        threshold: f64,
+    ) -> Result<Vec<SkillContent>, SkillError> {
         let all = self.list()?;
         let query_lower = query.to_lowercase();
         let query_words: HashSet<&str> = query_lower.split_whitespace().collect();
@@ -995,7 +997,12 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
             }
         }
 
-        scored.sort_by_cached_key(|a| std::cmp::Reverse(a.0.partial_cmp(&f64::INFINITY).unwrap_or(std::cmp::Ordering::Equal)));
+        scored.sort_by_cached_key(|a| {
+            std::cmp::Reverse(
+                a.0.partial_cmp(&f64::INFINITY)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
+        });
 
         let mut results = Vec::new();
         for (_, name) in scored {
@@ -1010,9 +1017,7 @@ Hint: skill '{}' not found in current profile.                  Did you mean a s
     fn read_pinned_from_frontmatter(&self, skill_md: &Path) -> Option<bool> {
         let raw = fs::read_to_string(skill_md).ok()?;
         let (frontmatter, _) = parse_frontmatter(&raw);
-        frontmatter
-            .get("pinned")
-            .and_then(|v| v.as_bool())
+        frontmatter.get("pinned").and_then(|v| v.as_bool())
     }
 }
 
@@ -1071,7 +1076,8 @@ fn walk_rglob_skill_md(root: &Path) -> Option<PathBuf> {
                     continue;
                 }
                 stack.push(path);
-            } else if ft.is_file() && path.file_name().and_then(|n| n.to_str()) == Some("SKILL.md") {
+            } else if ft.is_file() && path.file_name().and_then(|n| n.to_str()) == Some("SKILL.md")
+            {
                 return Some(path);
             }
         }
@@ -1253,7 +1259,9 @@ mod tests {
         assert!(matches!(result, Err(SkillError::Pinned(_))));
 
         // Setting Active (no change) should still succeed
-        registry.set_lifecycle("pinned-active", Lifecycle::Active).unwrap();
+        registry
+            .set_lifecycle("pinned-active", Lifecycle::Active)
+            .unwrap();
     }
 
     #[test]
@@ -1273,6 +1281,8 @@ mod tests {
         };
         registry.save("normal-skill", &skill).unwrap();
         // Not pinned → archive works
-        registry.set_lifecycle("normal-skill", Lifecycle::Archived).unwrap();
+        registry
+            .set_lifecycle("normal-skill", Lifecycle::Archived)
+            .unwrap();
     }
 }

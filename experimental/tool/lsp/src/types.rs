@@ -365,7 +365,10 @@ mod tests {
 
     #[test]
     fn test_position_serialization() {
-        let pos = Position { line: 5, character: 10 };
+        let pos = Position {
+            line: 5,
+            character: 10,
+        };
         let json = serde_json::to_string(&pos).unwrap();
         let deserialized: Position = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.line, 5);
@@ -374,9 +377,18 @@ mod tests {
 
     #[test]
     fn test_position_eq() {
-        let pos1 = Position { line: 5, character: 10 };
-        let pos2 = Position { line: 5, character: 10 };
-        let pos3 = Position { line: 6, character: 10 };
+        let pos1 = Position {
+            line: 5,
+            character: 10,
+        };
+        let pos2 = Position {
+            line: 5,
+            character: 10,
+        };
+        let pos3 = Position {
+            line: 6,
+            character: 10,
+        };
         assert_eq!(pos1, pos2);
         assert_ne!(pos1, pos3);
     }
@@ -410,7 +422,10 @@ mod tests {
 
         assert_eq!(deserialized.label, "test_function");
         assert_eq!(deserialized.kind, Some(CompletionItemKind::Function));
-        assert_eq!(deserialized.detail, Some("fn test_function() -> i32".to_string()));
+        assert_eq!(
+            deserialized.detail,
+            Some("fn test_function() -> i32".to_string())
+        );
     }
 
     #[test]
@@ -443,8 +458,14 @@ mod tests {
     fn test_diagnostic_serialization() {
         let diagnostic = Diagnostic {
             range: Range {
-                start: Position { line: 0, character: 0 },
-                end: Position { line: 0, character: 10 },
+                start: Position {
+                    line: 0,
+                    character: 0,
+                },
+                end: Position {
+                    line: 0,
+                    character: 10,
+                },
             },
             message: "Test error message".to_string(),
             severity: Some(DiagnosticSeverity::Error),
@@ -481,12 +502,24 @@ mod tests {
             detail: Some("fn test_function()".to_string()),
             kind: SymbolKind::Function,
             range: Range {
-                start: Position { line: 0, character: 0 },
-                end: Position { line: 5, character: 0 },
+                start: Position {
+                    line: 0,
+                    character: 0,
+                },
+                end: Position {
+                    line: 5,
+                    character: 0,
+                },
             },
             selection_range: Range {
-                start: Position { line: 0, character: 4 },
-                end: Position { line: 0, character: 16 },
+                start: Position {
+                    line: 0,
+                    character: 4,
+                },
+                end: Position {
+                    line: 0,
+                    character: 16,
+                },
             },
             children: None,
         };
@@ -506,8 +539,14 @@ mod tests {
             location: Location {
                 uri: "file:///test.rs".to_string(),
                 range: Range {
-                    start: Position { line: 0, character: 0 },
-                    end: Position { line: 0, character: 10 },
+                    start: Position {
+                        line: 0,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: 0,
+                        character: 10,
+                    },
                 },
             },
             container_name: Some("test_module".to_string()),
@@ -567,8 +606,14 @@ mod tests {
     fn test_text_edit_serialization() {
         let edit = TextEdit {
             range: Range {
-                start: Position { line: 0, character: 0 },
-                end: Position { line: 0, character: 5 },
+                start: Position {
+                    line: 0,
+                    character: 0,
+                },
+                end: Position {
+                    line: 0,
+                    character: 5,
+                },
             },
             new_text: "replaced".to_string(),
         };
@@ -730,7 +775,10 @@ mod tests {
         assert_eq!(language_id_from_path(path), Some("typescript".to_string()));
 
         let path = Path::new("/path/to/file.tsx");
-        assert_eq!(language_id_from_path(path), Some("typescriptreact".to_string()));
+        assert_eq!(
+            language_id_from_path(path),
+            Some("typescriptreact".to_string())
+        );
     }
 
     #[test]
@@ -739,7 +787,10 @@ mod tests {
         assert_eq!(language_id_from_path(path), Some("javascript".to_string()));
 
         let path = Path::new("/path/to/file.jsx");
-        assert_eq!(language_id_from_path(path), Some("javascriptreact".to_string()));
+        assert_eq!(
+            language_id_from_path(path),
+            Some("javascriptreact".to_string())
+        );
     }
 
     #[test]
@@ -867,8 +918,14 @@ mod tests {
         let location = Location {
             uri: "file:///test.rs".to_string(),
             range: Range {
-                start: Position { line: 5, character: 10 },
-                end: Position { line: 5, character: 15 },
+                start: Position {
+                    line: 5,
+                    character: 10,
+                },
+                end: Position {
+                    line: 5,
+                    character: 15,
+                },
             },
         };
 
@@ -885,8 +942,14 @@ mod tests {
         let hover = Hover {
             contents: HoverContents::String("Test hover content".to_string()),
             range: Some(Range {
-                start: Position { line: 0, character: 0 },
-                end: Position { line: 1, character: 5 },
+                start: Position {
+                    line: 0,
+                    character: 0,
+                },
+                end: Position {
+                    line: 1,
+                    character: 5,
+                },
             }),
         };
 

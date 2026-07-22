@@ -49,7 +49,8 @@ fn json_u64(args: &serde_json::Value, field: &str) -> Option<u64> {
 /// Returns a human-readable one-liner describing what the tool is about to do.
 /// Falls back to raw args (truncated) for unknown tools.
 pub fn format_call_summary(tool_name: &str, args_json: &str) -> String {
-    let args: serde_json::Value = serde_json::from_str(args_json).unwrap_or(serde_json::Value::Null);
+    let args: serde_json::Value =
+        serde_json::from_str(args_json).unwrap_or(serde_json::Value::Null);
 
     match tool_name {
         "bash" | "powershell" => {
@@ -102,7 +103,10 @@ pub fn format_call_summary(tool_name: &str, args_json: &str) -> String {
                     total_new += new.lines().count().max(1);
                 }
             }
-            format!("{} (+{}/-{}, {} edits)", path, total_new, total_old, edit_count)
+            format!(
+                "{} (+{}/-{}, {} edits)",
+                path, total_new, total_old, edit_count
+            )
         }
 
         "write_file" => {
@@ -197,9 +201,17 @@ pub fn format_call_summary(tool_name: &str, args_json: &str) -> String {
             let status = json_str(&args, "status").unwrap_or("");
             let name = json_str(&args, "name").unwrap_or("");
             let mut parts = Vec::new();
-            if !status.is_empty() { parts.push(status.to_string()); }
-            if !name.is_empty() { parts.push(name.to_string()); }
-            if parts.is_empty() { "all".to_string() } else { parts.join(": ") }
+            if !status.is_empty() {
+                parts.push(status.to_string());
+            }
+            if !name.is_empty() {
+                parts.push(name.to_string());
+            }
+            if parts.is_empty() {
+                "all".to_string()
+            } else {
+                parts.join(": ")
+            }
         }
 
         "task_show" => {
@@ -233,7 +245,6 @@ pub fn format_call_summary(tool_name: &str, args_json: &str) -> String {
         }
 
         // Legacy tool name alias
-
         "list_agents" => "list_agents".to_string(),
 
         "skill" => {
@@ -244,7 +255,11 @@ pub fn format_call_summary(tool_name: &str, args_json: &str) -> String {
         "help" => "help".to_string(),
 
         "todo_write" => {
-            let todos = args.get("todos").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+            let todos = args
+                .get("todos")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
             format!("{} todos", todos)
         }
 
@@ -255,7 +270,8 @@ pub fn format_call_summary(tool_name: &str, args_json: &str) -> String {
             match calls {
                 Some(arr) => {
                     let count = arr.len();
-                    let names: Vec<&str> = arr.iter()
+                    let names: Vec<&str> = arr
+                        .iter()
                         .filter_map(|c| c.get("tool").and_then(|v| v.as_str()))
                         .collect();
                     let display: Vec<&str> = names.iter().take(5).copied().collect();
@@ -305,9 +321,7 @@ pub fn format_done_summary(tool_name: &str, result: &str, is_error: bool) -> Str
             format!("{} lines", line_count)
         }
 
-        "edit" => {
-            "replaced 1".to_string()
-        }
+        "edit" => "replaced 1".to_string(),
 
         "multiedit" => {
             // Count "Applied" in output
@@ -337,10 +351,8 @@ pub fn format_done_summary(tool_name: &str, result: &str, is_error: bool) -> Str
         "grep" => {
             let matches = result.lines().filter(|l| !l.trim().is_empty()).count();
             // Count unique files
-            let files: std::collections::HashSet<&str> = result
-                .lines()
-                .filter_map(|l| l.split(':').next())
-                .collect();
+            let files: std::collections::HashSet<&str> =
+                result.lines().filter_map(|l| l.split(':').next()).collect();
             if files.len() <= 1 {
                 format!("{} matches", matches)
             } else {
@@ -454,10 +466,12 @@ pub fn format_done_summary(tool_name: &str, result: &str, is_error: bool) -> Str
         "todo_read" => "ok".to_string(),
 
         "batch" => {
-            let sub_count = result.lines()
+            let sub_count = result
+                .lines()
                 .filter(|l| l.starts_with("---BATCH["))
                 .count();
-            let errors = result.lines()
+            let errors = result
+                .lines()
                 .filter(|l| l.trim().starts_with("error:"))
                 .count();
             let ok = sub_count.saturating_sub(errors);
@@ -535,7 +549,8 @@ mod tests {
 
     #[test]
     fn call_read() {
-        let result = format_call_summary("read", r#"{"path":"src/main.rs","offset":10,"limit":50}"#);
+        let result =
+            format_call_summary("read", r#"{"path":"src/main.rs","offset":10,"limit":50}"#);
         assert!(result.contains("src/main.rs"));
         assert!(result.contains("[10:60]"));
     }
@@ -548,14 +563,20 @@ mod tests {
 
     #[test]
     fn call_edit() {
-        let result = format_call_summary("edit", r#"{"path":"panel_format.rs","oldString":"fn main()","newString":"fn hello()"}"#);
+        let result = format_call_summary(
+            "edit",
+            r#"{"path":"panel_format.rs","oldString":"fn main()","newString":"fn hello()"}"#,
+        );
         assert!(result.contains("panel_format.rs"));
         assert!(result.contains("+1/-1"));
     }
 
     #[test]
     fn call_write_file() {
-        let result = format_call_summary("write_file", r#"{"path":"src/new.rs","content":"fn main() {}"}"#);
+        let result = format_call_summary(
+            "write_file",
+            r#"{"path":"src/new.rs","content":"fn main() {}"}"#,
+        );
         assert!(result.contains("src/new.rs"));
         assert!(result.contains("bytes"));
     }
@@ -575,7 +596,10 @@ mod tests {
 
     #[test]
     fn call_move_file() {
-        let result = format_call_summary("move_file", r#"{"source":"src/old.rs","target":"src/new.rs"}"#);
+        let result = format_call_summary(
+            "move_file",
+            r#"{"source":"src/old.rs","target":"src/new.rs"}"#,
+        );
         assert!(result.contains("src/old.rs"));
         assert!(result.contains("src/new.rs"));
     }
@@ -607,34 +631,45 @@ mod tests {
 
     #[test]
     fn call_web_fetcher() {
-        let result = format_call_summary("web_fetcher", r#"{"method":"GET","url":"https://api.example.com/data"}"#);
+        let result = format_call_summary(
+            "web_fetcher",
+            r#"{"method":"GET","url":"https://api.example.com/data"}"#,
+        );
         assert!(result.contains("GET"));
         assert!(result.contains("api.example.com"));
     }
 
     #[test]
     fn call_websearch() {
-        let result = format_call_summary("websearch", r#"{"query":"Rust async best practices 2025"}"#);
+        let result =
+            format_call_summary("websearch", r#"{"query":"Rust async best practices 2025"}"#);
         assert!(result.contains("Rust async"));
     }
 
     #[test]
     fn call_agent_invoke() {
-        let result = format_call_summary("agent", r#"{"action":"invoke","agent":"explore","task":"find format_tool usage"}"#);
+        let result = format_call_summary(
+            "agent",
+            r#"{"action":"invoke","agent":"explore","task":"find format_tool usage"}"#,
+        );
         assert!(result.contains("explore"));
         assert!(result.contains("format_tool"));
     }
 
     #[test]
     fn call_agent_async() {
-        let result = format_call_summary("agent", r#"{"action":"invoke","agent":"dev","task":"bg","async":true}"#);
+        let result = format_call_summary(
+            "agent",
+            r#"{"action":"invoke","agent":"dev","task":"bg","async":true}"#,
+        );
         assert!(result.contains("async"));
         assert!(result.contains("dev"));
     }
 
     #[test]
     fn call_agent_get() {
-        let result = format_call_summary("agent", r#"{"action":"get","agent_id":"sub-root-dev-0"}"#);
+        let result =
+            format_call_summary("agent", r#"{"action":"get","agent_id":"sub-root-dev-0"}"#);
         assert!(result.contains("sub-root-dev-0"));
     }
 
@@ -647,7 +682,10 @@ mod tests {
 
     #[test]
     fn call_multiedit() {
-        let result = format_call_summary("multiedit", r#"{"path":"panel_format.rs","edits":[{"oldString":"a","newString":"b"},{"oldString":"c","newString":"d"},{"oldString":"e","newString":"f"}]}"#);
+        let result = format_call_summary(
+            "multiedit",
+            r#"{"path":"panel_format.rs","edits":[{"oldString":"a","newString":"b"},{"oldString":"c","newString":"d"},{"oldString":"e","newString":"f"}]}"#,
+        );
         assert!(result.contains("panel_format.rs"));
         assert!(result.contains("3 edits"));
         assert!(result.contains("+3/-3"));
@@ -655,7 +693,10 @@ mod tests {
 
     #[test]
     fn call_lsp() {
-        let result = format_call_summary("lsp", r#"{"action":"completion","file_path":"src/main.rs","line":42}"#);
+        let result = format_call_summary(
+            "lsp",
+            r#"{"action":"completion","file_path":"src/main.rs","line":42}"#,
+        );
         assert!(result.contains("completion"));
         assert!(result.contains("src/main.rs:42"));
     }
@@ -688,7 +729,11 @@ mod tests {
 
     #[test]
     fn done_grep() {
-        let result = format_done_summary("grep", "src/a.rs:42:match\nsrc/a.rs:50:match2\nsrc/b.rs:10:match3", false);
+        let result = format_done_summary(
+            "grep",
+            "src/a.rs:42:match\nsrc/a.rs:50:match2\nsrc/b.rs:10:match3",
+            false,
+        );
         assert_eq!(result, "3 matches in 2 files");
     }
 
@@ -727,7 +772,10 @@ mod tests {
 
     #[test]
     fn call_batch_basic() {
-        let result = format_call_summary("batch", r#"{"calls":[{"tool":"read","parameters":{"path":"a.rs"}},{"tool":"grep","parameters":{"pattern":"TODO"}},{"tool":"bash","parameters":{"command":"echo"}}]}"#);
+        let result = format_call_summary(
+            "batch",
+            r#"{"calls":[{"tool":"read","parameters":{"path":"a.rs"}},{"tool":"grep","parameters":{"pattern":"TODO"}},{"tool":"bash","parameters":{"command":"echo"}}]}"#,
+        );
         assert!(result.contains("3 calls"));
         assert!(result.contains("read, grep, bash"));
     }
@@ -745,7 +793,8 @@ mod tests {
 
     #[test]
     fn done_batch_all_ok() {
-        let result_text = "---BATCH[1] read {}---\nhello\n---BATCH[2] grep {}---\nmatch1\n---BATCH_END---\n";
+        let result_text =
+            "---BATCH[1] read {}---\nhello\n---BATCH[2] grep {}---\nmatch1\n---BATCH_END---\n";
         let result = format_done_summary("batch", result_text, false);
         assert_eq!(result, "2 ok");
     }

@@ -457,10 +457,7 @@ mod tests {
     #[test]
     fn bold_with_inner_stars() {
         // **a * b** — inner * is escaped within bold context
-        assert_eq!(
-            markdown_to_telegram_v2("**a * b**"),
-            "*a \\* b*"
-        );
+        assert_eq!(markdown_to_telegram_v2("**a * b**"), "*a \\* b*");
     }
 
     #[test]
@@ -478,7 +475,10 @@ mod tests {
     #[test]
     fn inline_code_with_special_chars() {
         // Special chars inside inline code should NOT be escaped
-        assert_eq!(markdown_to_telegram_v2("`price.is($10)`"), "`price.is($10)`");
+        assert_eq!(
+            markdown_to_telegram_v2("`price.is($10)`"),
+            "`price.is($10)`"
+        );
     }
 
     #[test]
@@ -583,9 +583,18 @@ mod tests {
     // --- TelegramMessageFormat ---
     #[test]
     fn telegram_message_format_equality() {
-        assert_eq!(TelegramMessageFormat::PlainText, TelegramMessageFormat::PlainText);
-        assert_ne!(TelegramMessageFormat::PlainText, TelegramMessageFormat::MarkdownV2);
-        assert_ne!(TelegramMessageFormat::MarkdownV2, TelegramMessageFormat::Html);
+        assert_eq!(
+            TelegramMessageFormat::PlainText,
+            TelegramMessageFormat::PlainText
+        );
+        assert_ne!(
+            TelegramMessageFormat::PlainText,
+            TelegramMessageFormat::MarkdownV2
+        );
+        assert_ne!(
+            TelegramMessageFormat::MarkdownV2,
+            TelegramMessageFormat::Html
+        );
     }
 
     // --- escape functions edge cases ---

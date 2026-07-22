@@ -26,8 +26,6 @@ pub struct EnvContext {
     pub runtime: Option<RuntimeInfo>,
 }
 
-
-
 impl EnvContext {
     pub fn detect() -> Self {
         Self {
@@ -80,7 +78,10 @@ impl EnvContext {
 
         if let Some(proj) = &self.project {
             if !proj.languages.is_empty() {
-                lines.push(format!("- Project languages: {}", proj.languages.join(", ")));
+                lines.push(format!(
+                    "- Project languages: {}",
+                    proj.languages.join(", ")
+                ));
             }
             if proj.has_git {
                 lines.push("- Git: yes".to_string());
@@ -293,17 +294,16 @@ impl ProjectInfo {
 
         let has_git = working_dir.join(".git").exists();
 
-        Self {
-            languages,
-            has_git,
-        }
+        Self { languages, has_git }
     }
 
     fn visit(dir: &Path, depth: usize, lang_counts: &mut HashMap<&str, usize>) {
         if depth > 2 {
             return;
         }
-        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
@@ -314,11 +314,12 @@ impl ProjectInfo {
                     Self::visit(&path, depth + 1, lang_counts);
                 }
             } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if let Ok(idx) = EXTENSION_LANGUAGE_MAP.binary_search_by_key(
-                    &ext.to_lowercase().as_str(),
-                    |(e, _)| *e,
-                ) {
-                    *lang_counts.entry(EXTENSION_LANGUAGE_MAP[idx].1).or_insert(0) += 1;
+                if let Ok(idx) = EXTENSION_LANGUAGE_MAP
+                    .binary_search_by_key(&ext.to_lowercase().as_str(), |(e, _)| *e)
+                {
+                    *lang_counts
+                        .entry(EXTENSION_LANGUAGE_MAP[idx].1)
+                        .or_insert(0) += 1;
                 }
             }
         }
@@ -524,7 +525,10 @@ mod tests {
     #[test]
     fn with_reply_language() {
         let ctx = EnvContext::default().with_reply_language("中文");
-        assert_eq!(ctx.locale.preferred_reply_language, Some("中文".to_string()));
+        assert_eq!(
+            ctx.locale.preferred_reply_language,
+            Some("中文".to_string())
+        );
         let s = ctx.to_prompt_section();
         assert!(s.contains("- Reply language: 中文"));
     }

@@ -4,20 +4,22 @@
 //! It does not depend on loom. Loom bridges `StreamEvent<S>` into `ProtocolEvent` and calls `to_json`.
 
 pub mod codex;
+pub mod sink;
 pub mod types;
 pub mod wire;
-pub mod sink;
 
 pub use codex::CodexEvent;
-pub use wire::envelope::{to_json, Envelope, EnvelopeState};
-pub use wire::protocol::ProtocolEvent;
-pub use wire::convert::{stream_event_to_protocol_envelope, stream_event_to_format_a, ProtocolEventEnvelope};
-pub use types::stream_event::StreamEvent;
-pub use types::stream_mode::StreamMode;
-pub use types::metadata::{CheckpointEvent, StreamMetadata};
-pub use types::message::{MessageChunk, MessageChunkKind, StreamSink};
 pub use sink::event_sink::StreamEventSink;
 pub use sink::stream_writer::StreamWriter;
+pub use types::message::{MessageChunk, MessageChunkKind, StreamSink};
+pub use types::metadata::{CheckpointEvent, StreamMetadata};
+pub use types::stream_event::StreamEvent;
+pub use types::stream_mode::StreamMode;
+pub use wire::convert::{
+    stream_event_to_format_a, stream_event_to_protocol_envelope, ProtocolEventEnvelope,
+};
+pub use wire::envelope::{to_json, Envelope, EnvelopeState};
+pub use wire::protocol::ProtocolEvent;
 
 #[cfg(test)]
 mod tests {
@@ -82,10 +84,7 @@ mod tests {
 
     #[test]
     fn stream_mode_debug_format() {
-        let modes = [
-            StreamMode::Values,
-            StreamMode::Debug,
-        ];
+        let modes = [StreamMode::Values, StreamMode::Debug];
         for mode in modes {
             let s = format!("{:?}", mode);
             assert!(!s.is_empty());

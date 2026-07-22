@@ -5,8 +5,8 @@ use serde_json::json;
 use crate::http_retry::{
     is_retryable_reqwest_error, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
 };
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::{ToolOutputHint, ToolOutputStrategy};
 
 pub use tool_core::tool_name::TOOL_WEB_FETCHER;
@@ -299,8 +299,8 @@ impl Tool for WebFetcherTool {
 mod tests {
     use super::*;
     use serde_json::json;
-    use wiremock::{Mock, MockServer, ResponseTemplate};
     use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn test_client() -> reqwest::Client {
         reqwest::Client::builder()
@@ -310,11 +310,7 @@ mod tests {
             .expect("test client")
     }
 
-    async fn spawn_mock(
-        status: u16,
-        content_type: &str,
-        body: &str,
-    ) -> MockServer {
+    async fn spawn_mock(status: u16, content_type: &str, body: &str) -> MockServer {
         let server = MockServer::start().await;
         let template = ResponseTemplate::new(status)
             .set_body_string(body)
@@ -394,7 +390,8 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn web_fetcher_tool_call_get_with_only_url() {
-        let server: MockServer = spawn_mock(200, "application/json", "{\"host\": \"mock-server\"}").await;
+        let server: MockServer =
+            spawn_mock(200, "application/json", "{\"host\": \"mock-server\"}").await;
         let tool = WebFetcherTool::with_client(test_client());
         let args = json!({"url": &server.uri()});
         let result = tool.call(args, None).await.unwrap();
@@ -466,6 +463,8 @@ mod tests {
         let result = tool.call(args, None).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("unsupported") || err.to_string().contains("InvalidInput"));
+        assert!(
+            err.to_string().contains("unsupported") || err.to_string().contains("InvalidInput")
+        );
     }
 }

@@ -16,7 +16,10 @@ use lancedb::query::ExecutableQuery;
 use lancedb::query::QueryBase;
 
 use crate::embedder::Embedder;
-use checkpoint::{Item, ListNamespacesOptions, Namespace, SearchItem, SearchOptions, Store, StoreError, StoreOp, StoreOpResult};
+use checkpoint::{
+    Item, ListNamespacesOptions, Namespace, SearchItem, SearchOptions, Store, StoreError, StoreOp,
+    StoreOpResult,
+};
 
 const TABLE_NAME: &str = "store";
 
@@ -312,10 +315,7 @@ impl Store for LanceStore {
                                 .map(|arr| arr.value(i) as f64)
                         });
                         let item = Item::new(namespace_prefix.clone(), key, value);
-                        items.push(SearchItem {
-                            item,
-                            score,
-                        });
+                        items.push(SearchItem { item, score });
                     }
                 }
                 return Ok(items);
@@ -353,20 +353,13 @@ impl Store for LanceStore {
                 let key = key_arr.value(i).to_string();
                 let value = serde_json::from_str(value_arr.value(i)).map_err(StoreError::from)?;
                 let item = Item::new(namespace_prefix.clone(), key, value);
-                items.push(SearchItem {
-                    item,
-                    score: None,
-                });
+                items.push(SearchItem { item, score: None });
             }
         }
         Ok(items)
     }
 
-    async fn get_item(
-        &self,
-        namespace: &Namespace,
-        key: &str,
-    ) -> Result<Option<Item>, StoreError> {
+    async fn get_item(&self, namespace: &Namespace, key: &str) -> Result<Option<Item>, StoreError> {
         let ns = ns_to_key(namespace);
         let pred_ns = escape_sql(&ns);
         let pred_key = escape_sql(key);
@@ -429,7 +422,11 @@ impl Store for LanceStore {
                     let item = self.get_item(&namespace, &key).await?;
                     results.push(StoreOpResult::Get(item));
                 }
-                StoreOp::Put { namespace, key, value } => {
+                StoreOp::Put {
+                    namespace,
+                    key,
+                    value,
+                } => {
                     if let Some(v) = value {
                         self.put(&namespace, &key, &v).await?;
                     } else {
@@ -437,7 +434,10 @@ impl Store for LanceStore {
                     }
                     results.push(StoreOpResult::Put);
                 }
-                StoreOp::Search { namespace_prefix, options } => {
+                StoreOp::Search {
+                    namespace_prefix,
+                    options,
+                } => {
                     let items = self.search(&namespace_prefix, options).await?;
                     results.push(StoreOpResult::Search(items));
                 }

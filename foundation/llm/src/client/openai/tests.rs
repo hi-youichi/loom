@@ -3,9 +3,9 @@ use std::sync::Mutex as StdMutex;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::traits::{LlmClient, MessageChunk, StreamSink, ToolChoiceMode};
 use crate::message::Message;
 use crate::tool::ToolSpec;
+use crate::traits::{LlmClient, MessageChunk, StreamSink, ToolChoiceMode};
 
 use super::ChatOpenAI;
 
@@ -353,7 +353,10 @@ async fn invoke_and_invoke_stream_none_channel_succeed_with_mock_server() {
     assert_eq!(res.tool_calls.len(), 1);
     assert_eq!(res.usage.unwrap().total_tokens, 2);
 
-    let res_stream = client.invoke_stream(&messages, None, "think").await.unwrap();
+    let res_stream = client
+        .invoke_stream(&messages, None, "think")
+        .await
+        .unwrap();
     assert_eq!(res_stream.content, "hello");
     assert_eq!(res_stream.tool_calls.len(), 1);
 }
@@ -465,5 +468,8 @@ async fn invoke_stream_with_mock_api_returns_ok() {
     );
 
     let chunks = sink.chunks.lock().unwrap();
-    assert!(!chunks.is_empty(), "should receive at least one stream chunk");
+    assert!(
+        !chunks.is_empty(),
+        "should receive at least one stream chunk"
+    );
 }

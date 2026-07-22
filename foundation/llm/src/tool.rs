@@ -82,11 +82,7 @@ pub struct ToolSpec {
 
 impl ToolSpec {
     /// Creates a new tool specification.
-    pub fn new(
-        name: impl Into<String>,
-        description: Option<String>,
-        input_schema: Value,
-    ) -> Self {
+    pub fn new(name: impl Into<String>, description: Option<String>, input_schema: Value) -> Self {
         Self {
             name: name.into(),
             description,

@@ -11,8 +11,8 @@ const MINIMAX_RETRYABLE_CODES: &[&str] = &[
 
 #[cfg(test)]
 const MINIMAX_NON_RETRYABLE_CODES: &[&str] = &[
-    "1004", "1008", "1026", "1027", "1039", "1042", "1043", "1044",
-    "2013", "20132", "2037", "2038", "2039", "2042", "2048", "2049",
+    "1004", "1008", "1026", "1027", "1039", "1042", "1043", "1044", "2013", "20132", "2037",
+    "2038", "2039", "2042", "2048", "2049",
 ];
 
 pub struct MiniMaxRetryPolicy;
@@ -102,8 +102,14 @@ mod tests {
     #[test]
     fn extracts_error_code_from_message() {
         let parser = MiniMaxApiParser;
-        assert_eq!(parser.extract_error_code("请求频率超限 (code: 1002)"), Some("1002".to_string()));
-        assert_eq!(parser.extract_error_code("系统错误 (code: 1033)"), Some("1033".to_string()));
+        assert_eq!(
+            parser.extract_error_code("请求频率超限 (code: 1002)"),
+            Some("1002".to_string())
+        );
+        assert_eq!(
+            parser.extract_error_code("系统错误 (code: 1033)"),
+            Some("1033".to_string())
+        );
         assert_eq!(parser.extract_error_code("no code here"), None);
     }
 
@@ -138,14 +144,20 @@ mod tests {
     fn unauthorized_is_not_retryable() {
         let parser = MiniMaxApiParser;
         let message = "未授权 (code: 1004)";
-        assert_eq!(parser.classify_api_error(message), RetryDecision::NonRetryable);
+        assert_eq!(
+            parser.classify_api_error(message),
+            RetryDecision::NonRetryable
+        );
     }
 
     #[test]
     fn sensitive_content_is_not_retryable() {
         let parser = MiniMaxApiParser;
         let message = "输入内容涉敏 (code: 1026)";
-        assert_eq!(parser.classify_api_error(message), RetryDecision::NonRetryable);
+        assert_eq!(
+            parser.classify_api_error(message),
+            RetryDecision::NonRetryable
+        );
     }
 
     #[test]

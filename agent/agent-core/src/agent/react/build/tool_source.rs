@@ -1,19 +1,18 @@
 use std::sync::Arc;
 
-use crate::tools::{AgentTool, AgentGetTool, AgentCancelTool, ThreadGetTool, GitWorktreeTool};
+use crate::tools::{AgentCancelTool, AgentGetTool, AgentTool, GitWorktreeTool, ThreadGetTool};
 use loom_graph_core::GraphError;
+use lsp::LspManager;
 use memory_v2::MemoryStore;
 use skill::SkillUsageStore;
-use tool_basic::{
-    bash::BashTool, batch::BatchTool, exa::ExaCodesearchTool, exa::ExaWebsearchTool,
-    mcp::McpToolSource, register_file_tools, register_mcp_tools,
-    web::WebFetcherTool,
-};
 #[cfg(windows)]
 use tool_basic::powershell::PowerShellTool;
+use tool_basic::{
+    bash::BashTool, batch::BatchTool, exa::ExaCodesearchTool, exa::ExaWebsearchTool,
+    mcp::McpToolSource, register_file_tools, register_mcp_tools, web::WebFetcherTool,
+};
 use tool_core::{ArcTool, ToolRegistryLocked, YamlSpecError};
 use tool_experimental::{register_file_memory_tool_guarded, register_task_tools};
-use lsp::LspManager;
 use tool_extensions::LspTool;
 
 use env_config::McpServerDef;
@@ -80,7 +79,7 @@ pub(crate) async fn build_tool_source(
         }
     }
     if let Some(ref wf) = config.working_folder {
-register_file_tools(
+        register_file_tools(
             aggregate.as_ref(),
             wf,
             config.skill_registry.clone(),
@@ -124,9 +123,9 @@ register_file_tools(
         aggregate.register_sync(Box::new(BatchTool::new(Arc::new(wf.clone()))));
     }
     let lsp_manager = LspManager::from_configs(env_config::get_default_lsp_servers());
-    aggregate.register_sync(Box::new(LspTool::new(Arc::new(
-        tokio::sync::RwLock::new(lsp_manager),
-    ))));
+    aggregate.register_sync(Box::new(LspTool::new(Arc::new(tokio::sync::RwLock::new(
+        lsp_manager,
+    )))));
 
     if let Some(ref servers) = config.mcp_servers {
         for def in servers {
@@ -266,9 +265,7 @@ register_file_tools(
         .register_async(Box::new(ThreadGetTool::new(registry)))
         .await;
     aggregate
-        .register_async(Box::new(GitWorktreeTool::new(
-            Arc::new(config.clone()),
-        )))
+        .register_async(Box::new(GitWorktreeTool::new(Arc::new(config.clone()))))
         .await;
     // ListAgentsTool is not available in this build (depends on loom's profile system)
 

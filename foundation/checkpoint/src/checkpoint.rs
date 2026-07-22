@@ -127,7 +127,7 @@ mod tests {
             created_at: None,
             parents: HashMap::new(),
             children: HashMap::new(),
-                summary: None,
+            summary: None,
         };
     }
 
@@ -285,7 +285,9 @@ fn default_checkpoint_version() -> u32 {
 /// no user metadata. The kernel never interprets `M` — it only clones and
 /// transports the value.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(bound = "S: serde::Serialize + serde::de::DeserializeOwned, M: Clone + Default + serde::Serialize + serde::de::DeserializeOwned")]
+#[serde(
+    bound = "S: serde::Serialize + serde::de::DeserializeOwned, M: Clone + Default + serde::Serialize + serde::de::DeserializeOwned"
+)]
 pub struct Checkpoint<S, M = ()> {
     /// The version of the checkpoint format. Currently `2`.
     #[serde(default = "default_checkpoint_version")]
@@ -332,7 +334,9 @@ pub struct CheckpointListItem {
 
 /// Expanded checkpoint record returned by [`crate::Checkpointer::get_tuple`].
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(bound = "S: serde::Serialize + serde::de::DeserializeOwned, M: Clone + Default + serde::Serialize + serde::de::DeserializeOwned")]
+#[serde(
+    bound = "S: serde::Serialize + serde::de::DeserializeOwned, M: Clone + Default + serde::Serialize + serde::de::DeserializeOwned"
+)]
 pub struct CheckpointTuple<S, M = ()> {
     /// Configuration used to load this checkpoint.
     pub config: RunnableConfig,

@@ -10,21 +10,18 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, trace, warn};
 
-use tool_core::active_operation::RunCancellation;
-use loom_graph_core::{run_cancellable, RunContext};
-use loom_graph_core::GraphError;
-use loom_llm::ToolCall;
-use checkpoint::uuid6;
-use stream_event::{StreamEvent, StreamMode};
 use crate::state::{ReActState, ToolResult};
-use crate::tool_output_normalizer::{
-    normalize_tool_output, NormalizationConfig, ToolOutputHint,
-};
+use crate::tool_output_normalizer::{normalize_tool_output, NormalizationConfig, ToolOutputHint};
+use checkpoint::uuid6;
+use loom_graph_core::GraphError;
+use loom_graph_core::{run_cancellable, RunContext};
+use loom_llm::ToolCall;
+use stream_event::{StreamEvent, StreamMode};
+use tool_core::active_operation::RunCancellation;
 use tool_core::{ToolCallContent, ToolCallContext, ToolRegistryLocked, ToolSourceError};
 
 use super::act_utils::{
-    parse_tool_arguments, step_progress_payload, truncate_for_log,
-    DEFAULT_EXECUTION_ERROR_TEMPLATE,
+    parse_tool_arguments, step_progress_payload, truncate_for_log, DEFAULT_EXECUTION_ERROR_TEMPLATE,
 };
 
 // ────────────────────── ToolCallExecutor ──────────────────────
@@ -109,7 +106,10 @@ impl ToolCallExecutor {
     ///
     /// If a `ToolCall.id` is empty, a fallback id is generated and written back
     /// to **both** the ToolCall and the ToolResult to keep them in sync.
-    pub async fn execute(&self, tool_calls: &mut [ToolCall]) -> Result<Vec<ToolResult>, GraphError> {
+    pub async fn execute(
+        &self,
+        tool_calls: &mut [ToolCall],
+    ) -> Result<Vec<ToolResult>, GraphError> {
         if self.is_cancelled() {
             return Err(GraphError::Cancelled);
         }
@@ -291,8 +291,7 @@ impl ToolCallExecutor {
     fn extract_raw_text(content: &ToolCallContent) -> String {
         match content {
             ToolCallContent::Text(_) => content.clone().into_text(),
-            _ => serde_json::to_string(content)
-                .unwrap_or_else(|_| content.clone().into_text()),
+            _ => serde_json::to_string(content).unwrap_or_else(|_| content.clone().into_text()),
         }
     }
 

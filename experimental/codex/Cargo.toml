@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 agent = { path = "../../agent/agent-core" }
 tool-core = { path = "../../agent/tool/tool-core" }
+tool-workflow = { path = "../../agent/tool/tool-workflow" }
 loom-llm = { path = "../../foundation/llm" }
 config = { path = "../../foundation/config" }
 stream-event = { path = "../../foundation/stream-event" }

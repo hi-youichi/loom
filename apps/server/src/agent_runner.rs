@@ -67,6 +67,7 @@ pub(crate) fn build_run_options_for_prompt(
         thread_id: Some(session_id.to_string()),
         agent: Some(agent),
         verbose: false,
+        verbose_level: 0,
         got_adaptive: false,
         display_max_len: 0,
         output_json: false,
@@ -82,6 +83,7 @@ pub(crate) fn build_run_options_for_prompt(
         any_stream_event_sender: None,
         bash_executor: None,
         extra_tools: None,
+        default_extra_tools_provider: None,
         acp_session_id: None,
         force_compact: false,
         chat_id: None,
@@ -116,7 +118,7 @@ pub async fn run_agent(
         cancellation,
     );
 
-    let (config, _resolved_agent) = build_react_config(&opts);
+    let (config, _resolved_agent, _skill_registry) = build_react_config(&opts);
 
     let state_for_events = state.clone();
     let session_id_for_events = session_id.clone();

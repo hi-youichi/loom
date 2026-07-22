@@ -79,10 +79,7 @@ fn collect_constraints(profile: &AgentProfile) -> Vec<String> {
                 }
             }
             if let Some(enabled) = &builtin.enabled {
-                constraints.push(format!(
-                    "Only use these tools: {}",
-                    enabled.join(", ")
-                ));
+                constraints.push(format!("Only use these tools: {}", enabled.join(", ")));
             }
         }
     }

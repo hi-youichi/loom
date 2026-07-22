@@ -51,10 +51,15 @@ use serde_json::{json, Value};
 use tool_core::{Tool, ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
 use skill::provenance::{with_write_origin, WriteOrigin};
-use skill::storage::{atomic_write_text, Lifecycle, SkillContent, SkillError, SkillStorageRegistry, Source};
-use skill::usage::SkillUsageStore;
 use skill::security;
-use skill::validation::{validate_skill_create, validate_skill_name, validate_skill_path, validate_frontmatter, validate_name_match, Severity, ValidationWarning};
+use skill::storage::{
+    atomic_write_text, Lifecycle, SkillContent, SkillError, SkillStorageRegistry, Source,
+};
+use skill::usage::SkillUsageStore;
+use skill::validation::{
+    validate_frontmatter, validate_name_match, validate_skill_create, validate_skill_name,
+    validate_skill_path, Severity, ValidationWarning,
+};
 
 pub const TOOL_SKILL_MANAGE: &str = "skill_manage";
 
@@ -70,10 +75,18 @@ fn validate_category(category: Option<&str>) -> Option<String> {
             return Some("category must not be empty.".to_string());
         }
         if cat.chars().count() > 64 {
-            return Some(format!("category must be at most 64 characters (got {}).", cat.chars().count()));
+            return Some(format!(
+                "category must be at most 64 characters (got {}).",
+                cat.chars().count()
+            ));
         }
-        if !cat.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '/') {
-            return Some("category may only contain alphanumeric, '-', '_', '/' characters.".to_string());
+        if !cat
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '/')
+        {
+            return Some(
+                "category may only contain alphanumeric, '-', '_', '/' characters.".to_string(),
+            );
         }
     }
     None
@@ -218,7 +231,9 @@ impl SkillManagerTool {
 
         let name_match = validate_name_match(&parsed_name, name);
         if !name_match.valid {
-            return Ok(error_response(&format_critical_warnings(&name_match.warnings)));
+            return Ok(error_response(&format_critical_warnings(
+                &name_match.warnings,
+            )));
         }
 
         let content = SkillContent {
@@ -251,7 +266,8 @@ impl SkillManagerTool {
             return Ok(error_response(&format!(
                 "A skill named '{}' already exists at {}. Use action='edit' to update it, \
                  or action='patch' for in-place changes.",
-                name, existing_dir.display()
+                name,
+                existing_dir.display()
             )));
         }
 
@@ -341,7 +357,9 @@ impl SkillManagerTool {
 
         let name_match = validate_name_match(&parsed_name, name);
         if !name_match.valid {
-            return Ok(error_response(&format_critical_warnings(&name_match.warnings)));
+            return Ok(error_response(&format_critical_warnings(
+                &name_match.warnings,
+            )));
         }
 
         let content = SkillContent {
@@ -489,7 +507,7 @@ impl SkillManagerTool {
                 triggers
             };
 
-        let updated = SkillContent {
+            let updated = SkillContent {
                 name: name.to_string(),
                 description: description.clone(),
                 triggers,
@@ -540,7 +558,11 @@ impl SkillManagerTool {
         }
 
         self.invalidate_discovery_cache();
-        let replacement_label = if match_count == 1 { "replacement" } else { "replacements" };
+        let replacement_label = if match_count == 1 {
+            "replacement"
+        } else {
+            "replacements"
+        };
         Ok(json!({
             "success": true,
             "message": format!(
@@ -601,8 +623,7 @@ impl SkillManagerTool {
         // Plain user-initiated delete with no umbrella and no
         // BackgroundReview origin keeps the original `storage.delete`
         // path (Loom's current behaviour, gap #8 says this is OK).
-        let should_archive =
-            absorbed_into.is_some() || WriteOrigin::is_background_review();
+        let should_archive = absorbed_into.is_some() || WriteOrigin::is_background_review();
         if should_archive {
             // `SkillStorageRegistry::base_dir()` is public on the storage
             // crate's API surface; we just need its owned `PathBuf` form
@@ -683,17 +704,26 @@ impl SkillManagerTool {
         // Security scan — roll back on block
         if let Err(report) = security::security_scan_skill(&skill_dir, self.guard_agent_created) {
             match &original_content {
-                Some(orig) => { let _ = atomic_write_text(&target, orig); }
-                None => { let _ = std::fs::remove_file(&target); }
+                Some(orig) => {
+                    let _ = atomic_write_text(&target, orig);
+                }
+                None => {
+                    let _ = std::fs::remove_file(&target);
+                }
             }
             // Best-effort restore original metadata (Unix only)
             #[cfg(unix)]
             if let Some(meta) = original_metadata {
                 use std::os::unix::fs::PermissionsExt;
-                let _ = std::fs::set_permissions(&target, std::fs::Permissions::from_mode(meta.permissions().mode()));
+                let _ = std::fs::set_permissions(
+                    &target,
+                    std::fs::Permissions::from_mode(meta.permissions().mode()),
+                );
             }
             #[cfg(not(unix))]
-            { let _ = original_metadata; }
+            {
+                let _ = original_metadata;
+            }
             return Ok(error_response(&report));
         }
 
@@ -942,7 +972,6 @@ fn severity_to_str(severity: Severity) -> &'static str {
 fn map_skill_err(err: SkillError) -> ToolSourceError {
     ToolSourceError::ToolError(err.to_string())
 }
-
 
 #[cfg(test)]
 mod tests;

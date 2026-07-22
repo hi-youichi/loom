@@ -234,7 +234,7 @@ pub fn sync_skills(bundled_dir: &Path, user_skills_dir: &Path) -> SyncResult {
     let mut bundled_names: Vec<String> = bundled_skills.keys().cloned().collect();
     bundled_names.sort();
 
-for name in &bundled_names {
+    for name in &bundled_names {
         let src_path = bundled_skills[name].clone();
         let dest_dir = user_skills_dir.join(name);
         let dest_skill = dest_dir.join("SKILL.md");
@@ -288,7 +288,7 @@ for name in &bundled_names {
             Some(ref recorded_hash) if recorded_hash == &src_hash => {
                 result.skipped.push(name.clone());
             }
-Some(ref recorded_hash) => {
+            Some(ref recorded_hash) => {
                 let dest_hash = compute_dir_hash(&dest_dir);
                 if dest_hash == *recorded_hash {
                     // Hermes-aligned UPDATE branch (skills_sync.py:262-289):
@@ -482,7 +482,10 @@ mod tests {
         make_bundled_skill(&bundled, "a", "v2");
         let result = sync_skills(&bundled, &user);
         assert!(result.updated.iter().any(|s| s == "a"));
-        assert_eq!(fs::read_to_string(user.join("a").join("SKILL.md")).unwrap(), "v2");
+        assert_eq!(
+            fs::read_to_string(user.join("a").join("SKILL.md")).unwrap(),
+            "v2"
+        );
     }
 
     #[test]
@@ -513,7 +516,8 @@ mod tests {
         fs::create_dir_all(&user).unwrap();
 
         let mut m = BundledManifest::default();
-        m.entries.insert("old-skill".to_string(), "oldhash".to_string());
+        m.entries
+            .insert("old-skill".to_string(), "oldhash".to_string());
         save_manifest(&user, &m);
 
         let empty_bundled = dir.path().join("bundled");

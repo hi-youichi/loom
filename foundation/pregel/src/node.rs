@@ -5,9 +5,6 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 
-use tokio_util::sync::CancellationToken;
-use loom_graph_core::{GraphError, Interrupt};
-use checkpoint::RunnableConfig;
 use crate::channel::ChannelSpec;
 use crate::runtime::PregelRuntime;
 use crate::subgraph::{PregelSubgraph, SubgraphInvocation, SubgraphResult};
@@ -15,9 +12,10 @@ use crate::types::{
     ChannelName, ChannelValue, InterruptRecord, ManagedValues, NodeName, PregelScratchpad,
     ResumeMap,
 };
-use stream_event::{
-    MessageChunk, StreamEvent, StreamMetadata, StreamMode, StreamWriter,
-};
+use checkpoint::RunnableConfig;
+use loom_graph_core::{GraphError, Interrupt};
+use stream_event::{MessageChunk, StreamEvent, StreamMetadata, StreamMode, StreamWriter};
+use tokio_util::sync::CancellationToken;
 
 /// Input passed to a Pregel node for one task execution.
 #[derive(Debug, Clone, Default)]
@@ -101,7 +99,7 @@ impl PregelNodeContext {
         .is_ok()
     }
 
-/// Returns whether a specific stream mode is enabled.
+    /// Returns whether a specific stream mode is enabled.
     pub fn is_streaming_mode(&self, mode: StreamMode) -> bool {
         self.stream_mode.contains(&mode)
     }

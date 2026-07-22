@@ -9,12 +9,12 @@
 //! or `loom tool show <NAME>`. Uses [`RunOptions`](crate::run::RunOptions) with a
 //! placeholder message (not used for execution).
 
-use tool_core::ToolSpec;
-use loom_graph_core::GraphError;
 use agent::{build_react_run_context, BuildRunnerError};
+use loom_graph_core::GraphError;
 use serde::{Deserialize, Serialize};
+use tool_core::ToolSpec;
 
-use crate::run::{build_react_config, register_extra_tools, RunError};
+use crate::run::{build_react_config, RunError};
 use agent::RunOptions;
 
 /// Tool show response: either `tool` (JSON) or `tool_yaml` (YAML string).
@@ -46,8 +46,10 @@ pub enum ToolShowFormat {
 /// [`build_react_run_context`](loom::build_react_run_context).
 pub async fn list_tools(opts: &RunOptions) -> Result<(), RunError> {
     let loom_opts = opts.clone();
-    let (mut config, _resolved_agent) = build_react_config(&loom_opts);
-    register_extra_tools(&mut config);
+    let (config, _resolved_agent, _) = build_react_config(&loom_opts);
+    // `build_react_config` now registers the workflow tool (and its
+    // `workflow` builtin skill) via `RunOptions::default_extra_tools_provider`,
+    // so no post-mutation is needed here.
     let ctx = build_react_run_context(&config)
         .await
         .map_err(|e| RunError::Build(BuildRunnerError::Context(e)))?;
@@ -106,10 +108,16 @@ fn draw_tools_table(tools: &[ToolSpec]) -> String {
 /// **Interaction**: Called from the `loom` binary when the user runs `loom tool show <NAME>`.
 /// Uses [`build_react_config`](crate::run::build_react_config) and [`build_react_run_context`](loom::build_react_run_context)
 /// to get the tool spec from the context.
-pub async fn show_tool(name: &str, format: ToolShowFormat, opts: &RunOptions) -> Result<(), RunError> {
+pub async fn show_tool(
+    name: &str,
+    format: ToolShowFormat,
+    opts: &RunOptions,
+) -> Result<(), RunError> {
     let loom_opts = opts.clone();
-    let (mut config, _resolved_agent) = build_react_config(&loom_opts);
-    register_extra_tools(&mut config);
+    let (config, _resolved_agent, _) = build_react_config(&loom_opts);
+    // `build_react_config` now registers the workflow tool (and its
+    // `workflow` builtin skill) via `RunOptions::default_extra_tools_provider`,
+    // so no post-mutation is needed here.
     let ctx = build_react_run_context(&config)
         .await
         .map_err(|e| RunError::Build(BuildRunnerError::Context(e)))?;
@@ -128,12 +136,14 @@ pub async fn show_tool(name: &str, format: ToolShowFormat, opts: &RunOptions) ->
 
     match format {
         ToolShowFormat::Yaml => {
-            let yaml = serde_yaml::to_string(&out).map_err(|e| RunError::Remote(format!("YAML serialization failed: {}", e)))?;
+            let yaml = serde_yaml::to_string(&out)
+                .map_err(|e| RunError::Remote(format!("YAML serialization failed: {}", e)))?;
             println!("{}", yaml);
             Ok(())
         }
         ToolShowFormat::Json => {
-            let json = serde_json::to_string_pretty(&out).map_err(|e| RunError::Remote(format!("JSON serialization failed: {}", e)))?;
+            let json = serde_json::to_string_pretty(&out)
+                .map_err(|e| RunError::Remote(format!("JSON serialization failed: {}", e)))?;
             println!("{}", json);
             Ok(())
         }
@@ -235,14 +245,12 @@ mod tests {
 
     #[test]
     fn format_tools_list_json_outputs_valid_json() {
-        let specs = vec![
-            ToolSpec {
-                name: "test1".to_string(),
-                description: Some("Short description".to_string()),
-                input_schema: serde_json::Value::Null,
-                output_hint: None,
-            },
-        ];
+        let specs = vec![ToolSpec {
+            name: "test1".to_string(),
+            description: Some("Short description".to_string()),
+            input_schema: serde_json::Value::Null,
+            output_hint: None,
+        }];
         let res = format_tools_list(&specs, true);
         assert!(res.is_ok());
     }

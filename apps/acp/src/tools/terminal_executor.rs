@@ -164,11 +164,17 @@ impl CommandExecutor for TerminalCommandExecutor {
     }
 }
 
-pub struct AcpBridgeCommandExecutor(Arc<dyn crate::tools::ClientBridgeTrait>);
+pub struct AcpBridgeCommandExecutor;
+
+impl Default for AcpBridgeCommandExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl AcpBridgeCommandExecutor {
-    pub fn new(bridge: Arc<dyn crate::tools::ClientBridgeTrait>) -> Self {
-        Self(bridge)
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -223,7 +229,10 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
             "bash execute called"
         );
 
-        let bridge = &self.0;
+        let bridge = crate::tools::get_client_bridge().await.map_err(|e| {
+            error!(error = %e, "failed to get client bridge");
+            ToolSourceError::Transport(e)
+        })?;
 
         info!("client bridge acquired");
 

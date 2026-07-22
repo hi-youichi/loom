@@ -52,7 +52,10 @@ mod tests {
     #[test]
     fn compilation_error_display_missing_start() {
         let err = CompilationError::MissingStart;
-        assert_eq!(err.to_string(), "graph must have exactly one edge from START");
+        assert_eq!(
+            err.to_string(),
+            "graph must have exactly one edge from START"
+        );
     }
 
     /// **Scenario**: Display of MissingEnd contains expected text.
@@ -66,20 +69,29 @@ mod tests {
     #[test]
     fn compilation_error_display_invalid_chain() {
         let err = CompilationError::InvalidChain("cycle detected".to_string());
-        assert_eq!(err.to_string(), "edges must form a single linear chain from START to END: cycle detected");
+        assert_eq!(
+            err.to_string(),
+            "edges must form a single linear chain from START to END: cycle detected"
+        );
     }
 
     /// **Scenario**: Display of NodeHasBothEdgeAndConditional contains node id.
     #[test]
     fn compilation_error_display_node_has_both() {
         let err = CompilationError::NodeHasBothEdgeAndConditional("node1".to_string());
-        assert_eq!(err.to_string(), "node has both edge and conditional edges: node1");
+        assert_eq!(
+            err.to_string(),
+            "node has both edge and conditional edges: node1"
+        );
     }
 
     /// **Scenario**: Display of InvalidConditionalPathMap contains invalid target.
     #[test]
     fn compilation_error_display_invalid_conditional() {
         let err = CompilationError::InvalidConditionalPathMap("invalid_node".to_string());
-        assert_eq!(err.to_string(), "conditional path_map invalid target: invalid_node");
+        assert_eq!(
+            err.to_string(),
+            "conditional path_map invalid target: invalid_node"
+        );
     }
 }

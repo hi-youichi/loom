@@ -1,6 +1,6 @@
 use crate::state::ReActState;
-use stream_event::{MessageChunk, MessageChunkKind, StreamEvent};
 use std::time::Instant;
+use stream_event::{MessageChunk, MessageChunkKind, StreamEvent};
 
 pub struct SubagentDisplay {
     agent_name: String,
@@ -52,9 +52,7 @@ impl SubagentDisplay {
                 Some(format!("{} Running: {}", self.prefix(), name))
             }
 
-            StreamEvent::ToolEnd {
-                name, is_error, ..
-            } => {
+            StreamEvent::ToolEnd { name, is_error, .. } => {
                 let icon = if *is_error { "✗" } else { "✓" };
                 Some(format!("{} {} {}", self.prefix(), icon, name))
             }
@@ -92,7 +90,8 @@ impl SubagentDisplay {
             }
             "act" => {
                 if !state.tool_calls.is_empty() {
-                    let tools: Vec<&str> = state.tool_calls.iter().map(|tc| tc.name.as_str()).collect();
+                    let tools: Vec<&str> =
+                        state.tool_calls.iter().map(|tc| tc.name.as_str()).collect();
                     Some(format!("{} Calling: {}", self.prefix(), tools.join(", ")))
                 } else {
                     None

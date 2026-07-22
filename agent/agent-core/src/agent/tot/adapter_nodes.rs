@@ -108,5 +108,3 @@ impl Node<TotState> for TotObserveNode {
         ))
     }
 }
-
-

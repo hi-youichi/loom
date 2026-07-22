@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tokio::sync::watch;
 
-use tool_core::active_operation::{ActiveOperationCanceller, ActiveOperationKind, ActiveOperation};
+use tool_core::active_operation::{ActiveOperation, ActiveOperationCanceller, ActiveOperationKind};
 
 #[derive(Debug)]
 pub struct ChildProcessCanceller {

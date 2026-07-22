@@ -1,32 +1,22 @@
 use crate::prompts::select_review_prompt;
 use crate::review_tool_gate::ReviewToolGate;
 use agent::agent::{Agent, AgentError, AgentEvent};
-use checkpoint::RunnableConfig;
 use agent::ReactBuildConfig;
+use checkpoint::RunnableConfig;
 use std::sync::{Arc, Mutex};
 use tracing::{error, info, warn};
 
 /// Review instruction appended to the user message of every background-review
 /// agent run.
 ///
-/// Tells the LLM, in plain prose, that it should only call memory/skill
-/// tools, that other tool calls will be denied at runtime, and what to say
-/// when nothing is worth saving. Prevents the LLM from drifting toward
-/// non-review tools (e.g. `todo_read`) that the parent agent's default
-/// ReAct system prompt otherwise advertises.
+/// Tells the LLM that it can only call memory and skill management tools,
+/// and that other tools will be denied at runtime.
 ///
-/// **Alignment with Hermes** (`agent/background_review.py:474-479`): Hermes
-/// appends a shorter version of this to its user message — "You can only
-/// call memory and skill management tools. Other tools will be denied at
-/// runtime — do not attempt them." This constant is the fuller Loom
-/// equivalent: same intent, plus an explicit "Nothing to save." branch.
-pub const REVIEW_INSTRUCTION: &str = "<background_review>
-Review the conversation above and extract durable knowledge.
-- Use memory tools to save user preferences and project facts.
-- Use skill tools to save reusable task patterns.
-- Only use memory and skill tools. Other tools will be denied at runtime.
-- If nothing is worth saving, respond with \"Nothing to save.\"
-</background_review>";
+/// **Alignment with Hermes** (`agent/background_review.py:786-790`):
+/// `prompt + "\n\nYou can only call memory and skill management tools.
+/// Other tools will be denied at runtime - do not attempt them."`
+pub const REVIEW_INSTRUCTION: &str = "\
+You can only call memory and skill management tools. Other tools will be denied at runtime - do not attempt them.";
 
 /// Input configuration for a single review invocation.
 #[derive(Debug, Clone)]
@@ -115,7 +105,9 @@ impl TokenUsageSummary {
     /// rather than re-deriving totals to keep the sums faithful.
     fn record(&mut self, usage: &AgentTokenUsage) {
         self.llm_calls = self.llm_calls.saturating_add(1);
-        self.prompt_tokens = self.prompt_tokens.saturating_add(u64::from(usage.prompt_tokens));
+        self.prompt_tokens = self
+            .prompt_tokens
+            .saturating_add(u64::from(usage.prompt_tokens));
         self.completion_tokens = self
             .completion_tokens
             .saturating_add(u64::from(usage.completion_tokens));
@@ -184,9 +176,11 @@ fn parse_action(name: &str, result: &str) -> Option<ReviewActionSummary> {
     //
     // The `count` fallback covers read-only tools like `skill_list` that don't
     // bother to set `message` but do report how many items they listed.
-    let (succeeded, detail) = if let Ok(data) = serde_json::from_str::<serde_json::Value>(result)
-    {
-        let success = data.get("success").and_then(|v| v.as_bool()).unwrap_or(true);
+    let (succeeded, detail) = if let Ok(data) = serde_json::from_str::<serde_json::Value>(result) {
+        let success = data
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
         let detail = if success {
             data.get("message")
                 .and_then(|v| v.as_str())
@@ -396,53 +390,68 @@ pub async fn run_review(
     let violations_clone = violations.clone();
     let tokens_clone = tokens.clone();
 
-    info!("Review agent running (thread_id: {})...", fork_thread_id_log);
+    info!(
+        "Review agent running (thread_id: {})...",
+        fork_thread_id_log
+    );
 
     let result = agent
-        .run_with_config(&user_message, Some(fork_config), move |ev| {
-            match ev {
-                AgentEvent::ToolCallStart { name, .. } => {
-                    if !gate.is_allowed(&name) {
-                        warn!("Review tool violation: '{}' not in whitelist", name);
-                        violations_clone
-                            .lock()
-                            .unwrap()
-                            .push(format!("LLM attempted non-whitelisted tool: {}", name));
-                    } else {
-                        info!("Review tool call: {}", name);
-                    }
+        .run_with_config(&user_message, Some(fork_config), move |ev| match ev {
+            AgentEvent::ToolCallStart { name, .. } => {
+                if !gate.is_allowed(&name) {
+                    warn!("Review tool violation: '{}' not in whitelist", name);
+                    violations_clone
+                        .lock()
+                        .unwrap()
+                        .push(format!("LLM attempted non-whitelisted tool: {}", name));
+                } else {
+                    info!("Review tool call: {}", name);
                 }
-                AgentEvent::ToolEnd { name, result, is_error } => {
-                    if is_error {
-                        let preview = truncate_unicode(&result, 200);
-                        warn!("Review tool '{}' failed: {}", name, preview);
-                        violations_clone
-                            .lock()
-                            .unwrap()
-                            .push(format!("tool '{}' error: {}", name, extract_error_reason(&result)));
-                    } else {
-                        let preview = truncate_unicode(&result, 120);
-                        info!("Review tool '{}' ok: {}{}", name, preview, if result.chars().count() > 120 { "..." } else { "" });
-                        if let Some(a) = parse_action(&name, &result) {
-                            actions_clone.lock().unwrap().push(a);
+            }
+            AgentEvent::ToolEnd {
+                name,
+                result,
+                is_error,
+            } => {
+                if is_error {
+                    let preview = truncate_unicode(&result, 200);
+                    warn!("Review tool '{}' failed: {}", name, preview);
+                    violations_clone.lock().unwrap().push(format!(
+                        "tool '{}' error: {}",
+                        name,
+                        extract_error_reason(&result)
+                    ));
+                } else {
+                    let preview = truncate_unicode(&result, 120);
+                    info!(
+                        "Review tool '{}' ok: {}{}",
+                        name,
+                        preview,
+                        if result.chars().count() > 120 {
+                            "..."
+                        } else {
+                            ""
                         }
+                    );
+                    if let Some(a) = parse_action(&name, &result) {
+                        actions_clone.lock().unwrap().push(a);
                     }
                 }
-                AgentEvent::Usage {
+            }
+            AgentEvent::Usage {
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
+                cached_tokens,
+            } => {
+                tokens_clone.lock().unwrap().record(&AgentTokenUsage {
                     prompt_tokens,
                     completion_tokens,
                     total_tokens,
                     cached_tokens,
-                } => {
-                    tokens_clone.lock().unwrap().record(&AgentTokenUsage {
-                        prompt_tokens,
-                        completion_tokens,
-                        total_tokens,
-                        cached_tokens,
-                    });
-                }
-                _ => {}
+                });
             }
+            _ => {}
         })
         .await?;
 
@@ -552,8 +561,6 @@ pub fn spawn_background_review(session_id: String, model: Option<String>) {
     }
 }
 
-
-
 pub fn uuid_v4() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let nanos = SystemTime::now()
@@ -569,10 +576,7 @@ pub fn uuid_v4() -> String {
 /// supplies the Agent (for config_snapshot), the thread_id (typically the
 /// session id), and the parent_checkpoint_id (the checkpoint the main
 /// session used).
-pub fn spawn_review_after_session(
-    session_id: String,
-    model: Option<String>,
-) {
+pub fn spawn_review_after_session(session_id: String, model: Option<String>) {
     spawn_background_review(session_id, model);
 }
 
@@ -650,11 +654,7 @@ mod tests {
 
     #[test]
     fn parse_action_failure_uses_unknown_error_when_both_missing() {
-        let a = parse_action(
-            "memory",
-            r#"{"success": false}"#,
-        )
-        .unwrap();
+        let a = parse_action("memory", r#"{"success": false}"#).unwrap();
         assert!(!a.succeeded);
         assert_eq!(a.summary, "unknown error");
     }
@@ -662,11 +662,7 @@ mod tests {
     #[test]
     fn parse_action_count_fallback_for_generic_tool() {
         // The count fallback still works for non-read-only tools.
-        let a = parse_action(
-            "memory",
-            r#"{"success": true, "count": 3}"#,
-        )
-        .unwrap();
+        let a = parse_action("memory", r#"{"success": true, "count": 3}"#).unwrap();
         assert!(a.succeeded);
         assert_eq!(a.summary, "Found 3 items");
     }
@@ -720,13 +716,19 @@ mod tests {
         let json = format!(r#"{{"success": true, "message": "{}"}}"#, long_msg);
         let a = parse_action("memory", &json).unwrap();
         assert_eq!(a.summary.chars().count(), 160);
-        assert!(a.summary.chars().all(|c| c.is_alphanumeric() || c == ' ' || c == '。' || c == '，' || c == '\''));
+        assert!(a.summary.chars().all(|c| c.is_alphanumeric()
+            || c == ' '
+            || c == '。'
+            || c == '，'
+            || c == '\''));
     }
 
     #[test]
     fn parse_action_truncated_json_returns_none() {
         // Simulates display_text truncation cutting JSON mid-stream.
-        assert!(parse_action("skill_manage", r#"{"success": true, "skills": [{"name": "#).is_none());
+        assert!(
+            parse_action("skill_manage", r#"{"success": true, "skills": [{"name": "#).is_none()
+        );
         assert!(parse_action("memory", "not json at all").is_none());
     }
 
@@ -869,6 +871,7 @@ mod tests {
         assert!(REVIEW_INSTRUCTION.contains("memory"));
         assert!(REVIEW_INSTRUCTION.contains("skill"));
         assert!(REVIEW_INSTRUCTION.contains("denied at runtime"));
+        assert!(REVIEW_INSTRUCTION.contains("do not attempt"));
     }
 
     #[test]
@@ -925,9 +928,9 @@ mod tests {
             msg.contains(REVIEW_INSTRUCTION),
             "REVIEW_INSTRUCTION should be appended to the user message"
         );
-        assert!(msg.contains("Only use memory and skill tools"));
+        assert!(msg.contains("You can only call memory and skill"));
         assert!(msg.contains("denied at runtime"));
-        assert!(msg.contains("Nothing to save"));
+        assert!(msg.contains("do not attempt"));
     }
 
     #[test]
@@ -1068,7 +1071,10 @@ mod tests {
         .await
         .unwrap();
         assert!(outcome.skipped);
-        assert_eq!(outcome.skip_reason.as_deref(), Some("no review mode enabled"));
+        assert_eq!(
+            outcome.skip_reason.as_deref(),
+            Some("no review mode enabled")
+        );
     }
 
     #[test]
@@ -1078,6 +1084,9 @@ mod tests {
 
     #[test]
     fn spawn_review_after_session_does_not_panic() {
-        spawn_review_after_session("test-after-session-noop".to_string(), Some("test-model".to_string()));
+        spawn_review_after_session(
+            "test-after-session-noop".to_string(),
+            Some("test-model".to_string()),
+        );
     }
 }

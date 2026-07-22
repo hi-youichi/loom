@@ -10,11 +10,49 @@ use futures::FutureExt;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
+use checkpoint::{CheckpointError, Checkpointer, RunnableConfig};
 use loom_graph_core::CompiledStateGraph;
 use loom_graph_core::GraphError;
-use checkpoint::{CheckpointError, Checkpointer, RunnableConfig};
 use loom_llm::message::UserContent;
 use stream_event::{StreamEvent, StreamMode};
+
+/// Loads state from checkpointer **without** appending a user message.
+///
+/// Used by workflow resume: the original prompt is already in the checkpoint's
+/// messages[], so appending it again would produce a duplicate. If no checkpoint
+/// is found (e.g. crash before first LLM call), falls back to `build_fresh`.
+pub async fn resume_from_checkpoint<S, F>(
+    checkpointer: Option<&dyn Checkpointer<S>>,
+    runnable_config: Option<&RunnableConfig>,
+    build_fresh: F,
+) -> Result<S, CheckpointError>
+where
+    F: Future<Output = Result<S, CheckpointError>>,
+    S: Clone + Send + Sync + 'static,
+{
+    let load_from_checkpoint =
+        checkpointer.is_some() && runnable_config.and_then(|c| c.thread_id.as_ref()).is_some();
+
+    if load_from_checkpoint {
+        let cp = checkpointer.expect("checkpointer is Some");
+        let config = runnable_config.expect("runnable_config is Some");
+        tracing::debug!(
+            thread_id = ?config.thread_id,
+            "resume_from_checkpoint: attempting to load checkpoint without appending message"
+        );
+        let tuple = cp.get_tuple(config).await?;
+        if let Some((checkpoint, _)) = tuple {
+            tracing::info!(
+                thread_id = ?config.thread_id,
+                "resume_from_checkpoint: checkpoint found, restoring state without appending message"
+            );
+            return Ok(checkpoint.channel_values);
+        }
+        tracing::info!("resume_from_checkpoint: no checkpoint found, building fresh state");
+    }
+
+    build_fresh.await
+}
 
 /// Tries to load state from checkpointer; if found, merges `user_message` via `merge` and returns.
 /// Otherwise runs `build_fresh` and returns its result. Shared by ReAct, DUP, and ToT initial state builders.
@@ -108,7 +146,8 @@ where
     // fires, drain non-blockingly (now_or_never) to capture buffered events
     // without risking an infinite hang.
     let mut completion = graph_stream.completion;
-    let mut completion_result: Option<Result<Result<(), GraphError>, tokio::task::JoinError>> = None;
+    let mut completion_result: Option<Result<Result<(), GraphError>, tokio::task::JoinError>> =
+        None;
     let mut final_state: Option<S> = None;
     let mut completion_consumed = false;
 

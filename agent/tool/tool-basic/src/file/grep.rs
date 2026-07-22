@@ -21,8 +21,8 @@ use ignore::WalkBuilder;
 use serde_json::json;
 
 use loom_util::text::truncate::truncate;
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 use super::path::resolve_path_under;
 
@@ -93,8 +93,6 @@ fn build_include_patterns(include: &str) -> Result<Vec<Pattern>, ToolSourceError
         })
         .collect()
 }
-
-
 
 #[async_trait]
 impl Tool for GrepTool {

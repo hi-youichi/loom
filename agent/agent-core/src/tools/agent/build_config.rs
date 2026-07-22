@@ -7,11 +7,11 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::profile::AgentProfile;
 use crate::agent::ReactBuildConfig;
-use tool_core::BuiltinToolFilter;
+use crate::profile::AgentProfile;
+use crate::run::config_builder::inject_builtin_skills;
 use skill::discovery::SkillRegistry;
-
+use tool_core::BuiltinToolFilter;
 
 const AGENTS_MD_FILE: &str = "AGENTS.md";
 
@@ -167,11 +167,12 @@ pub fn build_config_from_profile(
         .and_then(|s| s.dirs.as_ref())
         .map(|dirs| dirs.iter().map(PathBuf::from).collect())
         .unwrap_or_default();
-    let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs)
-        .unwrap_or_else(|e| {
-            tracing::warn!("skill discovery failed: {e}");
-            SkillRegistry::empty()
-        });
+    let mut registry = SkillRegistry::discover(&working_folder, &extra_dirs).unwrap_or_else(|e| {
+        tracing::warn!("skill discovery failed: {e}");
+        SkillRegistry::empty()
+    });
+
+    inject_builtin_skills(&mut registry, config.extra_tools.as_deref());
     if let Some(ref src) = profile.source_dir {
         if let Err(e) = registry.add_agent_skills(&src.join("skills")) {
             tracing::warn!("agent skills scan failed: {e}");
@@ -179,7 +180,9 @@ pub fn build_config_from_profile(
     }
     if let Some(ref sc) = profile.skills {
         let platform = Some(std::env::consts::OS);
-        let platform_disabled: Vec<String> = sc.platform_disabled.as_ref()
+        let platform_disabled: Vec<String> = sc
+            .platform_disabled
+            .as_ref()
             .and_then(|m| m.get(std::env::consts::OS))
             .cloned()
             .unwrap_or_default();

@@ -6,11 +6,11 @@
 
 use std::collections::HashSet;
 
-use loom_graph_core::GraphError;
 use crate::channel::ChannelKind;
 use crate::config::PregelConfig;
 use crate::node::{PregelGraph, PregelNode};
 use crate::types::{ReservedWrite, TASKS_CHANNEL};
+use loom_graph_core::GraphError;
 
 impl PregelGraph {
     /// Validates graph topology, channel references, and configured interrupts.
@@ -176,9 +176,9 @@ mod tests {
     use crate::channel::{ChannelKind, ChannelSpec};
     use crate::config::PregelConfig;
     use crate::node::PregelNode;
+    use async_trait::async_trait;
     use std::collections::HashMap;
     use std::sync::Arc;
-    use async_trait::async_trait;
 
     struct MockNode {
         name: String,
@@ -227,12 +227,19 @@ mod tests {
         let mut nodes = HashMap::new();
         nodes.insert(
             "node1".to_string(),
-            Arc::new(MockNode::new("node1", &["input1"], &["input1", "input2"])) as Arc<dyn PregelNode>,
+            Arc::new(MockNode::new("node1", &["input1"], &["input1", "input2"]))
+                as Arc<dyn PregelNode>,
         );
 
         let mut channels = HashMap::new();
-        channels.insert("input1".to_string(), ChannelSpec::new(ChannelKind::LastValue));
-        channels.insert("input2".to_string(), ChannelSpec::new(ChannelKind::LastValue));
+        channels.insert(
+            "input1".to_string(),
+            ChannelSpec::new(ChannelKind::LastValue),
+        );
+        channels.insert(
+            "input2".to_string(),
+            ChannelSpec::new(ChannelKind::LastValue),
+        );
 
         PregelGraph {
             nodes,
@@ -348,11 +355,18 @@ mod tests {
         let mut nodes = HashMap::new();
         nodes.insert(
             "node1".to_string(),
-            Arc::new(MockNode::new("node1", &["known_channel"], &["unknown_channel"])) as Arc<dyn PregelNode>,
+            Arc::new(MockNode::new(
+                "node1",
+                &["known_channel"],
+                &["unknown_channel"],
+            )) as Arc<dyn PregelNode>,
         );
 
         let mut channels = HashMap::new();
-        channels.insert("known_channel".to_string(), ChannelSpec::new(ChannelKind::LastValue));
+        channels.insert(
+            "known_channel".to_string(),
+            ChannelSpec::new(ChannelKind::LastValue),
+        );
 
         let graph = PregelGraph {
             nodes,
@@ -412,7 +426,9 @@ mod tests {
     #[test]
     fn test_validate_output_channel_not_defined_fails() {
         let mut graph = create_valid_graph();
-        graph.output_channels.push("nonexistent_channel".to_string());
+        graph
+            .output_channels
+            .push("nonexistent_channel".to_string());
 
         let config = create_config();
         let result = graph.validate_with_config(&config);
@@ -475,8 +491,14 @@ mod tests {
     #[test]
     fn test_validate_multiple_reserved_names_fail() {
         let mut graph = create_valid_graph();
-        graph.channels.insert("__interrupt__".to_string(), ChannelSpec::new(ChannelKind::LastValue));
-        graph.channels.insert("__push__".to_string(), ChannelSpec::new(ChannelKind::LastValue));
+        graph.channels.insert(
+            "__interrupt__".to_string(),
+            ChannelSpec::new(ChannelKind::LastValue),
+        );
+        graph.channels.insert(
+            "__push__".to_string(),
+            ChannelSpec::new(ChannelKind::LastValue),
+        );
 
         let config = create_config();
         let result = graph.validate_with_config(&config);

@@ -63,10 +63,9 @@ static TRUSTED_REPOS: &[&str] = &[
 ];
 
 static INVISIBLE_CHARS: &[char] = &[
-    '\u{200b}', '\u{200c}', '\u{200d}', '\u{2060}',
-    '\u{2062}', '\u{2063}', '\u{2064}', '\u{feff}',
-    '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}',
-    '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}',
+    '\u{200b}', '\u{200c}', '\u{200d}', '\u{2060}', '\u{2062}', '\u{2063}', '\u{2064}', '\u{feff}',
+    '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}',
+    '\u{2069}',
 ];
 
 static PATTERNS: std::sync::LazyLock<Vec<ScanPattern>> = std::sync::LazyLock::new(|| {
@@ -100,7 +99,10 @@ static PATTERNS: std::sync::LazyLock<Vec<ScanPattern>> = std::sync::LazyLock::ne
             pattern_id: "network",
         },
         ScanPattern {
-            re: regex::Regex::new(r"(?i)(curl|wget|Invoke-WebRequest)\s+.*(-T|--upload-file|PostFile)").unwrap(),
+            re: regex::Regex::new(
+                r"(?i)(curl|wget|Invoke-WebRequest)\s+.*(-T|--upload-file|PostFile)",
+            )
+            .unwrap(),
             severity: Severity::High,
             category: "data_exfil",
             description: "Potential data exfiltration via file upload",
@@ -125,7 +127,8 @@ static PATTERNS: std::sync::LazyLock<Vec<ScanPattern>> = std::sync::LazyLock::ne
 
 pub(crate) fn scan_text(content: &str, file: &str) -> Vec<GuardFinding> {
     let mut findings = Vec::new();
-    let mut seen: std::collections::HashSet<(&'static str, usize)> = std::collections::HashSet::new();
+    let mut seen: std::collections::HashSet<(&'static str, usize)> =
+        std::collections::HashSet::new();
     for (line_no, line) in content.lines().enumerate() {
         for pattern in PATTERNS.iter() {
             let pid: &'static str = pattern.pattern_id;
@@ -154,8 +157,9 @@ pub(crate) fn scan_text(content: &str, file: &str) -> Vec<GuardFinding> {
                     file: file.to_string(),
                     matched_text: format!("U+{:04X} (invisible unicode)", ch as u32),
                     line: line_no + 1,
-                    description: "Invisible unicode character detected (potential prompt injection)"
-                        .to_string(),
+                    description:
+                        "Invisible unicode character detected (potential prompt injection)"
+                            .to_string(),
                 });
             }
         }
@@ -202,7 +206,11 @@ pub fn scan_file(path: &Path, trust: TrustLevel) -> ScanResult {
 
     let findings = scan_text(&content, &path.to_string_lossy());
     let verdict = determine_verdict(&findings, trust);
-    ScanResult { findings, verdict, trust_level: trust }
+    ScanResult {
+        findings,
+        verdict,
+        trust_level: trust,
+    }
 }
 
 const MAX_FILE_COUNT: usize = 50;
@@ -210,14 +218,12 @@ const MAX_TOTAL_SIZE_KB: u64 = 1024;
 const MAX_SINGLE_FILE_KB: u64 = 256;
 
 const SUSPICIOUS_BINARY_EXTENSIONS: &[&str] = &[
-    ".exe", ".dll", ".so", ".dylib", ".bin", ".dat", ".com",
-    ".msi", ".dmg", ".app", ".deb", ".rpm",
+    ".exe", ".dll", ".so", ".dylib", ".bin", ".dat", ".com", ".msi", ".dmg", ".app", ".deb", ".rpm",
 ];
 
 const SCANNABLE_EXTENSIONS: &[&str] = &[
-    ".md", ".txt", ".py", ".sh", ".bash", ".js", ".ts", ".rb",
-    ".yaml", ".yml", ".json", ".toml", ".cfg", ".ini", ".conf",
-    ".html", ".css", ".xml", ".tex", ".r", ".jl", ".pl", ".php",
+    ".md", ".txt", ".py", ".sh", ".bash", ".js", ".ts", ".rb", ".yaml", ".yml", ".json", ".toml",
+    ".cfg", ".ini", ".conf", ".html", ".css", ".xml", ".tex", ".r", ".jl", ".pl", ".php",
 ];
 
 fn is_scannable(path: &Path) -> bool {
@@ -259,12 +265,20 @@ pub fn scan_skill(dir: &Path, source: &str) -> ScanResult {
             Ok(c) => c,
             Err(_) => continue,
         };
-        let rel = path.strip_prefix(dir).unwrap_or(path).to_string_lossy().to_string();
+        let rel = path
+            .strip_prefix(dir)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .to_string();
         findings.extend(scan_text(&content, &rel));
     }
 
     let verdict = determine_verdict(&findings, trust);
-    ScanResult { findings, verdict, trust_level: trust }
+    ScanResult {
+        findings,
+        verdict,
+        trust_level: trust,
+    }
 }
 
 fn collect_files(
@@ -304,7 +318,11 @@ fn check_structure(
             file: "".to_string(),
             matched_text: format!("{} files (max {})", files.len(), MAX_FILE_COUNT),
             line: 0,
-            description: format!("Skill has too many files ({} > {})", files.len(), MAX_FILE_COUNT),
+            description: format!(
+                "Skill has too many files ({} > {})",
+                files.len(),
+                MAX_FILE_COUNT
+            ),
         });
     }
 
@@ -317,7 +335,10 @@ fn check_structure(
             file: "".to_string(),
             matched_text: format!("{}KB total (max {}KB)", total_size_kb, MAX_TOTAL_SIZE_KB),
             line: 0,
-            description: format!("Skill total size too large ({}KB > {}KB)", total_size_kb, MAX_TOTAL_SIZE_KB),
+            description: format!(
+                "Skill total size too large ({}KB > {}KB)",
+                total_size_kb, MAX_TOTAL_SIZE_KB
+            ),
         });
     }
 
@@ -332,7 +353,10 @@ fn check_structure(
                 file: file_str.clone(),
                 matched_text: format!("{}KB", size_kb),
                 line: 0,
-                description: format!("File exceeds {}KB limit ({}KB)", MAX_SINGLE_FILE_KB, size_kb),
+                description: format!(
+                    "File exceeds {}KB limit ({}KB)",
+                    MAX_SINGLE_FILE_KB, size_kb
+                ),
             });
         }
 
@@ -355,7 +379,11 @@ fn check_structure(
     // Symlink escape detection: check if symlinks point outside the skill directory
     let base_canonical = std::fs::canonicalize(base_dir).unwrap_or_else(|_| base_dir.to_path_buf());
     for sym in symlinks {
-        let rel = sym.strip_prefix(base_dir).unwrap_or(sym).to_string_lossy().to_string();
+        let rel = sym
+            .strip_prefix(base_dir)
+            .unwrap_or(sym)
+            .to_string_lossy()
+            .to_string();
         match std::fs::canonicalize(sym) {
             Ok(resolved) => {
                 if !resolved.starts_with(&base_canonical) {
@@ -396,7 +424,11 @@ fn check_structure(
             }
             if let Ok(metadata) = std::fs::metadata(path) {
                 if metadata.permissions().mode() & 0o111 != 0 {
-                    let rel = path.strip_prefix(base_dir).unwrap_or(path).to_string_lossy().to_string();
+                    let rel = path
+                        .strip_prefix(base_dir)
+                        .unwrap_or(path)
+                        .to_string_lossy()
+                        .to_string();
                     findings.push(GuardFinding {
                         pattern_id: "unexpected_executable".to_string(),
                         severity: Severity::Medium,
@@ -404,7 +436,9 @@ fn check_structure(
                         file: rel,
                         line: 0,
                         matched_text: "executable bit set".to_string(),
-                        description: "file has executable permission but is not a recognized script type".to_string(),
+                        description:
+                            "file has executable permission but is not a recognized script type"
+                                .to_string(),
                     });
                 }
             }
@@ -422,12 +456,7 @@ fn check_structure(
 /// - TRUSTED_REPOS exact match or path prefix → Trusted
 /// - everything else → Community
 pub fn resolve_trust_level(source: &str) -> TrustLevel {
-    let prefix_aliases = [
-        "skills-sh/",
-        "skills.sh/",
-        "skils-sh/",
-        "skils.sh/",
-    ];
+    let prefix_aliases = ["skills-sh/", "skills.sh/", "skils-sh/", "skils.sh/"];
 
     let normalized = prefix_aliases
         .iter()
@@ -608,7 +637,10 @@ pub fn format_scan_report(result: &ScanResult, source: &str, skill_name: &str) -
     let verdict_display = format!("{:?}", result.verdict).to_uppercase();
     let mut lines = vec![format!(
         "Scan: {} ({}/{})  Verdict: {}",
-        skill_name, source, format!("{:?}", result.trust_level).to_lowercase(), verdict_display
+        skill_name,
+        source,
+        format!("{:?}", result.trust_level).to_lowercase(),
+        verdict_display
     )];
 
     if !result.findings.is_empty() {
@@ -744,12 +776,19 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = write_skill(dir.path(), "<!-- inject system prompt override -->");
         let result = scan_file(&path, TrustLevel::Community);
-        assert!(result.findings.iter().any(|f| f.category == "prompt_injection"));
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.category == "prompt_injection"));
     }
 
     #[test]
     fn allow_install_safe() {
-        let result = ScanResult { findings: vec![], verdict: Verdict::Safe, trust_level: TrustLevel::Community };
+        let result = ScanResult {
+            findings: vec![],
+            verdict: Verdict::Safe,
+            trust_level: TrustLevel::Community,
+        };
         let (ok, msg) = should_allow_install(&result, false);
         assert_eq!(ok, Some(true));
         assert!(msg.contains("No issues"));
@@ -818,7 +857,11 @@ mod tests {
 
     #[test]
     fn format_report_empty() {
-        let result = ScanResult { findings: vec![], verdict: Verdict::Safe, trust_level: TrustLevel::Community };
+        let result = ScanResult {
+            findings: vec![],
+            verdict: Verdict::Safe,
+            trust_level: TrustLevel::Community,
+        };
         let report = format_scan_report(&result, "test", "test-skill");
         assert!(report.contains("Scan:"));
         assert!(report.contains("Decision: ALLOWED"));
@@ -854,46 +897,88 @@ mod tests {
 
     #[test]
     fn resolve_agent_created() {
-        assert_eq!(resolve_trust_level("agent-created"), TrustLevel::AgentCreated);
+        assert_eq!(
+            resolve_trust_level("agent-created"),
+            TrustLevel::AgentCreated
+        );
     }
 
     #[test]
     fn resolve_trusted_repos() {
         assert_eq!(resolve_trust_level("openai/skills"), TrustLevel::Trusted);
-        assert_eq!(resolve_trust_level("anthropics/skills"), TrustLevel::Trusted);
-        assert_eq!(resolve_trust_level("huggingface/skills"), TrustLevel::Trusted);
+        assert_eq!(
+            resolve_trust_level("anthropics/skills"),
+            TrustLevel::Trusted
+        );
+        assert_eq!(
+            resolve_trust_level("huggingface/skills"),
+            TrustLevel::Trusted
+        );
         assert_eq!(resolve_trust_level("NVIDIA/skills"), TrustLevel::Trusted);
     }
 
     #[test]
     fn resolve_trusted_repo_subpath() {
-        assert_eq!(resolve_trust_level("openai/skills/some-skill"), TrustLevel::Trusted);
-        assert_eq!(resolve_trust_level("NVIDIA/skills/cuopt"), TrustLevel::Trusted);
+        assert_eq!(
+            resolve_trust_level("openai/skills/some-skill"),
+            TrustLevel::Trusted
+        );
+        assert_eq!(
+            resolve_trust_level("NVIDIA/skills/cuopt"),
+            TrustLevel::Trusted
+        );
     }
 
     #[test]
     fn resolve_prefix_alias() {
-        assert_eq!(resolve_trust_level("skills-sh/openai/skills"), TrustLevel::Trusted);
-        assert_eq!(resolve_trust_level("skills.sh/anthropics/skills/frontend-design"), TrustLevel::Trusted);
-        assert_eq!(resolve_trust_level("skils-sh/NVIDIA/skills"), TrustLevel::Trusted);
+        assert_eq!(
+            resolve_trust_level("skills-sh/openai/skills"),
+            TrustLevel::Trusted
+        );
+        assert_eq!(
+            resolve_trust_level("skills.sh/anthropics/skills/frontend-design"),
+            TrustLevel::Trusted
+        );
+        assert_eq!(
+            resolve_trust_level("skils-sh/NVIDIA/skills"),
+            TrustLevel::Trusted
+        );
     }
 
     #[test]
     fn resolve_lookalike_repo_is_community() {
-        assert_eq!(resolve_trust_level("openai/skills-evil"), TrustLevel::Community);
-        assert_eq!(resolve_trust_level("anthropics/skills-foo/frontend-design"), TrustLevel::Community);
-        assert_eq!(resolve_trust_level("huggingface/skills-bar/some-skill"), TrustLevel::Community);
+        assert_eq!(
+            resolve_trust_level("openai/skills-evil"),
+            TrustLevel::Community
+        );
+        assert_eq!(
+            resolve_trust_level("anthropics/skills-foo/frontend-design"),
+            TrustLevel::Community
+        );
+        assert_eq!(
+            resolve_trust_level("huggingface/skills-bar/some-skill"),
+            TrustLevel::Community
+        );
     }
 
     #[test]
     fn resolve_official_subpath_is_community() {
-        assert_eq!(resolve_trust_level("official/attacker-skill"), TrustLevel::Community);
-        assert_eq!(resolve_trust_level("official/agent/evil-skill"), TrustLevel::Community);
+        assert_eq!(
+            resolve_trust_level("official/attacker-skill"),
+            TrustLevel::Community
+        );
+        assert_eq!(
+            resolve_trust_level("official/agent/evil-skill"),
+            TrustLevel::Community
+        );
     }
 
     #[test]
     fn resolve_unknown_is_community() {
-        assert_eq!(resolve_trust_level("random-user/my-skill"), TrustLevel::Community);
+        assert_eq!(
+            resolve_trust_level("random-user/my-skill"),
+            TrustLevel::Community
+        );
         assert_eq!(resolve_trust_level(""), TrustLevel::Community);
     }
 }

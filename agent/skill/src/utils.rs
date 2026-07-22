@@ -49,7 +49,10 @@ pub fn split_frontmatter(content: &str) -> (&str, &str) {
         Some(i) => i,
         None => return (content, ""),
     };
-    (&content[..DELIM.len() + 1 + sep + DELIM.len()], &after_first[sep + DELIM.len()..])
+    (
+        &content[..DELIM.len() + 1 + sep + DELIM.len()],
+        &after_first[sep + DELIM.len()..],
+    )
 }
 
 /// Skill conditions for toolset-aware activation.
@@ -127,12 +130,18 @@ impl SkillMetadata {
             fallback_for_tools: vec![],
             requires_tools: vec![],
         };
-        self.metadata.as_ref().map(|m| &m.conditions).unwrap_or(&EMPTY)
+        self.metadata
+            .as_ref()
+            .map(|m| &m.conditions)
+            .unwrap_or(&EMPTY)
     }
 
     pub fn required_env_vars(&self) -> &[EnvVarDecl] {
         static EMPTY: &[EnvVarDecl] = &[];
-        self.metadata.as_ref().map(|m| m.required_env_vars.as_slice()).unwrap_or(EMPTY)
+        self.metadata
+            .as_ref()
+            .map(|m| m.required_env_vars.as_slice())
+            .unwrap_or(EMPTY)
     }
 
     pub fn readiness_status(&self) -> ReadinessStatus {
@@ -179,9 +188,20 @@ pub fn parse_skill_frontmatter(content: &str) -> (Option<SkillMetadata>, String)
 
 pub fn is_excluded_path(path: &Path) -> bool {
     const EXCLUDED_DIRS: &[&str] = &[
-        ".git", ".github", ".hub", ".archive", ".venv", "venv",
-        "node_modules", "site-packages", "__pycache__",
-        ".tox", ".nox", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+        ".git",
+        ".github",
+        ".hub",
+        ".archive",
+        ".venv",
+        "venv",
+        "node_modules",
+        "site-packages",
+        "__pycache__",
+        ".tox",
+        ".nox",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
         "curator",
     ];
     path.file_name()
@@ -284,7 +304,7 @@ mod tests {
         assert!(meta.matches_platform("windows"));
     }
 
-#[test]
+    #[test]
     fn is_excluded_path_dirs() {
         assert!(is_excluded_path(Path::new(".git")));
         assert!(is_excluded_path(Path::new("node_modules")));

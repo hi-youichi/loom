@@ -54,7 +54,7 @@ mod tests {
     fn test_default_interrupt_handler() {
         let handler = DefaultInterruptHandler;
         let interrupt = Interrupt::new(serde_json::json!({"result": "success"}));
-        
+
         let result = handler.handle_interrupt(&interrupt).unwrap();
         assert_eq!(result, serde_json::json!({"result": "success"}));
     }
@@ -62,9 +62,12 @@ mod tests {
     #[test]
     fn test_custom_interrupt_handler() {
         struct CustomHandler;
-        
+
         impl InterruptHandler for CustomHandler {
-            fn handle_interrupt(&self, interrupt: &Interrupt) -> Result<serde_json::Value, GraphError> {
+            fn handle_interrupt(
+                &self,
+                interrupt: &Interrupt,
+            ) -> Result<serde_json::Value, GraphError> {
                 let mut value = interrupt.value.clone();
                 if let Some(obj) = value.as_object_mut() {
                     obj.insert("handled".to_string(), serde_json::json!(true));
@@ -72,11 +75,14 @@ mod tests {
                 Ok(value)
             }
         }
-        
+
         let handler = CustomHandler;
         let interrupt = Interrupt::new(serde_json::json!({"action": "approve"}));
-        
+
         let result = handler.handle_interrupt(&interrupt).unwrap();
-        assert_eq!(result, serde_json::json!({"action": "approve", "handled": true}));
+        assert_eq!(
+            result,
+            serde_json::json!({"action": "approve", "handled": true})
+        );
     }
 }

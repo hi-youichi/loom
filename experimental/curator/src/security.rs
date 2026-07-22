@@ -8,6 +8,6 @@
 //! New code should depend on `agent::skill::validation` directly.
 
 pub use skill::validation::{
-    validate_skill_create, validate_skill_path, validate_memory_content, Severity,
+    validate_memory_content, validate_skill_create, validate_skill_path, Severity,
     ValidationResult, ValidationWarning,
 };

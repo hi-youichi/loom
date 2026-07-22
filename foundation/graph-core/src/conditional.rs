@@ -58,7 +58,7 @@ where
     /// Returns the resolved node id or "END" if routing terminates.
     pub fn resolve(&self, state: &S) -> String {
         let key = (self.path)(state);
-        
+
         if let Some(map) = &self.path_map {
             map.get(&key).cloned().unwrap_or(key)
         } else {
@@ -74,11 +74,9 @@ mod tests {
 
     #[test]
     fn test_conditional_router_no_path_map() {
-        let router: ConditionalRouter<String> = ConditionalRouter::new(
-            Arc::new(|state| state.clone()),
-            None,
-        );
-        
+        let router: ConditionalRouter<String> =
+            ConditionalRouter::new(Arc::new(|state| state.clone()), None);
+
         assert_eq!(router.resolve(&"node_a".to_string()), "node_a");
         assert_eq!(router.resolve(&"node_b".to_string()), "node_b");
     }
@@ -89,12 +87,10 @@ mod tests {
         path_map.insert("approve".to_string(), "node_a".to_string());
         path_map.insert("reject".to_string(), "node_b".to_string());
         path_map.insert("review".to_string(), "END".to_string());
-        
-        let router: ConditionalRouter<String> = ConditionalRouter::new(
-            Arc::new(|state| state.clone()),
-            Some(path_map),
-        );
-        
+
+        let router: ConditionalRouter<String> =
+            ConditionalRouter::new(Arc::new(|state| state.clone()), Some(path_map));
+
         assert_eq!(router.resolve(&"approve".to_string()), "node_a");
         assert_eq!(router.resolve(&"reject".to_string()), "node_b");
         assert_eq!(router.resolve(&"review".to_string()), "END");
@@ -104,12 +100,10 @@ mod tests {
     fn test_conditional_router_unknown_key_falls_through() {
         let mut path_map = HashMap::new();
         path_map.insert("approve".to_string(), "node_a".to_string());
-        
-        let router: ConditionalRouter<String> = ConditionalRouter::new(
-            Arc::new(|state| state.clone()),
-            Some(path_map),
-        );
-        
+
+        let router: ConditionalRouter<String> =
+            ConditionalRouter::new(Arc::new(|state| state.clone()), Some(path_map));
+
         // Unknown key falls through to use the key as the node id
         assert_eq!(router.resolve(&"unknown_node".to_string()), "unknown_node");
     }
@@ -120,11 +114,11 @@ mod tests {
         struct State {
             value: i32,
         }
-        
+
         let mut path_map = HashMap::new();
         path_map.insert("low".to_string(), "node_a".to_string());
         path_map.insert("high".to_string(), "node_b".to_string());
-        
+
         let router: ConditionalRouter<State> = ConditionalRouter::new(
             Arc::new(|state| {
                 if state.value < 50 {
@@ -135,7 +129,7 @@ mod tests {
             }),
             Some(path_map),
         );
-        
+
         assert_eq!(router.resolve(&State { value: 30 }), "node_a");
         assert_eq!(router.resolve(&State { value: 70 }), "node_b");
     }

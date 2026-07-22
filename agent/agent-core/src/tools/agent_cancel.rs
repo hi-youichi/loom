@@ -55,7 +55,9 @@ impl Tool for AgentCancelTool {
         let agent_id = args
             .get("agent_id")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolSourceError::InvalidInput("missing required argument: agent_id".into()))?;
+            .ok_or_else(|| {
+                ToolSourceError::InvalidInput("missing required argument: agent_id".into())
+            })?;
 
         self.registry
             .cancel(agent_id)

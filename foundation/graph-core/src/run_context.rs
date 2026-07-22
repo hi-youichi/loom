@@ -30,10 +30,9 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-
-use stream_event::{StreamEvent, StreamMode, StreamWriter};
 use crate::managed::ManagedValue;
 use checkpoint::{RunnableConfig, Store};
+use stream_event::{StreamEvent, StreamMode, StreamWriter};
 
 /// Run context passed into nodes for streaming-aware execution.
 ///
@@ -259,10 +258,10 @@ mod tests {
     use super::*;
     use crate::managed::ManagedValue;
     use checkpoint;
-    use std::sync::Arc;
-    use tokio::sync::mpsc;
-    use stream_event::StreamMode;
     use serde_json::json;
+    use std::sync::Arc;
+    use stream_event::StreamMode;
+    use tokio::sync::mpsc;
 
     // Mock ManagedValue for testing
     struct TestManagedValue {
@@ -283,7 +282,7 @@ mod tests {
 
     // Mock Store for testing
     struct MockStore;
-    
+
     #[async_trait::async_trait]
     impl checkpoint::Store for MockStore {
         async fn get(
@@ -293,7 +292,7 @@ mod tests {
         ) -> Result<Option<serde_json::Value>, checkpoint::StoreError> {
             Ok(None)
         }
-        
+
         async fn get_item(
             &self,
             _namespace: &checkpoint::Namespace,
@@ -301,7 +300,7 @@ mod tests {
         ) -> Result<Option<checkpoint::Item>, checkpoint::StoreError> {
             Ok(None)
         }
-        
+
         async fn put(
             &self,
             _namespace: &checkpoint::Namespace,
@@ -310,7 +309,7 @@ mod tests {
         ) -> Result<(), checkpoint::StoreError> {
             Ok(())
         }
-        
+
         async fn delete(
             &self,
             _namespace: &checkpoint::Namespace,
@@ -318,14 +317,14 @@ mod tests {
         ) -> Result<(), checkpoint::StoreError> {
             Ok(())
         }
-        
+
         async fn list(
             &self,
             _namespace: &checkpoint::Namespace,
         ) -> Result<Vec<String>, checkpoint::StoreError> {
             Ok(vec![])
         }
-        
+
         async fn search(
             &self,
             _namespace_prefix: &checkpoint::Namespace,
@@ -333,14 +332,14 @@ mod tests {
         ) -> Result<Vec<checkpoint::SearchItem>, checkpoint::StoreError> {
             Ok(vec![])
         }
-        
+
         async fn list_namespaces(
             &self,
             _options: checkpoint::ListNamespacesOptions,
         ) -> Result<Vec<checkpoint::Namespace>, checkpoint::StoreError> {
             Ok(vec![])
         }
-        
+
         async fn batch(
             &self,
             _ops: Vec<checkpoint::StoreOp>,
@@ -352,7 +351,7 @@ mod tests {
     #[test]
     fn test_run_context_new_creates_empty_context() {
         let ctx = RunContext::<String>::new(RunnableConfig::default());
-        
+
         assert!(ctx.stream_tx.is_none());
         assert!(ctx.stream_mode.is_empty());
         assert!(ctx.managed_values.is_empty());
@@ -368,14 +367,14 @@ mod tests {
         let mut modes = HashSet::new();
         modes.insert(StreamMode::Custom);
         modes.insert(StreamMode::Messages);
-        
+
         let ctx = RunContext::<String> {
             config: RunnableConfig::default(),
             stream_tx: Some(tx),
             stream_mode: modes,
             ..Default::default()
         };
-        
+
         assert!(ctx.stream_tx.is_some());
         assert!(ctx.is_streaming_mode(StreamMode::Custom));
         assert!(ctx.is_streaming_mode(StreamMode::Messages));
@@ -383,7 +382,7 @@ mod tests {
     }
 
     #[test]
-fn test_run_context_config_accessible() {
+    fn test_run_context_config_accessible() {
         let config = RunnableConfig {
             thread_id: Some("test-thread".to_string()),
             ..Default::default()
@@ -397,7 +396,7 @@ fn test_run_context_config_accessible() {
     fn test_run_context_store_getter() {
         let ctx = RunContext::<String>::new(RunnableConfig::default());
         assert!(ctx.store().is_none());
-        
+
         let ctx = ctx.with_store(Arc::new(MockStore));
         assert!(ctx.store().is_some());
     }
@@ -406,7 +405,7 @@ fn test_run_context_config_accessible() {
     fn test_run_context_previous_state_getter() {
         let ctx = RunContext::<String>::new(RunnableConfig::default());
         assert!(ctx.previous().is_none());
-        
+
         let ctx = ctx.with_previous("previous_state".to_string());
         assert!(ctx.previous().is_some());
         assert_eq!(ctx.previous().unwrap(), "previous_state");
@@ -416,10 +415,10 @@ fn test_run_context_config_accessible() {
     fn test_run_context_runtime_context_getter() {
         let ctx = RunContext::<String>::new(RunnableConfig::default());
         assert!(ctx.runtime_context().is_none());
-        
+
         let custom_context = json!({"user_id": "123", "session_id": "abc"});
         let ctx = ctx.with_runtime_context(custom_context.clone());
-        
+
         assert!(ctx.runtime_context().is_some());
         assert_eq!(ctx.runtime_context().unwrap(), &custom_context);
     }
@@ -429,14 +428,14 @@ fn test_run_context_config_accessible() {
         let (tx, _rx) = mpsc::channel(100);
         let mut modes = HashSet::new();
         modes.insert(StreamMode::Custom);
-        
+
         let ctx = RunContext::<String> {
             config: RunnableConfig::default(),
             stream_tx: Some(tx),
             stream_mode: modes,
             ..Default::default()
         };
-        
+
         let writer = ctx.stream_writer();
         assert!(writer.is_mode_enabled(StreamMode::Custom));
     }
@@ -446,19 +445,19 @@ fn test_run_context_config_accessible() {
         let (tx, mut rx) = mpsc::channel(100);
         let mut modes = HashSet::new();
         modes.insert(StreamMode::Custom);
-        
+
         let ctx = RunContext::<String> {
             config: RunnableConfig::default(),
             stream_tx: Some(tx),
             stream_mode: modes,
             ..Default::default()
         };
-        
+
         let custom_payload = json!({"progress": 50, "status": "processing"});
         let sent = ctx.emit_custom(custom_payload.clone()).await;
-        
+
         assert!(sent);
-        
+
         let received = rx.recv().await.unwrap();
         if let StreamEvent::Custom(value) = received {
             assert_eq!(value, custom_payload);
@@ -470,10 +469,10 @@ fn test_run_context_config_accessible() {
     #[tokio::test]
     async fn test_run_context_emit_custom_no_sender() {
         let ctx = RunContext::<String>::new(RunnableConfig::default());
-        
+
         let custom_payload = json!({"progress": 50});
         let sent = ctx.emit_custom(custom_payload).await;
-        
+
         assert!(!sent);
     }
 
@@ -481,17 +480,17 @@ fn test_run_context_config_accessible() {
     async fn test_run_context_emit_custom_mode_disabled() {
         let (tx, _rx) = mpsc::channel(100);
         let modes = HashSet::new(); // No Custom mode
-        
+
         let ctx = RunContext::<String> {
             config: RunnableConfig::default(),
             stream_tx: Some(tx),
             stream_mode: modes,
             ..Default::default()
         };
-        
+
         let custom_payload = json!({"progress": 50});
         let sent = ctx.emit_custom(custom_payload).await;
-        
+
         assert!(!sent);
     }
 
@@ -500,18 +499,18 @@ fn test_run_context_config_accessible() {
         let (tx, mut rx) = mpsc::channel(100);
         let mut modes = HashSet::new();
         modes.insert(StreamMode::Messages);
-        
+
         let ctx = RunContext::<String> {
             config: RunnableConfig::default(),
             stream_tx: Some(tx),
             stream_mode: modes,
             ..Default::default()
         };
-        
+
         let sent = ctx.emit_message("Hello world", "test_node").await;
-        
+
         assert!(sent);
-        
+
         let received = rx.recv().await.unwrap();
         if let StreamEvent::Messages { chunk, .. } = received {
             assert_eq!(chunk.content, "Hello world");
@@ -523,9 +522,9 @@ fn test_run_context_config_accessible() {
     #[tokio::test]
     async fn test_run_context_emit_message_no_sender() {
         let ctx = RunContext::<String>::new(RunnableConfig::default());
-        
+
         let sent = ctx.emit_message("Hello", "node").await;
-        
+
         assert!(!sent);
     }
 
@@ -533,16 +532,16 @@ fn test_run_context_config_accessible() {
     fn test_run_context_with_cancellation_token() {
         let config = RunnableConfig::default();
         let cancellation = CancellationToken::new();
-        
+
         let ctx = RunContext::<String> {
             config,
             cancellation: Some(cancellation.clone()),
             ..Default::default()
         };
-        
+
         assert!(ctx.cancellation.is_some());
         assert!(!ctx.cancellation.as_ref().unwrap().is_cancelled());
-        
+
         cancellation.cancel();
         assert!(ctx.cancellation.as_ref().unwrap().is_cancelled());
     }
@@ -550,10 +549,10 @@ fn test_run_context_config_accessible() {
     #[test]
     fn test_run_context_managed_values_operations() {
         let managed_value = Arc::new(TestManagedValue::new(json!({"is_last": true})));
-        
+
         let ctx = RunContext::<String>::new(RunnableConfig::default())
             .with_managed_value("is_last_step", managed_value);
-        
+
         assert_eq!(ctx.managed_values.len(), 1);
         assert!(ctx.managed_values.contains_key("is_last_step"));
     }
@@ -561,10 +560,10 @@ fn test_run_context_config_accessible() {
     #[test]
     fn test_run_context_get_managed_value() {
         let managed_value = Arc::new(TestManagedValue::new(json!({"is_last": true})));
-        
+
         let ctx = RunContext::<String>::new(RunnableConfig::default())
             .with_managed_value("is_last_step", managed_value);
-        
+
         let value = ctx.get_managed_value("is_last_step");
         assert!(value.is_some());
         assert_eq!(value.unwrap(), json!({"is_last": true}));
@@ -573,7 +572,7 @@ fn test_run_context_config_accessible() {
     #[test]
     fn test_run_context_get_managed_value_not_found() {
         let ctx = RunContext::<String>::new(RunnableConfig::default());
-        
+
         let value = ctx.get_managed_value("non_existent");
         assert!(value.is_none());
     }
@@ -581,7 +580,7 @@ fn test_run_context_config_accessible() {
     #[test]
     fn test_run_context_edge_case_no_stream_sender() {
         let ctx = RunContext::<String>::new(RunnableConfig::default());
-        
+
         assert!(ctx.stream_tx.is_none());
         assert!(!ctx.is_streaming_mode(StreamMode::Custom));
         assert!(!ctx.is_streaming_mode(StreamMode::Messages));
@@ -592,7 +591,7 @@ fn test_run_context_config_accessible() {
     #[test]
     fn test_run_context_edge_case_no_store() {
         let ctx = RunContext::<String>::new(RunnableConfig::default());
-        
+
         assert!(ctx.store.is_none());
         assert!(ctx.store().is_none());
     }
@@ -600,7 +599,7 @@ fn test_run_context_config_accessible() {
     #[test]
     fn test_run_context_edge_case_no_previous_state() {
         let ctx = RunContext::<String>::new(RunnableConfig::default());
-        
+
         assert!(ctx.previous.is_none());
         assert!(ctx.previous().is_none());
     }
@@ -608,7 +607,7 @@ fn test_run_context_config_accessible() {
     #[test]
     fn test_run_context_edge_case_no_runtime_context() {
         let ctx = RunContext::<String>::new(RunnableConfig::default());
-        
+
         assert!(ctx.runtime_context.is_none());
         assert!(ctx.runtime_context().is_none());
     }
@@ -619,7 +618,7 @@ fn test_run_context_config_accessible() {
             .with_store(Arc::new(MockStore))
             .with_previous("test_previous".to_string())
             .with_runtime_context(json!({"user_id": "123"}));
-        
+
         assert!(ctx.store().is_some());
         assert!(ctx.previous().is_some());
         assert!(ctx.runtime_context().is_some());
@@ -627,11 +626,11 @@ fn test_run_context_config_accessible() {
 
     #[test]
     fn test_run_context_clone() {
-        let original = RunContext::<String>::new(RunnableConfig::default())
-            .with_previous("state".to_string());
-        
+        let original =
+            RunContext::<String>::new(RunnableConfig::default()).with_previous("state".to_string());
+
         let cloned = original.clone();
-        
+
         assert_eq!(cloned.previous(), original.previous());
         assert!(cloned.previous().is_some());
     }
@@ -643,26 +642,26 @@ fn test_run_context_config_accessible() {
         modes.insert(StreamMode::Custom);
         modes.insert(StreamMode::Messages);
         modes.insert(StreamMode::Values);
-        
+
         let ctx = RunContext::<String> {
             config: RunnableConfig::default(),
             stream_tx: Some(tx),
             stream_mode: modes,
             ..Default::default()
         };
-        
+
         assert!(ctx.is_streaming_mode(StreamMode::Custom));
         assert!(ctx.is_streaming_mode(StreamMode::Messages));
         assert!(ctx.is_streaming_mode(StreamMode::Values));
         assert!(!ctx.is_streaming_mode(StreamMode::Updates));
-        
+
         // Test multiple emissions
         ctx.emit_custom(json!({"type": "custom"})).await;
         ctx.emit_message("test", "node1").await;
-        
+
         let event1 = rx.recv().await.unwrap();
         let event2 = rx.recv().await.unwrap();
-        
+
         assert!(matches!(event1, StreamEvent::Custom(_)));
         assert!(matches!(event2, StreamEvent::Messages { .. }));
     }

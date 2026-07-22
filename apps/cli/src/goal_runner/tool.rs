@@ -6,8 +6,11 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
-use agent::run::{build_react_config, run_agent_from_config, RunParams, TypedAnyStreamEvent as FullTypedAnyStreamEvent};
 use agent::run::RunCompletion;
+use agent::run::{
+    build_react_config, run_agent_from_config, RunParams,
+    TypedAnyStreamEvent as FullTypedAnyStreamEvent,
+};
 use stream_event::StreamEvent;
 
 use agent::goal_runner::state::{ToolCallSummary, ToolError, TurnResult};
@@ -90,7 +93,8 @@ impl CodingTool for ShellTool {
                     return Err(ToolError::Timeout);
                 }
             }
-        }.map_err(|e| ToolError::ExecutionFailed(format!("{} failed: {}", self.command, e)))?;
+        }
+        .map_err(|e| ToolError::ExecutionFailed(format!("{} failed: {}", self.command, e)))?;
 
         let (status, stdout_buf, stderr_buf) = result;
 
@@ -144,11 +148,7 @@ pub struct LoomTool {
 }
 
 impl LoomTool {
-    pub fn new(
-        session_id: String,
-        working_dir: PathBuf,
-        mcp_config_path: PathBuf,
-    ) -> Self {
+    pub fn new(session_id: String, working_dir: PathBuf, mcp_config_path: PathBuf) -> Self {
         Self {
             session_id,
             _working_dir: working_dir,
@@ -197,12 +197,11 @@ impl LoomTool {
 #[async_trait]
 impl CodingTool for LoomTool {
     async fn execute(&self, prompt: &str, working_dir: &Path) -> Result<TurnResult, ToolError> {
-        use agent::run::{RunOptions};
         use agent::run::RunCmd;
+        use agent::run::RunOptions;
         use loom_llm::message::UserContent;
 
-        let tool_summaries: Arc<Mutex<Vec<ToolCallSummary>>> =
-            Arc::new(Mutex::new(Vec::new()));
+        let tool_summaries: Arc<Mutex<Vec<ToolCallSummary>>> = Arc::new(Mutex::new(Vec::new()));
 
         let on_event: Option<Box<dyn FnMut(FullTypedAnyStreamEvent) + Send>> =
             if let Some(ref sender) = self.any_stream_event_sender {
@@ -235,6 +234,7 @@ impl CodingTool for LoomTool {
             session_id: Some(self.session_id.clone()),
             agent: self.agent.clone(),
             verbose: self.verbose,
+            verbose_level: 0,
             got_adaptive: false,
             display_max_len: 10000,
             output_json: false,
@@ -252,17 +252,18 @@ impl CodingTool for LoomTool {
             any_stream_event_sender: self.any_stream_event_sender.clone(),
             bash_executor: None,
             extra_tools: None,
+            default_extra_tools_provider: Some(cli::run::default_workflow_tool_provider()),
             acp_session_id: None,
             force_compact: false,
             chat_id: None,
-worktree: false,
+            worktree: false,
             goal_mode: true,
             acp_mcp_servers: None,
             effort: self.effort.clone(),
             tier: self.tier.clone(),
         };
 
-        let (config, _) = build_react_config(&opts);
+        let (config, _, _) = build_react_config(&opts);
         let params = RunParams {
             message: opts.message.clone(),
             verbose: opts.verbose,
@@ -323,10 +324,8 @@ fn collect_tool_summary(
     summaries: &Arc<Mutex<Vec<ToolCallSummary>>>,
 ) {
     if let FullTypedAnyStreamEvent::React(StreamEvent::ToolEnd { name, result, .. }) = ev {
-        let preview = crate::display::tool_summary::truncate(
-            result.lines().next().unwrap_or(result),
-            80,
-        );
+        let preview =
+            crate::display::tool_summary::truncate(result.lines().next().unwrap_or(result), 80);
         summaries.lock().unwrap().push(ToolCallSummary {
             tool_name: name.clone(),
             result_preview: preview.to_string(),

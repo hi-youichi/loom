@@ -1,13 +1,17 @@
 //! ReActState implementations of command traits.
 
-use loom_llm::message::Message;
 use crate::state::ReActState;
+use loom_llm::message::Message;
 
 use crate::commands::command_traits::{CompactState, ResetState, SummarizeState};
 
 impl ResetState for ReActState {
     fn reset_context(&mut self) {
-        let system = self.messages.iter().find(|m| matches!(m, Message::System(_))).cloned();
+        let system = self
+            .messages
+            .iter()
+            .find(|m| matches!(m, Message::System(_)))
+            .cloned();
         self.messages.clear();
         if let Some(sys) = system {
             self.messages.push(sys);

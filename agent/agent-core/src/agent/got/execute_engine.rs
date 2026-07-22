@@ -8,14 +8,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::agent::react::{ActNode, ObserveNode, ThinkNode};
+use crate::state::ReActState;
 use loom_graph_core::GraphError;
+use loom_graph_core::Node;
 use loom_graph_core::{Next, RunContext};
 use loom_llm::message::Message;
 use loom_llm::LlmProvider;
-use crate::state::ReActState;
 use stream_event::{StreamEvent, StreamMode};
 use tool_core::ToolRegistryLocked;
-use loom_graph_core::Node;
 
 use super::adaptive::{
     complexity_score, complexity_score_via_llm, expand_node_via_llm, maybe_expand, ExpandContext,
@@ -91,7 +91,7 @@ pub(crate) fn build_sub_task_user_message(
 /// Emits GotNodeStart / GotNodeComplete / GotNodeFailed when Custom mode is enabled.
 /// When `adaptive` is true (AGoT), may expand complex nodes into subgraphs after completion.
 /// When `agot_llm_complexity` is true, complexity is decided by LLM instead of heuristic.
-    pub struct ExecuteGraphNode {
+pub struct ExecuteGraphNode {
     think: ThinkNode,
     act: ActNode,
     observe: ObserveNode,
@@ -130,7 +130,7 @@ impl ExecuteGraphNode {
     /// `user_message` is the full user content for the sub-task (task goal, predecessor
     /// results, and this node's description). Built by [`build_sub_task_user_message`].
     async fn run_sub_task(&self, user_message: &str) -> Result<String, GraphError> {
-let mut state = ReActState {
+        let mut state = ReActState {
             model_config: Default::default(),
             messages: vec![
                 Message::system(SUB_TASK_SYSTEM),
@@ -264,10 +264,12 @@ impl Node<GotState> for ExecuteGraphNode {
                     };
                     let complexity_override = if let Some(ref n) = node {
                         if self.agot_llm_complexity {
-                            let llm = Arc::from(self.provider.create_client(self.provider.default_model()).unwrap());
-                            complexity_score_via_llm(llm, n, &expand_ctx)
-                                .await
-                                .ok()
+                            let llm = Arc::from(
+                                self.provider
+                                    .create_client(self.provider.default_model())
+                                    .unwrap(),
+                            );
+                            complexity_score_via_llm(llm, n, &expand_ctx).await.ok()
                         } else {
                             Some(complexity_score(n, &expand_ctx))
                         }
@@ -275,7 +277,11 @@ impl Node<GotState> for ExecuteGraphNode {
                         None
                     };
                     let subgraph = if let Some(ref n) = node {
-                        let llm = Arc::from(self.provider.create_client(self.provider.default_model()).unwrap());
+                        let llm = Arc::from(
+                            self.provider
+                                .create_client(self.provider.default_model())
+                                .unwrap(),
+                        );
                         expand_node_via_llm(llm, &expand_ctx, n)
                             .await
                             .ok()
@@ -404,5 +410,3 @@ mod tests {
         assert!(msg.contains("Sub-task: Step A"));
     }
 }
-
-

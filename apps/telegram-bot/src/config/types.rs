@@ -182,14 +182,23 @@ mod tests {
         assert_eq!(s.polling_timeout, 30);
         assert_eq!(s.retry_timeout, 60);
         assert!(!s.only_respond_when_mentioned);
-        assert_eq!(s.telegram_message_max_chars, crate::constants::telegram::MESSAGE_MAX_CHARS);
-        assert_eq!(s.telegram_safe_reply_chars, crate::constants::telegram::SAFE_REPLY_CHARS);
+        assert_eq!(
+            s.telegram_message_max_chars,
+            crate::constants::telegram::MESSAGE_MAX_CHARS
+        );
+        assert_eq!(
+            s.telegram_safe_reply_chars,
+            crate::constants::telegram::SAFE_REPLY_CHARS
+        );
     }
 
     #[test]
     fn streaming_config_default_values() {
         let s = StreamingConfig::default();
-        assert_eq!(s.throttle_ms, crate::constants::streaming::EDIT_THROTTLE_BASE_MS);
+        assert_eq!(
+            s.throttle_ms,
+            crate::constants::streaming::EDIT_THROTTLE_BASE_MS
+        );
         assert_eq!(s.max_retries, 3);
         assert!(!s.ack_placeholder_text.is_empty());
         assert!(!s.busy_text.is_empty());

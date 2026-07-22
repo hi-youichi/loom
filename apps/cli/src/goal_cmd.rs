@@ -1,13 +1,11 @@
 use std::sync::Arc;
 
 use crate::args::GoalArgs;
-use crate::goal_runner::{
-    GoalRunner, LoomTool, ShellTool, resume, write_mcp_config,
-};
+use crate::goal_runner::{resume, write_mcp_config, GoalRunner, LoomTool, ShellTool};
 use agent::goal_runner::GoalOutcome;
-use tool_core::active_operation::RunCancellation;
 use task_core::TaskDb;
 use tokio_util::sync::CancellationToken;
+use tool_core::active_operation::RunCancellation;
 
 pub(crate) async fn handle_goal_command(ga: &GoalArgs) -> Result<(), Box<dyn std::error::Error>> {
     if ga.verbose {
@@ -42,7 +40,7 @@ pub(crate) async fn handle_goal_command(ga: &GoalArgs) -> Result<(), Box<dyn std
         return Ok(());
     }
 
-let description = match &ga.description {
+    let description = match &ga.description {
         Some(d) => d.clone(),
         None => {
             eprintln!("loom goal: provide a goal description or use --resume <ID>");
@@ -67,13 +65,10 @@ let description = match &ga.description {
     let tool: Box<dyn crate::goal_runner::CodingTool> = match ga.tool.as_str() {
         "loom" => {
             let mcp_config_path = write_mcp_config(&db_path, &working_dir)?;
-            let mut loom_tool = LoomTool::new(
-                session_id.clone(),
-                working_dir.clone(),
-                mcp_config_path,
-            )
-            .with_cancellation(run_cancellation.clone());
-if let Some(ref model) = ga.model {
+            let mut loom_tool =
+                LoomTool::new(session_id.clone(), working_dir.clone(), mcp_config_path)
+                    .with_cancellation(run_cancellation.clone());
+            if let Some(ref model) = ga.model {
                 loom_tool = loom_tool.with_model(model.clone());
             }
             if let Some(ref effort) = ga.effort {
@@ -110,8 +105,14 @@ fn print_task_id(task_id: &str) {
 fn print_outcome(outcome: &GoalOutcome) {
     match outcome {
         GoalOutcome::Error(e) => eprintln!("goal failed: {}", e),
-        GoalOutcome::UsageLimited { tokens_used, token_budget } => {
-            eprintln!("goal stopped: token budget exhausted ({}/{})", tokens_used, token_budget);
+        GoalOutcome::UsageLimited {
+            tokens_used,
+            token_budget,
+        } => {
+            eprintln!(
+                "goal stopped: token budget exhausted ({}/{})",
+                tokens_used, token_budget
+            );
         }
         GoalOutcome::Achieved => eprintln!("goal achieved"),
     }

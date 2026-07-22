@@ -19,18 +19,18 @@ use tokio_stream::StreamExt;
 use tracing::{debug, trace};
 
 use crate::error::LlmError;
-use crate::support::http_retry::{retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES};
-use crate::support::error_classifier::LlmErrorClassifierConfig;
-use crate::support::thinking::collect_thinking_tags;
+use crate::message::Message;
 use crate::support::audit::{
     build_audit_entry, LlmAuditLog, LlmAuditRequest, LlmAuditRequestParams, LlmAuditResponse,
     LlmAuditToolCall, LlmAuditUsage,
 };
-use crate::traits::{LlmClient, LlmResponse, LlmUsage, StreamSink};
+use crate::support::error_classifier::LlmErrorClassifierConfig;
+use crate::support::http_retry::{retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES};
+use crate::support::thinking::collect_thinking_tags;
 use crate::support::uuid6::uuid6;
-use crate::message::Message;
 use crate::tool::ToolCall;
 use crate::tool::ToolSpec;
+use crate::traits::{LlmClient, LlmResponse, LlmUsage, StreamSink};
 
 use crate::traits::ToolChoiceMode;
 
@@ -285,9 +285,10 @@ impl LlmClient for ChatOpenAI {
             "OpenAI chat create"
         );
 
-        let tools_json = self.tools.as_ref().map(|t| {
-            serde_json::to_value(t).unwrap_or_default()
-        });
+        let tools_json = self
+            .tools
+            .as_ref()
+            .map(|t| serde_json::to_value(t).unwrap_or_default());
         let audit_request = LlmAuditRequest {
             messages: serde_json::json!(messages),
             tools: tools_json,
@@ -306,9 +307,10 @@ impl LlmClient for ChatOpenAI {
                 Err(e) => {
                     let error_message = e.to_string();
                     let classifier = LlmErrorClassifierConfig::openai();
-                    let retryable = classifier.classify_network_error(&error_message).is_retryable();
-                    if retryable && attempt < TRANSIENT_HTTP_MAX_RETRIES
-                    {
+                    let retryable = classifier
+                        .classify_network_error(&error_message)
+                        .is_retryable();
+                    if retryable && attempt < TRANSIENT_HTTP_MAX_RETRIES {
                         let delay = retry_backoff_for_attempt(attempt);
                         tracing::warn!(
                             url = %url,
@@ -349,10 +351,11 @@ impl LlmClient for ChatOpenAI {
             }
         };
 
-        let choice =
-            response.choices.into_iter().next().ok_or_else(|| {
-                LlmError::InvokeFailed("OpenAI returned no choices".to_string())
-            })?;
+        let choice = response
+            .choices
+            .into_iter()
+            .next()
+            .ok_or_else(|| LlmError::InvokeFailed("OpenAI returned no choices".to_string()))?;
 
         let msg = choice.message;
         let content = msg.content.unwrap_or_default();
@@ -379,9 +382,10 @@ impl LlmClient for ChatOpenAI {
         // Record audit entry
         if self.audit_log.is_some() {
             let duration_ms = audit_start.elapsed().as_millis() as u64;
-            let tools_json = self.tools.as_ref().map(|t| {
-                serde_json::to_value(t).unwrap_or_default()
-            });
+            let tools_json = self
+                .tools
+                .as_ref()
+                .map(|t| serde_json::to_value(t).unwrap_or_default());
             let audit_request = LlmAuditRequest {
                 messages: serde_json::json!(messages),
                 tools: tools_json,
@@ -408,10 +412,19 @@ impl LlmClient for ChatOpenAI {
                     total_tokens: u.total_tokens,
                 }),
             };
-            self.record_audit(&trace_id, "chat", &url, duration_ms, 200, audit_request, Some(audit_response), None);
+            self.record_audit(
+                &trace_id,
+                "chat",
+                &url,
+                duration_ms,
+                200,
+                audit_request,
+                Some(audit_response),
+                None,
+            );
         }
 
-Ok(LlmResponse {
+        Ok(LlmResponse {
             content,
             reasoning_content,
             tool_calls,
@@ -420,7 +433,7 @@ Ok(LlmResponse {
         })
     }
 
-async fn invoke_stream(
+    async fn invoke_stream(
         &self,
         messages: &[Message],
         sink: Option<&dyn StreamSink>,
@@ -449,9 +462,10 @@ async fn invoke_stream(
             "OpenAI chat create_stream"
         );
 
-        let tools_json = self.tools.as_ref().map(|t| {
-            serde_json::to_value(t).unwrap_or_default()
-        });
+        let tools_json = self
+            .tools
+            .as_ref()
+            .map(|t| serde_json::to_value(t).unwrap_or_default());
         let audit_request = LlmAuditRequest {
             messages: serde_json::json!(messages),
             tools: tools_json,
@@ -470,9 +484,10 @@ async fn invoke_stream(
                 Err(e) => {
                     let error_message = e.to_string();
                     let classifier = LlmErrorClassifierConfig::openai();
-                    let retryable = classifier.classify_network_error(&error_message).is_retryable();
-                    if retryable && attempt < TRANSIENT_HTTP_MAX_RETRIES
-                    {
+                    let retryable = classifier
+                        .classify_network_error(&error_message)
+                        .is_retryable();
+                    if retryable && attempt < TRANSIENT_HTTP_MAX_RETRIES {
                         let delay = retry_backoff_for_attempt(attempt);
                         tracing::warn!(
                             url = %url,
@@ -516,8 +531,12 @@ async fn invoke_stream(
         let mut acc = stream::StreamAccumulator::new(self.parse_thinking_tags);
         let mut first_chunk_at: Option<std::time::Instant> = None;
         while let Some(result) = stream.next().await {
-            let response = result
-                .map_err(|e| LlmError::InvokeFailed(format!("OpenAI stream error: {} (trace_id: {})", e, trace_id)))?;
+            let response = result.map_err(|e| {
+                LlmError::InvokeFailed(format!(
+                    "OpenAI stream error: {} (trace_id: {})",
+                    e, trace_id
+                ))
+            })?;
             if let Some(t) = acc.process_chunk(response, sink, node_id) {
                 if first_chunk_at.is_none() {
                     first_chunk_at = Some(t);
@@ -549,9 +568,10 @@ async fn invoke_stream(
         // Record audit entry
         if self.audit_log.is_some() {
             let duration_ms = audit_start.elapsed().as_millis() as u64;
-            let tools_json = self.tools.as_ref().map(|t| {
-                serde_json::to_value(t).unwrap_or_default()
-            });
+            let tools_json = self
+                .tools
+                .as_ref()
+                .map(|t| serde_json::to_value(t).unwrap_or_default());
             let audit_request = LlmAuditRequest {
                 messages: serde_json::json!(messages),
                 tools: tools_json,

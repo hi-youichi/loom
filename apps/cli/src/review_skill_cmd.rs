@@ -1,8 +1,8 @@
 use crate::args::ReviewSkillArgs;
+use agent::ReactBuildConfig;
 use config::{load_full_config, ProviderDef};
 use loom_curator::review::uuid_v4;
 use loom_curator::{run_review, ReviewConfig, ReviewOutcome};
-use agent::ReactBuildConfig;
 use std::io::{self, Read};
 use std::path::PathBuf;
 use tracing::info;
@@ -113,7 +113,10 @@ fn print_review_outcome(outcome: &ReviewOutcome) {
             } else {
                 format!(" — {}", action.summary)
             };
-            eprintln!("    [{}] {} ({}){}", status, action.target, action.kind, detail);
+            eprintln!(
+                "    [{}] {} ({}){}",
+                status, action.target, action.kind, detail
+            );
         }
     }
 

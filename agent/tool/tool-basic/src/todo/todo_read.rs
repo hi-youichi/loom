@@ -12,8 +12,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 use super::todo_file_path;
 use super::TodoInfo;

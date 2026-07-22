@@ -11,12 +11,6 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
 
-use tokio_util::sync::CancellationToken;
-use loom_graph_core::GraphError;
-use checkpoint::{
-    Checkpoint, CheckpointError, CheckpointListItem, CheckpointSource, Checkpointer,
-    RunnableConfig, Store,
-};
 use crate::algo::{
     normalize_pending_sends, normalize_pending_writes, restore_channels_from_checkpoint,
     task_cache_key,
@@ -31,7 +25,13 @@ use crate::runner::PregelRunner;
 use crate::state::{BulkStateUpdateRequest, PregelStateSnapshot, StateUpdateRequest};
 use crate::subgraph::{PregelSubgraphEntry, SubgraphInvocation, SubgraphResult};
 use crate::types::{ChannelValue, ManagedValues, ReservedWrite, ResumeMap};
+use checkpoint::{
+    Checkpoint, CheckpointError, CheckpointListItem, CheckpointSource, Checkpointer,
+    RunnableConfig, Store,
+};
+use loom_graph_core::GraphError;
 use stream_event::{StreamEvent, StreamMode};
+use tokio_util::sync::CancellationToken;
 
 /// Stream handle for a Pregel run.
 pub struct PregelStream {
@@ -336,7 +336,7 @@ impl PregelRuntime {
         };
         let mut inflight_checkpoint = None;
 
-let result = async {
+        let result = async {
             loop {
                 let Some(tasks) = loop_state.tick().await? else {
                     break;
@@ -1059,11 +1059,8 @@ fn next_checkpoint(
     current: &Checkpoint<ChannelValue>,
     source: CheckpointSource,
 ) -> Checkpoint<ChannelValue> {
-    let mut checkpoint = Checkpoint::from_state(
-        current.channel_values.clone(),
-        source,
-        current.kernel.step,
-    );
+    let mut checkpoint =
+        Checkpoint::from_state(current.channel_values.clone(), source, current.kernel.step);
     checkpoint.channel_versions = current.channel_versions.clone();
     checkpoint.versions_seen = current.versions_seen.clone();
     checkpoint.updated_channels = current.updated_channels.clone();

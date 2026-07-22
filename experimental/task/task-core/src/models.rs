@@ -9,7 +9,10 @@ pub struct Task {
     pub assignee: String,
     pub start_time: String,
     pub created_at: String,
-    #[serde(serialize_with = "serialize_status", deserialize_with = "deserialize_status")]
+    #[serde(
+        serialize_with = "serialize_status",
+        deserialize_with = "deserialize_status"
+    )]
     pub status: TaskStatus,
     #[serde(default)]
     pub metadata: String,
@@ -73,7 +76,10 @@ impl sqlx::Type<sqlx::Sqlite> for TaskStatus {
 }
 
 impl sqlx::Encode<'_, sqlx::Sqlite> for TaskStatus {
-    fn encode_by_ref(&self, buf: &mut Vec<SqliteArgumentValue<'_>>) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
+    fn encode_by_ref(
+        &self,
+        buf: &mut Vec<SqliteArgumentValue<'_>>,
+    ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
         <&str as sqlx::Encode<'_, sqlx::Sqlite>>::encode_by_ref(&self.as_str(), buf)
     }
 }
@@ -81,8 +87,7 @@ impl sqlx::Encode<'_, sqlx::Sqlite> for TaskStatus {
 impl sqlx::Decode<'_, sqlx::Sqlite> for TaskStatus {
     fn decode(value: SqliteValueRef<'_>) -> Result<Self, sqlx::error::BoxDynError> {
         let s = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
-        TaskStatus::parse_status(&s)
-            .ok_or_else(|| format!("invalid status: {}", s).into())
+        TaskStatus::parse_status(&s).ok_or_else(|| format!("invalid status: {}", s).into())
     }
 }
 
@@ -114,10 +119,22 @@ mod tests {
 
     #[test]
     fn parse_status_valid() {
-        assert_eq!(TaskStatus::parse_status("pending"), Some(TaskStatus::Pending));
-        assert_eq!(TaskStatus::parse_status("in_progress"), Some(TaskStatus::InProgress));
-        assert_eq!(TaskStatus::parse_status("completed"), Some(TaskStatus::Completed));
-        assert_eq!(TaskStatus::parse_status("cancelled"), Some(TaskStatus::Cancelled));
+        assert_eq!(
+            TaskStatus::parse_status("pending"),
+            Some(TaskStatus::Pending)
+        );
+        assert_eq!(
+            TaskStatus::parse_status("in_progress"),
+            Some(TaskStatus::InProgress)
+        );
+        assert_eq!(
+            TaskStatus::parse_status("completed"),
+            Some(TaskStatus::Completed)
+        );
+        assert_eq!(
+            TaskStatus::parse_status("cancelled"),
+            Some(TaskStatus::Cancelled)
+        );
     }
 
     #[test]

@@ -454,7 +454,7 @@ mod tests {
 
         assert!(change.is_some());
         let event = change.unwrap();
-        
+
         match event.range {
             Some(range) => {
                 assert!(range.start.line <= range.end.line);
@@ -472,7 +472,12 @@ mod tests {
         let uri = Url::parse("file:///test.rs").unwrap();
 
         manager.open_document(uri.clone(), "rust".to_string(), 1, "first".to_string());
-        manager.open_document(uri.clone(), "typescript".to_string(), 2, "second".to_string());
+        manager.open_document(
+            uri.clone(),
+            "typescript".to_string(),
+            2,
+            "second".to_string(),
+        );
 
         let doc = manager.get_document(&uri).unwrap();
         assert_eq!(doc.version, 2);

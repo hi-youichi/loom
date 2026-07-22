@@ -214,7 +214,7 @@ mod tests {
             .into_iter()
             .collect();
         let barrier: NamedBarrierValue<String> = NamedBarrierValue::new(names);
-        
+
         assert_eq!(barrier.expected_count(), 2);
         assert_eq!(barrier.seen_count(), 0);
         assert!(!barrier.is_ready());
@@ -227,13 +227,13 @@ mod tests {
             .into_iter()
             .collect();
         let mut barrier: NamedBarrierValue<String> = NamedBarrierValue::new(names);
-        
+
         // Mark first step
         barrier.mark_seen("step1".to_string()).unwrap();
         assert_eq!(barrier.seen_count(), 1);
         assert!(!barrier.is_ready());
         assert!(barrier.read().is_none());
-        
+
         // Mark second step
         barrier.mark_seen("step2".to_string()).unwrap();
         assert_eq!(barrier.seen_count(), 2);
@@ -245,10 +245,10 @@ mod tests {
     fn test_named_barrier_duplicate_mark() {
         let names: HashSet<String> = ["step1".to_string()].into_iter().collect();
         let mut barrier: NamedBarrierValue<String> = NamedBarrierValue::new(names);
-        
+
         barrier.mark_seen("step1".to_string()).unwrap();
         barrier.mark_seen("step1".to_string()).unwrap(); // Should not error
-        
+
         assert_eq!(barrier.seen_count(), 1); // Should still count as 1
     }
 
@@ -256,7 +256,7 @@ mod tests {
     fn test_named_barrier_unexpected_name() {
         let names: HashSet<String> = ["step1".to_string()].into_iter().collect();
         let mut barrier: NamedBarrierValue<String> = NamedBarrierValue::new(names);
-        
+
         let result = barrier.mark_seen("step2".to_string());
         assert!(result.is_err());
     }
@@ -267,11 +267,11 @@ mod tests {
             .into_iter()
             .collect();
         let mut barrier: NamedBarrierValue<String> = NamedBarrierValue::new(names);
-        
+
         barrier.mark_seen("step1".to_string()).unwrap();
         barrier.mark_seen("step2".to_string()).unwrap();
         assert!(barrier.is_ready());
-        
+
         barrier.reset();
         assert_eq!(barrier.seen_count(), 0);
         assert!(!barrier.is_ready());
@@ -283,8 +283,10 @@ mod tests {
             .into_iter()
             .collect();
         let mut barrier: NamedBarrierValue<String> = NamedBarrierValue::new(names);
-        
-        barrier.write(vec!["step1".to_string(), "step2".to_string()]).unwrap();
+
+        barrier
+            .write(vec!["step1".to_string(), "step2".to_string()])
+            .unwrap();
         assert!(barrier.is_ready());
     }
 
@@ -294,8 +296,10 @@ mod tests {
             .into_iter()
             .collect();
         let mut barrier: NamedBarrierValue<String> = NamedBarrierValue::new(names);
-        
-        barrier.update(vec![vec!["step1".to_string()], vec!["step2".to_string()]]).unwrap();
+
+        barrier
+            .update(vec![vec!["step1".to_string()], vec!["step2".to_string()]])
+            .unwrap();
         assert!(barrier.is_ready());
     }
 
@@ -312,11 +316,11 @@ mod tests {
             .into_iter()
             .collect();
         let mut barrier: NamedBarrierValue<String> = NamedBarrierValue::new(names);
-        
+
         // Mark in different order
         barrier.mark_seen("step1".to_string()).unwrap();
         barrier.mark_seen("step2".to_string()).unwrap();
-        
+
         let value = barrier.read().unwrap();
         // Value should preserve the order they were marked
         assert_eq!(value[0], "step1");

@@ -234,7 +234,10 @@ mod tests {
     #[test]
     fn classify_error_fatal() {
         // Io errors are classified as Fatal
-        let e = teloxide::RequestError::Io(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
+        let e = teloxide::RequestError::Io(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "timeout",
+        ));
         assert_eq!(classify_error(&e), RetryKind::Fatal);
     }
 
@@ -249,31 +252,41 @@ mod tests {
     fn classify_error_network_transient() {
         // Network variant requires reqwest::Error which we can't easily construct,
         // so test via the existing Io variant which is Fatal
-        let e = teloxide::RequestError::Io(std::io::Error::new(std::io::ErrorKind::ConnectionReset, "reset"));
+        let e = teloxide::RequestError::Io(std::io::Error::new(
+            std::io::ErrorKind::ConnectionReset,
+            "reset",
+        ));
         assert_eq!(classify_error(&e), RetryKind::Fatal);
     }
 
     #[test]
     fn classify_error_invalid_json_fatal() {
-        let e = teloxide::RequestError::InvalidJson { source: serde_json::from_str::<serde_json::Value>("not json").unwrap_err(), raw: Box::from("not json") };
+        let e = teloxide::RequestError::InvalidJson {
+            source: serde_json::from_str::<serde_json::Value>("not json").unwrap_err(),
+            raw: Box::from("not json"),
+        };
         assert_eq!(classify_error(&e), RetryKind::Fatal);
     }
 
     #[test]
     fn fallback_error_with_io_error() {
-        let io_err = teloxide::RequestError::Io(
-            std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout")
-        );
+        let io_err = teloxide::RequestError::Io(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "timeout",
+        ));
         let bot_err = fallback_error(Some(io_err));
         match bot_err {
-            BotError::Network(_) => {},
+            BotError::Network(_) => {}
             other => panic!("expected Network variant, got {:?}", other),
         }
     }
 
     #[test]
     fn retry_after_secs_io_error() {
-        let e = teloxide::RequestError::Io(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
+        let e = teloxide::RequestError::Io(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "timeout",
+        ));
         assert_eq!(retry_after_secs(&e), None);
     }
 
@@ -281,14 +294,22 @@ mod tests {
     fn backoff_duration_capped_at_max() {
         // Very high attempt should still be capped
         let dur = backoff_duration(100);
-        assert!(dur <= MAX_DELAY * 2, "duration {:?} exceeds 2x MAX_DELAY", dur);
+        assert!(
+            dur <= MAX_DELAY * 2,
+            "duration {:?} exceeds 2x MAX_DELAY",
+            dur
+        );
     }
 
     #[test]
     fn backoff_duration_positive() {
         for attempt in 0..20 {
             let dur = backoff_duration(attempt);
-            assert!(dur.as_secs_f64() > 0.0, "attempt {} gave non-positive duration", attempt);
+            assert!(
+                dur.as_secs_f64() > 0.0,
+                "attempt {} gave non-positive duration",
+                attempt
+            );
         }
     }
 }

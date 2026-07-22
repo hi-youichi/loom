@@ -11,14 +11,14 @@
 
 mod embedder;
 mod in_memory_vector_store;
-mod openai_embedder;
-mod sqlite_vec_store;
 #[cfg(feature = "lance")]
 mod lance_store;
+mod openai_embedder;
+mod sqlite_vec_store;
 
 pub use embedder::Embedder;
 pub use in_memory_vector_store::InMemoryVectorStore;
-pub use openai_embedder::OpenAIEmbedder;
-pub use sqlite_vec_store::SqliteVecStore;
 #[cfg(feature = "lance")]
 pub use lance_store::LanceStore;
+pub use openai_embedder::OpenAIEmbedder;
+pub use sqlite_vec_store::SqliteVecStore;

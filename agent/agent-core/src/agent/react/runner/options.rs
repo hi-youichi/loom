@@ -2,11 +2,11 @@
 
 use std::sync::Arc;
 
-use loom_llm::LlmProvider;
-use checkpoint::{Checkpointer, RunnableConfig, Store};
 use crate::state::ReActState;
-use tool_core::ToolRegistryLocked;
+use checkpoint::{Checkpointer, RunnableConfig, Store};
 use checkpoint_sqlite_store::user_message::UserMessageStore;
+use loom_llm::LlmProvider;
+use tool_core::ToolRegistryLocked;
 
 /// Optional configuration for [`super::run_agent`] and [`super::run_react_graph_stream`].
 ///
@@ -41,18 +41,14 @@ pub struct ResolvedRunAgentOptions {
 }
 
 pub(super) fn resolve_run_agent_options(opts: AgentOptions) -> ResolvedRunAgentOptions {
-    let provider = opts
-        .provider
-        .unwrap_or_else(|| {
-            let llm = loom_llm::client::MockLlm::first_tools_then_end();
-            Arc::new(loom_llm::client::FixedLlmProvider {
-                client: Arc::from(Box::new(llm) as Box<dyn loom_llm::LlmClient>),
-                model_id: "mock/default".to_string(),
-            })
-        });
-    let tool_source = opts
-        .tool_source
-        .unwrap_or_else(tool_core::mock_registry);
+    let provider = opts.provider.unwrap_or_else(|| {
+        let llm = loom_llm::client::MockLlm::first_tools_then_end();
+        Arc::new(loom_llm::client::FixedLlmProvider {
+            client: Arc::from(Box::new(llm) as Box<dyn loom_llm::LlmClient>),
+            model_id: "mock/default".to_string(),
+        })
+    });
+    let tool_source = opts.tool_source.unwrap_or_else(tool_core::mock_registry);
     ResolvedRunAgentOptions {
         provider,
         tool_source,
@@ -98,4 +94,3 @@ mod tests {
         assert!(resolved.verbose);
     }
 }
-

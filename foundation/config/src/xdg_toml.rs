@@ -110,7 +110,7 @@ pub struct ProviderDef {
 
 impl ProviderDef {
     /// Returns env key→value pairs derived from this provider's settings.
-    /// Keys: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `MODEL`, `LLM_PROVIDER` (when type is set),
+    /// Keys: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `MODEL`,
     /// `OPENAI_TEMPERATURE` (when `temperature` is set and finite).
     pub fn to_env_map(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
@@ -122,9 +122,6 @@ impl ProviderDef {
         }
         if let Some(ref v) = self.model {
             map.insert("MODEL".to_string(), v.clone());
-        }
-        if let Some(ref v) = self.provider_type {
-            map.insert("LLM_PROVIDER".to_string(), v.clone());
         }
         if let Some(t) = self.temperature {
             if t.is_finite() {
@@ -157,8 +154,9 @@ pub struct LogsModuleConfig {
     pub path: Option<PathBuf>,
 }
 
-fn default_true() -> bool { true }
-
+fn default_true() -> bool {
+    true
+}
 
 #[cfg(feature = "tracing-init")]
 impl LogsModuleConfig {
@@ -207,7 +205,10 @@ pub struct LlmSection {
 
 impl LlmSection {
     pub fn audit_path(&self) -> PathBuf {
-        self.audit.path.clone().unwrap_or_else(crate::home::llm_logs_dir)
+        self.audit
+            .path
+            .clone()
+            .unwrap_or_else(crate::home::llm_logs_dir)
     }
 }
 

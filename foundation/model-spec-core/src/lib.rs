@@ -21,22 +21,20 @@ pub use registry::{CachedModelList, CombinedModelList, ModelEntry, ProviderConfi
 pub use tier::{pick_best_for_tier, ModelTier};
 
 #[cfg(feature = "tier")]
+pub mod model_registry;
+#[cfg(feature = "tier")]
 pub(crate) mod tier_error;
 #[cfg(feature = "tier")]
 pub mod tier_plan;
 #[cfg(feature = "tier")]
 pub mod tier_resolve;
-#[cfg(feature = "tier")]
-pub mod model_registry;
 
 #[cfg(feature = "tier")]
-pub use tier_plan::{TierPlan, tier_plans};
+pub use model_registry::ModelRegistry;
+#[cfg(feature = "tier")]
+pub use tier_plan::{tier_plans, TierPlan};
 #[cfg(feature = "tier")]
 pub use tier_resolve::{
-    resolve_tier_intelligent,
-    resolve_from_spec, resolve_from_plan,
-    resolve_tier,
-    TierResolver, DefaultTierResolver, ResolvedTierModel,
+    resolve_from_plan, resolve_from_spec, resolve_tier, resolve_tier_intelligent,
+    DefaultTierResolver, ResolvedTierModel, TierResolver,
 };
-#[cfg(feature = "tier")]
-pub use model_registry::ModelRegistry;

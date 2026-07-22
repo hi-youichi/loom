@@ -192,16 +192,19 @@ mod tests {
         let mut topic: Topic<String> = Topic::new(true);
         topic.write_single("msg1".to_string());
         topic.write_single("msg2".to_string());
-        
+
         assert_eq!(topic.len(), 2);
-        assert_eq!(topic.read(), Some(vec!["msg1".to_string(), "msg2".to_string()]));
+        assert_eq!(
+            topic.read(),
+            Some(vec!["msg1".to_string(), "msg2".to_string()])
+        );
     }
 
     #[test]
     fn test_topic_write() {
         let mut topic: Topic<i32> = Topic::new(true);
         topic.write(vec![1, 2, 3]).unwrap();
-        
+
         assert_eq!(topic.len(), 3);
         assert_eq!(topic.read(), Some(vec![1, 2, 3]));
     }
@@ -209,10 +212,10 @@ mod tests {
     #[test]
     fn test_topic_accumulate_true() {
         let mut topic: Topic<i32> = Topic::new(true);
-        
+
         topic.update(vec![vec![1, 2]]).unwrap();
         assert_eq!(topic.read(), Some(vec![1, 2]));
-        
+
         topic.update(vec![vec![3, 4]]).unwrap();
         assert_eq!(topic.read(), Some(vec![1, 2, 3, 4])); // Accumulates
     }
@@ -220,10 +223,10 @@ mod tests {
     #[test]
     fn test_topic_accumulate_false() {
         let mut topic: Topic<i32> = Topic::new(false);
-        
+
         topic.update(vec![vec![1, 2]]).unwrap();
         assert_eq!(topic.read(), Some(vec![1, 2]));
-        
+
         topic.update(vec![vec![3, 4]]).unwrap();
         assert_eq!(topic.read(), Some(vec![3, 4])); // Replaces
     }
@@ -233,9 +236,9 @@ mod tests {
         let mut topic: Topic<String> = Topic::new(true);
         topic.write_single("msg1".to_string());
         topic.write_single("msg2".to_string());
-        
+
         assert_eq!(topic.len(), 2);
-        
+
         topic.clear();
         assert!(topic.is_empty());
     }
@@ -252,7 +255,7 @@ mod tests {
         let mut topic: Topic<String> = Topic::new(true);
         topic.write_single("msg1".to_string());
         topic.write_single("msg2".to_string());
-        
+
         let values = topic.get_values();
         assert_eq!(values.len(), 2);
         assert_eq!(values[0], "msg1");

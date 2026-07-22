@@ -80,7 +80,10 @@ impl ThreadGetTool {
             .map(|(tid, summary)| json!({ "thread_id": tid, "summary": summary }))
             .collect();
         thread_list.sort_by(|a, b| {
-            a["thread_id"].as_str().unwrap_or("").cmp(b["thread_id"].as_str().unwrap_or(""))
+            a["thread_id"]
+                .as_str()
+                .unwrap_or("")
+                .cmp(b["thread_id"].as_str().unwrap_or(""))
         });
 
         Ok(ToolCallContent::text(

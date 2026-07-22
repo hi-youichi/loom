@@ -90,10 +90,7 @@ mod tests {
 
     #[test]
     fn test_checkpoint_namespace_child_chain() {
-        let ns = CheckpointNamespace::root()
-            .child("a")
-            .child("b")
-            .child("c");
+        let ns = CheckpointNamespace::root().child("a").child("b").child("c");
         assert_eq!(ns.0, "root/a/b/c");
     }
 
@@ -169,7 +166,10 @@ mod tests {
         };
 
         assert_eq!(invocation.parent_task_id, "parent-task-1");
-        assert_eq!(invocation.parent_checkpoint_id, Some("checkpoint-1".to_string()));
+        assert_eq!(
+            invocation.parent_checkpoint_id,
+            Some("checkpoint-1".to_string())
+        );
         assert_eq!(invocation.child_namespace.0, "root/child");
         assert_eq!(invocation.entry_input, serde_json::json!("input-data"));
     }

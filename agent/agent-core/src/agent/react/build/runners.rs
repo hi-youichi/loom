@@ -2,18 +2,15 @@ use std::sync::Arc;
 
 use crate::compress::CompactionConfig;
 use loom_graph_core::GraphError;
-use loom_llm::{LlmClient, LlmProvider};
 use loom_llm::client::FixedLlmProvider;
+use loom_llm::{LlmClient, LlmProvider};
 use model_spec_core::resolver::{ConfigModelEntry, ConfigProviderEntry};
 use tool_core::active_operation::RunCancellation;
 
 use super::super::config::ReactBuildConfig;
 use super::super::runner::ReactRunner;
 use super::super::REACT_SYSTEM_PROMPT;
-use super::checkpointer::{
-    build_checkpointer, build_runnable_config,
-    resolve_memory_db_path,
-};
+use super::checkpointer::{build_checkpointer, build_runnable_config, resolve_memory_db_path};
 use super::context::ReactRunContext;
 use super::error::BuildRunnerError;
 use super::llm::{build_default_provider, resolve_title_provider};
@@ -130,7 +127,9 @@ pub async fn build_react_runner(
     let provider_override = provider.is_some();
     let provider = match provider {
         Some(p) => p,
-        None => build_default_provider(config, ctx.tool_source.as_ref(), ctx.audit_log.clone()).await?,
+        None => {
+            build_default_provider(config, ctx.tool_source.as_ref(), ctx.audit_log.clone()).await?
+        }
     };
     let system_prompt = config
         .system_prompt
@@ -161,7 +160,8 @@ pub async fn build_react_runner(
         title_provider,
         title_headers,
         any_stream_event_sender,
-    )?;
+    )?
+    .with_resume_mode(config.resume_mode);
     Ok(runner)
 }
 
@@ -173,17 +173,24 @@ pub async fn build_react_runner_with_openai(
 ) -> Result<ReactRunner, BuildRunnerError> {
     use loom_llm::ChatOpenAI;
     let client = ChatOpenAI::with_config(openai_config, model);
-    build_react_runner(config, Some(Arc::new(FixedLlmProvider {
-        client: Arc::from(Box::new(client) as Box<dyn LlmClient>),
-        model_id: "openai".to_string(),
-    })), verbose, None, None).await
+    build_react_runner(
+        config,
+        Some(Arc::new(FixedLlmProvider {
+            client: Arc::from(Box::new(client) as Box<dyn LlmClient>),
+            model_id: "openai".to_string(),
+        })),
+        verbose,
+        None,
+        None,
+    )
+    .await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_llm::client::MockLlm;
     use crate::ReactBuildConfig;
+    use loom_llm::client::MockLlm;
 
     fn base_config() -> ReactBuildConfig {
         let mut cfg = ReactBuildConfig::from_env();
@@ -241,7 +248,10 @@ mod tests {
         )
         .await
         .unwrap();
-        let outcome = runner.stream_with_callback("hello", Some(|_| {} )).await.unwrap();
+        let outcome = runner
+            .stream_with_callback("hello", Some(|_| {}))
+            .await
+            .unwrap();
         match outcome {
             crate::runner_common::StreamRunOutcome::Finished(s) => {
                 assert!(s.last_assistant_reply().is_some());

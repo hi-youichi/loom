@@ -208,9 +208,7 @@ pub async fn run_curator_llm_if_needed(
 
     // Load usage reports for the prompt
     let usage_store = skill::SkillUsageStore::new(skills_path);
-    let usage_reports = usage_store
-        .agent_created_report()
-        .unwrap_or_default();
+    let usage_reports = usage_store.agent_created_report().unwrap_or_default();
 
     let outcome = crate::curator_llm::run_curator_llm_pass(
         base_config,
@@ -230,10 +228,7 @@ pub async fn run_curator_llm_if_needed(
     // `last_report_path` in state.json can point at the on-disk report.
     // Hermes parity (`agent/curator.py:1652-1662`): the report is what
     // `bump_run` references, so the order matters.
-    let run_id = format!(
-        "curator-{}",
-        chrono::Utc::now().format("%Y-%m-%dT%H-%M-%S")
-    );
+    let run_id = format!("curator-{}", chrono::Utc::now().format("%Y-%m-%dT%H-%M-%S"));
     let run_report = crate::curator::CuratorRunReport::from_llm_pass_outcome(&outcome, &run_id);
     let reports_dir = skills_path.join("curator").join("reports");
     let saved_report: Option<std::path::PathBuf> = match run_report.save_to_dir(&reports_dir) {
@@ -256,11 +251,7 @@ pub async fn run_curator_llm_if_needed(
     // The old `mark_run_completed()` only bumped `last_run_at` + `run_count`,
     // leaving the richer telemetry fields empty.
     let elapsed = std::time::Duration::from_secs_f64(outcome.elapsed_seconds);
-    if let Err(e) = curator.bump_run(
-        elapsed,
-        Some(&outcome.summary),
-        saved_report.as_deref(),
-    ) {
+    if let Err(e) = curator.bump_run(elapsed, Some(&outcome.summary), saved_report.as_deref()) {
         warn!("Curator: failed to bump run: {:?}", e);
     }
 
@@ -362,7 +353,7 @@ mod tests {
         assert_eq!(registry.wait_all().await, 0);
     }
 
-#[tokio::test]
+    #[tokio::test]
     async fn push_then_wait_all_returns_count_and_drains() {
         let registry = PendingReviewRegistry::new();
         let handle = tokio::spawn(async {});
@@ -408,7 +399,9 @@ mod tests {
             assert_eq!(registry.active_sessions(), 1);
         }
         assert_eq!(registry.active_sessions(), 0);
-        let _second = registry.try_acquire("session-a".into()).expect("after drop");
+        let _second = registry
+            .try_acquire("session-a".into())
+            .expect("after drop");
         assert_eq!(registry.active_sessions(), 1);
     }
 
@@ -444,18 +437,28 @@ mod tests {
     #[tokio::test]
     async fn run_curator_llm_if_needed_returns_none_when_not_forced_and_should_run_false() {
         let dir = tempfile::tempdir().unwrap();
-        let result =
-            run_curator_llm_if_needed(dir.path(), &CuratorConfig::default(), ReactBuildConfig::default(), false, false)
-                .await;
+        let result = run_curator_llm_if_needed(
+            dir.path(),
+            &CuratorConfig::default(),
+            ReactBuildConfig::default(),
+            false,
+            false,
+        )
+        .await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
     }
 
     #[tokio::test]
-async fn maybe_run_curator_returns_none_when_should_run_false() {
+    async fn maybe_run_curator_returns_none_when_should_run_false() {
         let dir = tempfile::tempdir().unwrap();
-        let result =
-            maybe_run_curator(dir.path(), &CuratorConfig::default(), ReactBuildConfig::default(), None).await;
+        let result = maybe_run_curator(
+            dir.path(),
+            &CuratorConfig::default(),
+            ReactBuildConfig::default(),
+            None,
+        )
+        .await;
         assert!(result.is_none());
     }
 

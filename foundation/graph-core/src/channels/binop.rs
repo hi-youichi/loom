@@ -102,7 +102,7 @@ mod tests {
         channel.write(1).unwrap();
         channel.write(2).unwrap();
         channel.write(3).unwrap();
-        
+
         assert_eq!(channel.read(), Some(6));
     }
 
@@ -112,7 +112,7 @@ mod tests {
         channel.write(2).unwrap();
         channel.write(3).unwrap();
         channel.write(4).unwrap();
-        
+
         assert_eq!(channel.read(), Some(24));
     }
 
@@ -120,17 +120,18 @@ mod tests {
     fn test_binary_operator_with_initial_value() {
         let mut channel = BinaryOperatorAggregate::with_value(10, |a: i32, b: i32| a + b);
         channel.write(5).unwrap();
-        
+
         assert_eq!(channel.read(), Some(15));
     }
 
     #[test]
     fn test_binary_operator_string_concat() {
-        let mut channel = BinaryOperatorAggregate::new(|a: String, b: String| format!("{} {}", a, b));
+        let mut channel =
+            BinaryOperatorAggregate::new(|a: String, b: String| format!("{} {}", a, b));
         channel.write("Hello".to_string()).unwrap();
         channel.write("World".to_string()).unwrap();
         channel.write("!".to_string()).unwrap();
-        
+
         assert_eq!(channel.read(), Some("Hello World !".to_string()));
     }
 
@@ -138,7 +139,7 @@ mod tests {
     fn test_binary_operator_update() {
         let mut channel = BinaryOperatorAggregate::new(|a: i32, b: i32| a + b);
         let result = channel.update(vec![1, 2, 3, 4]);
-        
+
         assert!(result.is_ok());
         assert_eq!(channel.read(), Some(10));
     }
@@ -156,7 +157,7 @@ mod tests {
         channel.write(3).unwrap();
         channel.write(8).unwrap();
         channel.write(1).unwrap();
-        
+
         assert_eq!(channel.read(), Some(8));
     }
 }

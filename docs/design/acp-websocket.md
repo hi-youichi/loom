@@ -40,3 +40,16 @@ $env:LOOM_ACP_ALLOWED_ORIGINS = "https://ui.example.com,https://staging.example.
 ```
 
 原生 CLI 不发送 `Origin`，因此不会被该浏览器防护规则阻断；仍应启用 Bearer token 并经由 WSS 反向代理暴露公网服务。
+
+## 快速拉起服务端（`loom acp --websocket`）
+
+如果 IDE / 远程 CLI 报告 `ws://127.0.0.1:3030/acp` 拒连，可以直接在仓库根目录运行：
+
+```powershell
+loom acp --websocket
+loom acp --websocket --server http://127.0.0.1:18081
+```
+
+命令会探测目标端口是否已有健康的 `loom-server`，缺失时后台拉起一个并等待就绪，随后退出 0，
+不接管终端。子进程作为共享 detached daemon 运行；如需关闭：`pkill -f loom-server`。
+详细设计见 [acp-websocket-cli-ensure.md](acp-websocket-cli-ensure.md)。

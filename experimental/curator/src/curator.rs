@@ -6,9 +6,9 @@ use super::prompts::CURATOR_REVIEW_PROMPT;
 use super::skill_registry::{
     Lifecycle, SkillContent, SkillError, SkillMeta, SkillRegistry, SkillRegistryCuratorExt, Source,
 };
-use skill::{SkillUsageReport, SkillUsageStore};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use skill::{SkillUsageReport, SkillUsageStore};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -41,11 +41,18 @@ pub struct CuratorConfig {
     pub min_skills_to_run: usize,
 }
 
-
-fn default_enabled() -> bool { true }
-fn default_interval_hours() -> u64 { 168 }
-fn default_min_idle_minutes() -> u64 { 120 }
-fn default_min_skills_to_run() -> usize { 5 }
+fn default_enabled() -> bool {
+    true
+}
+fn default_interval_hours() -> u64 {
+    168
+}
+fn default_min_idle_minutes() -> u64 {
+    120
+}
+fn default_min_skills_to_run() -> usize {
+    5
+}
 
 fn default_stale_days() -> u32 {
     60
@@ -164,7 +171,7 @@ pub trait CuratorStateStore: Send + Sync {
         self.load().map(|s| s.paused).unwrap_or(false)
     }
 
-fn bump_run(
+    fn bump_run(
         &self,
         duration_secs: f64,
         summary: Option<&str>,
@@ -293,7 +300,7 @@ impl Curator {
         self
     }
 
-pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
+    pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
         self.skill_usage = skill_usage;
         self
     }
@@ -372,8 +379,7 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
             if idle_secs < min_idle {
                 info!(
                     "Curator: not idle long enough ({:.0}s < {}s)",
-                    idle_secs,
-                    min_idle
+                    idle_secs, min_idle
                 );
                 return false;
             }
@@ -421,7 +427,6 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
     pub fn config_archive_days(&self) -> u32 {
         self.config.archive_days
     }
-
 
     pub fn run(&self, dry_run: bool) -> Result<CuratorReport, SkillError> {
         // Phase 0: Pre-run snapshot — create a backup before any mutations.
@@ -483,7 +488,10 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
                         report.stale.push(meta.name.clone());
                         if !dry_run {
                             self.update_lifecycle(&meta.name, Lifecycle::Stale)?;
-                            info!("Marked '{}' as stale ({} days unused)", meta.name, days_since);
+                            info!(
+                                "Marked '{}' as stale ({} days unused)",
+                                meta.name, days_since
+                            );
                         }
                     } else {
                         report.active += 1;
@@ -491,9 +499,12 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
                 }
                 Lifecycle::Stale => {
                     if days_since < stale_days {
-                        info!("Reactivating stale skill '{}' ({} days since last use)", meta.name, days_since);
+                        info!(
+                            "Reactivating stale skill '{}' ({} days since last use)",
+                            meta.name, days_since
+                        );
                         report.reactivated.push(meta.name.clone());
-                    if !dry_run {
+                        if !dry_run {
                             self.update_lifecycle(&meta.name, Lifecycle::Active)?;
                         }
                     } else if days_since >= self.config.archive_days {
@@ -513,13 +524,8 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
                             // silently swallowing the error.
                             if let Err(e) = self.archive_skill(&meta.name) {
                                 let msg = format!("{:?}", e);
-                                warn!(
-                                    "Curator: archive failed for '{}': {}",
-                                    meta.name, msg
-                                );
-                                report
-                                    .failures
-                                    .push((meta.name.clone(), msg));
+                                warn!("Curator: archive failed for '{}': {}", meta.name, msg);
+                                report.failures.push((meta.name.clone(), msg));
                             }
                             info!("Archived '{}' ({} days unused)", meta.name, days_since);
                         }
@@ -637,7 +643,7 @@ pub fn with_skill_usage(mut self, skill_usage: SkillUsageStore) -> Self {
         if !src.is_dir() {
             return Err(SkillError::NotFound(name.to_string()));
         }
-let archive_root = self.skills.base_dir().join(".archive");
+        let archive_root = self.skills.base_dir().join(".archive");
         std::fs::create_dir_all(&archive_root)?;
         let mut dst = archive_root.join(name);
         if dst.exists() {
@@ -652,7 +658,7 @@ let archive_root = self.skills.base_dir().join(".archive");
             dst = archive_root.join(format!("{}-{}", name, ts));
         }
         // Cross-device rename fallback: `fs::rename` fails on Windows when
-// src/dst are on different volumes. Mirror Hermes `shutil.move`,
+        // src/dst are on different volumes. Mirror Hermes `shutil.move`,
         // which falls back to copy+remove.
         if let Err(e) = std::fs::rename(&src, &dst) {
             if e.raw_os_error() == Some(17) || e.raw_os_error() == Some(18) {
@@ -686,19 +692,14 @@ let archive_root = self.skills.base_dir().join(".archive");
         // in the active tree, OR a non-agent-created skill (bundled / hub).
         // Hermes refuses both before touching disk.
         if self.is_agent_created_skill(name)
-            && self
-                .skills
-                .base_dir()
-                .join(name)
-                .join("SKILL.md")
-                .exists()
+            && self.skills.base_dir().join(name).join("SKILL.md").exists()
         {
             // Already in the active tree — caller is racing with another
             // restore. Treat as no-op success to match Hermes.
             return Ok(self.skills.base_dir().join(name));
         }
 
-let archive_root = self.skills.base_dir().join(".archive");
+        let archive_root = self.skills.base_dir().join(".archive");
         let src = archive_root.join(name);
         let src = if src.is_dir() {
             src
@@ -729,7 +730,7 @@ let archive_root = self.skills.base_dir().join(".archive");
             let ts = Utc::now().format("%Y%m%d%H%M%S").to_string();
             dst = self.skills.base_dir().join(format!("{}-{}", name, ts));
         }
-// Cross-device rename fallback (see archive_skill).
+        // Cross-device rename fallback (see archive_skill).
         if let Err(e) = std::fs::rename(&src, &dst) {
             if e.raw_os_error() == Some(17) || e.raw_os_error() == Some(18) {
                 info!(
@@ -783,7 +784,10 @@ let archive_root = self.skills.base_dir().join(".archive");
         if let Ok(current) = self.skills.load(name) {
             if current.lifecycle != Lifecycle::Active {
                 self.update_lifecycle(name, Lifecycle::Active)?;
-                info!("Reactivated '{}' from {:?} to Active", name, current.lifecycle);
+                info!(
+                    "Reactivated '{}' from {:?} to Active",
+                    name, current.lifecycle
+                );
             }
         }
         Ok(())
@@ -794,7 +798,7 @@ let archive_root = self.skills.base_dir().join(".archive");
     /// Updates `last_run_at`, `run_count`, and `skill_last_used` in the
     /// curator state file. Used by the LLM pass to record its execution
     /// so that `should_run()` correctly defers the next run.
-pub fn mark_run_completed(&self) -> Result<(), SkillError> {
+    pub fn mark_run_completed(&self) -> Result<(), SkillError> {
         let mut state = self.load_state()?;
         let now = Utc::now();
         state.last_run_at = Some(now.to_rfc3339());
@@ -844,7 +848,7 @@ pub fn mark_run_completed(&self) -> Result<(), SkillError> {
         self.save_state(&state)
     }
 
-fn update_lifecycle(&self, name: &str, lifecycle: Lifecycle) -> Result<(), SkillError> {
+    fn update_lifecycle(&self, name: &str, lifecycle: Lifecycle) -> Result<(), SkillError> {
         // Priority #24 (regression fix): gate `set_state(Archived)` for
         // PROTECTED_BUILTIN_SKILLS alongside the existing `archive_skill`
         // gate. Without this, the curator pass that flips Stale -> Archived
@@ -876,10 +880,11 @@ fn update_lifecycle(&self, name: &str, lifecycle: Lifecycle) -> Result<(), Skill
         if let Some(parent) = self.state_path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let data = serde_json::to_string_pretty(state).map_err(|e| SkillError::InvalidFormat(e.to_string()))?;
+        let data = serde_json::to_string_pretty(state)
+            .map_err(|e| SkillError::InvalidFormat(e.to_string()))?;
         let tmp_path = self.state_path.with_extension("tmp");
         fs::write(&tmp_path, &data)?;
-fs::rename(&tmp_path, &self.state_path)?;
+        fs::rename(&tmp_path, &self.state_path)?;
         Ok(())
     }
 }
@@ -892,7 +897,10 @@ fs::rename(&tmp_path, &self.state_path)?;
 /// legacy `as_secs()` form, `-bak`, manual `mv`, …) is rejected so we
 /// cannot accidentally restore a stale copy. If multiple match, pick
 /// the lexicographically largest (matches Hermes' "most recent first").
-fn pick_timestamped_archive(archive_root: &std::path::Path, name: &str) -> Option<std::path::PathBuf> {
+fn pick_timestamped_archive(
+    archive_root: &std::path::Path,
+    name: &str,
+) -> Option<std::path::PathBuf> {
     let prefix = format!("{}-", name);
     let entries = std::fs::read_dir(archive_root).ok()?;
     let mut candidates: Vec<std::path::PathBuf> = entries
@@ -1081,10 +1089,8 @@ pub fn check_package_integrity(
     };
 
     // Regex to find relative links to support directories
-    let link_re = regex::Regex::new(
-        r"(?:references|templates|scripts|assets)/[a-zA-Z0-9_\-./]+",
-    )
-    .unwrap();
+    let link_re =
+        regex::Regex::new(r"(?:references|templates|scripts|assets)/[a-zA-Z0-9_\-./]+").unwrap();
 
     let md_link_re =
         regex::Regex::new(r"\]\((references|templates|scripts|assets)/[^)]+\)").unwrap();
@@ -1094,11 +1100,9 @@ pub fn check_package_integrity(
 
     for cap in link_re.captures_iter(&body) {
         if let Some(m) = cap.get(0) {
-            let path = m
-                .as_str()
-                .trim_end_matches(|c: char| {
-                    !c.is_alphanumeric() && c != '/' && c != '.' && c != '-' && c != '_'
-                });
+            let path = m.as_str().trim_end_matches(|c: char| {
+                !c.is_alphanumeric() && c != '/' && c != '.' && c != '-' && c != '_'
+            });
             referenced.insert(path.to_string());
         }
     }
@@ -1287,13 +1291,14 @@ impl CuratorRunReport {
         let _ = writeln!(md, "## LLM Consolidation Pass");
         let _ = writeln!(md);
         // Compute tool_call_counts by-name
-        let mut tc_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        let mut tc_counts: std::collections::HashMap<&str, usize> =
+            std::collections::HashMap::new();
         for tc in &self.tool_calls {
             *tc_counts.entry(tc.name.as_str()).or_default() += 1;
         }
         let _ = writeln!(md, "- **Tool calls**: {}", self.tool_calls.len());
         if !tc_counts.is_empty() {
-            let mut sorted: Vec<(& &str, &usize)> = tc_counts.iter().collect();
+            let mut sorted: Vec<(&&str, &usize)> = tc_counts.iter().collect();
             sorted.sort_by_key(|(k, _)| *k);
             let by_name: Vec<String> = sorted.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
             let _ = writeln!(md, "  - By name: {}", by_name.join(", "));
@@ -1301,7 +1306,11 @@ impl CuratorRunReport {
         let _ = writeln!(md, "- **Consolidated**: {}", self.consolidated.len());
         let _ = writeln!(md, "- **Pruned**: {}", self.pruned.len());
         let _ = writeln!(md, "- **Added**: {}", self.added.len());
-        let _ = writeln!(md, "- **State transitions**: {}", self.state_transitions.len());
+        let _ = writeln!(
+            md,
+            "- **State transitions**: {}",
+            self.state_transitions.len()
+        );
         let _ = writeln!(md);
 
         // LLM summary
@@ -1317,7 +1326,11 @@ impl CuratorRunReport {
             let _ = writeln!(md, "### Consolidated ({})", self.consolidated.len());
             let _ = writeln!(md);
             for c in &self.consolidated {
-                let _ = writeln!(md, "- `{}` → merged into `{}` — {}", c.source, c.into, c.method);
+                let _ = writeln!(
+                    md,
+                    "- `{}` → merged into `{}` — {}",
+                    c.source, c.into, c.method
+                );
             }
             let _ = writeln!(md);
         }
@@ -1344,7 +1357,11 @@ impl CuratorRunReport {
 
         // State transitions (aligns Hermes §6)
         if !self.state_transitions.is_empty() {
-            let _ = writeln!(md, "### State transitions ({})", self.state_transitions.len());
+            let _ = writeln!(
+                md,
+                "### State transitions ({})",
+                self.state_transitions.len()
+            );
             let _ = writeln!(md);
             for t in &self.state_transitions {
                 let _ = writeln!(md, "- `{}`: {} → {}", t.name, t.from, t.to);
@@ -1489,9 +1506,7 @@ struct RawYamlResponse {
 /// degradation).
 pub fn parse_llm_review_response(raw: &str) -> LlMReviewResult {
     static YAML_BLOCK_RE: once_cell::sync::Lazy<regex::Regex> =
-        once_cell::sync::Lazy::new(|| {
-            regex::Regex::new(r"(?s)```yaml\s*(.*?)\s*```").unwrap()
-        });
+        once_cell::sync::Lazy::new(|| regex::Regex::new(r"(?s)```yaml\s*(.*?)\s*```").unwrap());
 
     let yaml_body = YAML_BLOCK_RE
         .captures(raw)
@@ -1558,14 +1573,16 @@ pub fn parse_llm_review_response(raw: &str) -> LlMReviewResult {
 /// when `true`, prepend a `## Mode: DRY RUN` banner so the LLM produces an
 /// analysis that *describes* changes without committing them. Tools still
 /// run; downstream callers gate writes on the same flag.
-pub fn build_llm_prompt(skills: &[SkillContent], usage_reports: &[SkillUsageReport], dry_run: bool) -> String {
+pub fn build_llm_prompt(
+    skills: &[SkillContent],
+    usage_reports: &[SkillUsageReport],
+    dry_run: bool,
+) -> String {
     use std::collections::HashMap;
     use std::fmt::Write;
 
-    let usage_map: HashMap<&str, &SkillUsageReport> = usage_reports
-        .iter()
-        .map(|u| (u.name.as_str(), u))
-        .collect();
+    let usage_map: HashMap<&str, &SkillUsageReport> =
+        usage_reports.iter().map(|u| (u.name.as_str(), u)).collect();
 
     let mut prompt = CURATOR_REVIEW_PROMPT.trim().to_string();
     if dry_run {
@@ -1621,9 +1638,10 @@ pub fn reconcile_classification(
     tool_calls: &[CuratorToolCall],
     llm_result: &LlMReviewResult,
 ) -> ClassificationResult {
-    let extract_args = |call: &CuratorToolCall| -> std::collections::HashMap<String, serde_json::Value> {
-        serde_json::from_str(call.arguments.as_str()).unwrap_or_default()
-    };
+    let extract_args =
+        |call: &CuratorToolCall| -> std::collections::HashMap<String, serde_json::Value> {
+            serde_json::from_str(call.arguments.as_str()).unwrap_or_default()
+        };
 
     let declarations = extract_absorbed_into_declarations(tool_calls, &extract_args);
 
@@ -1685,7 +1703,10 @@ pub fn reconcile_classification(
         }
     }
 
-    ClassificationResult { consolidated, pruned }
+    ClassificationResult {
+        consolidated,
+        pruned,
+    }
 }
 
 fn extract_absorbed_into_declarations(
@@ -1715,7 +1736,10 @@ fn extract_absorbed_into_declarations(
             continue;
         }
         let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
-        let into = args.get("absorbed_into").and_then(|v| v.as_str()).unwrap_or("");
+        let into = args
+            .get("absorbed_into")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         declarations.insert(
             name.to_string(),
             AbsorbedIntoDeclaration {
@@ -1775,7 +1799,10 @@ fn classify_removed_skills(
         }
     }
 
-    ClassificationResult { consolidated, pruned }
+    ClassificationResult {
+        consolidated,
+        pruned,
+    }
 }
 
 /// Check whether a skill `name` is mentioned in a tool-call argument `value`.
@@ -1885,7 +1912,10 @@ consolidations:
         // Clusters (was always empty in the old stub)
         assert_eq!(result.clusters.len(), 1);
         assert_eq!(result.clusters[0].name, "rust-debug");
-        assert_eq!(result.clusters[0].members, vec!["rust-debug-a", "rust-debug-b"]);
+        assert_eq!(
+            result.clusters[0].members,
+            vec!["rust-debug-a", "rust-debug-b"]
+        );
         assert_eq!(result.clusters[0].umbrella, "rust-debug");
         assert_eq!(result.clusters[0].action, "merge");
 
@@ -1950,7 +1980,10 @@ clusters: [[invalid yaml
         assert!(name_mentioned_in_value("rust-debug", "rust-debug"));
 
         // Underscore normalization: "rust_debug" matches "rust-debug"
-        assert!(name_mentioned_in_value("rust_debug", "merge rust-debug into umbrella"));
+        assert!(name_mentioned_in_value(
+            "rust_debug",
+            "merge rust-debug into umbrella"
+        ));
 
         // Path component: "rust" in "skills/rust/SKILL.md" → match
         assert!(name_mentioned_in_value("rust", "skills/rust/SKILL.md"));
@@ -1965,7 +1998,10 @@ clusters: [[invalid yaml
         assert!(!name_mentioned_in_value("rust", "robust"));
 
         // Punctuation boundary: "rust," → match
-        assert!(name_mentioned_in_value("rust", "merge rust, debug into umbrella"));
+        assert!(name_mentioned_in_value(
+            "rust",
+            "merge rust, debug into umbrella"
+        ));
 
         // Empty value
         assert!(!name_mentioned_in_value("rust", ""));
@@ -1977,8 +2013,8 @@ clusters: [[invalid yaml
 #[cfg(test)]
 mod tests {
     use super::*;
-    
-fn make_test_skill(name: &str, source: Source) -> SkillContent {
+
+    fn make_test_skill(name: &str, source: Source) -> SkillContent {
         SkillContent {
             name: name.to_string(),
             description: format!("Test skill {}", name),
@@ -1996,13 +2032,13 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
     fn curator_run_dry() {
         let dir = tempfile::tempdir().unwrap();
         let skills = SkillRegistry::new(dir.path());
-        skills.save("skill-a", &make_test_skill("skill-a", Source::Auto)).unwrap();
+        skills
+            .save("skill-a", &make_test_skill("skill-a", Source::Auto))
+            .unwrap();
 
         let state_dir = tempfile::tempdir().unwrap();
-        let curator = Curator::new(
-            skills,
-            CuratorConfig::default(),
-        ).with_state_path(state_dir.path().join("state.json"));
+        let curator = Curator::new(skills, CuratorConfig::default())
+            .with_state_path(state_dir.path().join("state.json"));
 
         let report = curator.run(true).unwrap();
         assert_eq!(report.active, 1);
@@ -2012,13 +2048,18 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
     fn never_used_skill_not_immediately_stale() {
         let dir = tempfile::tempdir().unwrap();
         let skills = SkillRegistry::new(dir.path());
-        skills.save("new-skill", &make_test_skill("new-skill", Source::Auto)).unwrap();
+        skills
+            .save("new-skill", &make_test_skill("new-skill", Source::Auto))
+            .unwrap();
 
         let state_dir = tempfile::tempdir().unwrap();
         let curator = Curator::new(skills, CuratorConfig::default())
             .with_state_path(state_dir.path().join("state.json"));
         let report = curator.run(true).unwrap();
-        assert!(report.stale.is_empty(), "new skill should not be immediately stale");
+        assert!(
+            report.stale.is_empty(),
+            "new skill should not be immediately stale"
+        );
     }
 
     #[test]
@@ -2036,7 +2077,10 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
         curator.touch_skill("reawaken-skill").unwrap();
 
         let report = curator.run(true).unwrap();
-        assert!(report.active > 0, "reactivated skill should be active, not stale");
+        assert!(
+            report.active > 0,
+            "reactivated skill should be active, not stale"
+        );
     }
 
     #[test]
@@ -2179,11 +2223,7 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
         let dir = tempfile::tempdir().unwrap();
         let skill_dir = dir.path().join("test-skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(
-            skill_dir.join("SKILL.md"),
-            "# Test Skill\n\nNo links here.",
-        )
-        .unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Test Skill\n\nNo links here.").unwrap();
 
         let result = check_package_integrity(dir.path(), "test-skill");
         assert!(result.is_safe);
@@ -2289,23 +2329,21 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
             make_test_skill("skill-b", Source::Manual),
         ];
 
-        let usage_reports = vec![
-            SkillUsageReport {
-                name: "skill-a".to_string(),
-                use_count: 5,
-                view_count: 10,
-                patch_count: 2,
-                last_used_at: Some("2025-07-20T10:00:00Z".to_string()),
-                last_viewed_at: None,
-                last_patched_at: None,
-                created_at: "2025-01-01T00:00:00Z".to_string(),
-                state: Lifecycle::Active,
-                pinned: false,
-                archived_at: None,
-                last_activity_at: Some("2025-07-20T10:00:00Z".to_string()),
-                activity_count: 3,
-            },
-        ];
+        let usage_reports = vec![SkillUsageReport {
+            name: "skill-a".to_string(),
+            use_count: 5,
+            view_count: 10,
+            patch_count: 2,
+            last_used_at: Some("2025-07-20T10:00:00Z".to_string()),
+            last_viewed_at: None,
+            last_patched_at: None,
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+            state: Lifecycle::Active,
+            pinned: false,
+            archived_at: None,
+            last_activity_at: Some("2025-07-20T10:00:00Z".to_string()),
+            activity_count: 3,
+        }];
 
         let prompt = build_llm_prompt(&skills, &usage_reports, false);
 
@@ -2348,17 +2386,20 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
     fn test_reconcile_classification_with_absorbed_declarations() {
         let removed = vec!["old-skill".to_string()];
         let added = vec![];
-        let after_names: std::collections::HashSet<String> = ["new-skill".to_string()].into_iter().collect();
+        let after_names: std::collections::HashSet<String> =
+            ["new-skill".to_string()].into_iter().collect();
 
         let tool_calls = vec![CuratorToolCall {
             id: None,
             name: "skill_manage".to_string(),
-            arguments: r#"{"action":"delete","name":"old-skill","absorbed_into":"new-skill"}"#.to_string(),
+            arguments: r#"{"action":"delete","name":"old-skill","absorbed_into":"new-skill"}"#
+                .to_string(),
         }];
 
         let llm_result = LlMReviewResult::default();
 
-        let result = reconcile_classification(&removed, &added, &after_names, &tool_calls, &llm_result);
+        let result =
+            reconcile_classification(&removed, &added, &after_names, &tool_calls, &llm_result);
 
         assert_eq!(result.consolidated.len(), 1);
         assert_eq!(result.consolidated[0].source, "old-skill");
@@ -2376,12 +2417,14 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
         let tool_calls = vec![CuratorToolCall {
             id: None,
             name: "skill_manage".to_string(),
-            arguments: r#"{"action":"delete","name":"obsolete-skill","absorbed_into":""}"#.to_string(),
+            arguments: r#"{"action":"delete","name":"obsolete-skill","absorbed_into":""}"#
+                .to_string(),
         }];
 
         let llm_result = LlMReviewResult::default();
 
-        let result = reconcile_classification(&removed, &added, &after_names, &tool_calls, &llm_result);
+        let result =
+            reconcile_classification(&removed, &added, &after_names, &tool_calls, &llm_result);
 
         assert!(result.consolidated.is_empty());
         assert_eq!(result.pruned.len(), 1);
@@ -2393,7 +2436,8 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
     fn test_reconcile_classification_with_model_consolidation() {
         let removed = vec!["merged-skill".to_string()];
         let added = vec![];
-        let after_names: std::collections::HashSet<String> = ["umbrella-skill".to_string()].into_iter().collect();
+        let after_names: std::collections::HashSet<String> =
+            ["umbrella-skill".to_string()].into_iter().collect();
 
         let tool_calls: Vec<CuratorToolCall> = vec![];
 
@@ -2408,7 +2452,8 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
             }],
         };
 
-        let result = reconcile_classification(&removed, &added, &after_names, &tool_calls, &llm_result);
+        let result =
+            reconcile_classification(&removed, &added, &after_names, &tool_calls, &llm_result);
 
         assert_eq!(result.consolidated.len(), 1);
         assert_eq!(result.consolidated[0].source, "merged-skill");
@@ -2436,7 +2481,8 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
             }],
         };
 
-        let result = reconcile_classification(&removed, &added, &after_names, &tool_calls, &llm_result);
+        let result =
+            reconcile_classification(&removed, &added, &after_names, &tool_calls, &llm_result);
 
         assert!(result.consolidated.is_empty());
         assert_eq!(result.pruned.len(), 1);
@@ -2454,7 +2500,8 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
         let tool_calls: Vec<CuratorToolCall> = vec![];
         let llm_result = LlMReviewResult::default();
 
-        let result = reconcile_classification(&removed, &added, &after_names, &tool_calls, &llm_result);
+        let result =
+            reconcile_classification(&removed, &added, &after_names, &tool_calls, &llm_result);
 
         assert!(result.consolidated.is_empty());
         assert_eq!(result.pruned.len(), 1);
@@ -2468,7 +2515,8 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
             CuratorToolCall {
                 id: None,
                 name: "skill_manage".to_string(),
-                arguments: r#"{"action":"delete","name":"skill-a","absorbed_into":"umbrella"}"#.to_string(),
+                arguments: r#"{"action":"delete","name":"skill-a","absorbed_into":"umbrella"}"#
+                    .to_string(),
             },
             CuratorToolCall {
                 id: None,
@@ -2487,9 +2535,10 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
             },
         ];
 
-        let extract_args = |call: &CuratorToolCall| -> std::collections::HashMap<String, serde_json::Value> {
-            serde_json::from_str(call.arguments.as_str()).unwrap_or_default()
-        };
+        let extract_args =
+            |call: &CuratorToolCall| -> std::collections::HashMap<String, serde_json::Value> {
+                serde_json::from_str(call.arguments.as_str()).unwrap_or_default()
+            };
 
         let declarations = extract_absorbed_into_declarations(&tool_calls, &extract_args);
 
@@ -2511,7 +2560,8 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
     #[test]
     fn test_classify_removed_skills_with_heuristic() {
         let removed = vec!["old-skill".to_string()];
-        let after_names: std::collections::HashSet<String> = ["new-skill".to_string()].into_iter().collect();
+        let after_names: std::collections::HashSet<String> =
+            ["new-skill".to_string()].into_iter().collect();
 
         let tool_calls = vec![CuratorToolCall {
             id: None,
@@ -2519,9 +2569,10 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
             arguments: r#"{"action":"create","name":"new-skill","content":"merge old-skill into umbrella"}"#.to_string(),
         }];
 
-        let extract_args = |call: &CuratorToolCall| -> std::collections::HashMap<String, serde_json::Value> {
-            serde_json::from_str(call.arguments.as_str()).unwrap_or_default()
-        };
+        let extract_args =
+            |call: &CuratorToolCall| -> std::collections::HashMap<String, serde_json::Value> {
+                serde_json::from_str(call.arguments.as_str()).unwrap_or_default()
+            };
 
         let result = classify_removed_skills(&removed, &after_names, &tool_calls, &extract_args);
 
@@ -2539,9 +2590,10 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
 
         let tool_calls: Vec<CuratorToolCall> = vec![];
 
-        let extract_args = |call: &CuratorToolCall| -> std::collections::HashMap<String, serde_json::Value> {
-            serde_json::from_str(call.arguments.as_str()).unwrap_or_default()
-        };
+        let extract_args =
+            |call: &CuratorToolCall| -> std::collections::HashMap<String, serde_json::Value> {
+                serde_json::from_str(call.arguments.as_str()).unwrap_or_default()
+            };
 
         let result = classify_removed_skills(&removed, &after_names, &tool_calls, &extract_args);
 
@@ -2589,7 +2641,9 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
         assert!(!store.is_paused());
 
         // Test bump_run
-        store.bump_run(10.5, Some("test summary"), Some("/path/to/report")).unwrap();
+        store
+            .bump_run(10.5, Some("test summary"), Some("/path/to/report"))
+            .unwrap();
         let state = store.load().unwrap();
         assert_eq!(state.run_count, 1);
         assert_eq!(state.last_run_duration_seconds, Some(10.5));
@@ -2665,7 +2719,7 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
     fn test_curator_mark_run_completed() {
         let dir = tempfile::tempdir().unwrap();
         let skills = SkillRegistry::new(dir.path());
-        
+
         // Add some skills
         for i in 0..3 {
             let skill = make_test_skill(&format!("skill-{}", i), Source::Auto);
@@ -2712,10 +2766,8 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
 
         // Test that state persists across instances
         let state_path = state_dir.path().join("state.json");
-        let curator2 = Curator::new(
-            SkillRegistry::new(dir.path()), 
-            CuratorConfig::default()
-        ).with_state_path(state_path);
+        let curator2 = Curator::new(SkillRegistry::new(dir.path()), CuratorConfig::default())
+            .with_state_path(state_path);
 
         let loaded2 = curator2.load_state().unwrap();
         assert!(loaded2.paused);
@@ -2734,14 +2786,18 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
             .with_state_path(state_dir.path().join("state.json"));
 
         // Update lifecycle to Stale
-        curator.update_lifecycle("test-skill", Lifecycle::Stale).unwrap();
+        curator
+            .update_lifecycle("test-skill", Lifecycle::Stale)
+            .unwrap();
 
         // Verify the lifecycle was updated
         let updated_skill = curator.skills.load("test-skill").unwrap();
         assert_eq!(updated_skill.lifecycle, Lifecycle::Stale);
 
         // Update lifecycle back to Active
-        curator.update_lifecycle("test-skill", Lifecycle::Active).unwrap();
+        curator
+            .update_lifecycle("test-skill", Lifecycle::Active)
+            .unwrap();
         let reactivated_skill = curator.skills.load("test-skill").unwrap();
         assert_eq!(reactivated_skill.lifecycle, Lifecycle::Active);
     }
@@ -2770,8 +2826,8 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
             archive_days: 0,
             ..Default::default()
         };
-        let curator = Curator::new(skills, config)
-            .with_state_path(state_dir.path().join("state.json"));
+        let curator =
+            Curator::new(skills, config).with_state_path(state_dir.path().join("state.json"));
 
         // Run in dry_run mode to check classification
         let report = curator.run(true).unwrap();
@@ -2829,8 +2885,6 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
         assert_eq!(curator.config_archive_days(), 120);
     }
 
-
-
     #[test]
     fn test_curator_state_store_default_impls_via_file() {
         let dir = tempfile::tempdir().unwrap();
@@ -2844,7 +2898,9 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
         assert!(!store.is_paused());
 
         // Test bump_run trait default
-        store.bump_run(10.5, Some("Test summary"), Some("/test/path.md")).unwrap();
+        store
+            .bump_run(10.5, Some("Test summary"), Some("/test/path.md"))
+            .unwrap();
         let state = store.load().unwrap();
         assert_eq!(state.run_count, 1);
         assert_eq!(state.last_run_duration_seconds, Some(10.5));
@@ -2934,7 +2990,8 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
     fn test_curator_should_run_with_state_conditions() {
         let dir = tempfile::tempdir().unwrap();
         let skills = SkillRegistry::new(dir.path());
-        for i in 0..7 { // Need more than min_skills_to_run (default 5)
+        for i in 0..7 {
+            // Need more than min_skills_to_run (default 5)
             let skill = make_test_skill(&format!("skill-{}", i), Source::Auto);
             skills.save(&format!("skill-{}", i), &skill).unwrap();
         }
@@ -2947,14 +3004,17 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
             ..Default::default()
         };
 
-        let curator = Curator::new(skills, config)
-            .with_state_path(state_dir.path().join("state.json"));
+        let curator =
+            Curator::new(skills, config).with_state_path(state_dir.path().join("state.json"));
 
         // Manually complete a run to establish state (bypassing first-run delay)
         curator.mark_run_completed().unwrap();
 
         // Should not run immediately after (within interval)
-        assert!(!curator.should_run(None), "Should not run immediately after completing a run");
+        assert!(
+            !curator.should_run(None),
+            "Should not run immediately after completing a run"
+        );
     }
 
     #[test]
@@ -2987,8 +3047,8 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
             ..Default::default()
         };
 
-        let curator = Curator::new(skills, config)
-            .with_state_path(state_dir.path().join("state.json"));
+        let curator =
+            Curator::new(skills, config).with_state_path(state_dir.path().join("state.json"));
 
         // Run the curator (should recognize existing stale state)
         let report = curator.run(true).unwrap();
@@ -3016,8 +3076,8 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
             ..Default::default()
         };
 
-        let curator = Curator::new(skills, config)
-            .with_state_path(state_dir.path().join("state.json"));
+        let curator =
+            Curator::new(skills, config).with_state_path(state_dir.path().join("state.json"));
 
         // Should not run when disabled
         assert!(!curator.should_run(Some(99999.0)));
@@ -3034,19 +3094,17 @@ fn make_test_skill(name: &str, source: Source) -> SkillContent {
         // First instance - modify state
         let skills1 = SkillRegistry::new(dir.path());
         skills1.save("test-skill", &skill).unwrap();
-        let curator1 = Curator::new(skills1, CuratorConfig::default())
-            .with_state_path(state_path.clone());
+        let curator1 =
+            Curator::new(skills1, CuratorConfig::default()).with_state_path(state_path.clone());
         curator1.mark_run_completed().unwrap();
 
         // Second instance - verify state persisted
         let skills2 = SkillRegistry::new(dir.path());
-        let curator2 = Curator::new(skills2, CuratorConfig::default())
-            .with_state_path(state_path.clone());
+        let curator2 =
+            Curator::new(skills2, CuratorConfig::default()).with_state_path(state_path.clone());
 
         let state = curator2.load_state().unwrap();
         assert_eq!(state.run_count, 1);
         assert!(state.skill_last_used.contains_key("test-skill"));
     }
-
-
 }

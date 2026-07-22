@@ -29,8 +29,8 @@ use std::sync::Mutex;
 use crate::types::message::{MessageChunk, StreamSink};
 use tokio::sync::mpsc;
 
-use crate::types::stream_event::StreamEvent;
 use crate::types::metadata::StreamMetadata;
+use crate::types::stream_event::StreamEvent;
 
 /// Sink that converts `MessageChunk`s into `StreamEvent::Messages` and forwards them
 /// to a `mpsc::Sender<StreamEvent<S>>`.
@@ -86,7 +86,10 @@ where
         let _ = self.stream_tx.try_send(event);
 
         // First-chunk timing: return Some(Instant) exactly once.
-        let mut guard = self.first_chunk_at.lock().expect("first_chunk_at mutex poisoned");
+        let mut guard = self
+            .first_chunk_at
+            .lock()
+            .expect("first_chunk_at mutex poisoned");
         if guard.is_none() {
             *guard = Some(std::time::Instant::now());
             *guard

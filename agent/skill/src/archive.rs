@@ -116,12 +116,14 @@ mod tests {
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(skill_dir.join("SKILL.md"), "# plan").unwrap();
 
-        let archived_src =
-            archive_skill_to(&base, "plan").expect("archive should succeed");
+        let archived_src = archive_skill_to(&base, "plan").expect("archive should succeed");
         assert_eq!(archived_src, base.join("plan"));
         assert!(!base.join("plan").exists(), "active skill should be gone");
         let archived = base.join(".archive").join("plan");
-        assert!(archived.join("SKILL.md").exists(), "archived skill.md should exist");
+        assert!(
+            archived.join("SKILL.md").exists(),
+            "archived skill.md should exist"
+        );
         fs::remove_dir_all(&base).unwrap();
     }
 
@@ -155,11 +157,7 @@ mod tests {
         let entries: Vec<_> = fs::read_dir(&archive_root)
             .unwrap()
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .starts_with("plan")
-            })
+            .filter(|e| e.file_name().to_string_lossy().starts_with("plan"))
             .collect();
         assert!(
             entries.len() >= 2,

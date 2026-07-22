@@ -7,10 +7,10 @@
 use async_trait::async_trait;
 
 use loom_graph_core::GraphError;
+use loom_graph_core::Node;
 use loom_graph_core::{Next, RunContext};
 use loom_llm::message::Message;
 use stream_event::StreamEvent;
-use loom_graph_core::Node;
 
 use super::state::TotState;
 
@@ -102,11 +102,11 @@ impl Node<TotState> for BacktrackNode {
 mod tests {
     use super::super::state::{TotCandidate, TotExtension};
     use super::*;
+    use crate::state::ReActState;
+    use crate::state::ToolResult;
     use checkpoint::RunnableConfig;
     use loom_llm::message::UserContent;
-    use crate::state::ReActState;
     use loom_llm::ToolCall;
-    use crate::state::ToolResult;
     use tokio::sync::mpsc;
 
     fn candidate(thought: &str, tool_name: &str) -> TotCandidate {
@@ -223,4 +223,3 @@ mod tests {
         }
     }
 }
-

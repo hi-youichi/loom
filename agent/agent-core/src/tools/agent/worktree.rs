@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
-use crate::profile::resolve_profile;
 use crate::agent::ReactBuildConfig;
+use crate::profile::resolve_profile;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 use super::runner::build_and_run_sub_agent;
 
@@ -123,9 +123,7 @@ pub(super) async fn invoke_single_agent(
         None
     };
 
-    let effective_working_folder = worktree_handle
-        .as_ref()
-        .map(|h| h.path.clone());
+    let effective_working_folder = worktree_handle.as_ref().map(|h| h.path.clone());
 
     // --- delegate to shared execution ---
     let (content, stats) = build_and_run_sub_agent(

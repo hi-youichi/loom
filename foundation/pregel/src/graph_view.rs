@@ -164,9 +164,7 @@ impl PregelGraphView {
                 });
             }
         }
-        edges.sort_by_cached_key(|a| {
-            (a.source.clone(), a.target.clone(), edge_kind_rank(a.kind))
-        });
+        edges.sort_by_cached_key(|a| (a.source.clone(), a.target.clone(), edge_kind_rank(a.kind)));
 
         let mut subgraphs = Vec::new();
         if recurse {
@@ -471,10 +469,19 @@ mod tests {
 
     #[test]
     fn test_mermaid_id_sanitization() {
-        assert_eq!(mermaid_id("channel", "test-channel"), "channel_test_channel");
+        assert_eq!(
+            mermaid_id("channel", "test-channel"),
+            "channel_test_channel"
+        );
         assert_eq!(mermaid_id("node", "node/1"), "node_node_1");
-        assert_eq!(mermaid_id("channel", "channel with spaces"), "channel_channel_with_spaces");
-        assert_eq!(mermaid_id("node", "node@special#chars"), "node_node_special_chars");
+        assert_eq!(
+            mermaid_id("channel", "channel with spaces"),
+            "channel_channel_with_spaces"
+        );
+        assert_eq!(
+            mermaid_id("node", "node@special#chars"),
+            "node_node_special_chars"
+        );
     }
 
     #[test]

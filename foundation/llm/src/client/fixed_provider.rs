@@ -3,18 +3,21 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::error::LlmError;
-use loom_graph_core::GraphError;
 use crate::traits::{LlmClient, LlmHeaders, LlmProvider};
+use loom_graph_core::GraphError;
 
 pub struct CloneableLlmClient(pub Arc<dyn LlmClient>);
 
 #[async_trait]
 impl LlmClient for CloneableLlmClient {
-    async fn invoke(&self, messages: &[crate::message::Message]) -> Result<crate::traits::LlmResponse, LlmError> {
+    async fn invoke(
+        &self,
+        messages: &[crate::message::Message],
+    ) -> Result<crate::traits::LlmResponse, LlmError> {
         self.0.invoke(messages).await
     }
 
-async fn invoke_stream(
+    async fn invoke_stream(
         &self,
         messages: &[crate::message::Message],
         sink: Option<&dyn crate::traits::StreamSink>,

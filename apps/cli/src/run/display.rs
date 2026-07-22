@@ -4,10 +4,10 @@
 //! and agent state types (ReActState, TotState, DupState, GotState) when streaming
 //! to the CLI.
 
-use loom_llm::{message::Message, ToolCall};
 use agent::state::ReActState;
 use agent::state::ToolResult;
 use agent::{DupState, GotState, TotState};
+use loom_llm::{message::Message, ToolCall};
 use std::collections::HashMap;
 
 /// Indent for nested state fields (one level).
@@ -185,9 +185,9 @@ pub(crate) fn format_got_state_display(state: &GotState, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_llm::ToolCall;
     use agent::state::ToolResult;
     use agent::{TaskGraph, TaskNode, TaskNodeState, TaskStatus};
+    use loom_llm::ToolCall;
     use std::collections::HashMap;
 
     #[test]

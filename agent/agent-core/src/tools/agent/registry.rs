@@ -53,14 +53,18 @@ pub enum AgentStatus {
 impl AgentStatus {
     /// Returns `true` if the agent is still active (Running or Background).
     pub fn is_active(&self) -> bool {
-        matches!(self, AgentStatus::Running { .. } | AgentStatus::Background { .. })
+        matches!(
+            self,
+            AgentStatus::Running { .. } | AgentStatus::Background { .. }
+        )
     }
 
     /// Extract `started_at` if the status is Running or Background.
     fn started_at_if_active(&self) -> Option<String> {
         match self {
-            AgentStatus::Running { started_at }
-            | AgentStatus::Background { started_at, .. } => Some(started_at.clone()),
+            AgentStatus::Running { started_at } | AgentStatus::Background { started_at, .. } => {
+                Some(started_at.clone())
+            }
             _ => None,
         }
     }
@@ -114,13 +118,21 @@ impl AgentEntry {
             AgentStatus::Running { started_at } => {
                 map["started_at"] = json!(started_at);
             }
-            AgentStatus::Background { started_at, timed_out_at } => {
+            AgentStatus::Background {
+                started_at,
+                timed_out_at,
+            } => {
                 map["started_at"] = json!(started_at);
                 map["timed_out_at"] = json!(timed_out_at);
             }
             AgentStatus::Completed {
-                result, turn_count, total_tokens, tool_calls_count,
-                started_at, completed_at, duration_ms,
+                result,
+                turn_count,
+                total_tokens,
+                tool_calls_count,
+                started_at,
+                completed_at,
+                duration_ms,
             } => {
                 map["started_at"] = json!(started_at);
                 map["completed_at"] = json!(completed_at);
@@ -131,8 +143,13 @@ impl AgentEntry {
                 map["tool_calls_count"] = json!(tool_calls_count);
             }
             AgentStatus::Failed {
-                error, turn_count, total_tokens, tool_calls_count,
-                started_at, failed_at, duration_ms,
+                error,
+                turn_count,
+                total_tokens,
+                tool_calls_count,
+                started_at,
+                failed_at,
+                duration_ms,
             } => {
                 map["started_at"] = json!(started_at);
                 map["failed_at"] = json!(failed_at);
@@ -375,12 +392,18 @@ mod tests {
         reg.complete(
             "a1",
             "done".into(),
-            AgentCompletionStats { turn_count: 3, total_tokens: 100, tool_calls_count: 2 },
+            AgentCompletionStats {
+                turn_count: 3,
+                total_tokens: 100,
+                tool_calls_count: 2,
+            },
         );
 
         let entry = reg.get("a1").unwrap();
         match entry.status {
-            AgentStatus::Completed { result, turn_count, .. } => {
+            AgentStatus::Completed {
+                result, turn_count, ..
+            } => {
                 assert_eq!(result, "done");
                 assert_eq!(turn_count, 3);
             }

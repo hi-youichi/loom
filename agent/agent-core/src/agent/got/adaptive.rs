@@ -11,8 +11,8 @@ use loom_llm::message::Message;
 use loom_llm::LlmClient;
 
 use super::dag::{append_subgraph, AppendSubgraphError};
-use super::state::TaskGraph;
 use super::prompt::AGOT_EXPAND_SYSTEM;
+use super::state::TaskGraph;
 use super::state::{GotState, TaskNode, TaskNodeState, TaskStatus};
 
 /// Max total nodes to prevent runaway expansion (AGoT risk mitigation).

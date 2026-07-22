@@ -7,8 +7,8 @@
 //! - Handle server lifecycle and error recovery
 
 use crate::client::LspClient;
-use dashmap::DashMap;
 use config::LspServerConfig;
+use dashmap::DashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thiserror::Error;

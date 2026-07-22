@@ -16,7 +16,10 @@ pub enum SkillDiscoveryError {
     #[error("skill not found: {0}")]
     NotFound(String),
     #[error("read skill {path}: {source}")]
-    ReadFailed { path: PathBuf, source: std::io::Error },
+    ReadFailed {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("parse skill {path}: {reason}")]
     ParseFailed { path: PathBuf, reason: String },
 }
@@ -27,6 +30,17 @@ pub struct SkillEntry {
     pub base_path: PathBuf,
     pub skill_file: PathBuf,
     pub source: SkillSource,
+    /// For `Source::Builtin` entries: the SKILL.md content embedded in the
+    /// binary via `include_str!`. When `Some`, [`SkillRegistry::load_skill_with_dir`]
+    /// uses it directly instead of reading from `skill_file`.
+    pub embedded_content: Option<String>,
+    /// For `Source::Builtin` entries: reference files bundled alongside the
+    /// SKILL.md (mirrors `references/*.md` for filesystem skills). When `Some`,
+    /// [`SkillRegistry::load_skill_with_dir`] lists them under
+    /// `## Additional resources` so the agent can `read` them on demand.
+    /// Each entry is `(name, content)` - same shape as `tool_core::EmbeddedRef`,
+    /// kept as a plain tuple to avoid a `skill -> tool-core` crate dependency.
+    pub embedded_files: Option<Vec<(String, String)>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +50,24 @@ pub enum SkillSource {
     User,
     Agent,
     Data,
+    /// Skill bundled inside a Loom crate (e.g. via `include_str!`). Added by
+    /// [`SkillRegistry::add_builtin`] after filesystem discovery completes.
+    /// Lower priority than filesystem-discovered entries with the same name.
+    Builtin,
+}
+
+impl SkillSource {
+    /// Short human label for display in CLI banner / log output.
+    pub fn label(&self) -> &'static str {
+        match self {
+            SkillSource::Project => "Project",
+            SkillSource::ProfileDir => "Profile",
+            SkillSource::User => "User",
+            SkillSource::Agent => "Agent",
+            SkillSource::Data => "Data",
+            SkillSource::Builtin => "Builtin",
+        }
+    }
 }
 
 pub struct SkillRegistry {
@@ -108,11 +140,67 @@ impl SkillRegistry {
         }
         let new_skills = scan_skills_dir(agent_skills_dir, SkillSource::Agent);
         for entry in new_skills {
-            if !self.skills.iter().any(|e| e.metadata.name == entry.metadata.name) {
+            if !self
+                .skills
+                .iter()
+                .any(|e| e.metadata.name == entry.metadata.name)
+            {
                 self.skills.push(entry);
             }
         }
         Ok(())
+    }
+
+    /// Register a builtin skill bundled inside a Loom crate.
+    ///
+    /// If a skill with the same name already exists (from any filesystem
+    /// source), the call is a no-op — user/project skills take precedence
+    /// over builtins.
+    ///
+    /// `requires_tools` is exposed via the SKILL.md `metadata.conditions.requires_tools`
+    /// field so [`Self::apply_toolset_filters`] can hide the skill when its
+    /// dependent tool is not registered.
+    pub fn add_builtin(
+        &mut self,
+        name: &str,
+        description: &str,
+        content: &str,
+        triggers: Vec<String>,
+        requires_tools: Vec<String>,
+        references: Vec<(String, String)>,
+    ) {
+        if self.skills.iter().any(|e| e.metadata.name == name) {
+            return;
+        }
+        let metadata = SkillMetadata {
+            name: name.to_string(),
+            description: description.to_string(),
+            triggers,
+            metadata: if requires_tools.is_empty() {
+                None
+            } else {
+                Some(crate::utils::SkillMetadataBlock {
+                    conditions: crate::utils::SkillConditions {
+                        requires_tools,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })
+            },
+            ..Default::default()
+        };
+        self.skills.push(SkillEntry {
+            metadata,
+            base_path: PathBuf::new(),
+            skill_file: PathBuf::new(),
+            source: SkillSource::Builtin,
+            embedded_content: Some(content.to_string()),
+            embedded_files: if references.is_empty() {
+                None
+            } else {
+                Some(references)
+            },
+        });
     }
 
     pub fn list(&self) -> &[SkillEntry] {
@@ -124,19 +212,51 @@ impl SkillRegistry {
         Ok(content)
     }
 
-    pub fn load_skill_with_dir(&self, name: &str) -> Result<(String, PathBuf), SkillDiscoveryError> {
+    pub fn load_skill_with_dir(
+        &self,
+        name: &str,
+    ) -> Result<(String, PathBuf), SkillDiscoveryError> {
         let entry = self
             .skills
             .iter()
             .find(|e| e.metadata.name == name)
             .ok_or_else(|| SkillDiscoveryError::NotFound(name.to_string()))?;
         let base_path = entry.base_path.clone();
-        let content = std::fs::read_to_string(&entry.skill_file)
-            .map_err(|source| SkillDiscoveryError::ReadFailed { path: entry.skill_file.clone(), source })?;
+
+        let content = match &entry.embedded_content {
+            Some(c) => c.clone(),
+            None => std::fs::read_to_string(&entry.skill_file).map_err(|source| {
+                SkillDiscoveryError::ReadFailed {
+                    path: entry.skill_file.clone(),
+                    source,
+                }
+            })?,
+        };
         let (_, body) = parse_skill_frontmatter(&content);
         let mut out = body;
 
-        if entry.skill_file.file_name().map(|f| f == SKILL_MD).unwrap_or(false) {
+        // Builtin path: surface the references that were embedded via
+        // `include_str!` so the agent can `read` them on demand.
+        if let Some(refs) = &entry.embedded_files {
+            if !refs.is_empty() {
+                out.push_str("\n\n## Additional resources\nThis skill includes these reference files (use `read` tool if needed):\n");
+                for (name, _content) in refs {
+                    out.push_str("- ");
+                    out.push_str(name);
+                    out.push('\n');
+                }
+            }
+        }
+
+        // Filesystem path: scan the skill's directory for sibling files
+        // (mirrors the behavior of disk-discovered skills).
+        if entry.embedded_content.is_none()
+            && entry
+                .skill_file
+                .file_name()
+                .map(|f| f == SKILL_MD)
+                .unwrap_or(false)
+        {
             if let Ok(rd) = std::fs::read_dir(&entry.base_path) {
                 let others: Vec<String> = rd
                     .flatten()
@@ -146,7 +266,11 @@ impl SkillRegistry {
                     .filter(|n| n != SKILL_MD)
                     .collect();
                 if !others.is_empty() {
-                    out.push_str("\n\n## Additional resources\nThis skill includes these reference files (use `read` tool if needed):\n");
+                    // Only append the header if we didn't already write one
+                    // for the builtin path above.
+                    if !out.contains("## Additional resources") {
+                        out.push_str("\n\n## Additional resources\nThis skill includes these reference files (use `read` tool if needed):\n");
+                    }
                     for o in others {
                         out.push_str("- ");
                         out.push_str(&o);
@@ -172,16 +296,24 @@ impl SkillRegistry {
             }
         }
         let mut disabled_set: HashSet<String> = disabled
-            .and_then(|d| if d.is_empty() { None } else { Some(d.iter().cloned().collect::<HashSet<_>>()) })
+            .and_then(|d| {
+                if d.is_empty() {
+                    None
+                } else {
+                    Some(d.iter().cloned().collect::<HashSet<_>>())
+                }
+            })
             .unwrap_or_default();
         if let Some(pd) = platform_disabled {
             disabled_set.extend(pd.iter().cloned());
         }
         if !disabled_set.is_empty() {
-            self.skills.retain(|e| !disabled_set.contains(&e.metadata.name));
+            self.skills
+                .retain(|e| !disabled_set.contains(&e.metadata.name));
         }
         if let Some(platform) = current_platform {
-            self.skills.retain(|e| e.metadata.matches_platform(platform));
+            self.skills
+                .retain(|e| e.metadata.matches_platform(platform));
         }
     }
 
@@ -199,16 +331,24 @@ impl SkillRegistry {
         self.skills.retain(|entry| {
             let c = entry.metadata.conditions();
             for ts in &c.fallback_for_toolsets {
-                if toolsets.contains(ts) { return false; }
+                if toolsets.contains(ts) {
+                    return false;
+                }
             }
             for t in &c.fallback_for_tools {
-                if tools.contains(t) { return false; }
+                if tools.contains(t) {
+                    return false;
+                }
             }
             for ts in &c.requires_toolsets {
-                if !toolsets.contains(ts) { return false; }
+                if !toolsets.contains(ts) {
+                    return false;
+                }
             }
             for t in &c.requires_tools {
-                if !tools.contains(t) { return false; }
+                if !tools.contains(t) {
+                    return false;
+                }
             }
             true
         });
@@ -232,7 +372,10 @@ impl SkillRegistry {
         ];
 
         for (cat, skills) in &by_category {
-            let cat_desc = skills.iter().filter_map(|s| s.metadata.category_desc.as_deref()).next();
+            let cat_desc = skills
+                .iter()
+                .filter_map(|s| s.metadata.category_desc.as_deref())
+                .next();
             if let Some(desc) = cat_desc {
                 lines.push(format!("  {}: {}", cat, desc));
             } else {
@@ -283,7 +426,9 @@ fn derive_category(skill_path: &Path, scan_root: &Path) -> Option<String> {
 
 pub fn scan_skills_dir(dir: &Path, source: SkillSource) -> Vec<SkillEntry> {
     let mut entries = Vec::new();
-    let Ok(read_dir) = std::fs::read_dir(dir) else { return entries };
+    let Ok(read_dir) = std::fs::read_dir(dir) else {
+        return entries;
+    };
 
     for e in read_dir.flatten() {
         let path = e.path();
@@ -300,12 +445,18 @@ pub fn scan_skills_dir(dir: &Path, source: SkillSource) -> Vec<SkillEntry> {
         };
         let (meta_opt, _) = parse_skill_frontmatter(&content);
         let mut metadata = meta_opt.unwrap_or_else(|| SkillMetadata {
-            name: path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+            name: path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default(),
             ..Default::default()
         });
 
         if metadata.name.is_empty() {
-            metadata.name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            metadata.name = path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
         }
 
         if metadata.category.is_none() {
@@ -323,10 +474,14 @@ pub fn scan_skills_dir(dir: &Path, source: SkillSource) -> Vec<SkillEntry> {
             base_path: path,
             skill_file,
             source,
+            embedded_content: None,
+            embedded_files: None,
         });
     }
 
-    let Ok(read_dir2) = std::fs::read_dir(dir) else { return entries };
+    let Ok(read_dir2) = std::fs::read_dir(dir) else {
+        return entries;
+    };
     for e in read_dir2.flatten() {
         let path = e.path();
         if !path.is_file() {
@@ -336,7 +491,10 @@ pub fn scan_skills_dir(dir: &Path, source: SkillSource) -> Vec<SkillEntry> {
         if !SKILL_EXTENSIONS.contains(&ext) {
             continue;
         }
-        let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let name = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
         if name.eq_ignore_ascii_case("SKILL") || name.eq_ignore_ascii_case("DESCRIPTION") {
             continue;
         }
@@ -358,6 +516,8 @@ pub fn scan_skills_dir(dir: &Path, source: SkillSource) -> Vec<SkillEntry> {
             base_path: path.parent().unwrap_or(dir).to_path_buf(),
             skill_file: path,
             source,
+            embedded_content: None,
+            embedded_files: None,
         });
     }
 
@@ -366,7 +526,9 @@ pub fn scan_skills_dir(dir: &Path, source: SkillSource) -> Vec<SkillEntry> {
 
 pub fn scan_skills_dir_recursive(dir: &Path, source: SkillSource) -> Vec<SkillEntry> {
     let mut entries = scan_skills_dir(dir, source);
-    let Ok(read_dir) = std::fs::read_dir(dir) else { return entries };
+    let Ok(read_dir) = std::fs::read_dir(dir) else {
+        return entries;
+    };
 
     for e in read_dir.flatten() {
         let path = e.path();
@@ -386,14 +548,14 @@ pub fn scan_skills_dir_recursive(dir: &Path, source: SkillSource) -> Vec<SkillEn
 mod tests {
     use super::*;
 
-macro_rules! registry_from_skills {
-    ($entries:expr) => {
-        SkillRegistry {
-            skills: $entries,
-            cache: std::sync::Mutex::new(crate::cache::SkillCache::new()),
-        }
-    };
-}
+    macro_rules! registry_from_skills {
+        ($entries:expr) => {
+            SkillRegistry {
+                skills: $entries,
+                cache: std::sync::Mutex::new(crate::cache::SkillCache::new()),
+            }
+        };
+    }
 
     fn make_test_entry(name: &str, source: SkillSource) -> SkillEntry {
         SkillEntry {
@@ -405,6 +567,8 @@ macro_rules! registry_from_skills {
             base_path: PathBuf::from(format!("/test/{}", name)),
             skill_file: PathBuf::from(format!("/test/{}/SKILL.md", name)),
             source,
+            embedded_content: None,
+            embedded_files: None,
         }
     }
 
@@ -458,7 +622,8 @@ macro_rules! registry_from_skills {
         registry.apply_toolset_filters(None, Some(&toolsets));
         assert!(registry.list().is_empty());
 
-        let mut registry2 = registry_from_skills!(vec![make_test_entry("duckduckgo", SkillSource::Project)]);
+        let mut registry2 =
+            registry_from_skills!(vec![make_test_entry("duckduckgo", SkillSource::Project)]);
         registry2.skills[0].metadata.metadata = Some(crate::utils::SkillMetadataBlock {
             conditions: crate::utils::SkillConditions {
                 fallback_for_toolsets: vec!["web".to_string()],
@@ -501,8 +666,102 @@ macro_rules! registry_from_skills {
         ];
         let mut registry = registry_from_skills!(entries);
         registry.apply_filters(Some(&["a".to_string()]), None, None, None);
+        let names: Vec<_> = registry
+            .list()
+            .iter()
+            .map(|e| e.metadata.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["a"]);
+    }
+
+    #[test]
+    fn add_builtin_inserts_skill() {
+        let mut registry = SkillRegistry::empty();
+        registry.add_builtin(
+            "luft-workflow-dsl",
+            "Lua DSL reference",
+            "---\nname: luft-workflow-dsl\n---\n\n# Body",
+            vec!["luft".to_string()],
+            vec!["luft".to_string()],
+            vec![],
+        );
         assert_eq!(registry.list().len(), 1);
-        assert_eq!(registry.list()[0].metadata.name, "a");
+        let entry = &registry.list()[0];
+        assert_eq!(entry.metadata.name, "luft-workflow-dsl");
+        assert_eq!(entry.source, SkillSource::Builtin);
+        assert!(entry.embedded_content.is_some());
+    }
+
+    #[test]
+    fn add_builtin_skips_when_name_exists() {
+        let mut registry = SkillRegistry::empty();
+        // Inject a disk skill with the same name first.
+        registry
+            .skills
+            .push(make_test_entry("luft-workflow-dsl", SkillSource::Project));
+
+        // No-op: builtin skipped because name already taken.
+        registry.add_builtin(
+            "luft-workflow-dsl",
+            "v1",
+            "v1 content",
+            vec![],
+            vec![],
+            vec![],
+        );
+        assert_eq!(registry.list().len(), 1);
+        assert_eq!(registry.list()[0].source, SkillSource::Project);
+    }
+
+    #[test]
+    fn load_skill_with_dir_uses_embedded_content() {
+        let mut registry = SkillRegistry::empty();
+        registry.add_builtin(
+            "luft-workflow-dsl",
+            "DSL",
+            "---\nname: luft-workflow-dsl\n---\n\n# Embedded Body",
+            vec![],
+            vec!["luft".to_string()],
+            vec![],
+        );
+        let (content, _) = registry.load_skill_with_dir("luft-workflow-dsl").unwrap();
+        assert!(content.contains("Embedded Body"));
+    }
+
+    #[test]
+    fn load_skill_with_dir_lists_embedded_references() {
+        let mut registry = SkillRegistry::empty();
+        registry.add_builtin(
+            "luft-workflow-dsl",
+            "DSL",
+            "---\nname: luft-workflow-dsl\n---\n\n# Embedded Body",
+            vec![],
+            vec!["luft".to_string()],
+            vec![
+                ("references/foo.md".to_string(), "# Foo\nbody".to_string()),
+                ("references/bar.md".to_string(), "# Bar\nbody".to_string()),
+            ],
+        );
+        let (content, _) = registry.load_skill_with_dir("luft-workflow-dsl").unwrap();
+        assert!(content.contains("## Additional resources"));
+        assert!(content.contains("- references/foo.md"));
+        assert!(content.contains("- references/bar.md"));
+    }
+
+    #[test]
+    fn builtin_skill_requires_tools_round_trip() {
+        let mut registry = SkillRegistry::empty();
+        registry.add_builtin(
+            "luft-workflow-dsl",
+            "DSL",
+            "body",
+            vec![],
+            vec!["luft".to_string()],
+            vec![],
+        );
+        let entry = &registry.list()[0];
+        let block = entry.metadata.metadata.as_ref().unwrap();
+        assert_eq!(block.conditions.requires_tools, vec!["luft".to_string()]);
     }
 
     #[test]
@@ -513,7 +772,11 @@ macro_rules! registry_from_skills {
         ];
         let mut registry = registry_from_skills!(entries);
         registry.apply_filters(None, Some(&["a".to_string()]), None, None);
-        let names: Vec<&str> = registry.list().iter().map(|e| e.metadata.name.as_str()).collect();
+        let names: Vec<&str> = registry
+            .list()
+            .iter()
+            .map(|e| e.metadata.name.as_str())
+            .collect();
         assert!(!names.contains(&"a"));
         assert!(names.contains(&"b"));
     }
@@ -542,7 +805,11 @@ macro_rules! registry_from_skills {
         ];
         let mut registry = registry_from_skills!(entries);
         registry.apply_filters(None, None, None, Some(&["a".to_string()]));
-        let names: Vec<&str> = registry.list().iter().map(|e| e.metadata.name.as_str()).collect();
+        let names: Vec<&str> = registry
+            .list()
+            .iter()
+            .map(|e| e.metadata.name.as_str())
+            .collect();
         assert!(!names.contains(&"a"));
         assert!(names.contains(&"b"));
     }

@@ -6,16 +6,14 @@
 use super::{ApiErrorParser, HttpRetryPolicy, RetryDecision};
 
 const BIGMODEL_RETRYABLE_CODES: &[&str] = &[
-    "500", "1200", "1210", "1213", "1214", "1230", "1231", "1234", "1261",
-    "1302", "1303", "1304", "1305", "1308", "1310", "1312", "1313",
+    "500", "1200", "1210", "1213", "1214", "1230", "1231", "1234", "1261", "1302", "1303", "1304",
+    "1305", "1308", "1310", "1312", "1313",
 ];
 
 #[cfg(test)]
 const BIGMODEL_NON_RETRYABLE_CODES: &[&str] = &[
-    "1000", "1001", "1002", "1003", "1004",
-    "1110", "1111", "1112", "1113", "1120", "1121",
-    "1211", "1212", "1215", "1220", "1221", "1222",
-    "1300", "1301", "1309", "1311",
+    "1000", "1001", "1002", "1003", "1004", "1110", "1111", "1112", "1113", "1120", "1121", "1211",
+    "1212", "1215", "1220", "1221", "1222", "1300", "1301", "1309", "1311",
 ];
 
 pub struct BigModelRetryPolicy;
@@ -104,8 +102,14 @@ mod tests {
     #[test]
     fn extracts_error_code_from_message() {
         let parser = BigModelApiParser;
-        assert_eq!(parser.extract_error_code("messages 参数非法 (code: 1214)"), Some("1214".to_string()));
-        assert_eq!(parser.extract_error_code("error (code: 1002)"), Some("1002".to_string()));
+        assert_eq!(
+            parser.extract_error_code("messages 参数非法 (code: 1214)"),
+            Some("1214".to_string())
+        );
+        assert_eq!(
+            parser.extract_error_code("error (code: 1002)"),
+            Some("1002".to_string())
+        );
         assert_eq!(parser.extract_error_code("no code here"), None);
     }
 
@@ -133,7 +137,10 @@ mod tests {
     fn auth_error_is_not_retryable() {
         let parser = BigModelApiParser;
         let message = "Authentication Token非法 (code: 1002)";
-        assert_eq!(parser.classify_api_error(message), RetryDecision::NonRetryable);
+        assert_eq!(
+            parser.classify_api_error(message),
+            RetryDecision::NonRetryable
+        );
     }
 
     #[test]

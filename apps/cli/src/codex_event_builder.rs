@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
-use loom_llm::LlmUsage;
-use loom_llm::message::{AssistantPayload, Message};
 use agent::state::ReActState;
-    use tool_core::ToolCallContent;
+use loom_llm::message::{AssistantPayload, Message};
+use loom_llm::LlmUsage;
 use stream_event::codex::{
-    agent_message_item, command_execution_item, mcp_tool_call_item, reasoning_item,
-    CodexEvent, CodexUsage, McpToolCallItemError,
+    agent_message_item, command_execution_item, mcp_tool_call_item, reasoning_item, CodexEvent,
+    CodexUsage, McpToolCallItemError,
 };
+use tool_core::ToolCallContent;
 
 struct ItemIdCounter(usize);
 
@@ -58,9 +58,7 @@ fn emit_assistant_items(
         if !reasoning.is_empty() {
             let id = item_id.next();
             let item = reasoning_item(&id, reasoning);
-            events.push(CodexEvent::ItemStarted {
-                item: item.clone(),
-            });
+            events.push(CodexEvent::ItemStarted { item: item.clone() });
             events.push(CodexEvent::ItemCompleted { item });
         }
     }
@@ -73,27 +71,18 @@ fn emit_assistant_items(
         if is_shell_tool(&tc.name) {
             let cmd = extract_command(&args);
             let item = command_execution_item(&id, &cmd, "", None, "in_progress");
-            events.push(CodexEvent::ItemStarted {
-                item: item.clone(),
-            });
+            events.push(CodexEvent::ItemStarted { item: item.clone() });
 
-            let (output, exit_code, status) =
-                resolve_tool_result_from_map(tool_result_map, &tc.id);
+            let (output, exit_code, status) = resolve_tool_result_from_map(tool_result_map, &tc.id);
             let completed = command_execution_item(&id, &cmd, &output, exit_code, &status);
             events.push(CodexEvent::ItemCompleted { item: completed });
         } else {
             let (server, tool_name) = split_server_tool(&tc.name);
-            let item = mcp_tool_call_item(
-                &id, &server, &tool_name, args, None, None, "in_progress",
-            );
-            events.push(CodexEvent::ItemStarted {
-                item: item.clone(),
-            });
+            let item =
+                mcp_tool_call_item(&id, &server, &tool_name, args, None, None, "in_progress");
+            events.push(CodexEvent::ItemStarted { item: item.clone() });
 
-            let (output_text, is_error) = tool_result_map
-                .get(&tc.id)
-                .cloned()
-                .unwrap_or_default();
+            let (output_text, is_error) = tool_result_map.get(&tc.id).cloned().unwrap_or_default();
 
             let (result, error, status) = if is_error {
                 (
@@ -106,8 +95,7 @@ fn emit_assistant_items(
             } else if output_text.is_empty() {
                 (None, None, "completed".to_string())
             } else {
-                let content =
-                    serde_json::json!([{ "type": "text", "text": output_text }]);
+                let content = serde_json::json!([{ "type": "text", "text": output_text }]);
                 (
                     Some(serde_json::json!({
                         "content": content,
@@ -134,9 +122,7 @@ fn emit_assistant_items(
     if !payload.content.is_empty() {
         let id = item_id.next();
         let item = agent_message_item(&id, &payload.content);
-        events.push(CodexEvent::ItemStarted {
-            item: item.clone(),
-        });
+        events.push(CodexEvent::ItemStarted { item: item.clone() });
         events.push(CodexEvent::ItemCompleted { item });
     }
 }
@@ -153,10 +139,7 @@ pub fn build_codex_events(session_id: &str, checkpoints: &[ReActState]) -> Vec<C
         return events;
     }
 
-    let all_messages: Vec<&Message> = checkpoints
-        .iter()
-        .flat_map(|s| s.messages.iter())
-        .collect();
+    let all_messages: Vec<&Message> = checkpoints.iter().flat_map(|s| s.messages.iter()).collect();
 
     let tool_result_map = build_tool_result_map_from_refs(&all_messages);
 
@@ -215,9 +198,7 @@ pub fn build_codex_events(session_id: &str, checkpoints: &[ReActState]) -> Vec<C
     events
 }
 
-fn build_tool_result_map_from_refs(
-    messages: &[&Message],
-) -> HashMap<String, (String, bool)> {
+fn build_tool_result_map_from_refs(messages: &[&Message]) -> HashMap<String, (String, bool)> {
     let mut map = HashMap::new();
     for msg in messages {
         if let Message::Tool {
@@ -324,7 +305,10 @@ pub fn print_cat_text(events: &[CodexEvent]) {
             CodexEvent::ItemStarted { item }
             | CodexEvent::ItemUpdated { item }
             | CodexEvent::ItemCompleted { item } => {
-                let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let item_type = item
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
                 let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("?");
                 match item_type {
                     "reasoning" => {
@@ -341,8 +325,7 @@ pub fn print_cat_text(events: &[CodexEvent]) {
                     }
                     "command_execution" => {
                         let cmd = item.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                        let status =
-                            item.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                        let status = item.get("status").and_then(|v| v.as_str()).unwrap_or("");
                         if matches!(event, CodexEvent::ItemCompleted { .. }) {
                             let output = item
                                 .get("aggregated_output")
@@ -363,11 +346,9 @@ pub fn print_cat_text(events: &[CodexEvent]) {
                     }
                     "mcp_tool_call" => {
                         let tool = item.get("tool").and_then(|v| v.as_str()).unwrap_or("");
-                        let server =
-                            item.get("server").and_then(|v| v.as_str()).unwrap_or("");
+                        let server = item.get("server").and_then(|v| v.as_str()).unwrap_or("");
                         if matches!(event, CodexEvent::ItemCompleted { .. }) {
-                            let status =
-                                item.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                            let status = item.get("status").and_then(|v| v.as_str()).unwrap_or("");
                             println!("  [{id}] {server}/{tool} ({status})");
                         }
                     }
@@ -383,11 +364,11 @@ pub fn print_cat_text(events: &[CodexEvent]) {
 }
 #[cfg(test)]
 mod tests {
-    use loom_llm::LlmUsage;
-    use loom_llm::message::{AssistantPayload, AssistantToolCall, Message};
     use agent::state::ReActState;
-use tool_core::ToolCallContent;
+    use loom_llm::message::{AssistantPayload, AssistantToolCall, Message};
+    use loom_llm::LlmUsage;
     use stream_event::codex::{CodexEvent, CodexUsage};
+    use tool_core::ToolCallContent;
 
     use super::build_codex_events;
 
@@ -474,9 +455,10 @@ use tool_core::ToolCallContent;
         events
             .iter()
             .filter_map(|e| match e {
-                CodexEvent::ItemStarted { item } | CodexEvent::ItemCompleted { item } => {
-                    item.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
-                }
+                CodexEvent::ItemStarted { item } | CodexEvent::ItemCompleted { item } => item
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
                 _ => None,
             })
             .collect()
@@ -486,9 +468,10 @@ use tool_core::ToolCallContent;
         events
             .iter()
             .filter_map(|e| match e {
-                CodexEvent::ItemCompleted { item } => {
-                    item.get("type").and_then(|v| v.as_str()).map(|s| s.to_string())
-                }
+                CodexEvent::ItemCompleted { item } => item
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
                 _ => None,
             })
             .collect()
@@ -524,11 +507,7 @@ use tool_core::ToolCallContent;
             vec![
                 Message::system("sys"),
                 Message::user("list files"),
-                assistant_with_tools(
-                    None,
-                    "",
-                    vec![("tc_1", "bash", r#"{"command":"ls"}"#)],
-                ),
+                assistant_with_tools(None, "", vec![("tc_1", "bash", r#"{"command":"ls"}"#)]),
                 tool_result("tc_1", "file1.rs\nfile2.rs"),
                 assistant_reply("Here are the files."),
             ],
@@ -604,11 +583,7 @@ use tool_core::ToolCallContent;
             vec![
                 Message::system("sys"),
                 Message::user("start"),
-                assistant_with_tools(
-                    None,
-                    "",
-                    vec![("tc_1", "bash", r#"{"command":"ls"}"#)],
-                ),
+                assistant_with_tools(None, "", vec![("tc_1", "bash", r#"{"command":"ls"}"#)]),
                 tool_result("tc_1", "output"),
             ],
             None,
@@ -631,11 +606,7 @@ use tool_core::ToolCallContent;
                     tool_call_id: "tc_1".into(),
                     content: ToolCallContent::Text("output".into()),
                 },
-                assistant_with_tools(
-                    None,
-                    "",
-                    vec![("tc_2", "bash", r#"{"command":"pwd"}"#)],
-                ),
+                assistant_with_tools(None, "", vec![("tc_2", "bash", r#"{"command":"pwd"}"#)]),
                 tool_result("tc_2", "/home"),
                 assistant_reply("done"),
             ],
@@ -778,15 +749,20 @@ use tool_core::ToolCallContent;
         );
         let events = build_codex_events("s1", &[cp]);
         let ids = get_item_ids(&events);
-        let unique_ids: Vec<&String> = ids.iter().collect::<std::collections::HashSet<_>>().into_iter().collect();
+        let unique_ids: Vec<&String> = ids
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
         assert!(unique_ids.len() >= 3);
 
         let completed_ids: Vec<String> = events
             .iter()
             .filter_map(|e| match e {
-                CodexEvent::ItemCompleted { item } => {
-                    item.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
-                }
+                CodexEvent::ItemCompleted { item } => item
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
                 _ => None,
             })
             .collect();
@@ -827,7 +803,10 @@ use tool_core::ToolCallContent;
             .collect();
 
         let cmd_item = &items[0];
-        assert_eq!(cmd_item.get("type").unwrap().as_str().unwrap(), "command_execution");
+        assert_eq!(
+            cmd_item.get("type").unwrap().as_str().unwrap(),
+            "command_execution"
+        );
         assert_eq!(
             cmd_item.get("aggregated_output").unwrap().as_str().unwrap(),
             "success output"
@@ -835,7 +814,10 @@ use tool_core::ToolCallContent;
         assert_eq!(cmd_item.get("exit_code").unwrap().as_i64().unwrap(), 0);
 
         let mcp_item = &items[1];
-        assert_eq!(mcp_item.get("type").unwrap().as_str().unwrap(), "mcp_tool_call");
+        assert_eq!(
+            mcp_item.get("type").unwrap().as_str().unwrap(),
+            "mcp_tool_call"
+        );
         assert_eq!(mcp_item.get("status").unwrap().as_str().unwrap(), "failed");
     }
 

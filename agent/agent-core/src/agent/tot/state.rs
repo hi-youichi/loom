@@ -148,5 +148,3 @@ mod tests {
         assert_eq!(restored.tot.candidates.len(), 1);
     }
 }
-
-

@@ -7,12 +7,12 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
-use tool_core::active_operation::RunCancellation;
-use checkpoint::RunnableConfig;
-use loom_graph_core::{Next, Node, RunContext};
-use loom_graph_core::GraphError;
-use stream_event::StreamMode;
 use crate::state::ReActState;
+use checkpoint::RunnableConfig;
+use loom_graph_core::GraphError;
+use loom_graph_core::{Next, Node, RunContext};
+use stream_event::StreamMode;
+use tool_core::active_operation::RunCancellation;
 use tool_core::ToolRegistryLocked;
 
 use super::act_executor::ToolCallExecutor;
@@ -67,15 +67,14 @@ impl Node<ReActState> for ActNode {
         let tools_mode = run_ctx.stream_mode.contains(&StreamMode::Tools)
             || run_ctx.stream_mode.contains(&StreamMode::Debug);
 
-        debug!(
-            tool_calls = state.tool_calls.len(),
-            tools_mode,
-            "act:input"
-        );
+        debug!(tool_calls = state.tool_calls.len(), tools_mode, "act:input");
         for (i, tc) in state.tool_calls.iter().enumerate() {
             debug!(
                 "  tool_call[{}] id={:?} name={} args_len={}",
-                i, tc.id, tc.name, tc.arguments.len()
+                i,
+                tc.id,
+                tc.name,
+                tc.arguments.len()
             );
         }
 
@@ -113,7 +112,13 @@ impl Node<ReActState> for ActNode {
             );
         }
 
-        Ok((ReActState { tool_results, ..state }, Next::Continue))
+        Ok((
+            ReActState {
+                tool_results,
+                ..state
+            },
+            Next::Continue,
+        ))
     }
 }
 

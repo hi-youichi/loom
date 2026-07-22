@@ -5,7 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, Tool};
+use tool_core::{Tool, ToolCallContent, ToolCallContext, ToolSourceError};
 
 pub use tool_core::tool_name::TOOL_BATCH;
 

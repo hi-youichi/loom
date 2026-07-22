@@ -11,8 +11,8 @@ use async_trait::async_trait;
 
 use serde_json::json;
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use tool_core::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use tool_core::{ToolOutputHint, ToolOutputStrategy};
 
 mod executor;
@@ -149,10 +149,7 @@ impl Tool for PowerShellTool {
         let workdir_arg = args.get("workdir").and_then(|v| v.as_str());
         let working_dir = match workdir_arg {
             Some(dir) => Some(std::path::PathBuf::from(dir)),
-            None => self
-                .working_folder
-                .as_ref()
-                .map(|p| p.as_ref().clone()),
+            None => self.working_folder.as_ref().map(|p| p.as_ref().clone()),
         };
 
         let timeout_ms = args

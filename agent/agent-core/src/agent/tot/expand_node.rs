@@ -6,11 +6,11 @@
 use async_trait::async_trait;
 
 use loom_graph_core::GraphError;
+use loom_graph_core::Node;
 use loom_graph_core::{Next, RunContext};
 use loom_llm::message::Message;
 use loom_llm::ToolCall;
 use stream_event::StreamEvent;
-use loom_graph_core::Node;
 
 use super::prompt::{TOT_EXPAND_SYSTEM_ADDON, TOT_RESEARCH_QUALITY_ADDON};
 use super::state::{TotCandidate, TotState};
@@ -280,16 +280,18 @@ impl Node<TotState> for ThinkExpandNode {
 mod tests {
     use super::super::state::TotExtension;
     use super::*;
+    use crate::state::ReActState;
+    use checkpoint::RunnableConfig;
     use loom_graph_core::RunContext;
     use loom_llm::client::MockLlm;
-    use checkpoint::RunnableConfig;
-    use crate::state::ReActState;
     use tokio::sync::mpsc;
 
     fn make_state() -> TotState {
         TotState {
             core: ReActState {
-                messages: vec![loom_llm::message::Message::user("Search best rust formatter")],
+                messages: vec![loom_llm::message::Message::user(
+                    "Search best rust formatter",
+                )],
                 ..ReActState::default()
             },
             tot: TotExtension::default(),
@@ -406,4 +408,3 @@ CANDIDATE 2: THOUGHT: summarize findings | TOOL_CALLS: []"#;
         }
     }
 }
-

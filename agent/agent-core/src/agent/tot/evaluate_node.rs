@@ -7,10 +7,10 @@
 use async_trait::async_trait;
 
 use loom_graph_core::GraphError;
+use loom_graph_core::Node;
 use loom_graph_core::{Next, RunContext};
 use loom_llm::message::Message;
 use stream_event::StreamEvent;
-use loom_graph_core::Node;
 
 use super::state::{TotCandidate, TotState};
 
@@ -171,8 +171,8 @@ impl Node<TotState> for ThinkEvaluateNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use checkpoint::RunnableConfig;
     use crate::state::ReActState;
+    use checkpoint::RunnableConfig;
     use loom_llm::ToolCall;
     use tokio::sync::mpsc;
 
@@ -276,4 +276,3 @@ mod tests {
         }
     }
 }
-

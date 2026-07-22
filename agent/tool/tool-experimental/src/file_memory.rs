@@ -1,10 +1,9 @@
 use async_trait::async_trait;
-use memory_v2::{
-    AddResult, MemoryError, MemoryFile, MemoryProvenance, MemoryStore, RemoveResult,
-    ReplaceResult,
-};
 use loom_llm::message::ToolCallContent;
 use loom_llm::tool::{ToolSourceError, ToolSpec};
+use memory_v2::{
+    AddResult, MemoryError, MemoryFile, MemoryProvenance, MemoryStore, RemoveResult, ReplaceResult,
+};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tool_core::{Tool, ToolCallContext};
@@ -100,7 +99,10 @@ impl MemoryTool {
     }
 
     fn handle_add(&self, file: MemoryFile, content: &str) -> Value {
-        match self.store.add_entry(file, content, &self.default_provenance) {
+        match self
+            .store
+            .add_entry(file, content, &self.default_provenance)
+        {
             Ok(AddResult {
                 success,
                 message,
@@ -259,9 +261,7 @@ mod tests {
     use memory_v2::MemoryStore;
 
     fn test_store() -> Arc<MemoryStore> {
-        Arc::new(MemoryStore::new(
-            &tempfile::tempdir().unwrap().keep(),
-        ))
+        Arc::new(MemoryStore::new(&tempfile::tempdir().unwrap().keep()))
     }
 
     #[test]
@@ -340,7 +340,10 @@ mod tests {
         let store = test_store();
         let tool = MemoryTool::new(store);
         let result = tool
-            .call(json!({"action": "add", "target": "memory", "content": "test"}), None)
+            .call(
+                json!({"action": "add", "target": "memory", "content": "test"}),
+                None,
+            )
             .await
             .unwrap();
         let text = match result {
@@ -353,7 +356,10 @@ mod tests {
 
     #[test]
     fn target_memory_maps_to_project() {
-        assert_eq!(MemoryTool::parse_target("memory").unwrap(), MemoryFile::Project);
+        assert_eq!(
+            MemoryTool::parse_target("memory").unwrap(),
+            MemoryFile::Project
+        );
         assert_eq!(MemoryTool::parse_target("user").unwrap(), MemoryFile::User);
     }
 
@@ -369,9 +375,16 @@ mod tests {
     #[test]
     fn background_review_memory_writes_with_provenance() {
         let store = test_store();
-        let tool =
-            MemoryTool::for_background_review_with_user_profile(store, "session-1", "parent-1", true);
-        assert_eq!(tool.default_provenance().execution_context, "background_review");
+        let tool = MemoryTool::for_background_review_with_user_profile(
+            store,
+            "session-1",
+            "parent-1",
+            true,
+        );
+        assert_eq!(
+            tool.default_provenance().execution_context,
+            "background_review"
+        );
         assert_eq!(tool.default_provenance().write_origin, "background_review");
         assert_eq!(
             tool.default_provenance().session_id.as_deref(),
@@ -424,12 +437,8 @@ mod tests {
     #[test]
     fn background_review_allows_user_writes_when_opted_in() {
         let store = test_store();
-        let tool = MemoryTool::for_background_review_with_user_profile(
-            store.clone(),
-            "s",
-            "p",
-            true,
-        );
+        let tool =
+            MemoryTool::for_background_review_with_user_profile(store.clone(), "s", "p", true);
         let result = tool.dispatch(&json!({
             "action": "add",
             "target": "user",
@@ -475,10 +484,7 @@ mod tests {
             result["provenance"]["execution_context"].as_str().unwrap(),
             "background_review"
         );
-        assert_eq!(
-            result["provenance"]["session_id"].as_str().unwrap(),
-            "s"
-        );
+        assert_eq!(result["provenance"]["session_id"].as_str().unwrap(), "s");
     }
 
     #[test]

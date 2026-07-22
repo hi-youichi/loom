@@ -8,14 +8,14 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
-use loom_graph_core::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
-use checkpoint::{CheckpointError, Checkpointer, RunnableConfig, Store};
-use loom_llm::message::{Message, UserContent};
 use crate::runner_common::{self, load_from_checkpoint_or_build};
+use checkpoint::{CheckpointError, Checkpointer, RunnableConfig, Store};
+use loom_graph_core::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
+use loom_graph_core::{StateGraph, END, START};
+use loom_llm::message::{Message, UserContent};
+use loom_llm::LlmClient;
 use stream_event::StreamEvent;
 use tool_core::ToolRegistryLocked;
-use loom_llm::LlmClient;
-use loom_graph_core::{StateGraph, END, START};
 
 use super::adapter_nodes::{TotActNode, TotObserveNode};
 use super::backtrack_node::BacktrackNode;
@@ -116,7 +116,10 @@ impl TotRunner {
         self
     }
 
-    pub fn with_any_stream_event_sender(mut self, sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>) -> Self {
+    pub fn with_any_stream_event_sender(
+        mut self,
+        sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
+    ) -> Self {
         self.any_stream_event_sender = sender;
         self
     }
@@ -249,10 +252,16 @@ impl TotRunner {
         )
         .await;
         match result {
-            Ok(runner_common::StreamRunOutcome::Finished(s)) => Ok(runner_common::StreamRunOutcome::Finished(s)),
-            Ok(runner_common::StreamRunOutcome::Cancelled) => Ok(runner_common::StreamRunOutcome::Cancelled),
+            Ok(runner_common::StreamRunOutcome::Finished(s)) => {
+                Ok(runner_common::StreamRunOutcome::Finished(s))
+            }
+            Ok(runner_common::StreamRunOutcome::Cancelled) => {
+                Ok(runner_common::StreamRunOutcome::Cancelled)
+            }
             Err(runner_common::StreamRunError::Execution(err)) => Err(TotRunError::Execution(err)),
-            Err(runner_common::StreamRunError::StreamEndedWithoutState(_)) => Err(TotRunError::StreamEndedWithoutState),
+            Err(runner_common::StreamRunError::StreamEndedWithoutState(_)) => {
+                Err(TotRunError::StreamEndedWithoutState)
+            }
         }
     }
 }
@@ -262,9 +271,9 @@ mod tests {
     use super::super::state::TotCandidate;
     use super::*;
     use loom_llm::client::MockLlm;
-    use stream_event::StreamEvent;
     use loom_llm::ToolCall;
     use std::sync::{Arc, Mutex};
+    use stream_event::StreamEvent;
 
     fn state_with_tools(has_tools: bool) -> TotState {
         TotState {
@@ -311,9 +320,14 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn build_tot_initial_state_builds_without_checkpoint() {
-        let state = build_tot_initial_state(&loom_llm::message::UserContent::text("hello tot".to_string()), None, None, None)
-            .await
-            .unwrap();
+        let state = build_tot_initial_state(
+            &loom_llm::message::UserContent::text("hello tot".to_string()),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
         assert!(state.core.messages.len() >= 2);
         assert!(state.tot.candidates.is_empty());
     }
@@ -356,5 +370,3 @@ mod tests {
         assert!(!events.lock().unwrap().is_empty());
     }
 }
-
-

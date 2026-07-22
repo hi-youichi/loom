@@ -1,11 +1,15 @@
 //! Conversion from `ProviderDef` (config.toml) to `ProviderConfig` (model-spec-core).
 
-use model_spec_core::registry::ProviderConfig;
 use crate::xdg_toml::{FullConfig, ProviderDef};
+use model_spec_core::registry::ProviderConfig;
 
 /// Convert a loaded `FullConfig`'s providers into `ProviderConfig` instances.
 pub fn load_provider_configs(config: &FullConfig) -> Vec<ProviderConfig> {
-    config.providers.iter().map(provider_def_to_config).collect()
+    config
+        .providers
+        .iter()
+        .map(provider_def_to_config)
+        .collect()
 }
 
 /// Convenience: load from XDG config path (`~/.loom/config.toml`).

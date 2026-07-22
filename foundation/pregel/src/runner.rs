@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use loom_graph_core::GraphError;
 use crate::algo::{ExecutableTask, PreparedTask, TaskOutcome};
 use crate::node::{PregelGraph, PregelNodeContext};
+use loom_graph_core::GraphError;
 use stream_event::{StreamEvent, StreamMode};
 
 /// Executes a frontier of prepared tasks.

@@ -309,10 +309,7 @@ impl AsyncSessionManager {
         .map_err(|e| format!("join error: {}", e))?
     }
 
-    pub async fn show_session(
-        &self,
-        session_id: String,
-    ) -> Result<Option<SessionDetail>, String> {
+    pub async fn show_session(&self, session_id: String) -> Result<Option<SessionDetail>, String> {
         let inner = self.inner.clone();
         tokio::task::spawn_blocking(move || inner.show_session(&session_id))
             .await
@@ -469,7 +466,11 @@ impl SessionManager {
             sql.push_str(&having_clauses.join(" AND "));
         }
 
-        sql.push_str(if reverse { " ORDER BY last_updated ASC" } else { " ORDER BY last_updated DESC" });
+        sql.push_str(if reverse {
+            " ORDER BY last_updated ASC"
+        } else {
+            " ORDER BY last_updated DESC"
+        });
 
         if limit > 0 {
             sql.push_str(&format!(" LIMIT ?{}", next_param));
@@ -512,18 +513,24 @@ impl SessionManager {
             return Ok(dt.with_timezone(&Utc));
         }
         if let Ok(d) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-            let dt = d.and_hms_opt(0, 0, 0).ok_or_else(|| format!("Invalid date: {}", s))?;
+            let dt = d
+                .and_hms_opt(0, 0, 0)
+                .ok_or_else(|| format!("Invalid date: {}", s))?;
             return Ok(DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc));
         }
-        Err(format!("Invalid date '{}': expected YYYY-MM-DD or RFC 3339", s))
+        Err(format!(
+            "Invalid date '{}': expected YYYY-MM-DD or RFC 3339",
+            s
+        ))
     }
 
     pub fn show_session(&self, session_id: &str) -> Result<Option<SessionDetail>, String> {
         let conn = rusqlite::Connection::open(&self.db_path)
             .map_err(|e| format!("Failed to open database: {}", e))?;
 
-        let mut stmt = conn.prepare(
-            r#"
+        let mut stmt = conn
+            .prepare(
+                r#"
             SELECT
                 COUNT(*) as checkpoint_count,
                 MIN(metadata_created_at) as created_at,
@@ -541,52 +548,73 @@ impl SessionManager {
             FROM checkpoints
             WHERE thread_id = ?1
             "#,
-        ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
+            )
+            .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
-        let info = stmt.query_row([session_id], |row| {
-            let checkpoint_count: usize = row.get(0)?;
-            let created_at_ms: Option<i64> = row.get(1)?;
-            let last_updated_ms: Option<i64> = row.get(2)?;
-            let latest_step: i64 = row.get(3)?;
-            let latest_source: String = row.get(4)?;
-            let title: Option<String> = row.get(5)?;
-            Ok(SessionInfo {
-                session_id: session_id.to_string(),
-                checkpoint_count,
-                created_at: created_at_ms.and_then(DateTime::from_timestamp_millis),
-                last_updated: last_updated_ms.and_then(DateTime::from_timestamp_millis),
-                latest_step,
-                latest_source,
-                title,
+        let info = stmt
+            .query_row([session_id], |row| {
+                let checkpoint_count: usize = row.get(0)?;
+                let created_at_ms: Option<i64> = row.get(1)?;
+                let last_updated_ms: Option<i64> = row.get(2)?;
+                let latest_step: i64 = row.get(3)?;
+                let latest_source: String = row.get(4)?;
+                let title: Option<String> = row.get(5)?;
+                Ok(SessionInfo {
+                    session_id: session_id.to_string(),
+                    checkpoint_count,
+                    created_at: created_at_ms.and_then(DateTime::from_timestamp_millis),
+                    last_updated: last_updated_ms.and_then(DateTime::from_timestamp_millis),
+                    latest_step,
+                    latest_source,
+                    title,
+                })
             })
-        }).optional().map_err(|e| format!("Failed to query session: {}", e))?;
+            .optional()
+            .map_err(|e| format!("Failed to query session: {}", e))?;
 
-        let info = match info { Some(i) => i, None => return Ok(None) };
+        let info = match info {
+            Some(i) => i,
+            None => return Ok(None),
+        };
 
         let mut payload_stmt = conn.prepare(
             "SELECT payload FROM checkpoints WHERE thread_id = ?1 ORDER BY metadata_created_at DESC LIMIT 1"
         ).map_err(|e| format!("Failed to prepare payload statement: {}", e))?;
 
-        let payload: Option<Vec<u8>> = payload_stmt.query_row([session_id], |row| row.get(0))
-            .optional().map_err(|e| format!("Failed to query payload: {}", e))?;
+        let payload: Option<Vec<u8>> = payload_stmt
+            .query_row([session_id], |row| row.get(0))
+            .optional()
+            .map_err(|e| format!("Failed to query payload: {}", e))?;
 
-        let (message_count, first_user_message, last_assistant_reply) = if let Some(data) = payload {
+        let (message_count, first_user_message, last_assistant_reply) = if let Some(data) = payload
+        {
             match serde_json::from_slice::<agent::state::ReActState>(&data) {
                 Ok(state) => {
                     let first_user = state.messages.iter().find_map(|m| match m {
                         loom_llm::message::Message::User(s) => Some(s.as_text().to_string()),
                         _ => None,
                     });
-                    (state.messages.len(), first_user, state.last_assistant_reply())
+                    (
+                        state.messages.len(),
+                        first_user,
+                        state.last_assistant_reply(),
+                    )
                 }
                 Err(_) => (0, None, None),
             }
-        } else { (0, None, None) };
+        } else {
+            (0, None, None)
+        };
 
-        Ok(Some(SessionDetail { info, message_count, first_user_message, last_assistant_reply }))
+        Ok(Some(SessionDetail {
+            info,
+            message_count,
+            first_user_message,
+            last_assistant_reply,
+        }))
     }
 
-pub fn delete_session(&self, session_id: &str) -> Result<usize, String> {
+    pub fn delete_session(&self, session_id: &str) -> Result<usize, String> {
         let conn = rusqlite::Connection::open(&self.db_path)
             .map_err(|e| format!("Failed to open database: {}", e))?;
         // Cascade-aware delete (priority #23 gap, Hermes `hermes_state.py`).
@@ -603,14 +631,15 @@ pub fn delete_session(&self, session_id: &str) -> Result<usize, String> {
         // actually removed from the target thread (plus any delegates).
         checkpoint_sqlite_store::execute_write(&conn, |tx| {
             // Step 1: collect related thread_ids via shared summary.
-            let mut stmt = tx.prepare(
-                "SELECT DISTINCT thread_id FROM checkpoints
+            let mut stmt = tx
+                .prepare(
+                    "SELECT DISTINCT thread_id FROM checkpoints
                  WHERE thread_id != ?1
                    AND metadata_summary IN (
                      SELECT metadata_summary FROM checkpoints WHERE thread_id = ?1
                    )",
-            )
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+                )
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
             let related: Vec<String> = stmt
                 .query_map([session_id], |row| row.get::<_, String>(0))
                 .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
@@ -619,10 +648,7 @@ pub fn delete_session(&self, session_id: &str) -> Result<usize, String> {
             drop(stmt);
             // Step 2: delete the target thread.
             let mut total: usize = tx
-                .execute(
-                    "DELETE FROM checkpoints WHERE thread_id = ?1",
-                    [session_id],
-                )
+                .execute("DELETE FROM checkpoints WHERE thread_id = ?1", [session_id])
                 .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
             // Step 3: cascade delegates.
             for tid in &related {
@@ -671,10 +697,7 @@ pub fn delete_session(&self, session_id: &str) -> Result<usize, String> {
     // ------------------------------------------------------------------
 
     /// Idempotent schema migration for the `sessions` lineage table.
-    pub fn ensure_sessions_schema(
-        &self,
-        conn: &rusqlite::Connection,
-    ) -> Result<(), String> {
+    pub fn ensure_sessions_schema(&self, conn: &rusqlite::Connection) -> Result<(), String> {
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS sessions (
@@ -736,10 +759,7 @@ pub fn delete_session(&self, session_id: &str) -> Result<usize, String> {
     /// end_reason='compression') to its most recent live descendant
     /// via the recursive CTE. Returns the tip thread_id, or `None`
     /// when no live descendant exists (compression was abandoned).
-    pub fn get_compression_tip(
-        &self,
-        root_session_id: &str,
-    ) -> Result<Option<String>, String> {
+    pub fn get_compression_tip(&self, root_session_id: &str) -> Result<Option<String>, String> {
         let conn = rusqlite::Connection::open(&self.db_path)
             .map_err(|e| format!("Failed to open database: {}", e))?;
         self.ensure_sessions_schema(&conn)?;
@@ -811,8 +831,7 @@ pub fn delete_session(&self, session_id: &str) -> Result<usize, String> {
                 )
                 .optional()
                 .map_err(|e| format!("Failed to query lineage: {}", e))?;
-            let (parent_session_id, end_reason) = row
-                .unwrap_or((None, "normal".to_string()));
+            let (parent_session_id, end_reason) = row.unwrap_or((None, "normal".to_string()));
             let compression_tip = if end_reason == "compression" {
                 self.get_compression_tip(&info.session_id)?
             } else {
@@ -835,11 +854,7 @@ pub fn delete_session(&self, session_id: &str) -> Result<usize, String> {
     ///
     /// Returns the new session_id (UUID-like string derived from
     /// `parent_session_id` + timestamp).
-    pub fn archive_and_compact(
-        &self,
-        session_id: &str,
-        summary: &str,
-    ) -> Result<String, String> {
+    pub fn archive_and_compact(&self, session_id: &str, summary: &str) -> Result<String, String> {
         let conn = rusqlite::Connection::open(&self.db_path)
             .map_err(|e| format!("Failed to open database: {}", e))?;
         self.ensure_sessions_schema(&conn)?;
@@ -919,10 +934,7 @@ pub fn delete_session(&self, session_id: &str) -> Result<usize, String> {
     ///     the target message_id, marking it rewound=1.
     ///   * `restore_rewound`: flips everything after the marker back
     ///     to active=1 / rewound=0.
-    pub fn ensure_message_state_schema(
-        &self,
-        conn: &rusqlite::Connection,
-    ) -> Result<(), String> {
+    pub fn ensure_message_state_schema(&self, conn: &rusqlite::Connection) -> Result<(), String> {
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS message_state (
@@ -967,10 +979,7 @@ pub fn delete_session(&self, session_id: &str) -> Result<usize, String> {
                     "SELECT metadata_created_at FROM checkpoints
                      WHERE thread_id = ?1 AND payload LIKE ?2
                      ORDER BY metadata_created_at DESC LIMIT 1",
-                    rusqlite::params![
-                        thread_id,
-                        format!("%\"id\":\"{}\"%", target_message_id)
-                    ],
+                    rusqlite::params![thread_id, format!("%\"id\":\"{}\"%", target_message_id)],
                     |row| row.get(0),
                 )
                 .optional()
@@ -1021,11 +1030,7 @@ pub fn delete_session(&self, session_id: &str) -> Result<usize, String> {
     /// Helper: returns true if `message_id` is still active for
     /// `thread_id` (defaulting to true when no row exists — backwards
     /// compatible with sessions pre-dating the sidecar).
-    pub fn is_message_active(
-        &self,
-        thread_id: &str,
-        message_id: &str,
-    ) -> Result<bool, String> {
+    pub fn is_message_active(&self, thread_id: &str, message_id: &str) -> Result<bool, String> {
         let conn = rusqlite::Connection::open(&self.db_path)
             .map_err(|e| format!("Failed to open database: {}", e))?;
         self.ensure_message_state_schema(&conn)?;
@@ -1197,10 +1202,7 @@ pub fn delete_session(&self, session_id: &str) -> Result<usize, String> {
         let mut rows = stmt
             .query(rusqlite::params![session_id, model])
             .map_err(|e| format!("Failed to query: {}", e))?;
-        match rows
-            .next()
-            .map_err(|e| format!("Failed to step: {}", e))?
-        {
+        match rows.next().map_err(|e| format!("Failed to step: {}", e))? {
             Some(row) => Ok(Some(TokenCountRow {
                 input_tokens: row.get(0).unwrap_or(0),
                 output_tokens: row.get(1).unwrap_or(0),
@@ -1221,17 +1223,20 @@ pub fn delete_session(&self, session_id: &str) -> Result<usize, String> {
     }
 
     pub fn rename_session(&self, session_id: &str, title: &str) -> Result<(), String> {
-        let conn = rusqlite::Connection::open(&self.db_path).map_err(|e| format!("Failed to open database: {}", e))?;
+        let conn = rusqlite::Connection::open(&self.db_path)
+            .map_err(|e| format!("Failed to open database: {}", e))?;
         let affected = conn.execute(
             "UPDATE checkpoints SET metadata_summary = ?1
              WHERE rowid = (SELECT rowid FROM checkpoints WHERE thread_id = ?2 ORDER BY metadata_created_at DESC LIMIT 1)",
             rusqlite::params![title, session_id],
         ).map_err(|e| format!("Failed to rename session: {}", e))?;
-        if affected == 0 { return Err(format!("Session not found: {}", session_id)); }
+        if affected == 0 {
+            return Err(format!("Session not found: {}", session_id));
+        }
         Ok(())
     }
 
-pub fn search_sessions(&self, query: &str, limit: usize) -> Result<Vec<SessionInfo>, String> {
+    pub fn search_sessions(&self, query: &str, limit: usize) -> Result<Vec<SessionInfo>, String> {
         let conn = rusqlite::Connection::open(&self.db_path)
             .map_err(|e| format!("Failed to open database: {}", e))?;
 
@@ -1245,8 +1250,8 @@ pub fn search_sessions(&self, query: &str, limit: usize) -> Result<Vec<SessionIn
         // chars long, prefer trigram FTS5. Otherwise use per-token LIKE.
         let tokens: Vec<&str> = query.split_whitespace().collect();
         let cjk_total = count_cjk(query);
-        let every_token_long_enough = !tokens.is_empty()
-            && tokens.iter().all(|t| t.chars().count() >= 3);
+        let every_token_long_enough =
+            !tokens.is_empty() && tokens.iter().all(|t| t.chars().count() >= 3);
         let use_trigram = fts_ok && trigram_ok && (cjk_total >= 3 || every_token_long_enough);
         let use_fts5 = fts_ok && !use_trigram;
 
@@ -1363,34 +1368,61 @@ pub fn search_sessions(&self, query: &str, limit: usize) -> Result<Vec<SessionIn
     }
 
     pub fn cat_session(&self, session_id: &str) -> Result<Vec<stream_event::CodexEvent>, String> {
-        let conn = rusqlite::Connection::open(&self.db_path).map_err(|e| format!("Failed to open database: {}", e))?;
+        let conn = rusqlite::Connection::open(&self.db_path)
+            .map_err(|e| format!("Failed to open database: {}", e))?;
         let mut stmt = conn.prepare("SELECT payload FROM checkpoints WHERE thread_id = ?1 ORDER BY metadata_created_at ASC")
             .map_err(|e| format!("Failed to prepare statement: {}", e))?;
-        let payloads: Vec<Vec<u8>> = stmt.query_map([session_id], |row| row.get(0))
+        let payloads: Vec<Vec<u8>> = stmt
+            .query_map([session_id], |row| row.get(0))
             .map_err(|e| format!("Failed to query checkpoints: {}", e))?
-            .collect::<Result<Vec<_>, _>>().map_err(|e| format!("Failed to collect payloads: {}", e))?;
-        if payloads.is_empty() { return Err(format!("Session not found: {}", session_id)); }
-        let states: Vec<agent::state::ReActState> = payloads.iter().filter_map(|d| serde_json::from_slice(d).ok()).collect();
-        Ok(crate::codex_event_builder::build_codex_events(session_id, &states))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to collect payloads: {}", e))?;
+        if payloads.is_empty() {
+            return Err(format!("Session not found: {}", session_id));
+        }
+        let states: Vec<agent::state::ReActState> = payloads
+            .iter()
+            .filter_map(|d| serde_json::from_slice(d).ok())
+            .collect();
+        Ok(crate::codex_event_builder::build_codex_events(
+            session_id, &states,
+        ))
     }
 
     pub fn extract_session_text(&self, session_id: &str) -> Result<String, String> {
-        let conn = rusqlite::Connection::open(&self.db_path).map_err(|e| format!("Failed to open database: {}", e))?;
+        let conn = rusqlite::Connection::open(&self.db_path)
+            .map_err(|e| format!("Failed to open database: {}", e))?;
         let mut stmt = conn.prepare("SELECT payload FROM checkpoints WHERE thread_id = ?1 ORDER BY metadata_created_at ASC")
             .map_err(|e| format!("Failed to prepare statement: {}", e))?;
-        let payloads: Vec<Vec<u8>> = stmt.query_map([session_id], |row| row.get(0))
+        let payloads: Vec<Vec<u8>> = stmt
+            .query_map([session_id], |row| row.get(0))
             .map_err(|e| format!("Query failed: {}", e))?
-            .filter_map(|r| r.ok()).collect();
-        if payloads.is_empty() { return Err(format!("Session not found: {}", session_id)); }
+            .filter_map(|r| r.ok())
+            .collect();
+        if payloads.is_empty() {
+            return Err(format!("Session not found: {}", session_id));
+        }
 
         let mut parts = Vec::new();
         for data in &payloads {
             if let Ok(state) = serde_json::from_slice::<agent::state::ReActState>(data) {
                 for msg in &state.messages {
                     match msg {
-                        loom_llm::message::Message::User(u) => parts.push(format!("User: {}", u.as_text())),
-                        loom_llm::message::Message::Assistant(a) => { if !a.content.is_empty() { parts.push(format!("Assistant: {}", a.content)); } }
-                        loom_llm::message::Message::Tool { content, .. } => { if let Some(text) = content.as_text() { if !text.is_empty() { parts.push(format!("Tool: {}", text)); } } }
+                        loom_llm::message::Message::User(u) => {
+                            parts.push(format!("User: {}", u.as_text()))
+                        }
+                        loom_llm::message::Message::Assistant(a) => {
+                            if !a.content.is_empty() {
+                                parts.push(format!("Assistant: {}", a.content));
+                            }
+                        }
+                        loom_llm::message::Message::Tool { content, .. } => {
+                            if let Some(text) = content.as_text() {
+                                if !text.is_empty() {
+                                    parts.push(format!("Tool: {}", text));
+                                }
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -1400,7 +1432,9 @@ pub fn search_sessions(&self, query: &str, limit: usize) -> Result<Vec<SessionIn
         // replayed text doesn't appear to invoke memory/skill tools at
         // inference time (Hermes `hermes_state.py` #10).
         let assembled = parts.join("\n");
-        Ok(loom_llm::message::strip_background_review_harness(&assembled))
+        Ok(loom_llm::message::strip_background_review_harness(
+            &assembled,
+        ))
     }
 
     /// Prints session detail (used by `session show`, not `session list`).
@@ -1412,19 +1446,35 @@ pub fn search_sessions(&self, query: &str, limit: usize) -> Result<Vec<SessionIn
         } else {
             println!("Session: {}", detail.info.session_id);
             println!("{}", "=".repeat(60));
-            if let Some(ref title) = detail.info.title { println!("Title: {}", title); }
+            if let Some(ref title) = detail.info.title {
+                println!("Title: {}", title);
+            }
             println!("Checkpoints: {}", detail.info.checkpoint_count);
             println!("Messages: {}", detail.message_count);
             println!("Latest Step: {}", detail.info.latest_step);
             println!("Latest Source: {}", detail.info.latest_source);
-            println!("Created: {}", Self::format_datetime(&detail.info.created_at));
-            println!("Last Updated: {}", Self::format_datetime(&detail.info.last_updated));
+            println!(
+                "Created: {}",
+                Self::format_datetime(&detail.info.created_at)
+            );
+            println!(
+                "Last Updated: {}",
+                Self::format_datetime(&detail.info.last_updated)
+            );
             if let Some(ref msg) = detail.first_user_message {
-                let truncated = if msg.chars().count() > 100 { format!("{}...", msg.chars().take(100).collect::<String>()) } else { msg.clone() };
+                let truncated = if msg.chars().count() > 100 {
+                    format!("{}...", msg.chars().take(100).collect::<String>())
+                } else {
+                    msg.clone()
+                };
                 println!("\nFirst User Message:\n  {}", truncated);
             }
             if let Some(ref reply) = detail.last_assistant_reply {
-                let truncated = if reply.chars().count() > 200 { format!("{}...", reply.chars().take(200).collect::<String>()) } else { reply.clone() };
+                let truncated = if reply.chars().count() > 200 {
+                    format!("{}...", reply.chars().take(200).collect::<String>())
+                } else {
+                    reply.clone()
+                };
                 println!("\nLast Assistant Reply:\n  {}", truncated);
             }
         }
@@ -1432,8 +1482,11 @@ pub fn search_sessions(&self, query: &str, limit: usize) -> Result<Vec<SessionIn
     }
 
     fn format_datetime(dt: &Option<DateTime<Utc>>) -> String {
-        dt.map(|t| { let local: DateTime<Local> = t.into(); local.format("%Y-%m-%d %H:%M:%S").to_string() })
-            .unwrap_or_else(|| "N/A".to_string())
+        dt.map(|t| {
+            let local: DateTime<Local> = t.into();
+            local.format("%Y-%m-%d %H:%M:%S").to_string()
+        })
+        .unwrap_or_else(|| "N/A".to_string())
     }
 }
 

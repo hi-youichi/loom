@@ -7,9 +7,12 @@ async fn edit_replaces_full_document() {
     let tool = make_tool(storage);
 
     let updated = make_skill_md("test-skill", "updated desc", "new body content");
-    tool.call(json!({"action": "edit", "name": "test-skill", "content": updated}), None)
-        .await
-        .unwrap();
+    tool.call(
+        json!({"action": "edit", "name": "test-skill", "content": updated}),
+        None,
+    )
+    .await
+    .unwrap();
 
     let reloaded = tool.storage.load("test-skill").unwrap();
     assert_eq!(reloaded.description, "updated desc");

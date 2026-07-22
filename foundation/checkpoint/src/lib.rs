@@ -57,16 +57,15 @@ mod serializer;
 
 // Re-export core types
 pub use checkpoint::{
-    Checkpoint, CheckpointMetadata, CheckpointListItem, CheckpointTuple, CheckpointSource,
-    CheckpointUserMeta, KernelMetadata, PendingWrite, ChannelVersions,
-    CHECKPOINT_VERSION, ERROR, SCHEDULED, INTERRUPT, RESUME, writes_idx_map,
+    writes_idx_map, ChannelVersions, Checkpoint, CheckpointListItem, CheckpointMetadata,
+    CheckpointSource, CheckpointTuple, CheckpointUserMeta, KernelMetadata, PendingWrite,
+    CHECKPOINT_VERSION, ERROR, INTERRUPT, RESUME, SCHEDULED,
 };
-pub use checkpointer::{Checkpointer, CheckpointError};
+pub use checkpointer::{CheckpointError, Checkpointer};
 pub use config::RunnableConfig;
 pub use store::{
-    Store, StoreOp, StoreError, StoreOpResult, StoreSearchHit,
-    Item, SearchItem, Namespace,
-    FilterOp, ListNamespacesOptions, MatchCondition, NamespaceMatchType, SearchOptions,
+    FilterOp, Item, ListNamespacesOptions, MatchCondition, Namespace, NamespaceMatchType,
+    SearchItem, SearchOptions, Store, StoreError, StoreOp, StoreOpResult, StoreSearchHit,
 };
 pub use uuid6::{uuid6, uuid6_with_params, Uuid6};
 

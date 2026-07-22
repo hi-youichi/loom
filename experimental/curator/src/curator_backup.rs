@@ -6,8 +6,8 @@
 //! - `list_snapshots()` — list available snapshots
 //! - `prune_old_snapshots()` — clean old snapshots (keep recent N)
 
-use flate2::write::GzEncoder;
 use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -114,7 +114,11 @@ impl CuratorBackup {
         // cross-tool portable (Hermes Python and Loom Rust both can sort
         // and parse it directly).
         let base_ts = chrono::Utc::now().format("%Y-%m-%dT%H-%M-%SZ").to_string();
-        let filename = if !self.backup_dir.join(format!("curator-{}.tar.gz", base_ts)).exists() {
+        let filename = if !self
+            .backup_dir
+            .join(format!("curator-{}.tar.gz", base_ts))
+            .exists()
+        {
             format!("curator-{}.tar.gz", base_ts)
         } else {
             // Collision suffix: append `-<seq>` until we find a free slot.
@@ -133,7 +137,7 @@ impl CuratorBackup {
         let encoder = GzEncoder::new(file, flate2::Compression::default());
         let mut builder = Builder::new(encoder);
 
-// Collect skills count — count SKILL.md only (Hermes-aligned).
+        // Collect skills count — count SKILL.md only (Hermes-aligned).
         // Mirrors `curator_backup.py:175-181` `EXCLUDE_TOP_LEVEL` filter: any
         // support file (templates, examples, etc.) is excluded so the metric
         // matches "number of skills" rather than "number of files". Also
@@ -158,7 +162,7 @@ impl CuratorBackup {
             })
             .count();
 
-// Pack skills_dir (without backup_dir itself).
+        // Pack skills_dir (without backup_dir itself).
         // Hermes parity (`curator_backup.py:175-181, 245-280`): the
         // `EXCLUDE_TOP_LEVEL` filter prevents the snapshot from bundling
         // internal-only directories such as `.hub/` (the skills-hub
@@ -230,7 +234,8 @@ impl CuratorBackup {
         header.set_size(meta_json.len() as u64);
         header.set_mode(0o644);
         header.set_entry_type(tar::EntryType::file());
-        header.set_path("metadata.json")
+        header
+            .set_path("metadata.json")
             .map_err(std::io::Error::other)?;
         // Re-open for appending metadata.json; builder was dropped above.
         let file = std::fs::OpenOptions::new().append(true).open(&filepath)?;
@@ -245,9 +250,7 @@ impl CuratorBackup {
         // bytes into the underlying file when dropped / `try_finish`d, and
         // reading metadata between the two `drop(builder)` calls would
         // under-count by the metadata.json payload (~200-400 B).
-        let size_bytes = fs::metadata(&filepath)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let size_bytes = fs::metadata(&filepath).map(|m| m.len()).unwrap_or(0);
         let mut meta = meta;
         meta.size_bytes = size_bytes;
 
@@ -274,14 +277,19 @@ impl CuratorBackup {
             let path = entry.path();
 
             if path.extension().map(|e| e == "gz").unwrap_or(false)
-                && path.file_stem().map(|s| s.to_string_lossy().starts_with("curator-")).unwrap_or(false)
+                && path
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().starts_with("curator-"))
+                    .unwrap_or(false)
             {
                 if let Ok(file) = File::open(&path) {
                     let decoder = GzDecoder::new(file);
                     let mut archive = Archive::new(decoder);
-                    let meta_entry = archive.entries()?
-                        .filter_map(|e| e.ok())
-                        .find(|e| e.path().map(|p| p.to_string_lossy() == "metadata.json").unwrap_or(false));
+                    let meta_entry = archive.entries()?.filter_map(|e| e.ok()).find(|e| {
+                        e.path()
+                            .map(|p| p.to_string_lossy() == "metadata.json")
+                            .unwrap_or(false)
+                    });
 
                     if let Some(mut entry) = meta_entry {
                         let mut content = String::new();
@@ -314,7 +322,7 @@ impl CuratorBackup {
     /// which left `skills_dir` partially-written on extract errors and
     /// leaked a `pre-rollback-temp` file on success.
     pub fn rollback(&self, snapshot_name: &str, skills_dir: &Path) -> Result<()> {
-let snapshot_path = self.backup_dir.join(snapshot_name);
+        let snapshot_path = self.backup_dir.join(snapshot_name);
         if !snapshot_path.exists() {
             return Err(BackupError::SnapshotNotFound(snapshot_name.to_string()));
         }
@@ -334,13 +342,9 @@ let snapshot_path = self.backup_dir.join(snapshot_name);
         // semantics — losing a pre-rollback capture is recoverable but
         // losing the actual rollback isn't).
         let target_id = snapshot_name.to_string();
-        let mut protect_ids: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut protect_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
         protect_ids.insert(target_id.clone());
-        if let Some(pre_path) = self.snapshot_skills_with_protect(
-            "pre-rollback",
-            &protect_ids,
-        ) {
+        if let Some(pre_path) = self.snapshot_skills_with_protect("pre-rollback", &protect_ids) {
             tracing::info!(
                 "Curator rollback: pre-rollback protect snapshot at {:?} (target={})",
                 pre_path,
@@ -357,9 +361,7 @@ let snapshot_path = self.backup_dir.join(snapshot_name);
         let staging_dir = self
             .backup_dir
             .join(format!(".rollback-staging-{}", base_ts));
-        let old_sidecar = self
-            .backup_dir
-            .join(format!(".rollback-old-{}", base_ts));
+        let old_sidecar = self.backup_dir.join(format!(".rollback-old-{}", base_ts));
 
         // Drop the legacy flat `pre-rollback-temp` file if a previous crash
         // left it behind; it is not part of the atomic flow anymore.
@@ -527,8 +529,8 @@ let snapshot_path = self.backup_dir.join(snapshot_name);
         if !snapshot_path.exists() {
             return Err(format!("snapshot '{}' not found", snapshot_name));
         }
-        let file = std::fs::File::open(&snapshot_path)
-            .map_err(|e| format!("open snapshot: {}", e))?;
+        let file =
+            std::fs::File::open(&snapshot_path).map_err(|e| format!("open snapshot: {}", e))?;
         let decoder = flate2::read::GzDecoder::new(file);
         let mut archive = tar::Archive::new(decoder);
         let mut manifest: Option<SnapshotMeta> = None;
@@ -547,8 +549,8 @@ let snapshot_path = self.backup_dir.join(snapshot_name);
                 entry
                     .read_to_string(&mut buf)
                     .map_err(|e| format!("read metadata: {}", e))?;
-                manifest = serde_json::from_str(&buf)
-                    .map_err(|e| format!("parse metadata: {}", e))?;
+                manifest =
+                    serde_json::from_str(&buf).map_err(|e| format!("parse metadata: {}", e))?;
                 break;
             }
         }
@@ -565,7 +567,9 @@ let snapshot_path = self.backup_dir.join(snapshot_name);
             m.skills_count,
             m.size_bytes,
             m.description.as_deref().unwrap_or("(none)"),
-            m.number.map(|n| n.to_string()).unwrap_or_else(|| "—".to_string()),
+            m.number
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "—".to_string()),
         ))
     }
 
@@ -619,8 +623,8 @@ let snapshot_path = self.backup_dir.join(snapshot_name);
             description: Some("pre-rollback capture".to_string()),
             number: Some(seq),
         };
-        let meta_json = serde_json::to_string_pretty(&meta)
-            .map_err(|e| format!("meta json: {}", e))?;
+        let meta_json =
+            serde_json::to_string_pretty(&meta).map_err(|e| format!("meta json: {}", e))?;
         let mut header = tar::Header::new_gnu();
         header.set_size(meta_json.len() as u64);
         header.set_mode(0o644);
@@ -640,7 +644,9 @@ let snapshot_path = self.backup_dir.join(snapshot_name);
     /// Get latest snapshot filename
     pub fn latest_snapshot(&self) -> Result<Option<String>> {
         let snapshots = self.list_snapshots()?;
-        Ok(snapshots.first().map(|m| format!("curator-{}.tar.gz", m.timestamp)))
+        Ok(snapshots
+            .first()
+            .map(|m| format!("curator-{}.tar.gz", m.timestamp)))
     }
 
     /// Execute curator run pre-auto snapshot
@@ -658,11 +664,11 @@ let snapshot_path = self.backup_dir.join(snapshot_name);
         Ok(Some(filename))
     }
 
-/// Wrapper for snapshot() + auto prune (aligns with `snapshot_skills(reason)`)
+    /// Wrapper for snapshot() + auto prune (aligns with `snapshot_skills(reason)`)
     ///
     /// Difference from `auto_snapshot`:
-    /// - Checks curator enabled config 
-    /// - Checks if skills_dir exists 
+    /// - Checks curator enabled config
+    /// - Checks if skills_dir exists
     /// - Calls `snapshot()` to execute backup
     /// - Calls `prune_old_snapshots()` to clean old snapshots
     ///
@@ -691,7 +697,7 @@ let snapshot_path = self.backup_dir.join(snapshot_name);
             .join("loom")
             .join("skills");
 
-        // 1. Check enabled 
+        // 1. Check enabled
         // TODO: Read curator.enabled from config.toml
         let enabled = std::env::var("CURATION_ENABLED")
             .map(|v| v != "false")
@@ -701,13 +707,13 @@ let snapshot_path = self.backup_dir.join(snapshot_name);
             return None;
         }
 
-        // 2. Check if skills_dir exists 
+        // 2. Check if skills_dir exists
         if !skills_dir.exists() {
             tracing::debug!("skills dir does not exist — nothing to back up");
             return None;
         }
 
-        // 3. Create backup directory 
+        // 3. Create backup directory
         if fs::create_dir_all(&self.backup_dir).is_err() {
             tracing::debug!("failed to create backup dir {:?}", self.backup_dir);
             return None;
@@ -723,10 +729,7 @@ let snapshot_path = self.backup_dir.join(snapshot_name);
         };
 
         // 5. Prune old snapshots, honouring protect_ids.
-        if self
-            .prune_old_snapshots(5, false, protect_ids)
-            .is_err()
-        {
+        if self.prune_old_snapshots(5, false, protect_ids).is_err() {
             tracing::debug!("prune_old_snapshots failed");
         }
 
@@ -759,7 +762,9 @@ mod tests {
         fs::create_dir_all(skills_dir.path()).unwrap();
         fs::write(skills_dir.path().join("test.md"), "test").unwrap();
 
-        let filename = backup.snapshot(skills_dir.path(), Some("test snapshot")).unwrap();
+        let filename = backup
+            .snapshot(skills_dir.path(), Some("test snapshot"))
+            .unwrap();
         assert!(filename.starts_with("curator-"));
         assert!(filename.ends_with(".tar.gz"));
 
@@ -804,7 +809,9 @@ mod tests {
             let skill_subdir = backup_dir.path().join(format!("skill-{}", i));
             fs::create_dir_all(&skill_subdir).unwrap();
             fs::write(skill_subdir.join("x"), "x").unwrap();
-            backup.snapshot(&skill_subdir, Some(&format!("snap-{}", i))).unwrap();
+            backup
+                .snapshot(&skill_subdir, Some(&format!("snap-{}", i)))
+                .unwrap();
         }
 
         // Verify files exist
@@ -843,7 +850,9 @@ mod tests {
         let backup_dir = tempfile::tempdir().unwrap();
         let backup = CuratorBackup::new().with_backup_dir(backup_dir.path().to_path_buf());
 
-        let result = backup.auto_snapshot(Path::new("/nonexistent/path")).unwrap();
+        let result = backup
+            .auto_snapshot(Path::new("/nonexistent/path"))
+            .unwrap();
         assert_eq!(result, None);
     }
 

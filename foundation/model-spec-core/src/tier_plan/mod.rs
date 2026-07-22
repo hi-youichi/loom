@@ -46,13 +46,13 @@ static TIER_PLANS: OnceLock<HashMap<String, TierPlan>> = OnceLock::new();
 pub fn tier_plans() -> &'static HashMap<String, TierPlan> {
     TIER_PLANS.get_or_init(|| {
         let raw = include_str!("plans.toml");
-        let file: TierPlansFile = toml::from_str(raw)
-            .expect("tier plans TOML should be valid");
+        let file: TierPlansFile = toml::from_str(raw).expect("tier plans TOML should be valid");
         file.plan
             .into_iter()
             .flat_map(|p| {
                 let plan = TierPlan::from(p);
-                let compound_key = format!("{}/{}/{}",
+                let compound_key = format!(
+                    "{}/{}/{}",
                     plan.provider_id,
                     plan.family.as_deref().unwrap_or(""),
                     plan.version.as_deref().unwrap_or("")
@@ -87,8 +87,14 @@ mod tests {
         assert_eq!(plan.provider_id, "test_provider");
         assert_eq!(plan.family, Some("test_family".to_string()));
         assert_eq!(plan.version, Some("v1".to_string()));
-        assert_eq!(plan.tiers.get(&ModelTier::Strong), Some(&"strong_model".to_string()));
-        assert_eq!(plan.tiers.get(&ModelTier::Light), Some(&"light_model".to_string()));
+        assert_eq!(
+            plan.tiers.get(&ModelTier::Strong),
+            Some(&"strong_model".to_string())
+        );
+        assert_eq!(
+            plan.tiers.get(&ModelTier::Light),
+            Some(&"light_model".to_string())
+        );
     }
 
     #[test]
@@ -122,7 +128,11 @@ mod tests {
         let plans = tier_plans();
         for key in plans.keys() {
             let parts: Vec<&str> = key.split('/').collect();
-            assert_eq!(parts.len(), 3, "Each key should have 3 parts separated by /");
+            assert_eq!(
+                parts.len(),
+                3,
+                "Each key should have 3 parts separated by /"
+            );
         }
     }
 
@@ -199,7 +209,13 @@ mod tests {
         };
 
         let plan = TierPlan::from(raw);
-        assert_eq!(plan.tiers.get(&ModelTier::Strong), Some(&"strong".to_string()));
-        assert_eq!(plan.tiers.get(&ModelTier::Light), Some(&"light".to_string()));
+        assert_eq!(
+            plan.tiers.get(&ModelTier::Strong),
+            Some(&"strong".to_string())
+        );
+        assert_eq!(
+            plan.tiers.get(&ModelTier::Light),
+            Some(&"light".to_string())
+        );
     }
 }

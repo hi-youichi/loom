@@ -431,7 +431,13 @@ mod tests {
     fn search_session_save_and_get() {
         let store = InMemorySearchSessionStore::new();
         assert!(store.get_session(1).is_none());
-        store.save_session(1, SearchSession { query: "gpt".into(), page: 2 });
+        store.save_session(
+            1,
+            SearchSession {
+                query: "gpt".into(),
+                page: 2,
+            },
+        );
         let session = store.get_session(1).unwrap();
         assert_eq!(session.query, "gpt");
         assert_eq!(session.page, 2);
@@ -440,7 +446,13 @@ mod tests {
     #[test]
     fn search_session_clear() {
         let store = InMemorySearchSessionStore::new();
-        store.save_session(1, SearchSession { query: "gpt".into(), page: 1 });
+        store.save_session(
+            1,
+            SearchSession {
+                query: "gpt".into(),
+                page: 1,
+            },
+        );
         store.clear_session(1);
         assert!(store.get_session(1).is_none());
     }
@@ -475,7 +487,10 @@ mod tests {
     #[test]
     fn service_select_unknown_model_errors() {
         let service = ModelSelectionService::new(
-            Arc::new(StaticModelCatalog::new("default", vec![ModelChoice::new("default")])),
+            Arc::new(StaticModelCatalog::new(
+                "default",
+                vec![ModelChoice::new("default")],
+            )),
             Arc::new(InMemoryModelSelectionStore::new()),
             Arc::new(InMemorySearchSessionStore::new()),
         );
@@ -528,7 +543,10 @@ mod tests {
     #[test]
     fn service_next_page_without_search_returns_none() {
         let service = ModelSelectionService::new(
-            Arc::new(StaticModelCatalog::new("default", vec![ModelChoice::new("default")])),
+            Arc::new(StaticModelCatalog::new(
+                "default",
+                vec![ModelChoice::new("default")],
+            )),
             Arc::new(InMemoryModelSelectionStore::new()),
             Arc::new(InMemorySearchSessionStore::new()),
         );
@@ -538,7 +556,10 @@ mod tests {
     #[test]
     fn service_previous_page_without_search_returns_none() {
         let service = ModelSelectionService::new(
-            Arc::new(StaticModelCatalog::new("default", vec![ModelChoice::new("default")])),
+            Arc::new(StaticModelCatalog::new(
+                "default",
+                vec![ModelChoice::new("default")],
+            )),
             Arc::new(InMemoryModelSelectionStore::new()),
             Arc::new(InMemorySearchSessionStore::new()),
         );
@@ -548,7 +569,10 @@ mod tests {
     #[test]
     fn service_clear_search_session() {
         let service = ModelSelectionService::new(
-            Arc::new(StaticModelCatalog::new("default", vec![ModelChoice::new("default")])),
+            Arc::new(StaticModelCatalog::new(
+                "default",
+                vec![ModelChoice::new("default")],
+            )),
             Arc::new(InMemoryModelSelectionStore::new()),
             Arc::new(InMemorySearchSessionStore::new()),
         );
@@ -583,9 +607,18 @@ mod tests {
 
     #[test]
     fn search_session_equality() {
-        let a = SearchSession { query: "test".into(), page: 1 };
-        let b = SearchSession { query: "test".into(), page: 1 };
-        let c = SearchSession { query: "test".into(), page: 2 };
+        let a = SearchSession {
+            query: "test".into(),
+            page: 1,
+        };
+        let b = SearchSession {
+            query: "test".into(),
+            page: 1,
+        };
+        let c = SearchSession {
+            query: "test".into(),
+            page: 2,
+        };
         assert_eq!(a, b);
         assert_ne!(a, c);
     }

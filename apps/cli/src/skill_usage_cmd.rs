@@ -7,7 +7,7 @@ use std::fs;
 
 use serde::{Deserialize, Serialize};
 
-use crate::args::{SkillUsageCommand, SkillUsageArgs};
+use crate::args::{SkillUsageArgs, SkillUsageCommand};
 use loom_curator::skill_registry::SkillRegistry;
 use loom_curator::{SkillUsage, SkillUsageStore};
 
@@ -21,17 +21,18 @@ pub struct SyncResult {
 }
 
 /// Main entry point for the skill-usage command.
-pub async fn handle_skill_usage_command(args: &SkillUsageArgs) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn handle_skill_usage_command(
+    args: &SkillUsageArgs,
+) -> Result<(), Box<dyn std::error::Error>> {
     match &args.sub {
-        SkillUsageCommand::Sync { path, dry_run, json, source: _ } => {
-            sync(path, *dry_run, *json).await
-        }
-        SkillUsageCommand::Show { name, json } => {
-            show(name, *json).await
-        }
-        SkillUsageCommand::Repair { path } => {
-            repair(path).await
-        }
+        SkillUsageCommand::Sync {
+            path,
+            dry_run,
+            json,
+            source: _,
+        } => sync(path, *dry_run, *json).await,
+        SkillUsageCommand::Show { name, json } => show(name, *json).await,
+        SkillUsageCommand::Repair { path } => repair(path).await,
     }
 }
 
@@ -119,10 +120,7 @@ async fn sync(
     Ok(())
 }
 
-async fn show(
-    name: &Option<String>,
-    json: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn show(name: &Option<String>, json: bool) -> Result<(), Box<dyn std::error::Error>> {
     let base_dir = loom_curator::skill_registry::default_path();
     let store = SkillUsageStore::new(&base_dir);
 
@@ -151,9 +149,7 @@ async fn show(
     Ok(())
 }
 
-async fn repair(
-    path: &Option<std::path::PathBuf>,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn repair(path: &Option<std::path::PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     let base_dir = path
         .clone()
         .unwrap_or_else(loom_curator::skill_registry::default_path);

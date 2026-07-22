@@ -8,12 +8,12 @@ use tokio::process::Child;
 use tokio_util::sync::CancellationToken;
 use tracing;
 
+use super::tool::CodingTool;
 use agent::goal_runner::message;
 use agent::goal_runner::state::{
-    GoalError, GoalMeta, GoalOutcome, HistoryEntry, ToolError,
-    DEFAULT_MAX_ITERATIONS, MAX_CONSECUTIVE_FAILURES, MAX_HISTORY_ENTRIES,
+    GoalError, GoalMeta, GoalOutcome, HistoryEntry, ToolError, DEFAULT_MAX_ITERATIONS,
+    MAX_CONSECUTIVE_FAILURES, MAX_HISTORY_ENTRIES,
 };
-use super::tool::CodingTool;
 use agent::run::TypedAnyStreamEvent as FullTypedAnyStreamEvent;
 
 /// Fraction of token budget remaining that triggers the budget-limit prompt.
@@ -145,11 +145,16 @@ impl GoalRunner {
                 "executing goal turn"
             );
 
-            eprintln!("\n{}",
+            eprintln!(
+                "\n{}",
                 crate::display::panel_format::format_panel_line(
                     "GOAL",
-                    &format!("iteration {} | tool: {} | time: {}s",
-                        self.iteration, self.tool.name(), self.time_used_seconds),
+                    &format!(
+                        "iteration {} | tool: {} | time: {}s",
+                        self.iteration,
+                        self.tool.name(),
+                        self.time_used_seconds
+                    ),
                 )
             );
 
@@ -171,9 +176,11 @@ impl GoalRunner {
 
                     if let Some(ref reasoning) = turn_result.reasoning_content {
                         if !reasoning.trim().is_empty() {
-                            eprintln!("{}",
+                            eprintln!(
+                                "{}",
                                 crate::display::panel_format::format_panel_line(
-                                    "THINKING", &crate::display::render_markdown(reasoning).to_string()
+                                    "THINKING",
+                                    &crate::display::render_markdown(reasoning).to_string()
                                 )
                             );
                         }
@@ -182,9 +189,11 @@ impl GoalRunner {
                         eprintln!("{}", crate::display::render_markdown(&turn_result.reply));
                     }
                     for tc in &turn_result.tool_calls_summary {
-                        eprintln!("{}",
+                        eprintln!(
+                            "{}",
                             crate::display::panel_format::format_panel_line(
-                                "TOOL", &format!("{} → {}", tc.tool_name, tc.result_preview)
+                                "TOOL",
+                                &format!("{} → {}", tc.tool_name, tc.result_preview)
                             )
                         );
                     }
@@ -223,8 +232,10 @@ impl GoalRunner {
                         backoff_secs = backoff_secs,
                         "API rate-limited, backing off"
                     );
-                    eprintln!("\n  ⚠ API rate-limited, retrying in {}s (attempt {}/{}) …",
-                        backoff_secs, self.rate_limit_retries, max_rate_limit_retries);
+                    eprintln!(
+                        "\n  ⚠ API rate-limited, retrying in {}s (attempt {}/{}) …",
+                        backoff_secs, self.rate_limit_retries, max_rate_limit_retries
+                    );
                     tokio::select! {
                         _ = tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)) => {}
                         _ = self.cancel.cancelled() => {
@@ -250,7 +261,10 @@ impl GoalRunner {
                         );
                         self.cleanup().await;
                         let details = self.last_errors.join("\n");
-                        return GoalOutcome::Error(format!("consecutive tool failures:\n{}", details));
+                        return GoalOutcome::Error(format!(
+                            "consecutive tool failures:\n{}",
+                            details
+                        ));
                     }
                     tracing::error!(
                         session_id = %self.task_id,
@@ -285,7 +299,8 @@ impl GoalRunner {
             }
 
             self.time_used_seconds = start.elapsed().as_secs() as i64;
-            self.save_iteration_state_with_summary(work_summary.as_deref()).await;
+            self.save_iteration_state_with_summary(work_summary.as_deref())
+                .await;
 
             // Check token budget exhaustion.
             if let Some(budget) = self.token_budget {
@@ -310,9 +325,15 @@ impl GoalRunner {
                 if verify_passed {
                     tracing::info!(session_id = %self.task_id, "verify command passed");
                     // Auto-mark complete.
-                    if let Err(e) = self.db.atomic_update_status(
-                        &self.task_id, TaskStatus::InProgress, TaskStatus::Completed,
-                    ).await {
+                    if let Err(e) = self
+                        .db
+                        .atomic_update_status(
+                            &self.task_id,
+                            TaskStatus::InProgress,
+                            TaskStatus::Completed,
+                        )
+                        .await
+                    {
                         tracing::error!(session_id = %self.task_id, error = %e, "failed to mark complete after verify");
                     }
                     self.cleanup().await;
@@ -369,11 +390,11 @@ impl GoalRunner {
     }
 
     async fn save_paused_state(&self) {
-        if let Err(e) = self.db.atomic_update_status(
-            &self.task_id,
-            TaskStatus::InProgress,
-            TaskStatus::Pending,
-        ).await {
+        if let Err(e) = self
+            .db
+            .atomic_update_status(&self.task_id, TaskStatus::InProgress, TaskStatus::Pending)
+            .await
+        {
             tracing::error!(session_id = %self.task_id, error = %e, "failed to set task to paused");
         }
         self.save_iteration_state().await;
@@ -385,26 +406,32 @@ impl GoalRunner {
         if meta.history.is_empty() {
             return None;
         }
-        let lines: Vec<String> = meta.history.iter().map(|h| {
-            match &h.summary {
+        let lines: Vec<String> = meta
+            .history
+            .iter()
+            .map(|h| match &h.summary {
                 Some(s) => format!("  iter {}: {}", h.iteration, s),
                 None => format!("  iter {}: completed", h.iteration),
-            }
-        }).collect();
+            })
+            .collect();
         Some(format!("Previous iterations:\n{}", lines.join("\n")))
     }
 
     /// Build budget warning text if close to limit.
     fn build_budget_warning(&self) -> Option<String> {
         let budget = self.token_budget?;
-        if budget == 0 { return None; }
+        if budget == 0 {
+            return None;
+        }
         let remaining = budget.saturating_sub(self.tokens_used);
         let fraction = remaining as f64 / budget as f64;
         if fraction <= BUDGET_WARNING_FRACTION {
             Some(format!(
                 "WARNING: Token budget almost exhausted. {}/{} tokens used ({}% remaining). \
                  Prioritize wrapping up or calling task_update(status='completed').",
-                self.tokens_used, budget, (fraction * 100.0) as u32
+                self.tokens_used,
+                budget,
+                (fraction * 100.0) as u32
             ))
         } else {
             None
@@ -414,10 +441,9 @@ impl GoalRunner {
     /// Run the verify command and return true if it succeeds (exit code 0).
     async fn run_verify_command(&self, cmd: &str) -> bool {
         tracing::info!(session_id = %self.task_id, cmd = cmd, "running verify command");
-        eprintln!("{}",
-            crate::display::panel_format::format_panel_line(
-                "VERIFY", cmd,
-            )
+        eprintln!(
+            "{}",
+            crate::display::panel_format::format_panel_line("VERIFY", cmd,)
         );
         // Use cmd.exe on Windows, sh elsewhere.
         let result = if cfg!(windows) {
@@ -436,17 +462,18 @@ impl GoalRunner {
         match result {
             Ok(output) => {
                 if output.status.success() {
-                    eprintln!("{}",
-                        crate::display::panel_format::format_panel_line(
-                            "VERIFY", "passed",
-                        )
+                    eprintln!(
+                        "{}",
+                        crate::display::panel_format::format_panel_line("VERIFY", "passed",)
                     );
                     true
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    eprintln!("{}",
+                    eprintln!(
+                        "{}",
                         crate::display::panel_format::format_panel_line(
-                            "VERIFY", &format!("failed: {}", stderr.trim()),
+                            "VERIFY",
+                            &format!("failed: {}", stderr.trim()),
                         )
                     );
                     false
@@ -454,9 +481,11 @@ impl GoalRunner {
             }
             Err(e) => {
                 tracing::error!(session_id = %self.task_id, error = %e, "verify command failed to execute");
-                eprintln!("{}",
+                eprintln!(
+                    "{}",
                     crate::display::panel_format::format_panel_line(
-                        "VERIFY", &format!("error: {}", e),
+                        "VERIFY",
+                        &format!("error: {}", e),
                     )
                 );
                 false
@@ -465,7 +494,9 @@ impl GoalRunner {
     }
 
     async fn load_meta_async(&self) -> Result<GoalMeta, GoalError> {
-        let val = self.db.get_meta(&self.task_id, "goal")
+        let val = self
+            .db
+            .get_meta(&self.task_id, "goal")
             .await
             .map_err(|e| GoalError::Db(e))?;
         match val {
@@ -476,7 +507,8 @@ impl GoalRunner {
 
     async fn save_meta_async(&self, meta: &GoalMeta) -> Result<(), GoalError> {
         let val = serde_json::to_value(meta).map_err(|e| GoalError::Db(Box::new(e)))?;
-        self.db.set_meta(&self.task_id, "goal", &val)
+        self.db
+            .set_meta(&self.task_id, "goal", &val)
             .await
             .map_err(|e| GoalError::Db(e))
     }
@@ -485,10 +517,7 @@ impl GoalRunner {
         self.cancel.cancel();
         if let Some(ref mut child) = self.mcp_server {
             let _ = child.kill().await;
-            let _ = tokio::time::timeout(
-                std::time::Duration::from_secs(5),
-                child.wait(),
-            ).await;
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), child.wait()).await;
         }
     }
 }
@@ -528,14 +557,20 @@ pub async fn resume_with_event_sender(
         .await
         .map_err(|e| GoalError::Db(Box::new(e)))?;
     if !updated {
-        let task = db.show_task(id).await.map_err(|e| GoalError::Db(Box::new(e)))?;
+        let task = db
+            .show_task(id)
+            .await
+            .map_err(|e| GoalError::Db(Box::new(e)))?;
         return Err(GoalError::Resume(format!(
             "task {} is not paused (status: {})",
             id, task.status
         )));
     }
 
-    let task = db.show_task(id).await.map_err(|e| GoalError::Db(Box::new(e)))?;
+    let task = db
+        .show_task(id)
+        .await
+        .map_err(|e| GoalError::Db(Box::new(e)))?;
     let meta_val = db
         .get_meta(id, "goal")
         .await
@@ -545,7 +580,15 @@ pub async fn resume_with_event_sender(
         None => GoalMeta::default(),
     };
 
-    let tool: Box<dyn CodingTool> = resolve_tool(&meta.tool, id, db.path(), &working_dir, &run_cancellation, &event_sender, &cancel)?;
+    let tool: Box<dyn CodingTool> = resolve_tool(
+        &meta.tool,
+        id,
+        db.path(),
+        &working_dir,
+        &run_cancellation,
+        &event_sender,
+        &cancel,
+    )?;
     let mcp_server = spawn_mcp_server(&db).ok();
 
     Ok(GoalRunner {
@@ -581,34 +624,34 @@ fn resolve_tool(
         "loom" => {
             let mcp_config_path = write_mcp_config(db_path, working_dir)?;
             let session_id = format!("goal-{}", &id[..id.floor_char_boundary(8)]);
-            let mut tool = super::tool::LoomTool::new(
-                session_id,
-                working_dir.to_path_buf(),
-                mcp_config_path,
-            );
+            let mut tool =
+                super::tool::LoomTool::new(session_id, working_dir.to_path_buf(), mcp_config_path);
             if let Some(ref rc) = run_cancellation {
                 tool = tool.with_cancellation(rc.clone());
             }
             if let Some(ref sender) = event_sender {
                 let sender = sender.clone();
-                let adapted: Arc<dyn Fn(FullTypedAnyStreamEvent) + Send + Sync> = Arc::new(move |ev: FullTypedAnyStreamEvent| {
-                    sender(ev);
-                });
+                let adapted: Arc<dyn Fn(FullTypedAnyStreamEvent) + Send + Sync> =
+                    Arc::new(move |ev: FullTypedAnyStreamEvent| {
+                        sender(ev);
+                    });
                 tool = tool.with_event_sender(adapted);
             }
             Ok(Box::new(tool))
         }
         name => {
             let args = super::tool::shell_tool_args(name);
-            Ok(Box::new(super::tool::ShellTool::new(
-                name.to_string(),
-                args,
-            ).with_cancel(cancel.clone())))
+            Ok(Box::new(
+                super::tool::ShellTool::new(name.to_string(), args).with_cancel(cancel.clone()),
+            ))
         }
     }
 }
 
-pub fn write_mcp_config(db_path: &std::path::Path, working_dir: &std::path::Path) -> Result<std::path::PathBuf, GoalError> {
+pub fn write_mcp_config(
+    db_path: &std::path::Path,
+    working_dir: &std::path::Path,
+) -> Result<std::path::PathBuf, GoalError> {
     let config_content = super::tool::generate_mcp_config("task", db_path);
     let config_path = working_dir.join(".loom").join("goal-mcp.json");
     std::fs::create_dir_all(config_path.parent().unwrap())?;

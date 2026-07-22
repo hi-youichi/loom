@@ -16,8 +16,7 @@
 use std::path::PathBuf;
 
 pub use skill::storage::{
-    Lifecycle, SkillContent, SkillError, SkillMeta, SkillStorageRegistry as SkillRegistry,
-    Source,
+    Lifecycle, SkillContent, SkillError, SkillMeta, SkillStorageRegistry as SkillRegistry, Source,
 };
 
 /// Returns the default on-disk path to the skill library, used by CLI
@@ -77,7 +76,10 @@ mod tests {
 
     #[test]
     fn ext_default_path_matches_module_function() {
-        assert_eq!(default_path(), <SkillRegistry as SkillRegistryExt>::default_path());
+        assert_eq!(
+            default_path(),
+            <SkillRegistry as SkillRegistryExt>::default_path()
+        );
     }
 
     #[test]

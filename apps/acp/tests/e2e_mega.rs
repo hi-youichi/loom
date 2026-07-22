@@ -344,5 +344,3 @@ async fn e2e_mega_full_protocol_flow() {
 
     tokio::time::sleep(Duration::from_millis(20)).await;
 }
-
-

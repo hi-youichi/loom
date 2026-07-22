@@ -62,7 +62,10 @@ mod tests {
 
     #[test]
     fn bot_error_io_from() {
-        let e = BotError::from(std::io::Error::new(std::io::ErrorKind::NotFound, "file missing"));
+        let e = BotError::from(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "file missing",
+        ));
         match e {
             BotError::Io(_) => {}
             _ => panic!("expected Io variant"),
@@ -77,7 +80,10 @@ mod tests {
 
     #[test]
     fn bot_error_network_from() {
-        let teloxide_err = teloxide::RequestError::Io(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"));
+        let teloxide_err = teloxide::RequestError::Io(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "timeout",
+        ));
         let e = BotError::from(teloxide_err);
         match e {
             BotError::Network(_) => {}
@@ -93,4 +99,3 @@ mod tests {
         assert!(returns_ok().is_ok());
     }
 }
-

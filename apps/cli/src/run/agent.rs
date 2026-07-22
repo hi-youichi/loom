@@ -2,22 +2,24 @@
 //! Uses protocol format (type + payload) and optional envelope per protocol_spec.
 
 use agent::build_react_run_context;
+use agent::profile::list_available_profiles;
+use agent::run::{
+    build_react_config, run_agent_from_config, RunCmd, RunParams, TypedAnyStreamEvent,
+};
+use agent::state::ReActState;
+use agent::state::ToolResult;
+use agent::ResolvedAgent;
 use agent::{DupState, GotState, TotState};
 use chrono::Local;
-use agent::run::{build_react_config, run_agent_from_config, RunCmd, RunParams, TypedAnyStreamEvent};
-use agent::ResolvedAgent;
 use loom_llm::ToolCall;
 use model_spec_core::resolver::{
     build_composite_resolver, ConfigModelEntry, ConfigProviderEntry, ModelResolver,
 };
-use stream_event::Envelope;
-use agent::profile::list_available_profiles;
-use stream_event::MessageChunkKind;
-use agent::state::ReActState;
-use agent::state::ToolResult;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use stream_event::Envelope;
+use stream_event::MessageChunkKind;
 
 type StreamCallback = Arc<Mutex<dyn FnMut(Value) + Send>>;
 
@@ -26,23 +28,21 @@ use super::display::{
     format_tot_state_display, truncate_display,
 };
 
-
+use crate::display as panel_format;
 use stream_event::EnvelopeState;
 use stream_event::StreamEvent;
-use crate::display as panel_format;
 
 use agent::run::RunError;
 
-pub fn register_extra_tools(config: &mut agent::ReactBuildConfig) {
-    let luft_tool: Arc<dyn tool_core::Tool> = Arc::new(
-        tool_luft::LuftTool::new(config.clone()),
-    );
-    let mut tools = config.extra_tools
-        .as_ref()
-        .map(|t| t.as_ref().clone())
-        .unwrap_or_default();
-    tools.push(luft_tool);
-    config.extra_tools = Some(Arc::new(tools));
+/// Provider for Loom's default extra tools (currently the workflow tool).
+///
+/// Thin re-export of `tool_workflow::default_workflow_tool_provider` so CLI
+/// internals can use `crate::run::default_workflow_tool_provider()` without
+/// importing `tool-workflow` everywhere. The real implementation lives on
+/// the tool crate so non-CLI front-ends (`acp`, `telegram-bot`) can reuse it
+/// without depending on the CLI binary.
+pub fn default_workflow_tool_provider() -> agent::run::ExtraToolsProvider {
+    tool_workflow::default_workflow_tool_provider()
 }
 
 fn load_config_providers() -> Vec<ConfigProviderEntry> {
@@ -74,18 +74,14 @@ pub enum RunStopReason {
     Cancelled,
 }
 
-fn completion_reply(
-    result: agent::run::RunCompletion,
-) -> (String, Option<String>, RunStopReason) {
+fn completion_reply(result: agent::run::RunCompletion) -> (String, Option<String>, RunStopReason) {
     match result {
         agent::run::RunCompletion::Finished(result) => (
             result.reply,
             result.reasoning_content,
             RunStopReason::EndTurn,
         ),
-        agent::run::RunCompletion::Cancelled => {
-            (String::new(), None, RunStopReason::Cancelled)
-        }
+        agent::run::RunCompletion::Cancelled => (String::new(), None, RunStopReason::Cancelled),
     }
 }
 
@@ -142,10 +138,7 @@ async fn print_model_info(model: Option<&String>, model_tier: Option<&model_spec
                 Some(tier) => format!("tier: {:?}", tier),
                 None => "unknown context".to_string(),
             };
-            eprintln!(
-                "{}",
-                panel_format::format_model_line("(default)", &context)
-            );
+            eprintln!("{}", panel_format::format_model_line("(default)", &context));
             return;
         }
     };
@@ -219,13 +212,17 @@ pub async fn run_agent_wrapper(
     // caller-side async functions.
 
     let loom_opts = opts.clone();
-    let (mut config, resolved_agent) = build_react_config(&loom_opts);
+    let (mut config, resolved_agent, skill_registry) = build_react_config(&loom_opts);
 
     if config.model.is_none() && config.model_tier.is_some() {
         config = agent::resolve_tier_and_build_config(&config).await;
     }
 
-    register_extra_tools(&mut config);
+    // Default extra tools (e.g. the workflow tool) are already registered by
+    // `build_react_config` via `default_extra_tools_provider`. The old
+    // `register_extra_tools` call here was a no-op for the skill registry:
+    // it mutated `config.extra_tools` AFTER the registry was finalized, so
+    // the workflow tool's `workflow` builtin skill was never injected.
 
     print_loaded_tools(&config).await?;
     if !opts.output_json {
@@ -241,6 +238,21 @@ pub async fn run_agent_wrapper(
             eprintln!("AGENTS.md loaded; included in system prompt.");
         }
         print_model_info(config.model.as_ref(), config.model_tier.as_ref()).await;
+        // Verbose level 2+ replaces the tools one-liner with a multiline block
+        // listing each tool name + description. Level 1 keeps the one-liner.
+        if opts.verbose_level >= 2 {
+            print_tools_multiline(&config).await;
+        }
+        // Skill list (one-liner at -v, multiline with sources at -vv).
+        if opts.verbose_level >= 1 {
+            if let Some(registry) = skill_registry.as_ref() {
+                if opts.verbose_level >= 2 {
+                    print_skills_multiline(registry);
+                } else {
+                    print_skills_one_line(registry);
+                }
+            }
+        }
     }
 
     let display_max_len = opts.display_max_len;
@@ -283,8 +295,9 @@ pub async fn run_agent_wrapper(
                     any_stream_event_sender: opts.any_stream_event_sender.clone(),
                     llm_override: None,
                 },
-                Some(on_event)
-            ).await?;
+                Some(on_event),
+            )
+            .await?;
             let reply_env = state.lock().map(|s| s.reply_envelope()).ok();
             let (reply, reasoning_content, stop_reason) = completion_reply(result);
             return Ok(RunAgentOutput {
@@ -321,7 +334,19 @@ pub async fn run_agent_wrapper(
                 }
             }
         });
-        let result = run_agent_from_config(&config, &RunCmd::React, RunParams { message: opts.message.clone(), verbose: opts.verbose, cancellation: opts.cancellation.clone(), any_stream_event_sender: opts.any_stream_event_sender.clone(), llm_override: None }, Some(on_event)).await?;
+        let result = run_agent_from_config(
+            &config,
+            &RunCmd::React,
+            RunParams {
+                message: opts.message.clone(),
+                verbose: opts.verbose,
+                cancellation: opts.cancellation.clone(),
+                any_stream_event_sender: opts.any_stream_event_sender.clone(),
+                llm_override: None,
+            },
+            Some(on_event),
+        )
+        .await?;
         let events = events.lock().map(|v| v.clone()).unwrap_or_default();
         let reply_env = state.lock().map(|s| s.reply_envelope()).ok();
         let (reply, reasoning_content, stop_reason) = completion_reply(result);
@@ -365,7 +390,19 @@ pub async fn run_agent_wrapper(
     });
 
     let start = Instant::now();
-    let result = run_agent_from_config(&config, &RunCmd::React, RunParams { message: opts.message.clone(), verbose: opts.verbose, cancellation: opts.cancellation.clone(), any_stream_event_sender: opts.any_stream_event_sender.clone(), llm_override: None }, Some(on_event)).await?;
+    let result = run_agent_from_config(
+        &config,
+        &RunCmd::React,
+        RunParams {
+            message: opts.message.clone(),
+            verbose: opts.verbose,
+            cancellation: opts.cancellation.clone(),
+            any_stream_event_sender: opts.any_stream_event_sender.clone(),
+            llm_override: None,
+        },
+        Some(on_event),
+    )
+    .await?;
     let duration = start.elapsed();
 
     let outcome = match &result {
@@ -437,7 +474,10 @@ pub async fn run_agent_wrapper(
 
 use crate::display::StreamingMarkdownRenderer;
 
-fn print_stream_chunk(chunk: &stream_event::MessageChunk, renderer: &mut StreamingMarkdownRenderer) {
+fn print_stream_chunk(
+    chunk: &stream_event::MessageChunk,
+    renderer: &mut StreamingMarkdownRenderer,
+) {
     renderer.push_chunk(chunk);
 }
 
@@ -656,12 +696,9 @@ fn on_event_react(
                     // DIFF for edit/multiedit already shown during think; skip here
                     if !is_edit_like {
                         if let Some(ref result) = result_text {
-                            if let Some(diff) = crate::display::format_diff(
-                                &tc.name,
-                                &tc.arguments,
-                                result,
-                                false,
-                            ) {
+                            if let Some(diff) =
+                                crate::display::format_diff(&tc.name, &tc.arguments, result, false)
+                            {
                                 eprintln!("{}", diff);
                             }
                         }
@@ -946,6 +983,58 @@ async fn print_loaded_tools(config: &agent::ReactBuildConfig) -> Result<(), RunE
     Ok(())
 }
 
+/// Prints each tool with its description, one per line (used at `-vv`).
+/// Falls back to a single `(none)` line if no tools are loaded.
+async fn print_tools_multiline(config: &agent::ReactBuildConfig) {
+    if let Ok(ctx) = build_react_run_context(config).await {
+        let tools = ctx.tool_source.list_tools().await;
+        let rows: Vec<(&str, &str)> = tools
+            .iter()
+            .map(|s| {
+                let desc = s.description.as_deref().unwrap_or("");
+                (s.name.as_str(), desc)
+            })
+            .collect();
+        eprintln!("{}", panel_format::format_tools_multiline_block(&rows));
+    }
+}
+
+fn print_skills_one_line(registry: &std::sync::Arc<skill::SkillRegistry>) {
+    let names: Vec<&str> = registry
+        .list()
+        .iter()
+        .map(|e| e.metadata.name.as_str())
+        .collect();
+    eprintln!("{}", panel_format::format_skills_line(&names));
+}
+
+fn print_skills_multiline(registry: &std::sync::Arc<skill::SkillRegistry>) {
+    let entries = registry.list();
+    let owned: Vec<(String, &'static str, String, Vec<String>)> = entries
+        .iter()
+        .map(|e| {
+            (
+                e.metadata.name.clone(),
+                e.source.label(),
+                e.metadata.description.clone(),
+                e.metadata.conditions().requires_tools.clone(),
+            )
+        })
+        .collect();
+    let refs: Vec<panel_format::SkillBannerRow<'_>> = owned
+        .iter()
+        .map(
+            |(name, source, desc, requires)| panel_format::SkillBannerRow {
+                name,
+                source,
+                description: desc.as_str(),
+                requires_tools: requires.as_slice(),
+            },
+        )
+        .collect();
+    eprintln!("{}", panel_format::format_skills_multiline_block(&refs));
+}
+
 fn on_event_got(
     ev: &StreamEvent<GotState>,
     s: &mut EventState,
@@ -1047,11 +1136,8 @@ fn on_event_got(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent::{
-        TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension, UnderstandOutput,
-    };
-use agent::run::RunCmd;
-
+    use agent::run::RunCmd;
+    use agent::{TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension, UnderstandOutput};
 
     use loom_llm::{message::Message, ToolCall};
     use std::path::PathBuf;
@@ -1475,6 +1561,7 @@ use agent::run::RunCmd;
             thread_id: None,
             agent: None,
             verbose: false,
+            verbose_level: 0,
             got_adaptive: false,
             display_max_len: 200,
             output_json,
@@ -1489,6 +1576,7 @@ use agent::run::RunCmd;
             any_stream_event_sender: None,
             bash_executor: None,
             extra_tools: None,
+            default_extra_tools_provider: None,
             acp_session_id: None,
             force_compact: false,
             chat_id: None,

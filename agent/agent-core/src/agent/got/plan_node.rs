@@ -6,11 +6,11 @@
 use async_trait::async_trait;
 
 use loom_graph_core::GraphError;
-use loom_graph_core::{Next, RunContext};
-use loom_llm::LlmClient;
-use loom_llm::message::Message;
-use stream_event::{StreamEvent, StreamMode};
 use loom_graph_core::Node;
+use loom_graph_core::{Next, RunContext};
+use loom_llm::message::Message;
+use loom_llm::LlmClient;
+use stream_event::{StreamEvent, StreamMode};
 
 use super::prompt::GOT_PLAN_SYSTEM;
 use super::state::{GotState, TaskGraph, TaskNode};
@@ -144,8 +144,8 @@ impl Node<GotState> for PlanGraphNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_llm::client::MockLlm;
     use checkpoint::RunnableConfig;
+    use loom_llm::client::MockLlm;
     use tokio::sync::mpsc;
 
     #[test]
@@ -215,4 +215,3 @@ mod tests {
         }
     }
 }
-

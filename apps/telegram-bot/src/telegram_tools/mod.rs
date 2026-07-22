@@ -1,11 +1,11 @@
-﻿//! Telegram API implementation for loom tools.
+//! Telegram API implementation for loom tools.
 //!
 //! Implements the `TelegramApi` trait from loom and registers it globally.
 
 use async_trait::async_trait;
-use tool_extensions::TelegramApi;
 use teloxide::prelude::*;
 use teloxide::types::{InputFile, ParseMode};
+use tool_extensions::TelegramApi;
 
 /// Teloxide-based implementation of TelegramApi.
 pub struct TeloxideTelegramApi {

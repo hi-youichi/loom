@@ -13,8 +13,8 @@ use glob::Pattern;
 use serde_json::json;
 use walkdir::WalkDir;
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 use tool_core::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
 use super::path::resolve_path_under;
 
@@ -196,7 +196,11 @@ mod tests {
         fs::create_dir(dir.path().join("src/models")).unwrap();
         fs::write(dir.path().join("src/models/user.rs"), "struct User {}").unwrap();
         fs::create_dir(dir.path().join("tests")).unwrap();
-        fs::write(dir.path().join("tests/integration_test.rs"), "#[test] fn test() {}").unwrap();
+        fs::write(
+            dir.path().join("tests/integration_test.rs"),
+            "#[test] fn test() {}",
+        )
+        .unwrap();
         dir
     }
 
@@ -206,24 +210,24 @@ mod tests {
         let path = Path::new("src\\lib.rs");
         let result = path_str_for_glob(path);
         assert_eq!(result, "src/lib.rs");
-        
+
         let path = Path::new("nested\\deep\\file.txt");
         let result = path_str_for_glob(path);
         assert_eq!(result, "nested/deep/file.txt");
     }
-    
+
     #[test]
     fn test_path_str_for_glob_forward_slashes_unchanged() {
         // Test that forward slashes remain unchanged
         let path = Path::new("src/lib.rs");
         let result = path_str_for_glob(path);
         assert_eq!(result, "src/lib.rs");
-        
+
         let path = Path::new("nested/deep/file.txt");
         let result = path_str_for_glob(path);
         assert_eq!(result, "nested/deep/file.txt");
     }
-    
+
     #[test]
     fn test_path_str_for_glob_simple_filename() {
         // Test simple filename without path
@@ -251,26 +255,29 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
         let spec = tool.spec();
-        
+
         assert_eq!(spec.name, "glob");
         assert!(spec.description.is_some());
         assert!(spec.description.unwrap().contains("glob pattern"));
-        
+
         // Check input schema structure
         let schema = spec.input_schema;
         assert_eq!(schema["type"], "object");
-        assert!(schema["required"].as_array().unwrap().contains(&"pattern".into()));
-        
+        assert!(schema["required"]
+            .as_array()
+            .unwrap()
+            .contains(&"pattern".into()));
+
         // Check pattern parameter
         let pattern_props = &schema["properties"]["pattern"];
         assert_eq!(pattern_props["type"], "string");
         assert!(pattern_props["description"].is_string());
-        
+
         // Check path parameter
         let path_props = &schema["properties"]["path"];
         assert_eq!(path_props["type"], "string");
         assert!(path_props["description"].is_string());
-        
+
         // Check include parameter
         let include_props = &schema["properties"]["include"];
         assert_eq!(include_props["type"], "array");
@@ -281,10 +288,13 @@ mod tests {
     async fn test_glob_simple_pattern() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
-        let result = tool.call(serde_json::json!({"pattern": "*.rs"}), None).await.unwrap();
+
+        let result = tool
+            .call(serde_json::json!({"pattern": "*.rs"}), None)
+            .await
+            .unwrap();
         let text = result.as_text().unwrap();
-        
+
         assert!(text.contains("main.rs"));
         assert!(!text.contains("test.txt")); // .txt files should not match
     }
@@ -293,17 +303,20 @@ mod tests {
     async fn test_glob_recursive_pattern() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
-        let result = tool.call(serde_json::json!({"pattern": "**/*.rs"}), None).await.unwrap();
+
+        let result = tool
+            .call(serde_json::json!({"pattern": "**/*.rs"}), None)
+            .await
+            .unwrap();
         let text = result.as_text().unwrap();
-        
+
         // Should find all .rs files recursively
         assert!(text.contains("main.rs"));
         assert!(text.contains("src/lib.rs"));
         assert!(text.contains("src/utils.rs"));
         assert!(text.contains("src/models/user.rs"));
         assert!(text.contains("tests/integration_test.rs"));
-        
+
         // Should not find .txt files
         assert!(!text.contains("test.txt"));
     }
@@ -312,10 +325,13 @@ mod tests {
     async fn test_glob_pattern_no_matches_empty_result() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
-        let result = tool.call(serde_json::json!({"pattern": "*.nonexistent"}), None).await.unwrap();
+
+        let result = tool
+            .call(serde_json::json!({"pattern": "*.nonexistent"}), None)
+            .await
+            .unwrap();
         let text = result.as_text().unwrap();
-        
+
         assert_eq!(text, "");
     }
 
@@ -323,10 +339,13 @@ mod tests {
     async fn test_glob_with_specific_path() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
-        let result = tool.call(serde_json::json!({"pattern": "*.rs", "path": "src"}), None).await.unwrap();
+
+        let result = tool
+            .call(serde_json::json!({"pattern": "*.rs", "path": "src"}), None)
+            .await
+            .unwrap();
         let text = result.as_text().unwrap();
-        
+
         // Should only find .rs files in src directory
         assert!(text.contains("src/lib.rs"));
         assert!(text.contains("src/utils.rs"));
@@ -337,20 +356,23 @@ mod tests {
     async fn test_glob_with_include_parameter() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
-        let result = tool.call(
-            serde_json::json!({
-                "pattern": "*.rs",
-                "include": ["src/*", "tests/*"]
-            }), 
-            None
-        ).await.unwrap();
+
+        let result = tool
+            .call(
+                serde_json::json!({
+                    "pattern": "*.rs",
+                    "include": ["src/*", "tests/*"]
+                }),
+                None,
+            )
+            .await
+            .unwrap();
         let text = result.as_text().unwrap();
-        
+
         // Should include files that match include patterns
         assert!(text.contains("src/lib.rs"));
         assert!(text.contains("tests/integration_test.rs"));
-        
+
         // Should not include root files that don't match include patterns
         assert!(!text.contains("main.rs"));
     }
@@ -359,9 +381,9 @@ mod tests {
     async fn test_glob_empty_pattern_error() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
+
         let result = tool.call(serde_json::json!({"pattern": ""}), None).await;
-        
+
         assert!(result.is_err());
         if let Err(ToolSourceError::InvalidInput(msg)) = result {
             assert!(msg.contains("non-empty"));
@@ -374,9 +396,9 @@ mod tests {
     async fn test_glob_missing_pattern_error() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
+
         let result = tool.call(serde_json::json!({}), None).await;
-        
+
         assert!(result.is_err());
         if let Err(ToolSourceError::InvalidInput(msg)) = result {
             assert!(msg.contains("required"));
@@ -389,9 +411,11 @@ mod tests {
     async fn test_glob_pattern_with_double_dot_error() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
-        let result = tool.call(serde_json::json!({"pattern": "../secret"}), None).await;
-        
+
+        let result = tool
+            .call(serde_json::json!({"pattern": "../secret"}), None)
+            .await;
+
         assert!(result.is_err());
         if let Err(ToolSourceError::InvalidInput(msg)) = result {
             assert!(msg.contains(".."));
@@ -404,9 +428,11 @@ mod tests {
     async fn test_glob_invalid_pattern_error() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
-        let result = tool.call(serde_json::json!({"pattern": "[invalid"}), None).await;
-        
+
+        let result = tool
+            .call(serde_json::json!({"pattern": "[invalid"}), None)
+            .await;
+
         assert!(result.is_err());
         if let Err(ToolSourceError::InvalidInput(msg)) = result {
             assert!(msg.contains("invalid glob pattern"));
@@ -419,12 +445,14 @@ mod tests {
     async fn test_glob_non_existent_path_error() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
-        let result = tool.call(
-            serde_json::json!({"pattern": "*.rs", "path": "nonexistent"}), 
-            None
-        ).await;
-        
+
+        let result = tool
+            .call(
+                serde_json::json!({"pattern": "*.rs", "path": "nonexistent"}),
+                None,
+            )
+            .await;
+
         assert!(result.is_err());
         if let Err(ToolSourceError::InvalidInput(msg)) = result {
             assert!(msg.contains("not a directory") || msg.contains("not found"));
@@ -437,12 +465,14 @@ mod tests {
     async fn test_glob_path_is_file_error() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
-        let result = tool.call(
-            serde_json::json!({"pattern": "*.rs", "path": "main.rs"}), 
-            None
-        ).await;
-        
+
+        let result = tool
+            .call(
+                serde_json::json!({"pattern": "*.rs", "path": "main.rs"}),
+                None,
+            )
+            .await;
+
         assert!(result.is_err());
         if let Err(ToolSourceError::InvalidInput(msg)) = result {
             assert!(msg.contains("not a directory"));
@@ -455,14 +485,14 @@ mod tests {
     async fn test_glob_empty_path_defaults_to_dot() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
+
         // Test with empty path argument (should default to ".")
-        let result = tool.call(
-            serde_json::json!({"pattern": "*.rs", "path": ""}), 
-            None
-        ).await.unwrap();
+        let result = tool
+            .call(serde_json::json!({"pattern": "*.rs", "path": ""}), None)
+            .await
+            .unwrap();
         let text = result.as_text().unwrap();
-        
+
         // Should find root .rs files
         assert!(text.contains("main.rs"));
     }
@@ -471,14 +501,14 @@ mod tests {
     async fn test_glob_whitespace_path_defaults_to_dot() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
+
         // Test with whitespace path argument (should default to ".")
-        let result = tool.call(
-            serde_json::json!({"pattern": "*.rs", "path": "   "}), 
-            None
-        ).await.unwrap();
+        let result = tool
+            .call(serde_json::json!({"pattern": "*.rs", "path": "   "}), None)
+            .await
+            .unwrap();
         let text = result.as_text().unwrap();
-        
+
         // Should find root .rs files
         assert!(text.contains("main.rs"));
     }
@@ -487,15 +517,21 @@ mod tests {
     async fn test_glob_default_path_is_dot() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
+
         // Test with no path argument (should default to ".")
-        let result1 = tool.call(serde_json::json!({"pattern": "*.rs"}), None).await.unwrap();
+        let result1 = tool
+            .call(serde_json::json!({"pattern": "*.rs"}), None)
+            .await
+            .unwrap();
         let text1 = result1.as_text().unwrap();
-        
+
         // Test with explicit "."
-        let result2 = tool.call(serde_json::json!({"pattern": "*.rs", "path": "."}), None).await.unwrap();
+        let result2 = tool
+            .call(serde_json::json!({"pattern": "*.rs", "path": "."}), None)
+            .await
+            .unwrap();
         let text2 = result2.as_text().unwrap();
-        
+
         // Both should produce the same result
         assert_eq!(text1, text2);
         assert!(text1.contains("main.rs"));
@@ -505,10 +541,13 @@ mod tests {
     async fn test_glob_results_are_sorted() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
-        let result = tool.call(serde_json::json!({"pattern": "**/*.rs"}), None).await.unwrap();
+
+        let result = tool
+            .call(serde_json::json!({"pattern": "**/*.rs"}), None)
+            .await
+            .unwrap();
         let text = result.as_text().unwrap();
-        
+
         let lines: Vec<&str> = text.lines().collect();
         // Results should be sorted alphabetically
         let mut sorted_lines = lines.clone();
@@ -520,10 +559,13 @@ mod tests {
     async fn test_glob_subdirectory_pattern() {
         let dir = setup_test_dir();
         let tool = GlobTool::new(Arc::new(dir.path().to_path_buf()));
-        
-        let result = tool.call(serde_json::json!({"pattern": "src/models/*.rs"}), None).await.unwrap();
+
+        let result = tool
+            .call(serde_json::json!({"pattern": "src/models/*.rs"}), None)
+            .await
+            .unwrap();
         let text = result.as_text().unwrap();
-        
+
         // Should find files only in src/models directory
         assert!(text.contains("src/models/user.rs"));
         assert!(!text.contains("src/lib.rs")); // Should not find files in parent directory

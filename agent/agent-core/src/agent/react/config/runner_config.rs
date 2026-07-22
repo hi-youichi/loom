@@ -10,7 +10,11 @@ pub struct TotRunnerConfig {
 
 impl Default for TotRunnerConfig {
     fn default() -> Self {
-        Self { max_depth: 5, candidates_per_step: 3, research_quality_addon: false }
+        Self {
+            max_depth: 5,
+            candidates_per_step: 3,
+            research_quality_addon: false,
+        }
     }
 }
 

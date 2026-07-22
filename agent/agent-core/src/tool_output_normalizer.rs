@@ -78,7 +78,6 @@ pub use crate::state::ToolStorageRef;
 // Defined in this module
 pub use crate::state::NormalizedToolOutput;
 
-
 static TOOL_OUTPUT_FILE_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Normalize tool output using the unified strategy.
@@ -394,9 +393,7 @@ fn determine_strategy(
             "bash" | "powershell" if remaining_budget >= config.head_tail_limit / 2 => {
                 ToolOutputStrategy::HeadTail
             }
-            "web_fetcher" | "web_search" => {
-                ToolOutputStrategy::FileRefWithExcerpt
-            }
+            "web_fetcher" | "web_search" => ToolOutputStrategy::FileRefWithExcerpt,
             _ if raw_chars > config.file_ref_threshold / 2 => {
                 ToolOutputStrategy::FileRefWithExcerpt
             }

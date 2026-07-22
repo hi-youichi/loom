@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock};
 
 #[derive(Debug, Clone)]
 pub struct TerminalOutput {
@@ -53,6 +53,32 @@ pub trait ClientBridgeTrait: Send + Sync {
     async fn terminal_release(&self, session_id: &str, terminal_id: &str) -> Result<(), String>;
 }
 
+type BridgeStore = Arc<RwLock<Option<Arc<dyn ClientBridgeTrait>>>>;
+
+static GLOBAL_BRIDGE: OnceLock<BridgeStore> = OnceLock::new();
+
+fn global_bridge_store() -> &'static BridgeStore {
+    GLOBAL_BRIDGE.get_or_init(|| Arc::new(RwLock::new(None)))
+}
+
+pub async fn set_client_bridge(bridge: Arc<dyn ClientBridgeTrait>) {
+    let store = global_bridge_store();
+    *store.write().unwrap() = Some(bridge);
+}
+
+pub async fn clear_client_bridge() {
+    let store = global_bridge_store();
+    *store.write().unwrap() = None;
+}
+
+pub async fn get_client_bridge() -> Result<Arc<dyn ClientBridgeTrait>, String> {
+    let store = global_bridge_store();
+    let guard = store.read().unwrap();
+    guard
+        .clone()
+        .ok_or_else(|| "No client bridge available".to_string())
+}
+
 pub struct AcpClientBridge {
     conn: Arc<
         tokio::sync::RwLock<
@@ -73,6 +99,22 @@ impl AcpClientBridge {
     }
 }
 
+pub fn set_connection(
+    conn: Arc<
+        tokio::sync::RwLock<
+            Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>,
+        >,
+    >,
+) {
+    let bridge = Arc::new(AcpClientBridge::new(conn));
+    let store = global_bridge_store();
+    tracing::info!(
+        store_ptr = Arc::as_ptr(store) as usize,
+        "set_connection: storing bridge synchronously"
+    );
+    *store.write().unwrap() = Some(bridge);
+    tracing::info!("set_connection: bridge stored successfully");
+}
 
 #[async_trait::async_trait]
 impl ClientBridgeTrait for AcpClientBridge {
@@ -275,6 +317,12 @@ impl ClientBridgeTrait for NoOpClientBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn test_global_bridge_default() {
+        let result = get_client_bridge().await;
+        assert!(result.is_err());
+    }
 
     #[test]
     fn test_noop_bridge() {

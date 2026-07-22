@@ -60,24 +60,26 @@ pub(crate) struct Args {
     #[arg(long, value_name = "ID")]
     pub(crate) session_id: Option<String>,
 
-    /// Print State info to stderr (node enter/exit, state after each step, flow)
-    #[arg(short, long, default_value = "false")]
-    pub(crate) verbose: bool,
+    /// Increase output verbosity (counted). `-v` adds skill list and runtime step info;
+    /// `-vv` also expands tools/skills with source, description, and toolset requirements.
+    /// `-vvv` and above behave the same as `-vv`.
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    pub(crate) verbose: u8,
 
     /// Interactive REPL: after output, prompt for input and continue conversation
     #[arg(short, long)]
     pub(crate) interactive: bool,
 
     /// Output all data as JSON (stream events + reply for agent run; JSON array for tool list; JSON for tool show)
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub(crate) json: bool,
 
     /// When using --json, write output to this file instead of stdout
-    #[arg(long, value_name = "PATH")]
+    #[arg(long, global = true, value_name = "PATH")]
     pub(crate) file: Option<PathBuf>,
 
     /// When using --json, pretty-print (multi-line). Default: compact, one line per event
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub(crate) pretty: bool,
 
     /// Print a timestamp to stderr before each reply (local time, e.g. 2025-03-15 10:30:00)
@@ -477,12 +479,51 @@ pub(crate) struct SkillsArgs {
     pub(crate) command: SkillsCommand,
 }
 
+/// Filter by skill source (e.g. Project, User, Builtin).
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+#[clap(rename_all = "PascalCase")]
+pub enum SkillSourceFilter {
+    Project,
+    Profile,
+    User,
+    Agent,
+    Data,
+    Builtin,
+}
+
+impl SkillSourceFilter {
+    pub fn label(&self) -> &'static str {
+        match self {
+            SkillSourceFilter::Project => "Project",
+            SkillSourceFilter::Profile => "Profile",
+            SkillSourceFilter::User => "User",
+            SkillSourceFilter::Agent => "Agent",
+            SkillSourceFilter::Data => "Data",
+            SkillSourceFilter::Builtin => "Builtin",
+        }
+    }
+}
+
 #[derive(Subcommand, Debug, Clone)]
 pub(crate) enum SkillsCommand {
     /// List all skills
     List,
     /// Show skill details
     Show { name: String },
+    /// Inspect a single skill in depth (agent-discovery perspective)
+    Inspect {
+        /// Skill name to inspect
+        name: String,
+        /// Show all fields and full body (no truncation)
+        #[arg(long)]
+        all: bool,
+        /// Read a sub-file from the skill directory (e.g. references/api.md)
+        #[arg(long, value_name = "PATH")]
+        read_file: Option<PathBuf>,
+        /// Filter to a specific skill source when name is ambiguous
+        #[arg(long, value_name = "SOURCE", value_enum)]
+        source: Option<SkillSourceFilter>,
+    },
     /// Create a new skill
     Create {
         name: String,
@@ -560,15 +601,9 @@ pub(crate) enum CuratorCommand {
         /// Force LLM pass even if interval gating would skip it
         #[arg(long)]
         force: bool,
-        /// Force the LLM consolidation pass regardless of interval/idle
-        /// gating. Defaults to OFF so LLM cost is opt-in. Hermes-aligned
-        /// (`agent/curator.py`): without this flag, automatic phases
-        /// (stale → archive / reactivation) still run, but the LLM
-        /// consolidation step is skipped.
-        ///
-        /// Tri-state via clap: `--consolidate` enables,
-        /// `--no-consolidate` disables, omitting both leaves it unset.
-        #[arg(long, overrides_with = "no_consolidate")]
+        /// Compatibility flag; the LLM consolidation pass now runs by default.
+        /// Use `--no-consolidate` to skip it.
+        #[arg(long)]
         consolidate: bool,
         #[arg(long, hide = true, conflicts_with = "consolidate")]
         no_consolidate: bool,

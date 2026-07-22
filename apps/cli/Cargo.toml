@@ -18,9 +18,10 @@ path = "src/main.rs"
 agent = { path = "../../agent/agent-core" }
 loom-llm = { path = "../../foundation/llm" }
 loom-graph-core = { path = "../../foundation/graph-core" }
+skill = { path = "../../agent/skill" }
 
 tool-core = { path = "../../agent/tool/tool-core" }
-tool-luft = { path = "../../agent/tool/tool-luft" }
+tool-workflow = { path = "../../agent/tool/tool-workflow" }
 loom-curator = { path = "../../experimental/curator" }
 tool-experimental = { path = "../../agent/tool/tool-experimental" }
 memory-v2 = { path = "../../experimental/memory-v2" }
@@ -32,7 +33,6 @@ stream-event = { path = "../../foundation/stream-event" }
 config = { path = "../../foundation/config", features = ["tracing-init"] }
 base64 = "0.22"
 reqwest = { version = "0.12", features = ["json", "blocking"] }
-futures-core = "0.3"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "net"] }
 clap = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }

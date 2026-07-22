@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use crate::types::metadata::{CheckpointEvent, StreamMetadata};
 use crate::types::message::MessageChunk;
+use crate::types::metadata::{CheckpointEvent, StreamMetadata};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::Debug;
 
@@ -174,7 +174,12 @@ mod tests {
             state: TestState("updated".to_string()),
             namespace: Some("ns".to_string()),
         };
-        if let StreamEvent::Updates { node_id, state, namespace } = ev {
+        if let StreamEvent::Updates {
+            node_id,
+            state,
+            namespace,
+        } = ev
+        {
             assert_eq!(node_id, "think");
             assert_eq!(state.0, "updated");
             assert_eq!(namespace.as_deref(), Some("ns"));
@@ -274,7 +279,12 @@ mod tests {
             prefill_duration: Some(std::time::Duration::from_millis(100)),
             decode_duration: None,
         };
-        if let StreamEvent::Usage { total_tokens, cached_tokens, .. } = ev {
+        if let StreamEvent::Usage {
+            total_tokens,
+            cached_tokens,
+            ..
+        } = ev
+        {
             assert_eq!(total_tokens, 30);
             assert_eq!(cached_tokens, Some(5));
         } else {

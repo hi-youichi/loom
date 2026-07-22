@@ -102,10 +102,7 @@ async fn test_handle_list_models_specific_provider() {
 async fn test_handle_list_models_unknown_provider() {
     let tool = make_tool();
     let err = tool
-        .call(
-            json!({ "action": "list_models", "provider": "nope" }),
-            None,
-        )
+        .call(json!({ "action": "list_models", "provider": "nope" }), None)
         .await
         .unwrap_err();
     let s = err.to_string();
@@ -209,10 +206,7 @@ async fn test_handle_invoke_missing_messages() {
 async fn test_handle_invoke_empty_messages() {
     let tool = make_tool();
     let err = tool
-        .call(
-            json!({ "provider": "openai", "messages": [] }),
-            None,
-        )
+        .call(json!({ "provider": "openai", "messages": [] }), None)
         .await
         .unwrap_err();
     let s = err.to_string();

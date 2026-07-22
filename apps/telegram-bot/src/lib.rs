@@ -61,8 +61,8 @@ pub mod utils;
 /// Narrow re-exports for typical embedders and binaries.
 pub mod prelude {
     pub use crate::config::{
-        load_config, AgentConfig, BotConfig, ConfigError, Settings,
-        StreamingConfig, TelegramBotConfig,
+        load_config, AgentConfig, BotConfig, ConfigError, Settings, StreamingConfig,
+        TelegramBotConfig,
     };
     pub use crate::error::{BotError, Result};
     pub use crate::{run_bots, run_with_config, BotManager};
@@ -74,8 +74,8 @@ pub mod mock;
 pub use agent::LoomAgentRunner;
 pub use bot::{run_bots, run_with_config, BotManager};
 pub use config::{
-    load_config, load_from_path, AgentConfig, BotConfig, ConfigError, Settings,
-    StreamingConfig, TelegramBotConfig,
+    load_config, load_from_path, AgentConfig, BotConfig, ConfigError, Settings, StreamingConfig,
+    TelegramBotConfig,
 };
 pub use download::{DownloadConfig, FileMetadata, FileType, TeloxideDownloader};
 pub use error::{BotError, Result};
@@ -90,7 +90,5 @@ pub use router::default_handler;
 pub use router::handle_message_with_deps;
 pub use sender::TeloxideSender;
 pub use session::SqliteSessionManager;
-pub use streaming::{
-    run_loom_agent_streaming, stream_message_handler_simple, StreamCommand,
-};
+pub use streaming::{run_loom_agent_streaming, stream_message_handler_simple, StreamCommand};
 pub use traits::{AgentRunContext, AgentRunner, FileDownloader, MessageSender, SessionManager};

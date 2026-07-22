@@ -30,36 +30,39 @@
 //! └── validation    — Runtime content validation for skill writes
 //! ```
 
+pub mod archive;
 pub mod bundles;
 pub mod cache;
 pub mod config_vars;
 pub mod discovery;
 pub mod guard;
-pub mod security;
 pub mod preprocessing;
 pub mod provenance;
+pub mod security;
 pub mod storage;
 pub mod sync;
 pub mod usage;
 pub mod utils;
 pub mod validation;
-pub mod archive;
 
 pub use bundles::{BundleRegistry, SkillBundle};
 pub use cache::SkillCache;
-pub use config_vars::{ConfigVarDecl, extract_config_vars, resolve_config_values, inject_config_into_content};
+pub use config_vars::{
+    extract_config_vars, inject_config_into_content, resolve_config_values, ConfigVarDecl,
+};
 pub use discovery::{SkillEntry, SkillRegistry, SkillSource};
-    pub use guard::{scan_file, scan_skill, resolve_trust_level, should_allow_install, format_scan_report, ScanResult, TrustLevel, Verdict};
-    pub use security::security_scan_skill;
-pub use preprocessing::{substitute_template_vars, expand_inline_shell};
+pub use guard::{
+    format_scan_report, resolve_trust_level, scan_file, scan_skill, should_allow_install,
+    ScanResult, TrustLevel, Verdict,
+};
+pub use preprocessing::{expand_inline_shell, substitute_template_vars};
 pub use provenance::{with_write_origin, WriteOrigin};
+pub use security::security_scan_skill;
 pub use storage::{atomic_write_text, Lifecycle, SkillContent, SkillError, SkillMeta, Source};
 pub use sync::{sync_skills, SyncResult};
 pub use usage::{SkillUsage, SkillUsageReport, SkillUsageStore};
-pub use utils::{SkillMetadata, ReadinessStatus};
+pub use utils::{ReadinessStatus, SkillMetadata};
 pub use validation::{
-    validate_skill_create, validate_skill_name, validate_skill_path,
-    validate_frontmatter, validate_name_match,
-    validate_memory_content,
-    ValidationResult, ValidationWarning, Severity,
+    validate_frontmatter, validate_memory_content, validate_name_match, validate_skill_create,
+    validate_skill_name, validate_skill_path, Severity, ValidationResult, ValidationWarning,
 };

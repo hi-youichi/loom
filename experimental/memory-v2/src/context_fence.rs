@@ -175,18 +175,18 @@ impl StreamingContextScrubber {
                     }
                     None => {
                         // No open tag — hold back a potential partial open tag
-                        let held = self
-                            .max_pending_open_suffix(&buf)
-                            .or_else(|| if max_partial_suffix(&buf, OPEN_TAG) > 0 {
+                        let held = self.max_pending_open_suffix(&buf).or_else(|| {
+                            if max_partial_suffix(&buf, OPEN_TAG) > 0 {
                                 Some(max_partial_suffix(&buf, OPEN_TAG))
                             } else {
                                 None
-                            });
+                            }
+                        });
                         // Note: max_pending_open_suffix and max_partial_suffix
                         // can't both be non-zero simultaneously (pending checks
                         // for complete tag, partial checks for incomplete prefix).
                         match held {
-                        Some(h) if h > 0 => {
+                            Some(h) if h > 0 => {
                                 let split = buf.len().saturating_sub(h);
                                 let split = buf.floor_char_boundary(split);
                                 self.append_visible(&mut out, &buf[..split]);
@@ -236,9 +236,7 @@ impl StreamingContextScrubber {
             match buf_lower[search_start..].find(OPEN_TAG) {
                 Some(rel_idx) => {
                     let idx = search_start + rel_idx;
-                    if self.is_block_boundary(buf, idx)
-                        && Self::has_block_opener_suffix(buf, idx)
-                    {
+                    if self.is_block_boundary(buf, idx) && Self::has_block_opener_suffix(buf, idx) {
                         return Some(idx);
                     }
                     search_start = idx + 1;
@@ -563,8 +561,8 @@ mod tests {
     #[test]
     fn scrubber_unterminated_span_drops_payload() {
         let mut s = StreamingContextScrubber::new();
-        let out = s.feed("pre \n<memory-context>\nsecret never closed")
-            + &s.flush().unwrap_or_default();
+        let out =
+            s.feed("pre \n<memory-context>\nsecret never closed") + &s.flush().unwrap_or_default();
         assert_eq!(out, "pre \n");
         assert!(!out.contains("secret"));
     }

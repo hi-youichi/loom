@@ -27,8 +27,8 @@ use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
-use futures_core::{Future, Stream};
-use futures_util::StreamExt;
+use core::future::Future;
+use futures_util::{Stream, StreamExt};
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::mpsc;

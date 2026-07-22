@@ -90,8 +90,7 @@ impl SkillViewTool {
                     .list()
                     .iter()
                     .filter(|e| {
-                        e.metadata.name == short_name
-                            && e.base_path.to_string_lossy().contains(ns)
+                        e.metadata.name == short_name && e.base_path.to_string_lossy().contains(ns)
                     })
                     .collect()
             } else {
@@ -135,27 +134,39 @@ impl SkillViewTool {
                 name,
                 matches.len(),
                 sources.join("\n  ")
-            )));
+)));
         }
 
         let entry = matches[0];
         let base_path = &entry.base_path;
 
         if let Some(fp) = file_path {
+            if entry.embedded_content.is_some() {
+                return Err(ToolSourceError::InvalidInput(format!(
+                    "skill '{}' is a builtin skill and has no on-disk files; \
+                     omit file_path to read its embedded content",
+                    name
+                )));
+            }
             return self.view_sub_file(base_path, fp, name);
         }
 
-        let content = std::fs::read_to_string(&entry.skill_file).map_err(|source| {
-            ToolSourceError::Transport(format!("read skill {}: {}", name, source))
-        })?;
+        let content = if let Some(ref embedded) = entry.embedded_content {
+            embedded.clone()
+        } else {
+            std::fs::read_to_string(&entry.skill_file).map_err(|source| {
+                ToolSourceError::Transport(format!("read skill {}: {}", name, source))
+            })?
+        };
         let (_, body) = skill::utils::parse_frontmatter(&content);
         let mut out = body;
 
-        if entry
-            .skill_file
-            .file_name()
-            .map(|f| f == "SKILL.md")
-            .unwrap_or(false)
+        if entry.embedded_content.is_none()
+            && entry
+                .skill_file
+                .file_name()
+                .map(|f| f == "SKILL.md")
+                .unwrap_or(false)
         {
             if let Ok(rd) = std::fs::read_dir(base_path) {
                 let subdirs: Vec<String> = rd
@@ -203,7 +214,7 @@ impl SkillViewTool {
             ReadinessStatus::Available => String::new(),
         };
 
-if let Some(ref store) = self.ctx.usage_store {
+        if let Some(ref store) = self.ctx.usage_store {
             // Hermes `skill_usage.py:408-422`: viewing a skill bumps
             // `view_count` only. `bump_use` must happen at the actual
             // skill-into-prompt injection site, NOT here. The previous
@@ -226,9 +237,9 @@ if let Some(ref store) = self.ctx.usage_store {
     ) -> Result<ToolCallContent, ToolSourceError> {
         let target = skill_dir.join(file_path);
 
-        let canonical_skill = skill_dir.canonicalize().map_err(|e| {
-            ToolSourceError::InvalidInput(format!("invalid skill dir: {}", e))
-        })?;
+        let canonical_skill = skill_dir
+            .canonicalize()
+            .map_err(|e| ToolSourceError::InvalidInput(format!("invalid skill dir: {}", e)))?;
         let canonical_target = target.canonicalize().map_err(|e| {
             ToolSourceError::InvalidInput(format!(
                 "file '{}' not found in skill '{}': {}",
@@ -253,7 +264,7 @@ if let Some(ref store) = self.ctx.usage_store {
         let content = std::fs::read_to_string(&canonical_target)
             .map_err(|e| ToolSourceError::Transport(format!("read {}: {}", file_path, e)))?;
 
-if let Some(ref store) = self.ctx.usage_store {
+        if let Some(ref store) = self.ctx.usage_store {
             // See note above: view bumps only, use bumps at injection site.
             store.bump_view(skill_name);
         }
@@ -281,11 +292,207 @@ if let Some(ref store) = self.ctx.usage_store {
         }
 
         let mut temp_registry = SkillRegistry::empty();
-        temp_registry.skills = skill::discovery::scan_skills_dir_recursive(
-            &skills_dir,
-            skill::SkillSource::Project,
-        );
+        temp_registry.skills =
+            skill::discovery::scan_skills_dir_recursive(&skills_dir, skill::SkillSource::Project);
 
         self.view_from_registry(&temp_registry, name, file_path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use skill::discovery::{SkillEntry, SkillRegistry, SkillSource};
+
+    fn builtin_registry() -> Arc<SkillRegistry> {
+        let mut registry = SkillRegistry::empty();
+        registry.add_builtin(
+            "workflow",
+            "Lua DSL reference for writing multi-agent workflows",
+            "---\nname: workflow\ndescription: Lua DSL reference\n---\n\n\
+             # Workflow DSL Reference\n\nThis is the builtin workflow skill body.\n",
+            vec!["workflow".to_string(), "multi-agent".to_string()],
+            vec!["workflow_start".to_string()],
+            vec![],
+        );
+        Arc::new(registry)
+    }
+
+    fn make_view_tool(registry: Arc<SkillRegistry>) -> SkillViewTool {
+        SkillViewTool::new(Arc::new(SkillContext::from_registry(registry)))
+    }
+
+    fn extract_text(content: ToolCallContent) -> String {
+        match content {
+            ToolCallContent::Text(t) => t,
+            other => panic!("expected Text, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn view_builtin_skill_returns_embedded_content() {
+        let tool = make_view_tool(builtin_registry());
+
+        let result = tool
+            .call(serde_json::json!({"name": "workflow"}), None)
+            .await
+            .expect("view builtin skill should not fail");
+
+        let body = extract_text(result);
+
+        eprintln!(
+            "\n=== skill_view(name=workflow) returned {} chars ===\n{}{}\n=== end ===",
+            body.len(),
+            &body.chars().take(200).collect::<String>(),
+            if body.len() > 200 { "..." } else { "" },
+        );
+
+        assert!(
+            body.contains("workflow"),
+            "body should reference the skill name: {}",
+            body
+        );
+        assert!(
+            body.contains("# Workflow DSL Reference"),
+            "body should contain embedded markdown heading: {}",
+            body
+        );
+        assert!(
+            body.contains("This is the builtin workflow skill body"),
+            "body should contain embedded body content: {}",
+            body
+        );
+        assert!(
+            !body.contains("name: workflow\n"),
+            "body should not include raw frontmatter: {}",
+            body
+        );
+        assert!(
+            body.contains("<skill_content"),
+            "body should be wrapped in <skill_content> tags: {}",
+            body
+        );
+    }
+
+    #[tokio::test]
+    async fn view_builtin_skill_with_file_path_errors() {
+        let tool = make_view_tool(builtin_registry());
+
+        let err = tool
+            .call(
+                serde_json::json!({"name": "workflow", "file_path": "references/foo.md"}),
+                None,
+            )
+            .await
+            .expect_err("file_path on builtin skill should error");
+
+        let msg = format!("{}", err);
+        assert!(
+            msg.contains("builtin"),
+            "error should mention builtin: {}",
+            msg
+        );
+        assert!(
+            msg.contains("workflow"),
+            "error should mention skill name: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn view_filesystem_skill_with_file_path_works() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let skill_dir = tmp.path().join("disk-skill");
+        let refs_dir = skill_dir.join("references");
+        std::fs::create_dir_all(&refs_dir).expect("mkdir references");
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: disk-skill\ndescription: disk version\n---\n\n# Disk Skill\n",
+        )
+        .expect("write SKILL.md");
+        std::fs::write(
+            refs_dir.join("api.md"),
+            "# API Reference\n\nEndpoint: POST /v1/foo\n",
+        )
+        .expect("write references/api.md");
+
+        let mut registry = SkillRegistry::empty();
+        registry.skills.push(SkillEntry {
+            metadata: skill::utils::SkillMetadata {
+                name: "disk-skill".to_string(),
+                description: "disk version".to_string(),
+                ..Default::default()
+            },
+            base_path: skill_dir.clone(),
+            skill_file: skill_dir.join("SKILL.md"),
+            source: SkillSource::Project,
+            embedded_content: None,
+            embedded_files: None,
+        });
+
+        let tool = make_view_tool(Arc::new(registry));
+        let result = tool
+            .call(
+                serde_json::json!({"name": "disk-skill", "file_path": "references/api.md"}),
+                None,
+            )
+            .await
+            .expect("filesystem skill + file_path should still succeed");
+
+        let body = extract_text(result);
+        assert!(
+            body.contains("Endpoint: POST /v1/foo"),
+            "filesystem sub-file content should be returned: {}",
+            body
+        );
+        assert!(
+            body.contains("references/api.md"),
+            "file attribute should appear in output: {}",
+            body
+        );
+    }
+
+    #[tokio::test]
+    async fn view_filesystem_skill_rejects_path_traversal() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let skill_dir = tmp.path().join("disk-skill");
+        std::fs::create_dir_all(&skill_dir).expect("mkdir");
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: disk-skill\n---\n\nbody\n",
+        )
+        .expect("write SKILL.md");
+        let secret = tmp.path().join("secret.txt");
+        std::fs::write(&secret, "top secret\n").expect("write secret");
+
+        let mut registry = SkillRegistry::empty();
+        registry.skills.push(SkillEntry {
+            metadata: skill::utils::SkillMetadata {
+                name: "disk-skill".to_string(),
+                description: String::new(),
+                ..Default::default()
+            },
+            base_path: skill_dir.clone(),
+            skill_file: skill_dir.join("SKILL.md"),
+            source: SkillSource::Project,
+            embedded_content: None,
+            embedded_files: None,
+        });
+
+        let tool = make_view_tool(Arc::new(registry));
+        let err = tool
+            .call(
+                serde_json::json!({"name": "disk-skill", "file_path": "../secret.txt"}),
+                None,
+            )
+            .await
+            .expect_err("path traversal should be blocked");
+
+        let msg = format!("{}", err);
+        assert!(
+            msg.contains("path traversal") || msg.contains("not found") || msg.contains("outside"),
+            "error should mention traversal/block: {}",
+            msg
+        );
     }
 }

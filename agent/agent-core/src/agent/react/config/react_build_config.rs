@@ -2,12 +2,12 @@ use env_config::McpServerDef;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use skill::SkillRegistry;
-use crate::compress::CompactionConfig;
-use tool_core::BuiltinToolFilter;
-use model_spec_core::ModelTier;
-use super::runner_config::{TotRunnerConfig, GotRunnerConfig};
 use super::env_context::EnvContext;
+use super::runner_config::{GotRunnerConfig, TotRunnerConfig};
+use crate::compress::CompactionConfig;
+use model_spec_core::ModelTier;
+use skill::SkillRegistry;
+use tool_core::BuiltinToolFilter;
 
 #[derive(Clone)]
 pub struct ReactBuildConfig {
@@ -37,19 +37,19 @@ pub struct ReactBuildConfig {
     /// Hermes-aligned curator provider override (`curator.py:1250-1410`).
     /// When `Some`, takes precedence over `aux_model` for the curator LLM
     /// pass. `None` (or `Some("")`) falls through to the next tier.
-pub curator_provider: Option<String>,
+    pub curator_provider: Option<String>,
     /// Hermes-aligned curator model override (`curator.py:1250-1410`).
     /// When `Some`, takes precedence over `aux_model` for the curator LLM
     /// pass. `None` (or `Some("")`) falls through to the next tier.
-pub curator_model: Option<String>,
+    pub curator_model: Option<String>,
     /// Hermes-aligned curator api-key override (`curator.py:1250-1410`).
     /// When `Some`, takes precedence over the global `openai_api_key` for
     /// the curator LLM pass.
-pub curator_api_key: Option<String>,
+    pub curator_api_key: Option<String>,
     /// Hermes-aligned curator base-url override (`curator.py:1250-1410`).
     /// When `Some`, takes precedence over the global `openai_base_url` for
     /// the curator LLM pass.
-pub curator_base_url: Option<String>,
+    pub curator_base_url: Option<String>,
     pub openai_temperature: Option<String>,
     pub embedding_api_key: Option<String>,
     pub embedding_base_url: Option<String>,
@@ -87,6 +87,10 @@ pub curator_base_url: Option<String>,
     pub memory_prompt: Option<String>,
     pub env_context: Option<EnvContext>,
     pub reasoning_effort: Option<String>,
+
+    /// When true, the agent loads state from checkpoint without appending
+    /// a user message (used by workflow crash resume).
+    pub resume_mode: bool,
 
     /// When true, the `llm` tool is registered, giving the agent direct
     /// LLM invocation with provider/model discovery.
@@ -166,6 +170,7 @@ impl Default for ReactBuildConfig {
             memory_prompt: None,
             env_context: None,
             reasoning_effort: None,
+            resume_mode: false,
             llm_tool_enabled: false,
         }
     }
@@ -266,6 +271,7 @@ impl ReactBuildConfig {
             memory_prompt: None,
             env_context: None,
             reasoning_effort: None,
+            resume_mode: false,
             llm_tool_enabled: std::env::var("LOOM_LLM_TOOL_ENABLED")
                 .ok()
                 .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
@@ -294,12 +300,16 @@ impl ReactBuildConfig {
             let over = over.filter(|s| !s.is_empty());
             let aux = aux.filter(|s| !s.is_empty());
             let glob = glob.filter(|s| !s.is_empty());
-            over.map(String::from).or(aux.map(String::from)).or(glob.map(String::from))
+            over.map(String::from)
+                .or(aux.map(String::from))
+                .or(glob.map(String::from))
         }
         CuratorProviderOverrides {
             provider: pick(
                 self.curator_provider.as_deref(),
-                self.llm_provider_name.as_deref().or(self.llm_provider.as_deref()),
+                self.llm_provider_name
+                    .as_deref()
+                    .or(self.llm_provider.as_deref()),
                 None,
             ),
             model: pick(
@@ -421,7 +431,10 @@ mod tests {
         let mut sub_config = ReactBuildConfig::from_env();
         sub_config.trace_thread_id = parent_with_trace.trace_thread_id.clone();
 
-        assert_eq!(sub_config.trace_thread_id, Some("root-trace-id".to_string()));
+        assert_eq!(
+            sub_config.trace_thread_id,
+            Some("root-trace-id".to_string())
+        );
     }
 
     #[test]

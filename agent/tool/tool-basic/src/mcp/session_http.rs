@@ -6,8 +6,10 @@
 use std::collections::HashMap;
 
 use rmcp::{
+    transport::{
+        streamable_http_client::StreamableHttpClientTransportConfig, StreamableHttpClientTransport,
+    },
     ServiceExt,
-    transport::{StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig},
 };
 use serde_json::Value;
 
@@ -39,13 +41,12 @@ impl McpHttpSession {
                 .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
             header_map.insert(name, value);
         }
-        let config = StreamableHttpClientTransportConfig::with_uri(url)
-            .custom_headers(header_map);
+        let config = StreamableHttpClientTransportConfig::with_uri(url).custom_headers(header_map);
         let transport = StreamableHttpClientTransport::from_config(config);
-        let client = ()
-            .serve(transport)
-            .await
-            .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+        let client =
+            ().serve(transport)
+                .await
+                .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
         Ok(Self { client })
     }
 

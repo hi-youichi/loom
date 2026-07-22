@@ -19,8 +19,7 @@ pub(crate) struct OutputConfig {
     pub file: Option<PathBuf>,
 }
 
-#[cfg(test)]
-pub(crate) fn write_json_output(
+pub fn write_json_output(
     value: &Value,
     file: Option<&Path>,
     pretty: bool,
@@ -118,7 +117,16 @@ pub(crate) fn emit_run_output(
     timestamp: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Write collected events (for JSON output mode with events).
-    if let Some(events) = output.events {
+    let (reply, reasoning_content, reply_envelope, stop_reason, events) = match output {
+        RunOutput::Json { reply, reasoning_content, reply_envelope, stop_reason, events } => {
+            (reply, reasoning_content, reply_envelope, stop_reason, Some(events))
+        }
+        RunOutput::Reply { reply, reasoning_content, reply_envelope, stop_reason } => {
+            (reply, reasoning_content, reply_envelope, stop_reason, None)
+        }
+    };
+
+    if let Some(events) = events {
         for event in events {
             let serialized = if config.pretty {
                 serde_json::to_string_pretty(&event)?
@@ -142,14 +150,14 @@ pub(crate) fn emit_run_output(
     }
 
     // Write the final reply.
-    let mut reply_out = serde_json::json!({ "reply": output.reply });
-    if let Some(reasoning) = output.reasoning_content {
+    let mut reply_out = serde_json::json!({ "reply": reply });
+    if let Some(reasoning) = reasoning_content {
         reply_out["reasoning_content"] = serde_json::json!(reasoning);
     }
-    if let Some(ref envelope) = output.reply_envelope {
+    if let Some(ref envelope) = reply_envelope {
         envelope.inject_into(&mut reply_out);
     }
-    reply_out["stop_reason"] = serde_json::json!(output.stop_reason);
+    reply_out["stop_reason"] = serde_json::json!(format!("{:?}", stop_reason));
     if let Some(sid) = session_id {
         reply_out["session_id"] = serde_json::json!(sid);
     }
@@ -157,7 +165,7 @@ pub(crate) fn emit_run_output(
     if config.json {
         append_json_line(&reply_out, config.file.as_deref(), config.pretty)?;
     } else {
-        emit_text_reply(&output.reply, max_reply_len, timestamp)?;
+        emit_text_reply(&reply, max_reply_len, timestamp)?;
     }
 
     Ok(())

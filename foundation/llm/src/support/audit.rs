@@ -159,16 +159,15 @@ impl FileLlmAuditLog {
         }
     }
 
-    async fn writer_task(
-        mut rx: mpsc::UnboundedReceiver<AuditMsg>,
-        base_path: PathBuf,
-    ) {
+    async fn writer_task(mut rx: mpsc::UnboundedReceiver<AuditMsg>, base_path: PathBuf) {
         while let Some(msg) = rx.recv().await {
             match msg {
                 AuditMsg::Write(entry) => {
                     let thread_id = entry.thread_id.clone();
                     let trace_id = entry.trace_id.clone();
-                    let file_path = base_path.join(&thread_id).join(format!("{}.json", trace_id));
+                    let file_path = base_path
+                        .join(&thread_id)
+                        .join(format!("{}.json", trace_id));
                     if let Err(e) = Self::write_entry(&file_path, &entry) {
                         warn!(
                             path = %file_path.display(),
@@ -186,9 +185,7 @@ impl FileLlmAuditLog {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let json =
-            serde_json::to_string(entry)
-                .map_err(std::io::Error::other)?;
+        let json = serde_json::to_string(entry).map_err(std::io::Error::other)?;
         std::fs::write(path, json)
     }
 }
@@ -474,7 +471,10 @@ mod tests {
 
         // Each entry now writes to its own file: {thread_id}/{trace_id}.json
         for i in 0..3 {
-            let file_path = dir.path().join("append-test").join(format!("trace-{}.json", i));
+            let file_path = dir
+                .path()
+                .join("append-test")
+                .join(format!("trace-{}.json", i));
             assert!(file_path.exists());
         }
     }

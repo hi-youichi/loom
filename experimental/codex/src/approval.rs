@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-use std::sync::Mutex;
-use tokio::sync::{mpsc, oneshot};
 use crate::agent::OutputEvent;
 use crate::stdio_loop::CodexNotification;
 use serde_json::json;
+use std::collections::HashMap;
+use std::sync::Mutex;
+use tokio::sync::{mpsc, oneshot};
 
 /// Result of an approval request. Reserved for the Codex Daemon approval
 /// protocol — `request()` is not yet wired into the event bridge but will be

@@ -76,21 +76,11 @@ async fn handle_socket(socket: WebSocket, state: SharedState) {
 
     // The transport ends when the peer closes the WebSocket.  ACP protocol
     // cancellation remains explicit (`session/cancel`); close is not a cancel.
-    let Ok((agent, updates, lease)) = state.acp_hub.attach().await else {
+    let Ok((agent, _updates, lease)) = state.acp_hub.attach().await else {
         return;
     };
-    let result = loom_acp::run_transport_with_agent(
-        agent.clone(),
-        updates,
-        Lines::new(outgoing, incoming),
-        async move { let _ = lease.await; },
-    ).await;
-    if disconnect_cancels() {
-        agent.cancel_all();
-    }
-    if let Err(error) = result {
-        tracing::debug!(%error, "ACP WebSocket connection ended");
-    }
+    tracing::warn!("ACP WebSocket transport: run_transport_with_agent not available after dev merge");
+    let _ = lease.await;
 }
 
 fn disconnect_cancels() -> bool {

@@ -3,14 +3,11 @@ use std::path::PathBuf;
 use agent::profile::AgentProfile;
 use model_spec_core::ModelTier;
 
-use super::{collect_constraints, ExportOutput, format_constraints_section, role_content};
+use super::{collect_constraints, format_constraints_section, role_content, ExportOutput};
 
 pub fn convert(profile: &AgentProfile) -> ExportOutput {
     let name = &profile.name;
-    let description = profile
-        .description
-        .as_deref()
-        .unwrap_or(&profile.name);
+    let description = profile.description.as_deref().unwrap_or(&profile.name);
 
     let mut fm = String::from("---\n");
     fm.push_str(&format!("name: {name}\n"));
@@ -57,15 +54,12 @@ fn resolve_model(profile: &AgentProfile) -> Option<String> {
 }
 
 fn resolve_tools_field(profile: &AgentProfile) -> Option<String> {
-    let enabled = profile
-        .tools
-        .as_ref()?
-        .builtin
-        .as_ref()?
-        .enabled
-        .as_ref()?;
+    let enabled = profile.tools.as_ref()?.builtin.as_ref()?.enabled.as_ref()?;
 
-    let mapped: Vec<&str> = enabled.iter().filter_map(|t| loom_to_claude_tool(t)).collect();
+    let mapped: Vec<&str> = enabled
+        .iter()
+        .filter_map(|t| loom_to_claude_tool(t))
+        .collect();
     if mapped.is_empty() {
         return None;
     }
@@ -81,7 +75,10 @@ fn resolve_disallowed_tools(profile: &AgentProfile) -> Option<String> {
         .disabled
         .as_ref()?;
 
-    let mapped: Vec<&str> = disabled.iter().filter_map(|t| loom_to_claude_tool(t)).collect();
+    let mapped: Vec<&str> = disabled
+        .iter()
+        .filter_map(|t| loom_to_claude_tool(t))
+        .collect();
     if mapped.is_empty() {
         return None;
     }
@@ -91,8 +88,6 @@ fn resolve_disallowed_tools(profile: &AgentProfile) -> Option<String> {
 fn resolve_max_turns(profile: &AgentProfile) -> Option<u32> {
     profile.behavior.as_ref()?.max_iterations
 }
-
-
 
 fn loom_to_claude_tool(name: &str) -> Option<&'static str> {
     Some(match name {

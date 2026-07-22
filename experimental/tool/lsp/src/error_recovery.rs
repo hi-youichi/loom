@@ -429,12 +429,12 @@ mod tests {
 
         cb.record_failure();
         cb.record_failure();
-        
+
         assert_eq!(cb.state(), &CircuitState::Closed);
         assert!(cb.allow_request());
 
         cb.record_failure();
-        
+
         assert_eq!(cb.state(), &CircuitState::Open);
         assert!(!cb.allow_request());
     }
@@ -455,9 +455,8 @@ mod tests {
 
         // Backdate `last_failure_time` so the configured timeout is already
         // elapsed — no need to actually sleep 10+ seconds in the test.
-        cb.last_failure_time = Some(
-            std::time::Instant::now() - std::time::Duration::from_secs(timeout_secs + 1),
-        );
+        cb.last_failure_time =
+            Some(std::time::Instant::now() - std::time::Duration::from_secs(timeout_secs + 1));
 
         assert!(cb.allow_request());
         assert_eq!(cb.state(), &CircuitState::HalfOpen);
@@ -509,7 +508,7 @@ mod tests {
         cb.record_failure();
         assert_eq!(cb.state(), &CircuitState::Open);
         assert!(!cb.allow_request());
-        
+
         // Immediate check should still be blocked
         assert!(!cb.allow_request());
     }
@@ -519,7 +518,7 @@ mod tests {
         let retry_config = RetryConfig::default();
         let circuit_config = CircuitBreakerConfig::default();
         let manager = ErrorRecoveryManager::new(retry_config, circuit_config);
-        
+
         assert_eq!(manager.retry_config().max_retries, 3);
     }
 
@@ -555,20 +554,20 @@ mod tests {
 
         cb.record_failure();
         cb.record_failure();
-        
+
         assert_eq!(cb.state(), &CircuitState::Open);
 
         cb.state = CircuitState::Closed;
         cb.failure_count = 0;
         cb.record_failure();
-        
+
         assert_eq!(cb.state(), &CircuitState::Closed);
     }
 
     #[test]
     fn test_retry_config_no_negative_delays() {
         let config = RetryConfig::default();
-        
+
         for attempt in 0..=10 {
             let _ = config.delay_for_attempt(attempt);
         }
@@ -597,7 +596,7 @@ mod tests {
 
         // Wait for timeout
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        
+
         assert!(cb.allow_request());
         assert_eq!(cb.state(), &CircuitState::HalfOpen);
 

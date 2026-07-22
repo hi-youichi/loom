@@ -23,8 +23,8 @@ use serde_json::{json, Value};
 
 use loom_llm::message::{ContentPart, Message, UserContent};
 use loom_llm::{ChatOpenAICompat, LlmClient, ToolCallContent, ToolSourceError, ToolSpec};
-use tool_core::{Tool, ToolCallContext};
 use tool_core::tool_name::TOOL_LLM;
+use tool_core::{Tool, ToolCallContext};
 
 use self::content::parse_message;
 
@@ -144,19 +144,10 @@ impl LlmTool {
         provider: Option<&str>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         let provider_name = provider.unwrap_or(&self.data.default_provider);
-        let provider_data = self
-            .find_provider(provider_name)
-            .ok_or_else(|| {
-                ToolSourceError::InvalidInput(format!(
-                    "provider '{}' 不存在",
-                    provider_name
-                ))
-            })?;
-        let models: Vec<Value> = provider_data
-            .models
-            .iter()
-            .map(model_to_json)
-            .collect();
+        let provider_data = self.find_provider(provider_name).ok_or_else(|| {
+            ToolSourceError::InvalidInput(format!("provider '{}' 不存在", provider_name))
+        })?;
+        let models: Vec<Value> = provider_data.models.iter().map(model_to_json).collect();
         Ok(ToolCallContent::text(
             json!({
                 "provider": provider_name,
@@ -263,7 +254,10 @@ impl LlmTool {
         }
 
         // 5. Optional generation params.
-        let temperature = args.get("temperature").and_then(|t| t.as_f64()).map(|f| f as f32);
+        let temperature = args
+            .get("temperature")
+            .and_then(|t| t.as_f64())
+            .map(|f| f as f32);
         let max_tokens = args
             .get("max_tokens")
             .and_then(|t| t.as_u64())
@@ -277,11 +271,8 @@ impl LlmTool {
         let seed = args.get("seed").and_then(|s| s.as_i64()).map(|n| n as u32);
 
         // 6. Build client + call.
-        let mut client = ChatOpenAICompat::with_config(
-            &provider.base_url,
-            &provider.api_key,
-            &model,
-        );
+        let mut client =
+            ChatOpenAICompat::with_config(&provider.base_url, &provider.api_key, &model);
         if let Some(temp) = temperature {
             client = client.with_temperature(temp);
         }
@@ -306,9 +297,7 @@ impl LlmTool {
             client.invoke(&messages),
         )
         .await
-        .map_err(|_| {
-            ToolSourceError::Transport("LLM 调用超时 (120s)".to_string())
-        })?
+        .map_err(|_| ToolSourceError::Transport("LLM 调用超时 (120s)".to_string()))?
         .map_err(|e| ToolSourceError::Transport(format!("LLM 调用失败: {}", e)))?;
 
         tracing::info!(

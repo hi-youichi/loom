@@ -4,7 +4,10 @@ use async_trait::async_trait;
 
 use serde_json::json;
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool, ToolOutputHint, ToolOutputStrategy};
+use tool_core::{
+    Tool, ToolCallContent, ToolCallContext, ToolOutputHint, ToolOutputStrategy, ToolSourceError,
+    ToolSpec,
+};
 
 mod executor;
 pub use executor::{CommandExecutor, LocalCommandExecutor};
@@ -119,20 +122,11 @@ impl Tool for BashTool {
         let workdir = args.get("workdir").and_then(|v| v.as_str());
         let working_dir = match workdir {
             Some(dir) => Some(std::path::PathBuf::from(dir)),
-            None => self
-                .working_folder
-                .as_ref()
-                .map(|p| p.as_ref().clone()),
+            None => self.working_folder.as_ref().map(|p| p.as_ref().clone()),
         };
 
         self.executor
-            .execute(
-                command,
-                working_dir.as_deref(),
-                timeout_ms,
-                vec![],
-                ctx,
-            )
+            .execute(command, working_dir.as_deref(), timeout_ms, vec![], ctx)
             .await
     }
 }

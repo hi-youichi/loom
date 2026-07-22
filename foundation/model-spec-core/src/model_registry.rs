@@ -4,8 +4,8 @@
 //! Combines provider configuration with model lists to return fully resolved model entries.
 
 pub use crate::registry::{
-    CachedModelList, CombinedModelList, ModelEntry, ProviderConfig,
-    DEFAULT_CACHE_TTL, DEFAULT_PROVIDER_CACHE_TTL,
+    CachedModelList, CombinedModelList, ModelEntry, ProviderConfig, DEFAULT_CACHE_TTL,
+    DEFAULT_PROVIDER_CACHE_TTL,
 };
 
 use std::collections::{HashMap, HashSet};
@@ -340,9 +340,16 @@ impl ModelRegistry {
         })
     }
 
-    pub async fn cache_provider_models(&self, provider: String, models: Vec<ModelEntry>, ttl: Duration) {
+    pub async fn cache_provider_models(
+        &self,
+        provider: String,
+        models: Vec<ModelEntry>,
+        ttl: Duration,
+    ) {
         let mut inner = self.inner.write().await;
-        inner.provider_cache.insert(provider, CachedModelList::new(models, ttl));
+        inner
+            .provider_cache
+            .insert(provider, CachedModelList::new(models, ttl));
     }
 
     pub async fn invalidate_provider_models(&self, provider: &str) {
@@ -375,11 +382,13 @@ impl ModelRegistry {
 
         let models = self.fetch_provider_models_api(provider).await?;
 
-        let ttl = provider.cache_ttl
+        let ttl = provider
+            .cache_ttl
             .map(Duration::from_secs)
             .unwrap_or(DEFAULT_PROVIDER_CACHE_TTL);
 
-        self.cache_provider_models(provider.name.clone(), models.clone(), ttl).await;
+        self.cache_provider_models(provider.name.clone(), models.clone(), ttl)
+            .await;
 
         Ok(models)
     }
@@ -389,7 +398,10 @@ impl ModelRegistry {
         provider: &ProviderConfig,
     ) -> Result<Vec<ModelEntry>, TierError> {
         let base_url = provider.base_url.as_ref().ok_or_else(|| {
-            TierError::execution(format!("Provider {} has no base_url configured", provider.name))
+            TierError::execution(format!(
+                "Provider {} has no base_url configured",
+                provider.name
+            ))
         })?;
 
         let url = format!("{}/models", base_url.trim_end_matches('/'));
@@ -426,10 +438,7 @@ struct OpenAiModelItem {
     id: String,
 }
 
-async fn fetch_models_from_api(
-    url: &str,
-    api_key: Option<&str>,
-) -> Result<Vec<String>, TierError> {
+async fn fetch_models_from_api(url: &str, api_key: Option<&str>) -> Result<Vec<String>, TierError> {
     let client = reqwest::Client::new();
     let mut req = client.get(url);
     if let Some(key) = api_key {
@@ -440,9 +449,7 @@ async fn fetch_models_from_api(
     let resp: OpenAiModelsResponse = req
         .send()
         .await
-        .map_err(|e| {
-            TierError::execution(format!("failed to fetch models from {url}: {e}"))
-        })?
+        .map_err(|e| TierError::execution(format!("failed to fetch models from {url}: {e}")))?
         .json()
         .await
         .map_err(|e| {

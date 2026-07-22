@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use loom_llm::Message;
 use crate::active_operation::RunCancellation;
-
+use loom_llm::Message;
 
 #[derive(Clone, Default)]
 pub struct ToolCallContext {

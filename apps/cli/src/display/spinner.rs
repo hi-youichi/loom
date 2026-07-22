@@ -14,7 +14,10 @@ const TICK_INTERVAL: Duration = Duration::from_millis(150);
 enum SpinnerMsg {
     Update(String),
     /// Update the context info (turn number, session start instant).
-    SetContext { turn: u32, session_start: Instant },
+    SetContext {
+        turn: u32,
+        session_start: Instant,
+    },
     Finish,
 }
 
@@ -91,7 +94,10 @@ impl Spinner {
 
     /// Sets the context for elapsed time rendering (turn number, session start).
     pub fn set_context(&self, turn: u32, session_start: Instant) {
-        let _ = self.tx.send(SpinnerMsg::SetContext { turn, session_start });
+        let _ = self.tx.send(SpinnerMsg::SetContext {
+            turn,
+            session_start,
+        });
     }
 
     /// Stops the spinner and clears the current line (TTY) or does nothing (pipe).
@@ -129,20 +135,21 @@ fn run_tty_spinner(rx: mpsc::Receiver<SpinnerMsg>, initial_label: &str) {
     let mut ctx = SpinnerContext::default();
     let spinner_start = Instant::now();
 
-    let display_line = |label: &str, ctx: &SpinnerContext, spinner_start: Instant, frame_idx: usize| {
-        let elapsed = spinner_start.elapsed();
-        let suffix = build_elapsed_suffix(ctx, elapsed);
-        let display = format!("{}{}", label, suffix);
-        let stderr = std::io::stderr();
-        let mut stderr_lock = stderr.lock();
-        let _ = write!(
-            stderr_lock,
-            "\r{} {}",
-            SPINNER_FRAMES[frame_idx % SPINNER_FRAMES.len()],
-            truncate_to_terminal_width(&display, 4)
-        );
-        let _ = stderr_lock.flush();
-    };
+    let display_line =
+        |label: &str, ctx: &SpinnerContext, spinner_start: Instant, frame_idx: usize| {
+            let elapsed = spinner_start.elapsed();
+            let suffix = build_elapsed_suffix(ctx, elapsed);
+            let display = format!("{}{}", label, suffix);
+            let stderr = std::io::stderr();
+            let mut stderr_lock = stderr.lock();
+            let _ = write!(
+                stderr_lock,
+                "\r{} {}",
+                SPINNER_FRAMES[frame_idx % SPINNER_FRAMES.len()],
+                truncate_to_terminal_width(&display, 4)
+            );
+            let _ = stderr_lock.flush();
+        };
 
     // Initial display
     display_line(&label, &ctx, spinner_start, 0);
@@ -154,7 +161,10 @@ fn run_tty_spinner(rx: mpsc::Receiver<SpinnerMsg>, initial_label: &str) {
                 frame_idx = (frame_idx + 1) % SPINNER_FRAMES.len();
                 display_line(&label, &ctx, spinner_start, frame_idx);
             }
-            Ok(SpinnerMsg::SetContext { turn, session_start }) => {
+            Ok(SpinnerMsg::SetContext {
+                turn,
+                session_start,
+            }) => {
                 ctx.turn = turn;
                 ctx.session_start = Some(session_start);
                 display_line(&label, &ctx, spinner_start, frame_idx);
@@ -262,7 +272,11 @@ mod tests {
         // Use a string long enough to exceed any terminal width (e.g. 10000 chars)
         let long: String = "x".repeat(10000);
         let result = truncate_to_terminal_width(&long, 2);
-        assert!(result.ends_with("..."), "expected truncation, got: {} chars", result.len());
+        assert!(
+            result.ends_with("..."),
+            "expected truncation, got: {} chars",
+            result.len()
+        );
         assert!(result.len() < long.len());
     }
 

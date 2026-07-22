@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::json;
 use task_core::{parse_status, TaskDb, UpdateParams};
 
-use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, Tool};
+use tool_core::{Tool, ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
 pub use tool_core::tool_name::TOOL_TASK_UPDATE;
 
@@ -80,7 +80,10 @@ impl Tool for TaskUpdateTool {
             status,
         };
 
-        let task = self.db.update_task(&params).await
+        let task = self
+            .db
+            .update_task(&params)
+            .await
             .map_err(|e| ToolSourceError::ToolError(e.to_string()))?;
         let out = serde_json::to_string_pretty(&task)
             .map_err(|e| ToolSourceError::ToolError(e.to_string()))?;

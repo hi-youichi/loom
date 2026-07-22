@@ -28,6 +28,9 @@ impl BuiltinToolFilter {
     }
 
     pub fn filter_names<'a>(&self, names: &'a [String]) -> Vec<&'a String> {
-        names.iter().filter(|n| self.is_allowed(n.as_str())).collect()
+        names
+            .iter()
+            .filter(|n| self.is_allowed(n.as_str()))
+            .collect()
     }
 }

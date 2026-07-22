@@ -30,8 +30,8 @@
 //! (absorbed into an umbrella) vs pruned (archived with no absorption).
 
 use crate::curator::{
-    self, parse_llm_review_response, reconcile_classification, CuratorToolCall, LlMReviewResult,
-    ClassificationResult, SkillSnapshot,
+    self, parse_llm_review_response, reconcile_classification, ClassificationResult,
+    CuratorToolCall, LlMReviewResult, SkillSnapshot,
 };
 use crate::prompts::CURATOR_SYSTEM_PROMPT;
 use crate::review::uuid_v4;
@@ -39,8 +39,8 @@ use crate::review_tool_gate::ReviewToolGate;
 use crate::skill_registry::{Lifecycle, SkillContent, SkillRegistry};
 
 use agent::agent::{Agent, AgentEvent};
-use checkpoint::RunnableConfig;
 use agent::ReactBuildConfig;
+use checkpoint::RunnableConfig;
 use skill::SkillUsageStore;
 use tool_basic::skill::{make_skill_tools_with_skills_dir, SkillManagerTool};
 use tool_core::Tool;
@@ -144,10 +144,7 @@ fn snapshot_skill_metas(registry: &SkillRegistry) -> Result<Vec<SkillSnapshot>, 
     let metas = registry.list().map_err(|e| format!("{:?}", e))?;
     let mut snapshots = Vec::new();
     for meta in &metas {
-        let body_len = registry
-            .load(&meta.name)
-            .map(|c| c.body.len())
-            .unwrap_or(0);
+        let body_len = registry.load(&meta.name).map(|c| c.body.len()).unwrap_or(0);
         snapshots.push(SkillSnapshot {
             name: meta.name.clone(),
             description: meta.description.clone(),
@@ -234,6 +231,25 @@ pub async fn run_curator_llm_pass(
         active_skills.len()
     );
 
+    if active_skills.is_empty() {
+        return Ok(CuratorLlmPassOutcome {
+            final_reply: String::new(),
+            summary: "skipped (no agent-created candidates)".to_string(),
+            model,
+            provider,
+            run_error: None,
+            all_tool_calls: vec![],
+            llm_result: LlMReviewResult::default(),
+            classification: ClassificationResult::default(),
+            before_names: before_names.clone(),
+            after_names: before_names,
+            before_snapshots: before_snapshots.clone(),
+            after_snapshots: before_snapshots,
+            elapsed_seconds: start.elapsed().as_secs_f64(),
+            turns: 0,
+        });
+    }
+
     // Build prompt (includes CURATOR_REVIEW_PROMPT + skill list).
     // `dry_run` (Hermes parity: `agent/curator.py:run_curator_review(..., dry_run=True)`)
     // prepends a "## Mode: DRY RUN" banner so the LLM produces an analysis
@@ -247,7 +263,7 @@ pub async fn run_curator_llm_pass(
 
     // Configure agent for curator mode — mirrors review.rs isolation pattern.
     let gate = ReviewToolGate::with_allowed(vec!["skill_list", "skill_view", "skill_manage"]);
-let mut config = base_config;
+    let mut config = base_config;
 
     // Hermes parity: thread LOOM_CURATOR_* env vars through to this pass.
     // `resolve_curator_overrides()` reads the env once and returns an
@@ -322,7 +338,10 @@ let mut config = base_config;
         ..Default::default()
     };
 
-    info!("Curator agent running (thread_id: {})...", fork_thread_id_log);
+    info!(
+        "Curator agent running (thread_id: {})...",
+        fork_thread_id_log
+    );
 
     // Collect tool calls via event callback
     let all_tool_calls: Arc<Mutex<Vec<CuratorToolCall>>> = Arc::new(Mutex::new(Vec::new()));
@@ -348,7 +367,9 @@ let mut config = base_config;
                     *turn_clone.lock().unwrap() += 1;
                 }
                 AgentEvent::ToolEnd {
-                    name, result, is_error,
+                    name,
+                    result,
+                    is_error,
                 } => {
                     if is_error {
                         warn!(
@@ -373,8 +394,10 @@ let mut config = base_config;
             let turns = *turn_counter.lock().unwrap();
             let err_msg = format!("Agent run error: {}", e);
             warn!("Curator LLM pass failed: {}", err_msg);
-            let after_names = snapshot_skill_names(registry).unwrap_or_else(|_| before_names.clone());
-            let after_snapshots = snapshot_skill_metas(registry).unwrap_or_else(|_| before_snapshots.clone());
+            let after_names =
+                snapshot_skill_names(registry).unwrap_or_else(|_| before_names.clone());
+            let after_snapshots =
+                snapshot_skill_metas(registry).unwrap_or_else(|_| before_snapshots.clone());
             return Ok(CuratorLlmPassOutcome {
                 final_reply: String::new(),
                 summary: err_msg.clone(),
@@ -401,7 +424,7 @@ let mut config = base_config;
     let llm_result = parse_llm_review_response(&result.reply);
 
     // Build summary (aligns Hermes curator.py:1780 — ≤240 chars, Unicode-safe)
-    let summary = truncate_summary(&result.reply);
+    let summary = summarize_review(&llm_result, &result.reply);
 
     // Snapshot after-state
     let after_names = snapshot_skill_names(registry)?;
@@ -483,6 +506,19 @@ fn truncate_summary(final_reply: &str) -> String {
     }
 }
 
+fn summarize_review(review: &LlMReviewResult, final_reply: &str) -> String {
+    if review.summary.trim().is_empty() {
+        return truncate_summary(final_reply);
+    }
+
+    let summary = review
+        .summary
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    truncate_summary(&summary)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -509,7 +545,10 @@ mod tests {
             turns: 0,
         };
 
-        assert_eq!(outcome.removed_skills(), vec!["b".to_string(), "c".to_string()]);
+        assert_eq!(
+            outcome.removed_skills(),
+            vec!["b".to_string(), "c".to_string()]
+        );
         assert_eq!(outcome.added_skills(), vec!["d".to_string()]);
     }
 
@@ -550,6 +589,19 @@ mod tests {
     }
 
     #[test]
+    fn test_summarize_review_prefers_structured_summary() {
+        let review = LlMReviewResult {
+            summary: "One candidate exists.\nNo consolidation needed.".to_string(),
+            ..LlMReviewResult::default()
+        };
+        let raw = "```yaml\nsummary: One candidate exists.\n```";
+        assert_eq!(
+            summarize_review(&review, raw),
+            "One candidate exists. No consolidation needed."
+        );
+    }
+
+    #[test]
     fn test_truncate_args_short() {
         assert_eq!(truncate_args("short", 400), "short");
     }
@@ -562,7 +614,7 @@ mod tests {
         assert!(truncated.ends_with('.'));
     }
 
-fn make_test_skill_content(name: &str) -> SkillContent {
+    fn make_test_skill_content(name: &str) -> SkillContent {
         SkillContent {
             name: name.to_string(),
             description: format!("Test skill {}", name),
@@ -628,10 +680,14 @@ fn make_test_skill_content(name: &str) -> SkillContent {
         let registry = SkillRegistry::new(dir.path());
         let usage = SkillUsageStore::new(dir.path());
 
-        registry.save("agent-skill", &make_test_skill_content("agent-skill")).unwrap();
+        registry
+            .save("agent-skill", &make_test_skill_content("agent-skill"))
+            .unwrap();
         usage.mark_agent_created("agent-skill");
 
-        registry.save("user-skill", &make_test_skill_content("user-skill")).unwrap();
+        registry
+            .save("user-skill", &make_test_skill_content("user-skill"))
+            .unwrap();
 
         let skills = snapshot_active_skills(&registry, &usage).unwrap();
         assert_eq!(skills.len(), 1);
@@ -644,7 +700,9 @@ fn make_test_skill_content(name: &str) -> SkillContent {
         let registry = SkillRegistry::new(dir.path());
         let usage = SkillUsageStore::new(dir.path());
 
-        registry.save("pinned", &make_test_skill_content("pinned")).unwrap();
+        registry
+            .save("pinned", &make_test_skill_content("pinned"))
+            .unwrap();
         usage.mark_agent_created("pinned");
         registry.set_pinned("pinned", true).unwrap();
 
@@ -668,20 +726,18 @@ fn make_test_skill_content(name: &str) -> SkillContent {
     }
 
     #[tokio::test]
-    async fn run_curator_llm_pass_returns_outcome_on_agent_build_error() {
+    async fn run_curator_llm_pass_skips_agent_build_without_candidates() {
         let dir = tempfile::tempdir().unwrap();
         let registry = SkillRegistry::new(dir.path());
         let usage = SkillUsageStore::new(dir.path());
 
-        let outcome = run_curator_llm_pass(
-            ReactBuildConfig::default(),
-            &registry,
-            &usage,
-            &[],
-            false,
-        ).await.unwrap();
+        let outcome =
+            run_curator_llm_pass(ReactBuildConfig::default(), &registry, &usage, &[], false)
+                .await
+                .unwrap();
 
-        // Agent::from_config with default config should fail, returning a degraded outcome
-        assert!(outcome.run_error.is_some() || !outcome.final_reply.is_empty());
+        assert_eq!(outcome.summary, "skipped (no agent-created candidates)");
+        assert!(outcome.run_error.is_none());
+        assert_eq!(outcome.turns, 0);
     }
 }
