@@ -1,0 +1,1 @@
+//! Internal normalized event types (Phase 2 will expand).
