@@ -7,7 +7,6 @@
 
 use super::markdown::*;
 use std::io::Write;
-use stream_event::{MessageChunk, MessageChunkKind};
 
 /// Stateful line-buffering markdown renderer for streaming output.
 ///
@@ -38,15 +37,8 @@ impl StreamingMarkdownRenderer {
     /// - Thinking chunks are directly dim-printed to stderr (no markdown).
     /// - Message chunks are buffered line-by-line; each complete line is
     ///   rendered with markdown formatting and printed to stdout.
-    pub fn push_chunk(&mut self, chunk: &MessageChunk) {
-        if chunk.kind == MessageChunkKind::Thinking {
-            eprint!("{}", super::terminal::dim(&chunk.content));
-            let _ = std::io::stderr().flush();
-            return;
-        }
-
-        // Message: line-buffer + markdown rendering
-        for ch in chunk.content.chars() {
+    pub fn push_text(&mut self, content: &str) {
+        for ch in content.chars() {
             if ch == '\n' {
                 self.flush_line();
             } else if ch == '\r' {
@@ -152,13 +144,8 @@ mod tests {
     use super::*;
 
     /// Helper: create a message chunk.
-    fn msg(content: &str) -> MessageChunk {
-        MessageChunk::message(content)
-    }
-
-    /// Helper: create a thinking chunk.
-    fn think(content: &str) -> MessageChunk {
-        MessageChunk::thinking(content)
+    fn msg(content: &str) -> String {
+        content.to_string()
     }
 
     #[test]
@@ -171,7 +158,7 @@ mod tests {
     #[test]
     fn single_line_with_newline() {
         let mut r = StreamingMarkdownRenderer::new();
-        r.push_chunk(&msg("hello world\n"));
+        r.push_text(&msg("hello world\n"));
         // Line should be flushed; buffer should be empty
         assert!(r.line_buf().is_empty());
     }
@@ -179,27 +166,27 @@ mod tests {
     #[test]
     fn chunks_accumulate_until_newline() {
         let mut r = StreamingMarkdownRenderer::new();
-        r.push_chunk(&msg("hel"));
+        r.push_text(&msg("hel"));
         assert_eq!(r.line_buf(), "hel");
-        r.push_chunk(&msg("lo\n"));
+        r.push_text(&msg("lo\n"));
         assert!(r.line_buf().is_empty());
     }
 
     #[test]
     fn code_block_toggle() {
         let mut r = StreamingMarkdownRenderer::new();
-        r.push_chunk(&msg("```rust\n"));
+        r.push_text(&msg("```rust\n"));
         assert!(r.is_in_code_block());
-        r.push_chunk(&msg("fn main() {}\n"));
+        r.push_text(&msg("fn main() {}\n"));
         assert!(r.is_in_code_block());
-        r.push_chunk(&msg("```\n"));
+        r.push_text(&msg("```\n"));
         assert!(!r.is_in_code_block());
     }
 
     #[test]
     fn finish_flushes_remaining_buffer() {
         let mut r = StreamingMarkdownRenderer::new();
-        r.push_chunk(&msg("unfinished line"));
+        r.push_text(&msg("unfinished line"));
         assert_eq!(r.line_buf(), "unfinished line");
         r.finish();
         assert!(r.line_buf().is_empty());
@@ -208,8 +195,8 @@ mod tests {
     #[test]
     fn finish_closes_unclosed_code_block() {
         let mut r = StreamingMarkdownRenderer::new();
-        r.push_chunk(&msg("```python\n"));
-        r.push_chunk(&msg("print('hi')\n"));
+        r.push_text(&msg("```python\n"));
+        r.push_text(&msg("print('hi')\n"));
         assert!(r.is_in_code_block());
         r.finish();
         assert!(!r.is_in_code_block());
@@ -218,14 +205,14 @@ mod tests {
     #[test]
     fn carriage_return_is_ignored() {
         let mut r = StreamingMarkdownRenderer::new();
-        r.push_chunk(&msg("hello\r\n"));
+        r.push_text(&msg("hello\r\n"));
         assert!(r.line_buf().is_empty());
     }
 
     #[test]
     fn multiple_lines_in_one_chunk() {
         let mut r = StreamingMarkdownRenderer::new();
-        r.push_chunk(&msg("line1\nline2\n"));
+        r.push_text(&msg("line1\nline2\n"));
         assert!(r.line_buf().is_empty());
     }
 
@@ -233,53 +220,50 @@ mod tests {
     fn heading_rendered() {
         let mut r = StreamingMarkdownRenderer::new();
         // Just verify it doesn't panic and buffer is cleared
-        r.push_chunk(&msg("# Hello\n"));
+        r.push_text(&msg("# Hello\n"));
         assert!(r.line_buf().is_empty());
     }
 
     #[test]
     fn bold_italic_rendered() {
         let mut r = StreamingMarkdownRenderer::new();
-        r.push_chunk(&msg("**bold** and *italic*\n"));
+        r.push_text(&msg("**bold** and *italic*\n"));
         assert!(r.line_buf().is_empty());
     }
 
     #[test]
     fn list_item_rendered() {
         let mut r = StreamingMarkdownRenderer::new();
-        r.push_chunk(&msg("- item one\n"));
-        r.push_chunk(&msg("1. first\n"));
+        r.push_text(&msg("- item one\n"));
+        r.push_text(&msg("1. first\n"));
         assert!(r.line_buf().is_empty());
     }
 
     #[test]
     fn blockquote_rendered() {
         let mut r = StreamingMarkdownRenderer::new();
-        r.push_chunk(&msg("> quote text\n"));
+        r.push_text(&msg("> quote text\n"));
         assert!(r.line_buf().is_empty());
     }
 
     #[test]
     fn horizontal_rule_rendered() {
         let mut r = StreamingMarkdownRenderer::new();
-        r.push_chunk(&msg("---\n"));
+        r.push_text(&msg("---\n"));
         assert!(r.line_buf().is_empty());
     }
 
     #[test]
     fn empty_line_preserved() {
         let mut r = StreamingMarkdownRenderer::new();
-        r.push_chunk(&msg("\n"));
+        r.push_text(&msg("\n"));
         assert!(r.line_buf().is_empty());
     }
 
     #[test]
     fn mixed_thinking_and_message() {
         let mut r = StreamingMarkdownRenderer::new();
-        r.push_chunk(&think("reasoning here"));
-        // Thinking doesn't go through line_buf
-        assert!(r.line_buf().is_empty());
-        r.push_chunk(&msg("actual message\n"));
+        r.push_text("actual message\n");
         assert!(r.line_buf().is_empty());
     }
 
@@ -304,7 +288,7 @@ mod tests {
             "End.\n",
         ];
         for chunk in chunks {
-            r.push_chunk(&msg(chunk));
+            r.push_text(&msg(chunk));
         }
         r.finish();
         assert!(!r.is_in_code_block());
@@ -314,8 +298,8 @@ mod tests {
     #[test]
     fn bold_split_across_chunks() {
         let mut r = StreamingMarkdownRenderer::new();
-        r.push_chunk(&msg("text **bol"));
-        r.push_chunk(&msg("d** more\n"));
+        r.push_text(&msg("text **bol"));
+        r.push_text(&msg("d** more\n"));
         assert!(r.line_buf().is_empty());
     }
 }

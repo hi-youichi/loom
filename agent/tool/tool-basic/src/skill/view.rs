@@ -158,7 +158,8 @@ impl SkillViewTool {
                     entry
                         .embedded_files
                         .as_ref()
-                        .map(|f| f.iter()
+                        .map(|f| f
+                            .iter()
                             .map(|(n, _)| n.as_str())
                             .collect::<Vec<_>>()
                             .join(", "))
@@ -477,7 +478,11 @@ mod tests {
             .expect_err("non-existent file_path should error");
 
         let msg = format!("{}", err);
-        assert!(msg.contains("not found"), "error should say not found: {}", msg);
+        assert!(
+            msg.contains("not found"),
+            "error should say not found: {}",
+            msg
+        );
         assert!(
             msg.contains("references/dsl-reference.md"),
             "error should list available files: {}",

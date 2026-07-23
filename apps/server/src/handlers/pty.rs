@@ -120,10 +120,7 @@ pub struct ConnectQuery {
 /// `GET /api/pty` — list all PTY sessions (group-pty.ts `pty.list`).
 ///
 /// Returns `Location.response([Pty.Info])` = `{ location, data: [Info…] }`.
-pub async fn list(
-    State(state): State<SharedState>,
-    _loc: Query<LocationQuery>,
-) -> Json<Value> {
+pub async fn list(State(state): State<SharedState>, _loc: Query<LocationQuery>) -> Json<Value> {
     let infos = manager().list();
     location_response(&state, infos)
 }
@@ -143,7 +140,10 @@ pub async fn create(
         cwd: body.cwd,
         title: body.title,
         env: body.env,
-        size: body.size.map(|s| PtySizeInput { rows: s.rows, cols: s.cols }),
+        size: body.size.map(|s| PtySizeInput {
+            rows: s.rows,
+            cols: s.cols,
+        }),
     };
     match manager().create(input) {
         Ok(id) => {
@@ -417,9 +417,10 @@ mod tests {
     /// shapes (all-optional fields).
     #[test]
     fn bodies_match_schema_shapes() {
-        let create: CreateBody =
-            serde_json::from_str(r#"{"command":"bash","args":["-l"],"size":{"rows":30,"cols":120}}"#)
-                .unwrap();
+        let create: CreateBody = serde_json::from_str(
+            r#"{"command":"bash","args":["-l"],"size":{"rows":30,"cols":120}}"#,
+        )
+        .unwrap();
         assert_eq!(create.command.as_deref(), Some("bash"));
         assert_eq!(create.args.as_deref(), Some(&["-l".to_string()][..]));
         assert_eq!(create.size.unwrap().rows, 30);

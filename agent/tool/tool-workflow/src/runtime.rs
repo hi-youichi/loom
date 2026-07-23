@@ -10,8 +10,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use tool_core::{ToolCallContent, ToolSourceError};
 use tokio_util::sync::CancellationToken;
+use tool_core::{ToolCallContent, ToolSourceError};
 
 use crate::common::sanitize_instance_for_public;
 use crate::instance::{
@@ -21,8 +21,7 @@ use crate::instance::{
 #[derive(Clone)]
 pub struct WorkflowRuntime {
     pub(crate) config_template: agent::agent::AgentConfig,
-    pub(crate) active_runs:
-        Arc<Mutex<HashMap<String, Arc<CancellationToken>>>>,
+    pub(crate) active_runs: Arc<Mutex<HashMap<String, Arc<CancellationToken>>>>,
 }
 
 impl WorkflowRuntime {
@@ -100,10 +99,7 @@ impl WorkflowRuntime {
         None
     }
 
-    pub async fn terminal_checkpoint_status(
-        &self,
-        run_dir_name: &str,
-    ) -> Option<&'static str> {
+    pub async fn terminal_checkpoint_status(&self, run_dir_name: &str) -> Option<&'static str> {
         let path = self.loom_instance_dir(run_dir_name).join("checkpoint.json");
         let bytes = tokio::fs::read(path).await.ok()?;
         let value: Value = serde_json::from_slice(&bytes).ok()?;

@@ -267,9 +267,7 @@ impl ModelRegistry {
     /// [`list_all_models`](Self::list_all_models), so callers can enrich
     /// model entries with full metadata (modalities, limits, tool support, …)
     /// without a second HTTP fetch.
-    pub async fn get_spec_providers(
-        &self,
-    ) -> Result<HashMap<String, SpecProvider>, String> {
+    pub async fn get_spec_providers(&self) -> Result<HashMap<String, SpecProvider>, String> {
         self.fetch_or_get_cached_spec_providers()
             .await
             .map_err(|e| e.to_string())

@@ -160,7 +160,11 @@ pub async fn get_api_session_message(
 
     // Opaque cursor encoding: offset for the next page as a string.
     // The contract marks cursors as opaque; clients pass them back verbatim.
-    let next_cursor = if has_more { Some(limit.to_string()) } else { None };
+    let next_cursor = if has_more {
+        Some(limit.to_string())
+    } else {
+        None
+    };
 
     Json(json!({
         "data": data,

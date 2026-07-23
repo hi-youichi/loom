@@ -73,7 +73,10 @@ impl LsTool {
     ///
     /// The path is not canonicalized here; the caller must pass a canonical path.
     pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
-        Self { working_folder, allow_outside }
+        Self {
+            working_folder,
+            allow_outside,
+        }
     }
 }
 
@@ -126,7 +129,8 @@ impl Tool for LsTool {
             path_param
         };
 
-        let search_root = resolve_path(self.working_folder.as_ref(), path_param, self.allow_outside)?;
+        let search_root =
+            resolve_path(self.working_folder.as_ref(), path_param, self.allow_outside)?;
         if !search_root.is_dir() {
             return Err(ToolSourceError::InvalidInput(format!(
                 "not a directory: {}",

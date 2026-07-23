@@ -167,10 +167,7 @@ impl PtyManager {
 
         let pid = child.process_id().unwrap_or(0);
         let args_vec = input.args.clone().unwrap_or_default();
-        let cwd_str = input
-            .cwd
-            .clone()
-            .unwrap_or_else(current_dir_string);
+        let cwd_str = input.cwd.clone().unwrap_or_else(current_dir_string);
         let info = PtyInfo {
             id: id.clone(),
             title: input.title.clone().unwrap_or_else(|| program.clone()),
@@ -202,11 +199,7 @@ impl PtyManager {
 
     /// Snapshot every session's [`PtyInfo`].
     pub fn list(&self) -> Vec<PtyInfo> {
-        self.sessions
-            .read()
-            .values()
-            .map(|s| s.info())
-            .collect()
+        self.sessions.read().values().map(|s| s.info()).collect()
     }
 
     /// Snapshot one session's [`PtyInfo`].

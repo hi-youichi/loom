@@ -68,8 +68,11 @@ impl ToolCallAccumulator {
             .map
             .into_iter()
             .map(|(index, (id, name, arguments))| {
-                let sanitized_args =
-                    sanitize_arguments(if id.is_empty() { None } else { Some(&id) }, &name, &arguments);
+                let sanitized_args = sanitize_arguments(
+                    if id.is_empty() { None } else { Some(&id) },
+                    &name,
+                    &arguments,
+                );
                 (
                     index,
                     ToolCall {

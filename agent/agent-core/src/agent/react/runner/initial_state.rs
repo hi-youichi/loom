@@ -74,4 +74,3 @@ pub async fn build_react_initial_state_for_resume(
     })
     .await
 }
-

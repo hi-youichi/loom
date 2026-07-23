@@ -1576,17 +1576,11 @@ where
     S: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
     match ev {
-        stream_event::StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            cached_tokens,
-            ..
-        } => Some((
-            *prompt_tokens,
-            *completion_tokens,
-            *total_tokens,
-            *cached_tokens,
+        stream_event::StreamEvent::TurnFinish { usage, .. } => Some((
+            usage.prompt_tokens,
+            usage.completion_tokens,
+            usage.total_tokens,
+            usage.cached_tokens,
         )),
         _ => None,
     }

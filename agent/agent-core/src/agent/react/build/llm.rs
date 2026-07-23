@@ -51,13 +51,12 @@ pub(crate) fn model_entry_from_config(
     // ── Provider routing: look up [[providers]] from config.toml ──
     let providers = env_config::load_provider_configs_from_xdg().unwrap_or_default();
     let matched = provider_from_model.as_ref().and_then(|hint| {
-        providers.iter().find(|p| {
-            p.name == *hint
-                || p.name.eq_ignore_ascii_case(hint)
-        })
+        providers
+            .iter()
+            .find(|p| p.name == *hint || p.name.eq_ignore_ascii_case(hint))
     });
 
-    if let Some(ref mp) = matched {
+    if let Some(mp) = matched {
         tracing::info!(
             provider = %mp.name,
             model = %model,

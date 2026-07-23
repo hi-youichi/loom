@@ -68,11 +68,7 @@ impl AgentBackend for CountingBackend {
         }
     }
 
-    async fn run(
-        &self,
-        task: AgentTask,
-        _ctx: RunContext,
-    ) -> Result<AgentResult, BackendError> {
+    async fn run(&self, task: AgentTask, _ctx: RunContext) -> Result<AgentResult, BackendError> {
         let _ = self.seq.fetch_add(1, Ordering::SeqCst);
         let name = task.name.clone().unwrap_or_default();
         self.log.lock().unwrap().push(name.clone());
@@ -104,8 +100,12 @@ fn child_bin_path() -> std::path::PathBuf {
     // Carve out a fresh working folder inside the workspace so the
     // subprocess and the parent don't trample on real instance dirs.
     let candidates = [
-        std::path::PathBuf::from(manifest_dir).join("../../target/debug").join(exe),
-        std::path::PathBuf::from(manifest_dir).join("../../../target/debug").join(exe),
+        std::path::PathBuf::from(manifest_dir)
+            .join("../../target/debug")
+            .join(exe),
+        std::path::PathBuf::from(manifest_dir)
+            .join("../../../target/debug")
+            .join(exe),
     ];
     for c in &candidates {
         if c.exists() {
@@ -126,7 +126,11 @@ async fn main() -> std::process::ExitCode {
     //              after one agent has completed (a1 done, a2 never
     //              starts) — simulating the host crashing mid-workflow.
     let bin = child_bin_path();
-    eprintln!("[parent] spawning: {} {} 3phase 2", bin.display(), base.display());
+    eprintln!(
+        "[parent] spawning: {} {} 3phase 2",
+        bin.display(),
+        base.display()
+    );
     let output = std::process::Command::new(&bin)
         .arg(&base)
         .arg("3phase")
@@ -160,10 +164,7 @@ async fn main() -> std::process::ExitCode {
         .expect("luft build");
 
     eprintln!("[parent] resuming {prior_dir} ...");
-    let handle = luft
-        .start_resume(&prior_dir)
-        .await
-        .expect("start_resume");
+    let handle = luft.start_resume(&prior_dir).await.expect("start_resume");
     let outcome = handle.join().await.expect("join");
 
     let final_dispatched = dispatched.lock().unwrap().clone();

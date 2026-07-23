@@ -1,8 +1,16 @@
-use crate::types::message::MessageChunk;
 use crate::types::metadata::{CheckpointEvent, StreamMetadata};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::Debug;
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Usage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cached_tokens: Option<u32>,
+}
 
 /// Streamed event emitted while running a graph.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -18,9 +26,15 @@ where
         state: S,
         namespace: Option<String>,
     },
-    /// Message chunk emitted by a node (e.g. ThinkNode streaming LLM output).
-    Messages {
-        chunk: MessageChunk,
+    /// Text delta emitted by a node.
+    TextDelta {
+        content: String,
+        metadata: StreamMetadata,
+    },
+    /// Reasoning delta emitted by a node.
+    ReasoningDelta {
+        id: String,
+        content: String,
         metadata: StreamMetadata,
     },
     /// Custom JSON payload for arbitrary streaming data.
@@ -99,27 +113,6 @@ where
         /// Number of new edges added.
         edges_added: usize,
     },
-    /// LLM token usage for the last completion (e.g. after think node).
-    /// Emitted when the provider returns usage (e.g. OpenAI); consumers can print when verbose.
-    Usage {
-        /// Tokens in the prompt (input).
-        prompt_tokens: u32,
-        /// Tokens in the completion (output).
-        completion_tokens: u32,
-        /// Total tokens (prompt + completion).
-        total_tokens: u32,
-        /// Cached prompt tokens (OpenAI `prompt_tokens_details.cached_tokens`).
-        /// `None` when the provider does not report cache hits, or when the
-        /// current request had no cacheable prefix.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        cached_tokens: Option<u32>,
-        /// Time from LLM call start to first token received (prefill phase).
-        /// `None` in non-streaming mode where the two phases cannot be separated.
-        prefill_duration: Option<std::time::Duration>,
-        /// Time from first token received to generation complete (decode phase).
-        /// `None` in non-streaming mode.
-        decode_duration: Option<std::time::Duration>,
-    },
     /// LLM decided to call a tool (Think node, complete arguments).
     ToolCall {
         call_id: Option<String>,
@@ -147,6 +140,33 @@ where
         /// instead of `result` (which may be a head-tail excerpt or file reference).
         raw_result: Option<String>,
     },
+    /// Text block started.
+    TextBlockStart { metadata: StreamMetadata },
+    /// Text block ended.
+    TextBlockEnd { metadata: StreamMetadata },
+    /// Reasoning block started.
+    ReasoningBlockStart {
+        id: String,
+        metadata: StreamMetadata,
+    },
+    /// Reasoning block ended.
+    ReasoningBlockEnd {
+        id: String,
+        metadata: StreamMetadata,
+    },
+    /// LLM turn started.
+    TurnStart,
+    /// LLM turn finished.
+    TurnFinish { reason: String, usage: Usage },
+    /// Tool execution failed before producing a ToolEnd event.
+    ToolError {
+        call_id: Option<String>,
+        error: String,
+    },
+    /// Provider streaming failed.
+    ProviderError { message: String },
+    /// Stream finished normally.
+    Finish,
 }
 #[cfg(test)]
 mod tests {
@@ -270,25 +290,21 @@ mod tests {
     }
 
     #[test]
-    fn usage_variant() {
-        let ev = StreamEvent::<TestState>::Usage {
-            prompt_tokens: 10,
-            completion_tokens: 20,
-            total_tokens: 30,
-            cached_tokens: Some(5),
-            prefill_duration: Some(std::time::Duration::from_millis(100)),
-            decode_duration: None,
+    fn turn_finish_variant() {
+        let ev = StreamEvent::<TestState>::TurnFinish {
+            reason: "stop".to_string(),
+            usage: Usage {
+                prompt_tokens: 10,
+                completion_tokens: 20,
+                total_tokens: 30,
+                cached_tokens: Some(5),
+            },
         };
-        if let StreamEvent::Usage {
-            total_tokens,
-            cached_tokens,
-            ..
-        } = ev
-        {
-            assert_eq!(total_tokens, 30);
-            assert_eq!(cached_tokens, Some(5));
+        if let StreamEvent::TurnFinish { usage, .. } = ev {
+            assert_eq!(usage.total_tokens, 30);
+            assert_eq!(usage.cached_tokens, Some(5));
         } else {
-            panic!("expected Usage");
+            panic!("expected TurnFinish");
         }
     }
 

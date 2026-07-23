@@ -33,8 +33,7 @@ pub fn build_router(state: SharedState) -> Router {
         )
         .route(
             "/config/settings",
-            get(handlers::settings::get_settings)
-                .put(handlers::settings::put_settings),
+            get(handlers::settings::get_settings).put(handlers::settings::put_settings),
         )
         .route("/config/reload", post(handlers::settings::reload_config))
         .route(
@@ -43,10 +42,12 @@ pub fn build_router(state: SharedState) -> Router {
         )
         .route(
             "/api/config/settings",
-            get(handlers::settings::get_settings)
-                .put(handlers::settings::put_settings),
+            get(handlers::settings::get_settings).put(handlers::settings::put_settings),
         )
-        .route("/api/config/reload", post(handlers::settings::reload_config))
+        .route(
+            "/api/config/reload",
+            post(handlers::settings::reload_config),
+        )
         .route("/provider", get(handlers::bootstrap::get_provider_list))
         // ─── Provider auth CRUD (OC-compat T4) ───────────────────
         .route(
@@ -264,7 +265,6 @@ pub fn build_router(state: SharedState) -> Router {
         .route("/api/fs/rename", post(handlers::fs::rename))
         .route("/api/fs/mkdir", post(handlers::fs::mkdir))
         .route("/api/fs/stat", get(handlers::fs::stat))
-
         // ─── PTY group (group-pty.ts, W3/W4) ─────────────────────
         // Contract-shaped /api/pty* routes. Handlers live in mcp_pty_file.rs
         // as honest 501s until handlers/pty.rs ships the full lifecycle.
@@ -897,7 +897,6 @@ pub fn build_router(state: SharedState) -> Router {
         // TODO(W2): POST   /experimental/project/:projectID/copy         → handlers::project_copy::create
         // TODO(W2): DELETE /experimental/project/:projectID/copy         → handlers::project_copy::remove
         // TODO(W2): POST   /experimental/project/:projectID/copy/refresh → handlers::project_copy::refresh
-
         // ─── SSE channels (P0.4) ───────────────────────────────
         .route("/event", get(sse::event_stream))
         .route("/global/event", get(sse::event_stream))

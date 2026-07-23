@@ -118,12 +118,25 @@ pub(crate) fn emit_run_output(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Write collected events (for JSON output mode with events).
     let (reply, reasoning_content, reply_envelope, stop_reason, events) = match output {
-        RunOutput::Json { reply, reasoning_content, reply_envelope, stop_reason, events } => {
-            (reply, reasoning_content, reply_envelope, stop_reason, Some(events))
-        }
-        RunOutput::Reply { reply, reasoning_content, reply_envelope, stop_reason } => {
-            (reply, reasoning_content, reply_envelope, stop_reason, None)
-        }
+        RunOutput::Json {
+            reply,
+            reasoning_content,
+            reply_envelope,
+            stop_reason,
+            events,
+        } => (
+            reply,
+            reasoning_content,
+            reply_envelope,
+            stop_reason,
+            Some(events),
+        ),
+        RunOutput::Reply {
+            reply,
+            reasoning_content,
+            reply_envelope,
+            stop_reason,
+        } => (reply, reasoning_content, reply_envelope, stop_reason, None),
     };
 
     if let Some(events) = events {

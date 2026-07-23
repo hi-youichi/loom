@@ -677,7 +677,10 @@ async fn smoke_patch_api_credential_returns_2xx() {
         serde_json::json!({"label": "after"}),
     )
     .await;
-    assert!(s.is_success(), "PATCH /api/credential/:id must be 2xx, got {s}");
+    assert!(
+        s.is_success(),
+        "PATCH /api/credential/:id must be 2xx, got {s}"
+    );
 }
 
 // [STUB/ROUTE-COVERAGE] tiny contract smoke (W4): GET /api/pty -> 200.
@@ -707,10 +710,7 @@ async fn api_credential_patch_updates_label_and_returns_no_content() {
     )
     .await;
     assert_eq!(s, StatusCode::NO_CONTENT);
-    assert_eq!(
-        state.credentials.read().get(id).unwrap().label,
-        "after"
-    );
+    assert_eq!(state.credentials.read().get(id).unwrap().label, "after");
 }
 
 // [BEHAVIOR] DELETE removes the entry and is idempotent → 204 each time.

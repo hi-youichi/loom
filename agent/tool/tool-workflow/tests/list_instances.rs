@@ -350,7 +350,11 @@ async fn list_skips_non_terminal_checkpoint_status() {
     let v = parse_response(resp);
 
     let dirs = instance_dirs(&v);
-    assert_eq!(dirs, vec!["run_done"], "only terminal checkpoints should appear; got {v}");
+    assert_eq!(
+        dirs,
+        vec!["run_done"],
+        "only terminal checkpoints should appear; got {v}"
+    );
     assert_eq!(v["count"], 1);
 }
 

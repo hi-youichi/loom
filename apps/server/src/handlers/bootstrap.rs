@@ -89,7 +89,10 @@ pub async fn get_api_config(State(state): State<SharedState>) -> Json<Value> {
 
     if let Some(obj) = val.as_object_mut() {
         if !obj.contains_key("$schema") {
-            obj.insert("$schema".to_string(), json!("https://opencode.ai/config.json"));
+            obj.insert(
+                "$schema".to_string(),
+                json!("https://opencode.ai/config.json"),
+            );
         }
         if !obj.contains_key("shell") {
             let shell = if cfg!(target_os = "windows") {
@@ -489,9 +492,7 @@ pub async fn get_v2_agent_list() -> Json<Value> {
     }]))
 }
 
-pub async fn get_v2_model_list(
-    State(state): State<SharedState>,
-) -> Json<Value> {
+pub async fn get_v2_model_list(State(state): State<SharedState>) -> Json<Value> {
     let models = build_model_infos_with_models_dev(&state).await;
     Json(Value::Array(models))
 }
@@ -542,7 +543,14 @@ async fn build_model_infos_with_models_dev(_state: &SharedState) -> Vec<Value> {
             .map(|m| {
                 let inp: Vec<&str> = m.modalities.input.iter().map(modality_str).collect();
                 let out: Vec<&str> = m.modalities.output.iter().map(modality_str).collect();
-                (m.tool_call, inp, out, m.attachment, m.limit.context, m.limit.output)
+                (
+                    m.tool_call,
+                    inp,
+                    out,
+                    m.attachment,
+                    m.limit.context,
+                    m.limit.output,
+                )
             })
             .unwrap_or((true, vec![], vec![], false, 0u32, 0u32));
 

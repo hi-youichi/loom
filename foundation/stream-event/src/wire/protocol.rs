@@ -45,20 +45,13 @@ pub enum ProtocolEvent {
         /// `"Ok"` on success, or `{"Err": string}` on failure.
         result: Value,
     },
-    /// One chunk of **final reply** text from the model. Streamed during completion.
-    /// Corresponds to ACP `agent_message_chunk`. Use [`ThoughtChunk`](Self::ThoughtChunk) for reasoning.
-    MessageChunk {
-        /// Incremental text from the model (final answer).
+    TextDelta {
         content: String,
-        /// Producing node name (e.g. `"think"`, `"reply"`).
         id: String,
     },
-    /// One chunk of **reasoning/thinking** text. Streamed during completion.
-    /// Corresponds to ACP `agent_thought_chunk`. Use [`MessageChunk`](Self::MessageChunk) for final reply.
-    ThoughtChunk {
-        /// Incremental reasoning text (e.g. from `<think>` or extended thinking).
+    ReasoningDelta {
+        reasoning_id: String,
         content: String,
-        /// Producing node name (e.g. `"think"`).
         id: String,
     },
     /// Token usage for the last LLM call in this node.
@@ -129,9 +122,15 @@ pub enum ProtocolEvent {
         id: String,
     },
     /// **Graph of Thought**: a plan node completed successfully.
-    GotNodeComplete { id: String, result_summary: String },
+    GotNodeComplete {
+        id: String,
+        result_summary: String,
+    },
     /// **Graph of Thought**: a plan node failed.
-    GotNodeFailed { id: String, error: String },
+    GotNodeFailed {
+        id: String,
+        error: String,
+    },
     /// **Graph of Thought**: adaptive expand. New nodes/edges were added from a node.
     /// Payload uses `node_id` (not `id`) per protocol.
     GotExpand {
@@ -188,25 +187,27 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn message_chunk_serializes_with_type_content_id() {
-        let event = ProtocolEvent::MessageChunk {
+    fn text_delta_serializes_with_type_content_id() {
+        let event = ProtocolEvent::TextDelta {
             content: "final reply".to_string(),
             id: "think".to_string(),
         };
         let v = event.to_value().unwrap();
-        assert_eq!(v["type"], "message_chunk");
+        assert_eq!(v["type"], "text_delta");
         assert_eq!(v["content"], "final reply");
         assert_eq!(v["id"], "think");
     }
 
     #[test]
-    fn thought_chunk_serializes_with_type_content_id() {
-        let event = ProtocolEvent::ThoughtChunk {
+    fn reasoning_delta_serializes_with_type_content_id() {
+        let event = ProtocolEvent::ReasoningDelta {
+            reasoning_id: "r0".to_string(),
             content: "reasoning step".to_string(),
             id: "think".to_string(),
         };
         let v = event.to_value().unwrap();
-        assert_eq!(v["type"], "thought_chunk");
+        assert_eq!(v["type"], "reasoning_delta");
+        assert_eq!(v["reasoning_id"], "r0");
         assert_eq!(v["content"], "reasoning step");
         assert_eq!(v["id"], "think");
     }
@@ -514,7 +515,7 @@ mod tests {
 
     #[test]
     fn protocol_event_roundtrip_serde() {
-        let event = ProtocolEvent::MessageChunk {
+        let event = ProtocolEvent::TextDelta {
             content: "test".to_string(),
             id: "node".to_string(),
         };

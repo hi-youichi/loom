@@ -34,7 +34,10 @@ impl AgentBackend for CapturingBackend {
     }
 
     async fn run(&self, task: AgentTask, _ctx: RunContext) -> Result<AgentResult, BackendError> {
-        self.seen.lock().unwrap().push(task.workdir_override.clone());
+        self.seen
+            .lock()
+            .unwrap()
+            .push(task.workdir_override.clone());
         Ok(AgentResult {
             agent_id: task.agent_id,
             status: AgentStatus::Ok,
@@ -56,9 +59,7 @@ impl AgentBackend for CapturingBackend {
 async fn working_folder_propagates_to_backend() {
     let seen: Arc<Mutex<Vec<Option<PathBuf>>>> = Arc::new(Mutex::new(vec![]));
 
-    let backend = CapturingBackend {
-        seen: seen.clone(),
-    };
+    let backend = CapturingBackend { seen: seen.clone() };
 
     let tmp = tempfile::TempDir::new().unwrap();
 
@@ -101,9 +102,7 @@ async fn working_folder_propagates_to_backend() {
 async fn no_working_folder_defaults_to_none() {
     let seen: Arc<Mutex<Vec<Option<PathBuf>>>> = Arc::new(Mutex::new(vec![]));
 
-    let backend = CapturingBackend {
-        seen: seen.clone(),
-    };
+    let backend = CapturingBackend { seen: seen.clone() };
 
     let tmp = tempfile::TempDir::new().unwrap();
 
@@ -139,9 +138,7 @@ async fn no_working_folder_defaults_to_none() {
 async fn parallel_propagates_working_folder() {
     let seen: Arc<Mutex<Vec<Option<PathBuf>>>> = Arc::new(Mutex::new(vec![]));
 
-    let backend = CapturingBackend {
-        seen: seen.clone(),
-    };
+    let backend = CapturingBackend { seen: seen.clone() };
 
     let tmp = tempfile::TempDir::new().unwrap();
 

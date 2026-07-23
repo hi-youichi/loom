@@ -56,7 +56,9 @@ fn to_contract_request(req: &crate::state::PermissionRequest) -> Value {
         "resources": req.input.get("resources").cloned().unwrap_or(json!([])),
     });
     if let Some(save) = req.input.get("save") {
-        v.as_object_mut().unwrap().insert("save".into(), save.clone());
+        v.as_object_mut()
+            .unwrap()
+            .insert("save".into(), save.clone());
     }
     if let Some(metadata) = req.input.get("metadata") {
         v.as_object_mut()

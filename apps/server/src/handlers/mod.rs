@@ -26,11 +26,12 @@
 //! empty `{}` for irrelevant stub endpoints (per the spec's "data may
 //! be `null`" allowance for unused capabilities).
 
+pub mod acp;
 pub mod bootstrap;
 pub mod control;
 pub mod credential;
-pub mod fs;
 pub mod experimental;
+pub mod fs;
 pub mod git;
 pub mod global_bus;
 pub mod health;
@@ -48,4 +49,3 @@ pub mod session;
 pub mod settings;
 pub mod v2_compat;
 pub mod vcs_extra;
-pub mod acp;

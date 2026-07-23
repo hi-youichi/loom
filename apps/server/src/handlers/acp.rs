@@ -4,7 +4,8 @@
 //! Protocol dispatch itself remains in `apps/acp`; this module only adapts
 //! Axum's WebSocket to the ACP SDK's line transport.
 
-use std::io;
+use std::path::PathBuf;
+use std::process::Stdio;
 
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
@@ -12,8 +13,11 @@ use axum::{
     http::{header::ORIGIN, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use agent_client_protocol::Lines;
 use futures::{SinkExt, StreamExt};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    process::Command,
+};
 
 use crate::state::SharedState;
 
@@ -28,9 +32,14 @@ pub async fn connect(
     if !origin_allowed(&headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
+    // `SharedState` is currently unused here: each ACP WebSocket connection
+    // spawns its own `loom acp` subprocess instead of borrowing the durable
+    // `AcpHub` agent. The `State` extractor is kept so the route signature
+    // and middleware chain remain unchanged.
+    let _ = state;
     ws.max_message_size(MAX_ACP_WS_MESSAGE_BYTES)
         .max_frame_size(MAX_ACP_WS_MESSAGE_BYTES)
-        .on_upgrade(move |socket| handle_socket(socket, state))
+        .on_upgrade(handle_socket)
 }
 
 /// Browsers always send Origin on a WebSocket upgrade. Native CLI clients do
@@ -41,7 +50,10 @@ fn origin_allowed(headers: &HeaderMap) -> bool {
         return true;
     };
     if let Ok(configured) = std::env::var("LOOM_ACP_ALLOWED_ORIGINS") {
-        return configured.split(',').map(str::trim).any(|allowed| allowed == origin);
+        return configured
+            .split(',')
+            .map(str::trim)
+            .any(|allowed| allowed == origin);
     }
     origin.starts_with("http://localhost:")
         || origin.starts_with("https://localhost:")
@@ -51,38 +63,131 @@ fn origin_allowed(headers: &HeaderMap) -> bool {
         || origin.starts_with("https://[::1]:")
 }
 
-async fn handle_socket(socket: WebSocket, state: SharedState) {
-    let (outgoing, incoming) = socket.split();
-
-    let outgoing = futures::sink::unfold(outgoing, |mut socket, line: String| async move {
-        socket
-            .send(Message::Text(line.into()))
-            .await
-            .map_err(|e| io::Error::new(io::ErrorKind::BrokenPipe, e.to_string()))?;
-        Ok::<_, io::Error>(socket)
-    });
-    let incoming = incoming.filter_map(|frame| async move {
-        match frame {
-            Ok(Message::Text(text)) => Some(Ok(text.to_string())),
-            Ok(Message::Close(_)) => None,
-            Ok(Message::Binary(_)) => Some(Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "ACP WebSocket accepts text frames only",
-            ))),
-            Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => None,
-            Err(e) => Some(Err(io::Error::new(io::ErrorKind::ConnectionAborted, e.to_string()))),
+/// Locate the `loom` binary used to spawn the ACP child process.
+///
+/// Resolution order:
+///   1. `LOOM_ACP_BINARY` environment variable (full path).
+///   2. `loom` / `loom.exe` next to the running `loom-server` binary.
+///   3. Bare `loom` (PATH lookup).
+fn loom_binary() -> PathBuf {
+    if let Ok(value) = std::env::var("LOOM_ACP_BINARY") {
+        return PathBuf::from(value);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for name in ["loom", "loom.exe"] {
+                let candidate = dir.join(name);
+                if candidate.exists() {
+                    return candidate;
+                }
+            }
         }
-    });
-
-    // The transport ends when the peer closes the WebSocket.  ACP protocol
-    // cancellation remains explicit (`session/cancel`); close is not a cancel.
-    let Ok((agent, _updates, lease)) = state.acp_hub.attach().await else {
-        return;
-    };
-    tracing::warn!("ACP WebSocket transport: run_transport_with_agent not available after dev merge");
-    let _ = lease.await;
+    }
+    PathBuf::from("loom")
 }
 
+async fn handle_socket(mut socket: WebSocket) {
+    let mut child = match Command::new(loom_binary())
+        .arg("acp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .kill_on_drop(true)
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(err) => {
+            tracing::error!(error = %err, "failed to spawn `loom acp` for ACP WebSocket bridge");
+            let _ = socket.send(Message::Close(None)).await;
+            return;
+        }
+    };
+
+    let child_stdin = match child.stdin.take() {
+        Some(stdin) => stdin,
+        None => {
+            tracing::error!("`loom acp` child is missing a stdin pipe");
+            return;
+        }
+    };
+    let child_stdout = match child.stdout.take() {
+        Some(stdout) => BufReader::new(stdout),
+        None => {
+            tracing::error!("`loom acp` child is missing a stdout pipe");
+            return;
+        }
+    };
+
+    let (mut ws_sink, mut ws_stream) = socket.split();
+
+    // WS text frame -> child stdin (newline-terminated JSON line).
+    let mut ws_to_child = tokio::spawn(async move {
+        let mut stdin = child_stdin;
+        while let Some(frame) = ws_stream.next().await {
+            match frame {
+                Ok(Message::Text(text)) => {
+                    let mut line = text.to_string();
+                    while matches!(line.as_bytes().last(), Some(b'\n') | Some(b'\r')) {
+                        line.pop();
+                    }
+                    if line.is_empty() {
+                        continue;
+                    }
+                    if stdin.write_all(line.as_bytes()).await.is_err()
+                        || stdin.write_all(b"\n").await.is_err()
+                    {
+                        break;
+                    }
+                    // ACP expects each JSON-RPC request on its own line; flush
+                    // so the child does not stall on buffered bytes.
+                    if stdin.flush().await.is_err() {
+                        break;
+                    }
+                }
+                Ok(Message::Close(_)) => break,
+                Ok(Message::Ping(_) | Message::Pong(_)) => continue,
+                Ok(Message::Binary(_)) => continue,
+                Err(err) => {
+                    tracing::debug!(error = %err, "ACP WebSocket read error");
+                    break;
+                }
+            }
+        }
+        // Dropping `stdin` closes the child's stdin; the child sees EOF and exits.
+    });
+
+    // child stdout lines -> WS text frames.
+    let mut child_to_ws = tokio::spawn(async move {
+        let mut lines = child_stdout.lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            if line.is_empty() {
+                continue;
+            }
+            if ws_sink.send(Message::Text(line)).await.is_err() {
+                break;
+            }
+        }
+        let _ = ws_sink.send(Message::Close(None)).await;
+    });
+
+    // Whichever side finishes first tears the bridge down; `child.wait()` is
+    // a safety net if the child dies before either task notices.
+    let child_status = tokio::select! {
+        _ = &mut ws_to_child => None,
+        _ = &mut child_to_ws => None,
+        status = child.wait() => Some(status),
+    };
+    ws_to_child.abort();
+    child_to_ws.abort();
+    if let Some(Ok(status)) = child_status {
+        if !status.success() {
+            tracing::warn!(?status, "`loom acp` exited non-zero");
+        }
+    }
+    let _ = child.wait().await;
+}
+
+#[allow(dead_code)]
 fn disconnect_cancels() -> bool {
     std::env::var("LOOM_ACP_DISCONNECT_POLICY")
         .map(|value| value.eq_ignore_ascii_case("cancel"))

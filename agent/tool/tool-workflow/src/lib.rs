@@ -6,13 +6,13 @@ mod json_to_lua;
 mod runtime;
 mod service;
 mod structured_output;
+mod tool_cancel;
 mod tool_events;
 mod tool_files;
 mod tool_list;
 mod tool_source;
 mod tool_start;
 mod tool_status;
-mod tool_cancel;
 mod workflow_resolver;
 
 pub use backend::LoomAgentBackend;
@@ -21,13 +21,13 @@ pub use instance::{
     PhaseSpan, ReportRef, WorkflowRef,
 };
 pub use structured_output::StructuredOutputTool;
+pub use tool_cancel::WorkflowCancelTool;
 pub use tool_events::WorkflowEventsTool;
 pub use tool_files::WorkflowFilesTool;
 pub use tool_list::WorkflowListTool;
 pub use tool_source::WorkflowSourceTool;
 pub use tool_start::WorkflowStartTool;
 pub use tool_status::WorkflowStatusTool;
-pub use tool_cancel::WorkflowCancelTool;
 pub use workflow_resolver::resolve_workflow;
 
 pub use runtime::WorkflowRuntime;
@@ -147,7 +147,10 @@ mod tests {
             ..Default::default()
         };
         let rt = Arc::new(crate::runtime::WorkflowRuntime::new(cfg));
-        assert_eq!(rt.instances_root(), tmp.path().join(".loom").join("instances"));
+        assert_eq!(
+            rt.instances_root(),
+            tmp.path().join(".loom").join("instances")
+        );
         assert_eq!(rt.runs_root(), tmp.path().join(".luft").join("runs"));
         assert_eq!(
             rt.workflows_dir(),

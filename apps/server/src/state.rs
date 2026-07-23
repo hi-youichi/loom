@@ -56,7 +56,10 @@ static NEXT_EVENT_ID: parking_lot::Mutex<u64> = parking_lot::Mutex::new(1);
 /// `undefined is not an object (evaluating 'U.has')`. Emitting `null` instead
 /// keeps the field present so the JS check sees `Object.has(info, 'parentID')
 /// === false` instead of throwing.
-pub fn serialize_path_as_string<S>(value: &Option<PathInfo>, serializer: S) -> Result<S::Ok, S::Error>
+pub fn serialize_path_as_string<S>(
+    value: &Option<PathInfo>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -102,6 +105,10 @@ pub struct AppState {
     /// Keyed by message id, not session id, because part lookups in the
     /// translator happen per-message during streaming.
     pub parts: RwLock<HashMap<String, Vec<PartInfo>>>,
+    /// `msg_*` → currently active text part id.
+    pub active_text: RwLock<HashMap<String, String>>,
+    /// `msg_*` → reasoning block id → active reasoning part id.
+    pub active_reasoning: RwLock<HashMap<String, HashMap<String, String>>>,
     /// Per-session cancellation tokens — populated while a run is
     /// active, removed on completion. `Option<RunCancellation>` keeps the
     /// shape clone-safe across handlers (task P1.11).
@@ -149,7 +156,7 @@ const EVENT_BUFFER_CAP: usize = 512;
 /// shape; we keep our MVP scaffold small and add fields as handlers need them.
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct ConfigInfo {
-#[serde(default, serialize_with = "serialize_optional")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub theme: Option<String>,
     #[serde(default, serialize_with = "serialize_optional")]
     pub provider: Option<serde_json::Value>,
@@ -168,7 +175,7 @@ pub struct ProjectInfo {
     pub id: String,
     pub worktree: String,
     pub directory: String,
-#[serde(default, serialize_with = "serialize_optional")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub vcs: Option<serde_json::Value>,
     #[serde(default, serialize_with = "serialize_optional")]
     pub workspace_id: Option<String>,
@@ -208,7 +215,7 @@ pub struct SessionInfo {
     pub title: String,
     #[serde(default)]
     pub version: String,
-#[serde(default, rename = "parentID", serialize_with = "serialize_optional")]
+    #[serde(default, rename = "parentID", serialize_with = "serialize_optional")]
     pub parent_id: Option<String>,
     #[serde(default, rename = "workspaceID", serialize_with = "serialize_optional")]
     pub workspace_id: Option<String>,
@@ -230,7 +237,7 @@ pub struct SessionInfo {
     /// MVP to avoid extending the schema every iteration.
     #[serde(flatten)]
     pub extras: HashMap<String, serde_json::Value>,
-#[serde(default, serialize_with = "serialize_optional")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub agent: Option<String>,
     #[serde(default, serialize_with = "serialize_optional")]
     pub model: Option<ModelInfo>,
@@ -278,7 +285,7 @@ pub struct ModelInfo {
     pub provider_id: String,
     #[serde(rename = "id")]
     pub model_id: String,
-#[serde(default, serialize_with = "serialize_optional")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub variant: Option<String>,
 }
 
@@ -286,7 +293,7 @@ pub struct ModelInfo {
 pub struct TimeInfo {
     pub created: i64,
     pub updated: i64,
-#[serde(default, rename = "compacting", serialize_with = "serialize_optional")]
+    #[serde(default, rename = "compacting", serialize_with = "serialize_optional")]
     pub compacting: Option<i64>,
     #[serde(default, rename = "archived", serialize_with = "serialize_optional")]
     pub archived: Option<i64>,
@@ -305,7 +312,7 @@ pub struct MessageInfo {
     pub time: serde_json::Value,
     #[serde(default)]
     pub agent: String,
-#[serde(default, serialize_with = "serialize_optional")]
+    #[serde(default, serialize_with = "serialize_optional")]
     pub model: Option<serde_json::Value>,
     #[serde(default, rename = "parentID", serialize_with = "serialize_optional")]
     pub parent_id: Option<String>,
@@ -867,6 +874,8 @@ fn new_state_with_store(
         sessions: RwLock::new(HashMap::new()),
         messages: RwLock::new(HashMap::new()),
         parts: RwLock::new(HashMap::new()),
+        active_text: RwLock::new(HashMap::new()),
+        active_reasoning: RwLock::new(HashMap::new()),
         abort_tokens: RwLock::new(HashMap::new()),
         event_tx,
         event_buffer: RwLock::new(VecDeque::with_capacity(EVENT_BUFFER_CAP)),
@@ -947,7 +956,7 @@ mod cancellation_tests {
             Some(second.generation())
         );
 
-end_run(&state, "sess_test", second.generation());
+        end_run(&state, "sess_test", second.generation());
         assert!(lookup_run(&state, "sess_test").is_none());
     }
 }
@@ -1144,8 +1153,7 @@ mod optional_field_serialization {
             "title": "t",
         });
 
-        let parsed: SessionInfo =
-            serde_json::from_value(bare).expect("deserialize bare session");
+        let parsed: SessionInfo = serde_json::from_value(bare).expect("deserialize bare session");
         assert_eq!(parsed.id, "sess_x");
         assert!(parsed.parent_id.is_none());
         assert!(parsed.summary.is_none());

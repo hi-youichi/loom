@@ -10,6 +10,7 @@
 //!   authentication modes:
 //!   - `LOOM_AUTH_TOKEN`: Bearer token. `Authorization: Bearer <token>`.
 //!   - `OPENCODE_SERVER_PASSWORD`: Basic auth. `Authorization: Basic base64(user:password)`.
+//!
 //!   When either is configured, requests must match the configured mode. When
 //!   both are unset, development mode allows all requests.
 
@@ -137,7 +138,10 @@ fn configured_oc_password() -> Option<String> {
 /// matches (constant-time). Username is not strictly checked but defaults
 /// to `opencode` per OpenChamber convention.
 fn check_basic_auth(header: Option<&str>, expected_password: &str) -> bool {
-    let value = match header.and_then(|h| h.strip_prefix("Basic ").or_else(|| h.strip_prefix("basic "))) {
+    let value = match header.and_then(|h| {
+        h.strip_prefix("Basic ")
+            .or_else(|| h.strip_prefix("basic "))
+    }) {
         Some(v) => v.trim(),
         None => return false,
     };
@@ -214,7 +218,10 @@ mod tests {
 
     #[test]
     fn base64_decode_roundtrip() {
-        assert_eq!(base64_decode("b3BlbmNvZGU6cGFzcw==").unwrap(), b"opencode:pass");
+        assert_eq!(
+            base64_decode("b3BlbmNvZGU6cGFzcw==").unwrap(),
+            b"opencode:pass"
+        );
         assert_eq!(base64_decode("dXNlcjpwYXNz").unwrap(), b"user:pass");
         assert_eq!(base64_decode("").unwrap(), b"");
     }
@@ -226,12 +233,18 @@ mod tests {
 
     #[test]
     fn basic_auth_matching_password() {
-        assert!(check_basic_auth(Some("Basic b3BlbmNvZGU6c2VjcmV0"), "secret"));
+        assert!(check_basic_auth(
+            Some("Basic b3BlbmNvZGU6c2VjcmV0"),
+            "secret"
+        ));
     }
 
     #[test]
     fn basic_auth_wrong_password() {
-        assert!(!check_basic_auth(Some("Basic b3BlbmNvZGU6d3Jvbmc="), "secret"));
+        assert!(!check_basic_auth(
+            Some("Basic b3BlbmNvZGU6d3Jvbmc="),
+            "secret"
+        ));
     }
 
     #[test]

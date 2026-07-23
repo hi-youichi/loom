@@ -2,7 +2,6 @@
 //!
 //! Migrated from loom-protocol crate (responses.rs + stream.rs + export.rs).
 
-use crate::types::message::MessageChunkKind;
 use crate::types::metadata::StreamMetadata;
 use crate::types::stream_event::StreamEvent;
 use crate::wire::envelope::{to_json as stream_event_to_json, EnvelopeState};
@@ -67,31 +66,26 @@ where
                 result: result_json,
             }
         }
-        StreamEvent::Messages {
-            chunk,
+        StreamEvent::TextDelta {
+            content,
             metadata: StreamMetadata { loom_node, .. },
-        } => {
-            if chunk.kind == MessageChunkKind::Thinking {
-                ProtocolEvent::ThoughtChunk {
-                    content: chunk.content.clone(),
-                    id: loom_node.clone(),
-                }
-            } else {
-                ProtocolEvent::MessageChunk {
-                    content: chunk.content.clone(),
-                    id: loom_node.clone(),
-                }
-            }
-        }
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            ..
-        } => ProtocolEvent::Usage {
-            prompt_tokens: *prompt_tokens,
-            completion_tokens: *completion_tokens,
-            total_tokens: *total_tokens,
+        } => ProtocolEvent::TextDelta {
+            content: content.clone(),
+            id: loom_node.clone(),
+        },
+        StreamEvent::ReasoningDelta {
+            id,
+            content,
+            metadata: StreamMetadata { loom_node, .. },
+        } => ProtocolEvent::ReasoningDelta {
+            reasoning_id: id.clone(),
+            content: content.clone(),
+            id: loom_node.clone(),
+        },
+        StreamEvent::TurnFinish { usage, .. } => ProtocolEvent::Usage {
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
         },
         StreamEvent::Values(state) => ProtocolEvent::Values {
             state: serde_json::to_value(state)?,
@@ -187,6 +181,30 @@ where
             is_error: *is_error,
             raw_result: raw_result.clone(),
         },
+        StreamEvent::TextBlockStart { metadata } => ProtocolEvent::Custom {
+            value: json!({ "type": "text_block_start", "metadata": metadata }),
+        },
+        StreamEvent::TextBlockEnd { metadata } => ProtocolEvent::Custom {
+            value: json!({ "type": "text_block_end", "metadata": metadata }),
+        },
+        StreamEvent::ReasoningBlockStart { id, metadata } => ProtocolEvent::Custom {
+            value: json!({ "type": "reasoning_block_start", "id": id, "metadata": metadata }),
+        },
+        StreamEvent::ReasoningBlockEnd { id, metadata } => ProtocolEvent::Custom {
+            value: json!({ "type": "reasoning_block_end", "id": id, "metadata": metadata }),
+        },
+        StreamEvent::TurnStart => ProtocolEvent::Custom {
+            value: json!({ "type": "turn_start" }),
+        },
+        StreamEvent::ToolError { call_id, error } => ProtocolEvent::Custom {
+            value: json!({ "type": "tool_error", "call_id": call_id, "error": error }),
+        },
+        StreamEvent::ProviderError { message } => ProtocolEvent::Custom {
+            value: json!({ "type": "provider_error", "message": message }),
+        },
+        StreamEvent::Finish => ProtocolEvent::Custom {
+            value: json!({ "type": "finish" }),
+        },
     };
     Ok(pe)
 }
@@ -229,18 +247,15 @@ where
             let state_json = serde_json::to_value(state)?;
             json!({ "Updates": { "node_id": node_id, "state": state_json, "namespace": namespace } })
         }
-        StreamEvent::Messages {
-            chunk,
-            metadata:
-                StreamMetadata {
-                    loom_node,
-                    namespace,
-                },
+        StreamEvent::TextDelta { content, metadata } => json!({
+            "TextDelta": { "content": content, "metadata": metadata }
+        }),
+        StreamEvent::ReasoningDelta {
+            id,
+            content,
+            metadata,
         } => json!({
-            "Messages": {
-                "chunk": { "content": chunk.content, "kind": format!("{:?}", chunk.kind) },
-                "metadata": { "loom_node": loom_node, "namespace": namespace }
-            }
+            "ReasoningDelta": { "id": id, "content": content, "metadata": metadata }
         }),
         StreamEvent::Custom(v) => json!({ "Custom": v }),
         StreamEvent::Checkpoint(cp) => {
@@ -303,17 +318,8 @@ where
         } => json!({
             "GotExpand": { "node_id": node_id, "nodes_added": nodes_added, "edges_added": edges_added }
         }),
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            ..
-        } => json!({
-            "Usage": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens
-            }
+        StreamEvent::TurnFinish { reason, usage } => json!({
+            "TurnFinish": { "reason": reason, "usage": usage }
         }),
         StreamEvent::ToolCall {
             call_id,
@@ -347,6 +353,26 @@ where
             }
             obj
         }
+        StreamEvent::TextBlockStart { metadata } => {
+            json!({ "TextBlockStart": { "metadata": metadata } })
+        }
+        StreamEvent::TextBlockEnd { metadata } => {
+            json!({ "TextBlockEnd": { "metadata": metadata } })
+        }
+        StreamEvent::ReasoningBlockStart { id, metadata } => {
+            json!({ "ReasoningBlockStart": { "id": id, "metadata": metadata } })
+        }
+        StreamEvent::ReasoningBlockEnd { id, metadata } => {
+            json!({ "ReasoningBlockEnd": { "id": id, "metadata": metadata } })
+        }
+        StreamEvent::TurnStart => json!({ "TurnStart": {} }),
+        StreamEvent::ToolError { call_id, error } => {
+            json!({ "ToolError": { "call_id": call_id, "error": error } })
+        }
+        StreamEvent::ProviderError { message } => {
+            json!({ "ProviderError": { "message": message } })
+        }
+        StreamEvent::Finish => json!({ "Finish": {} }),
     };
     Ok(obj)
 }
@@ -358,7 +384,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CheckpointEvent, MessageChunk};
+    use crate::CheckpointEvent;
 
     #[derive(Clone, Debug, serde::Serialize)]
     struct DummyState(i32);
@@ -402,9 +428,9 @@ mod tests {
     }
 
     #[test]
-    fn message_chunk_format() {
-        let ev: StreamEvent<DummyState> = StreamEvent::Messages {
-            chunk: MessageChunk::message("hello"),
+    fn text_delta_format() {
+        let ev: StreamEvent<DummyState> = StreamEvent::TextDelta {
+            content: "hello".to_string(),
             metadata: StreamMetadata {
                 loom_node: "think".to_string(),
                 namespace: None,
@@ -412,15 +438,16 @@ mod tests {
         };
         let pe = stream_event_to_protocol_event(&ev).unwrap();
         let v = pe.to_value().unwrap();
-        assert_eq!(v["type"], "message_chunk");
+        assert_eq!(v["type"], "text_delta");
         assert_eq!(v["content"], "hello");
         assert_eq!(v["id"], "think");
     }
 
     #[test]
-    fn thought_chunk_format() {
-        let ev: StreamEvent<DummyState> = StreamEvent::Messages {
-            chunk: MessageChunk::thinking("reasoning step"),
+    fn reasoning_delta_format() {
+        let ev: StreamEvent<DummyState> = StreamEvent::ReasoningDelta {
+            id: "r0".to_string(),
+            content: "reasoning step".to_string(),
             metadata: StreamMetadata {
                 loom_node: "think".to_string(),
                 namespace: None,
@@ -428,20 +455,21 @@ mod tests {
         };
         let pe = stream_event_to_protocol_event(&ev).unwrap();
         let v = pe.to_value().unwrap();
-        assert_eq!(v["type"], "thought_chunk");
+        assert_eq!(v["type"], "reasoning_delta");
         assert_eq!(v["content"], "reasoning step");
         assert_eq!(v["id"], "think");
     }
 
     #[test]
     fn protocol_usage_format() {
-        let ev: StreamEvent<DummyState> = StreamEvent::Usage {
-            prompt_tokens: 10,
-            completion_tokens: 5,
-            total_tokens: 15,
-            cached_tokens: None,
-            prefill_duration: None,
-            decode_duration: None,
+        let ev: StreamEvent<DummyState> = StreamEvent::TurnFinish {
+            reason: "stop".to_string(),
+            usage: crate::Usage {
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                total_tokens: 15,
+                cached_tokens: None,
+            },
         };
         let pe = stream_event_to_protocol_event(&ev).unwrap();
         let v = pe.to_value().unwrap();
@@ -497,13 +525,14 @@ mod tests {
             node_id: "think".to_string(),
             namespace: None,
         };
-        let usage: StreamEvent<DummyState> = StreamEvent::Usage {
-            prompt_tokens: 1,
-            completion_tokens: 2,
-            total_tokens: 3,
-            cached_tokens: None,
-            prefill_duration: None,
-            decode_duration: None,
+        let usage: StreamEvent<DummyState> = StreamEvent::TurnFinish {
+            reason: "stop".to_string(),
+            usage: crate::Usage {
+                prompt_tokens: 1,
+                completion_tokens: 2,
+                total_tokens: 3,
+                cached_tokens: None,
+            },
         };
 
         let first = to_value(&enter, &mut state);
@@ -521,14 +550,15 @@ mod tests {
     }
 
     #[test]
-    fn envelope_thought_chunk_injects_envelope() {
+    fn envelope_reasoning_delta_injects_envelope() {
         let mut state = EnvelopeState::new("sess-1".to_string());
         let enter: StreamEvent<DummyState> = StreamEvent::TaskStart {
             node_id: "think".to_string(),
             namespace: None,
         };
-        let thought: StreamEvent<DummyState> = StreamEvent::Messages {
-            chunk: MessageChunk::thinking("reasoning content"),
+        let thought: StreamEvent<DummyState> = StreamEvent::ReasoningDelta {
+            id: "r0".to_string(),
+            content: "reasoning content".to_string(),
             metadata: StreamMetadata {
                 loom_node: "think".to_string(),
                 namespace: None,
@@ -538,7 +568,7 @@ mod tests {
         let _ = to_value(&enter, &mut state);
         let v = to_value(&thought, &mut state);
 
-        assert_eq!(v["type"], "thought_chunk");
+        assert_eq!(v["type"], "reasoning_delta");
         assert_eq!(v["content"], "reasoning content");
         assert_eq!(v["id"], "think");
         assert_eq!(v["session_id"], "sess-1");
@@ -547,14 +577,14 @@ mod tests {
     }
 
     #[test]
-    fn envelope_message_chunk_injects_envelope() {
+    fn envelope_text_delta_injects_envelope() {
         let mut state = EnvelopeState::new("sess-1".to_string());
         let enter: StreamEvent<DummyState> = StreamEvent::TaskStart {
             node_id: "think".to_string(),
             namespace: None,
         };
-        let msg: StreamEvent<DummyState> = StreamEvent::Messages {
-            chunk: MessageChunk::message("final reply"),
+        let msg: StreamEvent<DummyState> = StreamEvent::TextDelta {
+            content: "final reply".to_string(),
             metadata: StreamMetadata {
                 loom_node: "think".to_string(),
                 namespace: None,
@@ -564,7 +594,7 @@ mod tests {
         let _ = to_value(&enter, &mut state);
         let v = to_value(&msg, &mut state);
 
-        assert_eq!(v["type"], "message_chunk");
+        assert_eq!(v["type"], "text_delta");
         assert_eq!(v["content"], "final reply");
         assert_eq!(v["id"], "think");
         assert_eq!(v["session_id"], "sess-1");
@@ -836,31 +866,32 @@ mod tests {
 
     #[test]
     fn format_a_usage() {
-        let ev: StreamEvent<DummyState> = StreamEvent::Usage {
-            prompt_tokens: 10,
-            completion_tokens: 5,
-            total_tokens: 15,
-            cached_tokens: None,
-            prefill_duration: None,
-            decode_duration: None,
+        let ev: StreamEvent<DummyState> = StreamEvent::TurnFinish {
+            reason: "stop".to_string(),
+            usage: crate::Usage {
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                total_tokens: 15,
+                cached_tokens: None,
+            },
         };
         let v = stream_event_to_format_a(&ev).unwrap();
-        assert_eq!(v["Usage"]["prompt_tokens"], 10);
-        assert_eq!(v["Usage"]["completion_tokens"], 5);
+        assert_eq!(v["TurnFinish"]["usage"]["prompt_tokens"], 10);
+        assert_eq!(v["TurnFinish"]["usage"]["completion_tokens"], 5);
     }
 
     #[test]
     fn format_a_messages() {
-        let ev: StreamEvent<DummyState> = StreamEvent::Messages {
-            chunk: MessageChunk::message("hello"),
+        let ev: StreamEvent<DummyState> = StreamEvent::TextDelta {
+            content: "hello".to_string(),
             metadata: StreamMetadata {
                 loom_node: "think".to_string(),
                 namespace: None,
             },
         };
         let v = stream_event_to_format_a(&ev).unwrap();
-        assert_eq!(v["Messages"]["chunk"]["content"], "hello");
-        assert_eq!(v["Messages"]["metadata"]["loom_node"], "think");
+        assert_eq!(v["TextDelta"]["content"], "hello");
+        assert_eq!(v["TextDelta"]["metadata"]["loom_node"], "think");
     }
 
     #[test]

@@ -4,11 +4,7 @@
 //! Reuses the same `run_git` + `GitResult` + `error_envelope` pattern
 //! as `vcs_extra.rs`, operating on the server's current working directory.
 
-use axum::{
-    http::StatusCode,
-
-    Json,
-};
+use axum::{http::StatusCode, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -69,8 +65,12 @@ pub async fn check() -> (StatusCode, Json<Value>) {
             (StatusCode::OK, Json(json!({ "isRepo": is_repo })))
         }
         GitResult::NotARepo => (StatusCode::OK, Json(json!({ "isRepo": false }))),
-        GitResult::OtherError(msg) => error_envelope("GIT_ERROR", &format!("git check failed: {msg}")),
-        GitResult::Unavailable(msg) => error_envelope("GIT_UNAVAILABLE", &format!("failed to execute git: {msg}")),
+        GitResult::OtherError(msg) => {
+            error_envelope("GIT_ERROR", &format!("git check failed: {msg}"))
+        }
+        GitResult::Unavailable(msg) => {
+            error_envelope("GIT_UNAVAILABLE", &format!("failed to execute git: {msg}"))
+        }
     }
 }
 
@@ -84,15 +84,21 @@ pub struct PathsBody {
 pub async fn stage(Json(body): Json<PathsBody>) -> (StatusCode, Json<Value>) {
     let dir = working_dir();
     let mut args: Vec<&str> = vec!["add", "--"];
-    let owned: Vec<String> = body.paths.iter().map(|s| s.clone()).collect();
+    let owned: Vec<String> = body.paths.to_vec();
     for p in &owned {
         args.push(p.as_str());
     }
     match run_git(&dir, &args).await {
         GitResult::Ok(_) => (StatusCode::OK, Json(json!({ "staged": owned }))),
-        GitResult::NotARepo => error_envelope("NOT_A_REPO", &format!("not a git repository: {dir}")),
-        GitResult::OtherError(msg) => error_envelope("GIT_ERROR", &format!("git add failed: {msg}")),
-        GitResult::Unavailable(msg) => error_envelope("GIT_UNAVAILABLE", &format!("failed to execute git: {msg}")),
+        GitResult::NotARepo => {
+            error_envelope("NOT_A_REPO", &format!("not a git repository: {dir}"))
+        }
+        GitResult::OtherError(msg) => {
+            error_envelope("GIT_ERROR", &format!("git add failed: {msg}"))
+        }
+        GitResult::Unavailable(msg) => {
+            error_envelope("GIT_UNAVAILABLE", &format!("failed to execute git: {msg}"))
+        }
     }
 }
 
@@ -101,15 +107,21 @@ pub async fn stage(Json(body): Json<PathsBody>) -> (StatusCode, Json<Value>) {
 pub async fn unstage(Json(body): Json<PathsBody>) -> (StatusCode, Json<Value>) {
     let dir = working_dir();
     let mut args: Vec<&str> = vec!["reset", "HEAD", "--"];
-    let owned: Vec<String> = body.paths.iter().map(|s| s.clone()).collect();
+    let owned: Vec<String> = body.paths.to_vec();
     for p in &owned {
         args.push(p.as_str());
     }
     match run_git(&dir, &args).await {
         GitResult::Ok(_) => (StatusCode::OK, Json(json!({ "unstaged": owned }))),
-        GitResult::NotARepo => error_envelope("NOT_A_REPO", &format!("not a git repository: {dir}")),
-        GitResult::OtherError(msg) => error_envelope("GIT_ERROR", &format!("git reset failed: {msg}")),
-        GitResult::Unavailable(msg) => error_envelope("GIT_UNAVAILABLE", &format!("failed to execute git: {msg}")),
+        GitResult::NotARepo => {
+            error_envelope("NOT_A_REPO", &format!("not a git repository: {dir}"))
+        }
+        GitResult::OtherError(msg) => {
+            error_envelope("GIT_ERROR", &format!("git reset failed: {msg}"))
+        }
+        GitResult::Unavailable(msg) => {
+            error_envelope("GIT_UNAVAILABLE", &format!("failed to execute git: {msg}"))
+        }
     }
 }
 
@@ -128,15 +140,24 @@ pub async fn commit(Json(body): Json<CommitBody>) -> (StatusCode, Json<Value>) {
                 GitResult::Ok(h) => h.trim().to_string(),
                 _ => String::new(),
             };
-            (StatusCode::OK, Json(json!({
-                "hash": hash,
-                "message": body.message,
-                "output": stdout.trim(),
-            })))
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "hash": hash,
+                    "message": body.message,
+                    "output": stdout.trim(),
+                })),
+            )
         }
-        GitResult::NotARepo => error_envelope("NOT_A_REPO", &format!("not a git repository: {dir}")),
-        GitResult::OtherError(msg) => error_envelope("GIT_ERROR", &format!("git commit failed: {msg}")),
-        GitResult::Unavailable(msg) => error_envelope("GIT_UNAVAILABLE", &format!("failed to execute git: {msg}")),
+        GitResult::NotARepo => {
+            error_envelope("NOT_A_REPO", &format!("not a git repository: {dir}"))
+        }
+        GitResult::OtherError(msg) => {
+            error_envelope("GIT_ERROR", &format!("git commit failed: {msg}"))
+        }
+        GitResult::Unavailable(msg) => {
+            error_envelope("GIT_UNAVAILABLE", &format!("failed to execute git: {msg}"))
+        }
     }
 }
 
@@ -157,7 +178,13 @@ pub async fn log(
     let limit_str = limit.to_string();
     match run_git(
         &dir,
-        &["log", &format!("--format={fmt}"), "--date=iso", "-n", &limit_str],
+        &[
+            "log",
+            &format!("--format={fmt}"),
+            "--date=iso",
+            "-n",
+            &limit_str,
+        ],
     )
     .await
     {
@@ -181,9 +208,15 @@ pub async fn log(
                 .collect();
             (StatusCode::OK, Json(json!({ "commits": commits })))
         }
-        GitResult::NotARepo => error_envelope("NOT_A_REPO", &format!("not a git repository: {dir}")),
-        GitResult::OtherError(msg) => error_envelope("GIT_ERROR", &format!("git log failed: {msg}")),
-        GitResult::Unavailable(msg) => error_envelope("GIT_UNAVAILABLE", &format!("failed to execute git: {msg}")),
+        GitResult::NotARepo => {
+            error_envelope("NOT_A_REPO", &format!("not a git repository: {dir}"))
+        }
+        GitResult::OtherError(msg) => {
+            error_envelope("GIT_ERROR", &format!("git log failed: {msg}"))
+        }
+        GitResult::Unavailable(msg) => {
+            error_envelope("GIT_UNAVAILABLE", &format!("failed to execute git: {msg}"))
+        }
     }
 }
 
@@ -196,7 +229,17 @@ pub async fn branches() -> (StatusCode, Json<Value>) {
         _ => "(unknown)".to_string(),
     };
     let fmt = "%(refname:short)%x1f%(objecttype)%x1f%(upstream:short)%x1f%(HEAD)";
-    match run_git(&dir, &["for-each-ref", &format!("--format={fmt}"), "refs/heads/", "refs/remotes/"]).await {
+    match run_git(
+        &dir,
+        &[
+            "for-each-ref",
+            &format!("--format={fmt}"),
+            "refs/heads/",
+            "refs/remotes/",
+        ],
+    )
+    .await
+    {
         GitResult::Ok(stdout) => {
             let mut branches: Vec<Value> = Vec::new();
             for line in stdout.lines() {
@@ -213,10 +256,19 @@ pub async fn branches() -> (StatusCode, Json<Value>) {
                     "isRemote": is_remote,
                 }));
             }
-            (StatusCode::OK, Json(json!({ "branches": branches, "current": current })))
+            (
+                StatusCode::OK,
+                Json(json!({ "branches": branches, "current": current })),
+            )
         }
-        GitResult::NotARepo => error_envelope("NOT_A_REPO", &format!("not a git repository: {dir}")),
-        GitResult::OtherError(msg) => error_envelope("GIT_ERROR", &format!("git branch failed: {msg}")),
-        GitResult::Unavailable(msg) => error_envelope("GIT_UNAVAILABLE", &format!("failed to execute git: {msg}")),
+        GitResult::NotARepo => {
+            error_envelope("NOT_A_REPO", &format!("not a git repository: {dir}"))
+        }
+        GitResult::OtherError(msg) => {
+            error_envelope("GIT_ERROR", &format!("git branch failed: {msg}"))
+        }
+        GitResult::Unavailable(msg) => {
+            error_envelope("GIT_UNAVAILABLE", &format!("failed to execute git: {msg}"))
+        }
     }
 }

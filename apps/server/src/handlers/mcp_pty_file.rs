@@ -113,9 +113,7 @@ pub async fn delete_pty_one(Path(id): Path<String>) -> (StatusCode, Json<Value>)
 /// `POST /api/pty/:ptyID/connect-token` — create single-use connect ticket
 /// (group-pty.ts `pty.connectToken`). Explicitly unsupported until PTY
 /// lifecycle is wired.
-pub async fn post_api_pty_connect_token(
-    Path(_id): Path<String>,
-) -> (StatusCode, Json<Value>) {
+pub async fn post_api_pty_connect_token(Path(_id): Path<String>) -> (StatusCode, Json<Value>) {
     (
         StatusCode::NOT_IMPLEMENTED,
         Json(json!({"error": "PTY connect-token not implemented"})),
@@ -138,7 +136,8 @@ pub async fn get_api_pty_connect(Path(_id): Path<String>) -> (StatusCode, Json<V
 fn project_root(state: &SharedState) -> PathBuf {
     let dir = state.project.read().directory.clone();
     let path = PathBuf::from(&dir);
-    path.canonicalize().unwrap_or_else(|_| normalize_path(&path))
+    path.canonicalize()
+        .unwrap_or_else(|_| normalize_path(&path))
 }
 
 /// Lexically normalize a path by resolving `.` and `..` components without
@@ -277,8 +276,7 @@ fn grep_content(root: &StdPath, pattern: &str) -> Vec<Value> {
         };
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with('.')
-                || matches!(name.as_str(), "node_modules" | "target" | ".git")
+            if name.starts_with('.') || matches!(name.as_str(), "node_modules" | "target" | ".git")
             {
                 continue;
             }
@@ -302,9 +300,7 @@ fn grep_content(root: &StdPath, pattern: &str) -> Vec<Value> {
                     if let Some(first_hit) = line_lower.find(&needle_lower) {
                         let mut submatches = Vec::new();
                         let mut search_from = 0usize;
-                        while let Some(pos) =
-                            line_lower[search_from..].find(&needle_lower)
-                        {
+                        while let Some(pos) = line_lower[search_from..].find(&needle_lower) {
                             let abs_start = search_from + pos;
                             let abs_end = abs_start + needle.len();
                             submatches.push(json!({
@@ -339,10 +335,7 @@ fn grep_content(root: &StdPath, pattern: &str) -> Vec<Value> {
 
 /// `GET /file?path=...` — directory listing if path is a directory,
 /// file content if path is a file. Directory listings return `LegacyEntry[]`.
-pub async fn get_file(
-    State(state): State<SharedState>,
-    Query(q): Query<FileQuery>,
-) -> Response {
+pub async fn get_file(State(state): State<SharedState>, Query(q): Query<FileQuery>) -> Response {
     let root = project_root(&state);
     let path = match resolve_within(&root, q.path.as_deref()) {
         Ok(p) => p,
@@ -386,10 +379,7 @@ pub async fn get_file(
 }
 
 /// `PUT /file` — write content to a file within the workspace.
-pub async fn put_file(
-    State(state): State<SharedState>,
-    Json(body): Json<Value>,
-) -> Response {
+pub async fn put_file(State(state): State<SharedState>, Json(body): Json<Value>) -> Response {
     let Some(path_str) = body.get("path").and_then(Value::as_str) else {
         return (
             StatusCode::BAD_REQUEST,
@@ -471,10 +461,7 @@ pub struct FindQuery {
 }
 
 /// `POST /find` — compatibility alias used by the rollout-v2 SDK.
-pub async fn post_find(
-    State(state): State<SharedState>,
-    Json(body): Json<Value>,
-) -> Response {
+pub async fn post_find(State(state): State<SharedState>, Json(body): Json<Value>) -> Response {
     let root = project_root(&state);
     let pattern = body.get("pattern").and_then(Value::as_str).unwrap_or("");
     let matches = find_files(&root, pattern);
@@ -486,10 +473,7 @@ pub async fn post_find(
 }
 
 /// `POST /api/find` — v2 alias.
-pub async fn post_api_find(
-    State(state): State<SharedState>,
-    Json(body): Json<Value>,
-) -> Response {
+pub async fn post_api_find(State(state): State<SharedState>, Json(body): Json<Value>) -> Response {
     post_find(State(state), Json(body)).await
 }
 
@@ -517,14 +501,13 @@ pub async fn get_find_file(
     let files: Vec<String> = match std::fs::read_dir(&dir) {
         Ok(rd) => rd
             .flatten()
-            .filter_map(|e| {
+            .map(|e| {
                 let abs = e.path();
-                let rel = abs
+                abs
                     .strip_prefix(&root)
                     .unwrap_or(&abs)
                     .to_string_lossy()
-                    .to_string();
-                Some(rel)
+                    .to_string()
             })
             .collect(),
         Err(e) => return fs_error_response(&e).into_response(),

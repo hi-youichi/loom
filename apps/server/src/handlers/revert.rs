@@ -127,10 +127,7 @@ pub async fn revert_stage(
         return session_not_found(&session_id);
     }
 
-    let message_id = body
-        .get("messageID")
-        .and_then(Value::as_str)
-        .unwrap_or("");
+    let message_id = body.get("messageID").and_then(Value::as_str).unwrap_or("");
     if !message_in_session(&state, &session_id, message_id) {
         return message_not_found(&session_id, message_id);
     }

@@ -106,10 +106,7 @@ async fn cancel_tool_rejects_missing_instance() {
     };
     let cancel = WorkflowCancelTool::new(Arc::new(WorkflowRuntime::new(cfg)));
     let resp = cancel.call(json!({}), None).await;
-    assert!(
-        resp.is_err(),
-        "missing instance parameter should error"
-    );
+    assert!(resp.is_err(), "missing instance parameter should error");
 }
 
 #[tokio::test(flavor = "current_thread")]

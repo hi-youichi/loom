@@ -61,12 +61,28 @@ mod tests {
     #[test]
     fn reasoning_aliases_all_land_on_reasoning_content() {
         let cases: Vec<(&str, &str, &str)> = vec![
-            ("reasoning_content", r#"{"content":null,"reasoning_content":"rc"}"#, "rc"),
+            (
+                "reasoning_content",
+                r#"{"content":null,"reasoning_content":"rc"}"#,
+                "rc",
+            ),
             ("reasoning", r#"{"content":null,"reasoning":"r"}"#, "r"),
-            ("reason_content", r#"{"content":null,"reason_content":"rcnt"}"#, "rcnt"),
+            (
+                "reason_content",
+                r#"{"content":null,"reason_content":"rcnt"}"#,
+                "rcnt",
+            ),
             ("thinking", r#"{"content":null,"thinking":"th"}"#, "th"),
-            ("reasoning_text", r#"{"content":null,"reasoning_text":"rt"}"#, "rt"),
-            ("reasoning_details", r#"{"content":null,"reasoning_details":"rd"}"#, "rd"),
+            (
+                "reasoning_text",
+                r#"{"content":null,"reasoning_text":"rt"}"#,
+                "rt",
+            ),
+            (
+                "reasoning_details",
+                r#"{"content":null,"reasoning_details":"rd"}"#,
+                "rd",
+            ),
         ];
         for (alias, raw, expected) in cases {
             let delta: StreamDelta = serde_json::from_str(raw)
@@ -104,4 +120,3 @@ mod tests {
         );
     }
 }
-

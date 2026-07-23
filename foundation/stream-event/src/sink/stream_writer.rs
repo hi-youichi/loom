@@ -1,4 +1,3 @@
-use crate::types::message::MessageChunk;
 use crate::types::metadata::{CheckpointEvent, StreamMetadata};
 use crate::types::stream_event::StreamEvent;
 use crate::types::stream_mode::StreamMode;
@@ -136,8 +135,8 @@ where
             return false;
         }
         if let Some(tx) = &self.tx {
-            let event = StreamEvent::Messages {
-                chunk: MessageChunk::message(content.into()),
+            let event = StreamEvent::TextDelta {
+                content: content.into(),
                 metadata: StreamMetadata {
                     loom_node: node_id.into(),
                     namespace: None,
@@ -157,8 +156,8 @@ where
             return false;
         }
         if let Some(tx) = &self.tx {
-            let event = StreamEvent::Messages {
-                chunk: MessageChunk::message(content.into()),
+            let event = StreamEvent::TextDelta {
+                content: content.into(),
                 metadata: StreamMetadata {
                     loom_node: node_id.into(),
                     namespace: None,

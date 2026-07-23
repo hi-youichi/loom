@@ -24,9 +24,7 @@ const CONFIG_APP_NAME: &str = "loom";
 /// ```json
 /// { "provider-id": [{ "type": "api", "label": "Manually enter API Key" }] }
 /// ```
-pub async fn get_provider_auth(
-    State(_state): State<SharedState>,
-) -> Json<Value> {
+pub async fn get_provider_auth(State(_state): State<SharedState>) -> Json<Value> {
     let cfg = match config::load_full_config(CONFIG_APP_NAME) {
         Ok(c) => c,
         Err(_) => return Json(json!({})),
@@ -34,9 +32,12 @@ pub async fn get_provider_auth(
 
     let mut result = serde_json::Map::new();
     for def in &cfg.providers {
-        result.insert(def.name.clone(), json!([
-            { "type": "api", "label": "Manually enter API Key" }
-        ]));
+        result.insert(
+            def.name.clone(),
+            json!([
+                { "type": "api", "label": "Manually enter API Key" }
+            ]),
+        );
     }
 
     Json(Value::Object(result))
@@ -52,10 +53,7 @@ pub async fn post_provider_auth(
     Path(provider_id): Path<String>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let apikey = body
-        .get("apikey")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let apikey = body.get("apikey").and_then(|v| v.as_str()).unwrap_or("");
 
     if apikey.is_empty() {
         return Err((
@@ -131,8 +129,8 @@ where
         Err(e) => return Err(format!("config path error: {e}")),
     };
 
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| format!("failed to read config.toml: {e}"))?;
+    let content =
+        std::fs::read_to_string(&path).map_err(|e| format!("failed to read config.toml: {e}"))?;
 
     let new_content = transform(&content)
         .ok_or_else(|| format!("provider '{provider_id}' not found in config.toml"))?;
@@ -140,11 +138,10 @@ where
     let tmp_path = path.with_extension("toml.tmp");
     std::fs::write(&tmp_path, &new_content)
         .map_err(|e| format!("failed to write temp file: {e}"))?;
-    std::fs::rename(&tmp_path, &path)
-        .map_err(|e| {
-            let _ = std::fs::remove_file(&tmp_path);
-            format!("failed to rename config.toml: {e}")
-        })?;
+    std::fs::rename(&tmp_path, &path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        format!("failed to rename config.toml: {e}")
+    })?;
 
     Ok(())
 }
@@ -170,7 +167,8 @@ fn set_provider_field(toml: &str, provider_id: &str, field: &str, value: &str) -
             in_providers_block = false;
         }
 
-        if in_providers_block && trimmed.starts_with("name =") && trimmed.contains(&provider_header) {
+        if in_providers_block && trimmed.starts_with("name =") && trimmed.contains(&provider_header)
+        {
             for j in (i + 1)..lines.len() {
                 let t = lines[j].trim();
                 if t.starts_with("[[") || t.starts_with('[') {
@@ -211,7 +209,8 @@ fn remove_provider_field(toml: &str, provider_id: &str, field: &str) -> Option<S
             in_providers_block = false;
         }
 
-        if in_providers_block && trimmed.starts_with("name =") && trimmed.contains(&provider_header) {
+        if in_providers_block && trimmed.starts_with("name =") && trimmed.contains(&provider_header)
+        {
             for j in (i + 1)..lines.len() {
                 let t = lines[j].trim();
                 if t.starts_with("[[") || (t.starts_with('[') && !t.starts_with("[[")) {

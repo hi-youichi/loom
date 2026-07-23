@@ -114,7 +114,7 @@ fn node_id_remains_active_until_next_node_enter() {
     .unwrap();
 
     let chunk = to_json(
-        &ProtocolEvent::MessageChunk {
+        &ProtocolEvent::TextDelta {
             content: "hi".to_string(),
             id: "think".to_string(),
         },

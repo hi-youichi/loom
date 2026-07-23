@@ -5,7 +5,7 @@ use agent::run::TypedAnyStreamEvent;
 use agent::state::ReActState;
 use agent::state::{ToolCall, ToolResult};
 use agent::{DupState, GotState, TotState};
-use stream_event::{MessageChunk, MessageChunkKind, StreamEvent};
+use stream_event::StreamEvent;
 
 use super::format::*;
 use super::panel_format;
@@ -123,12 +123,17 @@ pub fn log_node_enter(from: Option<&str>, node_id: &str, verbose: bool) {
     eprintln!("Entering: {} (from {})", node_id, from);
 }
 
-pub fn print_stream_chunk(chunk: &MessageChunk, renderer: &mut StreamingMarkdownRenderer) {
-    renderer.push_chunk(chunk);
+pub fn print_stream_chunk(content: &str, renderer: &mut StreamingMarkdownRenderer) {
+    renderer.push_text(content);
 }
 
-fn handle_messages(s: &mut EventState, chunk: &MessageChunk, output_timestamp: bool) {
-    if chunk.kind == MessageChunkKind::Thinking {
+fn handle_messages(
+    s: &mut EventState,
+    content: &str,
+    is_thinking: bool,
+    output_timestamp: bool,
+) {
+    if is_thinking {
         s.in_thinking = true;
     }
     if let Some(sp) = s.spinner.take() {
@@ -143,39 +148,31 @@ fn handle_messages(s: &mut EventState, chunk: &MessageChunk, output_timestamp: b
         }
         s.reply_started = true;
     }
-    if s.in_thinking && chunk.kind != MessageChunkKind::Thinking {
+    if s.in_thinking && !is_thinking {
         eprintln!();
         eprintln!("{}", panel_format::format_thinking_separator());
         s.in_thinking = false;
     }
-    print_stream_chunk(chunk, &mut s.markdown_renderer);
+    print_stream_chunk(content, &mut s.markdown_renderer);
 }
 
 fn handle_usage(
     s: &mut EventState,
     prompt_tokens: &u32,
     completion_tokens: &u32,
-    prefill_duration: &Option<std::time::Duration>,
-    decode_duration: &Option<std::time::Duration>,
     verbose: bool,
 ) {
     s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
     s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
-    s.last_prefill_duration = *prefill_duration;
-    s.last_decode_duration = *decode_duration;
 
-    let total_dur = match (prefill_duration, decode_duration) {
-        (Some(pf), Some(dc)) => *pf + *dc,
-        _ => std::time::Duration::ZERO,
-    };
     eprintln!(
         "\n{}",
         panel_format::format_usage_line(
-            total_dur,
+            std::time::Duration::ZERO,
             *prompt_tokens,
             *completion_tokens,
-            *prefill_duration,
-            *decode_duration,
+            None,
+            None,
             verbose,
         )
     );
@@ -221,8 +218,11 @@ pub fn on_event_react(
             log_node_enter(s.last_node.as_deref(), node_id, verbose);
             s.last_node = Some(node_id.clone());
         }
-        StreamEvent::Messages { chunk, .. } => {
-            handle_messages(s, chunk, output_timestamp);
+        StreamEvent::TextDelta { content, .. } => {
+            handle_messages(s, content, false, output_timestamp);
+        }
+        StreamEvent::ReasoningDelta { content, .. } => {
+            handle_messages(s, content, true, output_timestamp);
         }
         StreamEvent::Updates { node_id, state, .. } => {
             if node_id == "title" {
@@ -367,19 +367,11 @@ pub fn on_event_react(
                 s.pending_tool_results.clear();
             }
         }
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            prefill_duration,
-            decode_duration,
-            ..
-        } => {
+        StreamEvent::TurnFinish { usage, .. } => {
             handle_usage(
                 s,
-                prompt_tokens,
-                completion_tokens,
-                prefill_duration,
-                decode_duration,
+                &usage.prompt_tokens,
+                &usage.completion_tokens,
                 verbose,
             );
         }
@@ -399,8 +391,11 @@ pub fn on_event_dup(
             log_node_enter(s.last_node.as_deref(), node_id, verbose);
             s.last_node = Some(node_id.clone());
         }
-        StreamEvent::Messages { chunk, .. } => {
-            handle_messages(s, chunk, output_timestamp);
+        StreamEvent::TextDelta { content, .. } => {
+            handle_messages(s, content, false, output_timestamp);
+        }
+        StreamEvent::ReasoningDelta { content, .. } => {
+            handle_messages(s, content, true, output_timestamp);
         }
         StreamEvent::Updates { node_id, state, .. } => {
             if verbose {
@@ -418,19 +413,11 @@ pub fn on_event_dup(
                 }
             }
         }
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            prefill_duration,
-            decode_duration,
-            ..
-        } => {
+        StreamEvent::TurnFinish { usage, .. } => {
             handle_usage(
                 s,
-                prompt_tokens,
-                completion_tokens,
-                prefill_duration,
-                decode_duration,
+                &usage.prompt_tokens,
+                &usage.completion_tokens,
                 verbose,
             );
         }
@@ -468,8 +455,11 @@ pub fn on_event_tot(
                 reason, to_depth
             );
         }
-        StreamEvent::Messages { chunk, .. } => {
-            handle_messages(s, chunk, output_timestamp);
+        StreamEvent::TextDelta { content, .. } => {
+            handle_messages(s, content, false, output_timestamp);
+        }
+        StreamEvent::ReasoningDelta { content, .. } => {
+            handle_messages(s, content, true, output_timestamp);
         }
         StreamEvent::Updates { node_id, state, .. } => {
             if verbose {
@@ -485,19 +475,11 @@ pub fn on_event_tot(
             } else if node_id == "act" && !state.core.tool_calls.is_empty() {
             }
         }
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            prefill_duration,
-            decode_duration,
-            ..
-        } => {
+        StreamEvent::TurnFinish { usage, .. } => {
             handle_usage(
                 s,
-                prompt_tokens,
-                completion_tokens,
-                prefill_duration,
-                decode_duration,
+                &usage.prompt_tokens,
+                &usage.completion_tokens,
                 verbose,
             );
         }
@@ -554,26 +536,21 @@ pub fn on_event_got(
                 node_id, nodes_added, edges_added
             );
         }
-        StreamEvent::Messages { chunk, .. } => {
-            handle_messages(s, chunk, output_timestamp);
+        StreamEvent::TextDelta { content, .. } => {
+            handle_messages(s, content, false, output_timestamp);
+        }
+        StreamEvent::ReasoningDelta { content, .. } => {
+            handle_messages(s, content, true, output_timestamp);
         }
         StreamEvent::Updates { node_id, state, .. } if verbose => {
             eprintln!("--- state after {} ---", node_id);
             eprintln!("{}", format_got_state_display(state, display_max_len));
         }
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            prefill_duration,
-            decode_duration,
-            ..
-        } => {
+        StreamEvent::TurnFinish { usage, .. } => {
             handle_usage(
                 s,
-                prompt_tokens,
-                completion_tokens,
-                prefill_duration,
-                decode_duration,
+                &usage.prompt_tokens,
+                &usage.completion_tokens,
                 verbose,
             );
         }

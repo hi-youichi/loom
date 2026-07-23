@@ -94,7 +94,11 @@ async fn health_global_has_no_extra_fields() {
     let (_, router) = router_with_state();
     let (_, body) = json_get(router, "/global/health").await;
     let obj = body.as_object().expect("response must be a JSON object");
-    assert_eq!(obj.len(), 1, "response must contain only 'healthy', got: {body}");
+    assert_eq!(
+        obj.len(),
+        1,
+        "response must contain only 'healthy', got: {body}"
+    );
     assert!(obj.contains_key("healthy"));
     assert!(!obj.contains_key("ok"));
     assert!(!obj.contains_key("kind"));
@@ -118,9 +122,13 @@ async fn health_api_returns_exactly_healthy_true() {
 #[tokio::test]
 async fn health_upgrade_returns_501_not_implemented() {
     let (_, router) = router_with_state();
-    let (status, body) = json_post(router, "/global/upgrade", Value::Object(Default::default())).await;
+    let (status, body) =
+        json_post(router, "/global/upgrade", Value::Object(Default::default())).await;
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
-    assert!(body["error"].as_str().unwrap_or_default().contains("upgrade"));
+    assert!(body["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("upgrade"));
 }
 
 // ─── GET /global/version ──────────────────────────────────────────
@@ -130,7 +138,10 @@ async fn health_version_returns_version_and_kind() {
     let (_, router) = router_with_state();
     let (status, body) = json_get(router, "/global/version").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body["version"].is_string(), "version must be a string, got: {body}");
+    assert!(
+        body["version"].is_string(),
+        "version must be a string, got: {body}"
+    );
     assert_eq!(body["kind"], "external-kernel");
 }
 
@@ -147,7 +158,8 @@ async fn health_version_matches_cargo_pkg_version() {
 #[tokio::test]
 async fn health_dispose_returns_ok_and_shutdown() {
     let (_, router) = router_with_state();
-    let (status, body) = json_post(router, "/global/dispose", Value::Object(Default::default())).await;
+    let (status, body) =
+        json_post(router, "/global/dispose", Value::Object(Default::default())).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["ok"], true);
     assert_eq!(body["shutdown"], true);
@@ -162,7 +174,11 @@ async fn health_dispose_clears_all_sessions() {
     assert_eq!(before.as_array().unwrap().len(), 2);
     let _ = json_post(router.clone(), "/global/dispose", serde_json::json!({})).await;
     let (_, after) = json_get(router, "/session").await;
-    assert_eq!(after.as_array().unwrap().len(), 0, "sessions must be cleared after dispose");
+    assert_eq!(
+        after.as_array().unwrap().len(),
+        0,
+        "sessions must be cleared after dispose"
+    );
 }
 
 // ─── GET /global/config ───────────────────────────────────────────
@@ -172,7 +188,10 @@ async fn health_global_config_returns_object() {
     let (_, router) = router_with_state();
     let (status, body) = json_get(router, "/global/config").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.is_object(), "config must be a JSON object, got: {body}");
+    assert!(
+        body.is_object(),
+        "config must be a JSON object, got: {body}"
+    );
 }
 
 // ─── PATCH /global/config ─────────────────────────────────────────
@@ -202,7 +221,10 @@ async fn health_global_config_patch_emits_config_changed_not_disposed() {
     )
     .await;
     let events = loom_server::state::snapshot_replay(&state, None);
-    let event_types: Vec<&str> = events.iter().map(|e| e.payload.event_type.as_str()).collect();
+    let event_types: Vec<&str> = events
+        .iter()
+        .map(|e| e.payload.event_type.as_str())
+        .collect();
     assert!(
         event_types.iter().any(|t| t == &"server.config.changed"),
         "expected server.config.changed event, got: {event_types:?}"
@@ -220,7 +242,10 @@ async fn health_global_event_replay_returns_array() {
     let (_, router) = router_with_state();
     let (status, body) = json_get(router, "/global/event/replay").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.is_array(), "replay must return a JSON array, got: {body}");
+    assert!(
+        body.is_array(),
+        "replay must return a JSON array, got: {body}"
+    );
 }
 
 #[tokio::test]
@@ -282,7 +307,10 @@ async fn health_instance_update_returns_501() {
     )
     .await;
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
-    assert!(body["error"].as_str().unwrap_or_default().contains("instance update"));
+    assert!(body["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("instance update"));
 }
 
 // ─── cross-cutting: both health aliases agree ─────────────────────
@@ -292,7 +320,10 @@ async fn health_global_and_api_health_return_same_shape() {
     let (_, router) = router_with_state();
     let (_, global) = json_get(router.clone(), "/global/health").await;
     let (_, api) = json_get(router, "/api/health").await;
-    assert_eq!(global, api, "both health endpoints must return identical bodies");
+    assert_eq!(
+        global, api,
+        "both health endpoints must return identical bodies"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -327,7 +358,10 @@ async fn config_get_returns_object() {
     let (_, router) = router_with_state();
     let (status, body) = json_get(router, "/config").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.is_object(), "config must be a JSON object, got: {body}");
+    assert!(
+        body.is_object(),
+        "config must be a JSON object, got: {body}"
+    );
 }
 
 // ─── PATCH /config ────────────────────────────────────────────────
@@ -382,8 +416,14 @@ async fn config_providers_returns_providers_and_default() {
     let (_, router) = router_with_state();
     let (status, body) = json_get(router, "/config/providers").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body["providers"].is_array(), "providers must be an array, got: {body}");
-    assert!(body["default"].is_object(), "default must be an object, got: {body}");
+    assert!(
+        body["providers"].is_array(),
+        "providers must be an array, got: {body}"
+    );
+    assert!(
+        body["default"].is_object(),
+        "default must be an object, got: {body}"
+    );
 }
 
 // ─── GET /config/settings ─────────────────────────────────────────
@@ -393,8 +433,10 @@ async fn config_settings_get_returns_json() {
     let (_, router) = router_with_state();
     let (status, body) = json_get(router, "/config/settings").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.is_object() || body.is_null(),
-        "settings should be a JSON object or null when no config file, got: {body}");
+    assert!(
+        body.is_object() || body.is_null(),
+        "settings should be a JSON object or null when no config file, got: {body}"
+    );
 }
 
 // ─── PUT /config/settings ─────────────────────────────────────────
@@ -410,7 +452,10 @@ async fn config_settings_put_returns_ok_with_settings() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["status"], "ok");
-    assert!(body.get("settings").is_some(), "response must contain 'settings' field");
+    assert!(
+        body.get("settings").is_some(),
+        "response must contain 'settings' field"
+    );
 }
 
 // ─── POST /config/reload ──────────────────────────────────────────
@@ -418,8 +463,12 @@ async fn config_settings_put_returns_ok_with_settings() {
 #[tokio::test]
 async fn config_reload_returns_status() {
     let (_, router) = router_with_state();
-    let (status, body) = json_post(router, "/config/reload", Value::Object(Default::default())).await;
-    assert!(status.is_success(), "reload should return 2xx, got: {status}");
+    let (status, body) =
+        json_post(router, "/config/reload", Value::Object(Default::default())).await;
+    assert!(
+        status.is_success(),
+        "reload should return 2xx, got: {status}"
+    );
     assert!(
         body.get("status").is_some() || body.get("error").is_some(),
         "response must contain 'status' or 'error', got: {body}"
@@ -491,7 +540,12 @@ async fn api_config_settings_put_returns_ok() {
 #[tokio::test]
 async fn api_config_reload_returns_status() {
     let (_, router) = router_with_state();
-    let (status, _body) = json_post(router, "/api/config/reload", Value::Object(Default::default())).await;
+    let (status, _body) = json_post(
+        router,
+        "/api/config/reload",
+        Value::Object(Default::default()),
+    )
+    .await;
     assert!(status.is_success());
 }
 
@@ -502,7 +556,10 @@ async fn config_v1_and_v2_get_return_same_data() {
     let (_, router) = router_with_state();
     let (_, v1) = json_get(router.clone(), "/config").await;
     let (_, v2) = json_get(router, "/api/config").await;
-    assert_eq!(v1, v2, "v1 /config and v2 /api/config must return identical bodies");
+    assert_eq!(
+        v1, v2,
+        "v1 /config and v2 /api/config must return identical bodies"
+    );
 }
 
 #[tokio::test]
@@ -538,7 +595,10 @@ async fn bootstrap_agent_returns_array_with_build() {
     assert_eq!(status, StatusCode::OK);
     let arr = body.as_array().expect("must be array");
     assert!(!arr.is_empty(), "agent list must not be empty");
-    assert!(arr.iter().any(|a| a["id"] == "build"), "must contain 'build' agent");
+    assert!(
+        arr.iter().any(|a| a["id"] == "build"),
+        "must contain 'build' agent"
+    );
 }
 
 // ─── GET /model ───────────────────────────────────────────────────
@@ -548,8 +608,10 @@ async fn bootstrap_model_returns_array() {
     let (_, router) = router_with_state();
     let (status, body) = json_get(router, "/model").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.is_object() || body.is_array(),
-        "model response must be object (Location.response) or array, got: {body}");
+    assert!(
+        body.is_object() || body.is_array(),
+        "model response must be object (Location.response) or array, got: {body}"
+    );
 }
 
 // ─── GET /command ─────────────────────────────────────────────────
@@ -573,7 +635,10 @@ async fn bootstrap_api_provider_returns_location_envelope() {
     let (_, router) = router_with_state();
     let (status, body) = json_get(router, "/api/provider").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.is_object(), "must be object (Location.response), got: {body}");
+    assert!(
+        body.is_object(),
+        "must be object (Location.response), got: {body}"
+    );
 }
 
 // ─── GET /api/agent ───────────────────────────────────────────────
@@ -586,7 +651,10 @@ async fn bootstrap_api_agent_returns_location_envelope_with_loom() {
     assert!(body.is_object(), "must be object");
     let data = &body["data"];
     assert!(data.is_array(), "data must be array");
-    assert!(data.as_array().unwrap().iter().any(|a| a["id"] == "loom"), "must contain 'loom' agent");
+    assert!(
+        data.as_array().unwrap().iter().any(|a| a["id"] == "loom"),
+        "must contain 'loom' agent"
+    );
 }
 
 // ─── GET /api/model ───────────────────────────────────────────────
@@ -619,7 +687,10 @@ async fn bootstrap_app_agent_returns_array_with_build() {
     let (status, body) = json_get(router, "/api/app/agent").await;
     assert_eq!(status, StatusCode::OK);
     let arr = body.as_array().expect("must be array");
-    assert!(arr.iter().any(|a| a["id"] == "build"), "must contain 'build' agent");
+    assert!(
+        arr.iter().any(|a| a["id"] == "build"),
+        "must contain 'build' agent"
+    );
 }
 
 // ─── GET /api/app/model ───────────────────────────────────────────
@@ -682,8 +753,10 @@ async fn bootstrap_api_location_returns_directory() {
     let (_, router) = router_with_state();
     let (status, body) = json_get(router, "/api/location").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body["directory"].is_string() || body["project"]["directory"].is_string(),
-        "location must have directory field, got: {body}");
+    assert!(
+        body["directory"].is_string() || body["project"]["directory"].is_string(),
+        "location must have directory field, got: {body}"
+    );
 }
 
 // ─── PATCH /api/location ──────────────────────────────────────────
@@ -700,7 +773,10 @@ async fn bootstrap_api_location_patch_updates_directory() {
     assert_eq!(status, StatusCode::OK);
     let (_, after) = json_get(router, "/api/location").await;
     let dir = after["directory"].as_str().unwrap_or_default();
-    assert!(dir.contains("test-workspace"), "directory should be updated, got: {dir}");
+    assert!(
+        dir.contains("test-workspace"),
+        "directory should be updated, got: {dir}"
+    );
 }
 
 // ─── PUT /api/location/workspace ──────────────────────────────────
@@ -708,7 +784,12 @@ async fn bootstrap_api_location_patch_updates_directory() {
 #[tokio::test]
 async fn bootstrap_api_location_workspace_returns_directories() {
     let (_, router) = router_with_state();
-    let (status, body) = put(router, "/api/location/workspace", Value::Object(Default::default())).await;
+    let (status, body) = put(
+        router,
+        "/api/location/workspace",
+        Value::Object(Default::default()),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert!(body["cwd"].is_string(), "must return cwd, got: {body}");
     assert!(body["configDir"].is_string(), "must return configDir");
@@ -734,7 +815,10 @@ async fn bootstrap_api_path_returns_cwd_and_home() {
 async fn create_test_session(router: &axum::Router) -> String {
     let (status, body) = json_post(router.clone(), "/session", json!({})).await;
     assert_eq!(status, StatusCode::OK);
-    body["id"].as_str().expect("session must have id").to_string()
+    body["id"]
+        .as_str()
+        .expect("session must have id")
+        .to_string()
 }
 
 // ─── GET /session ─────────────────────────────────────────────────
@@ -800,7 +884,12 @@ async fn session_get_nonexistent_returns_404() {
 async fn session_patch_updates_title() {
     let (_, router) = router_with_state();
     let id = create_test_session(&router).await;
-    let (status, body) = patch(router.clone(), &format!("/session/{id}"), json!({"title": "My Session"})).await;
+    let (status, body) = patch(
+        router.clone(),
+        &format!("/session/{id}"),
+        json!({"title": "My Session"}),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["title"], "My Session");
 }
@@ -809,7 +898,12 @@ async fn session_patch_updates_title() {
 async fn session_patch_updates_agent() {
     let (_, router) = router_with_state();
     let id = create_test_session(&router).await;
-    let (status, body) = patch(router, &format!("/session/{id}"), json!({"agent": "review"})).await;
+    let (status, body) = patch(
+        router,
+        &format!("/session/{id}"),
+        json!({"agent": "review"}),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["agent"], "review");
 }
@@ -875,7 +969,10 @@ async fn session_delete_removes_from_list() {
     let (status, body) = json_get(router, "/session").await;
     assert_eq!(status, StatusCode::OK);
     let sessions = body.as_array().unwrap();
-    assert!(sessions.iter().all(|s| s["id"] != id), "deleted session must not appear in list");
+    assert!(
+        sessions.iter().all(|s| s["id"] != id),
+        "deleted session must not appear in list"
+    );
 }
 
 // ─── GET /api/session (v2 alias) ──────────────────────────────────
@@ -915,7 +1012,12 @@ async fn api_session_get_returns_details() {
 async fn api_session_patch_updates_title() {
     let (_, router) = router_with_state();
     let id = create_test_session(&router).await;
-    let (status, body) = patch(router, &format!("/api/session/{id}"), json!({"title": "V2 Title"})).await;
+    let (status, body) = patch(
+        router,
+        &format!("/api/session/{id}"),
+        json!({"title": "V2 Title"}),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["title"], "V2 Title");
 }
@@ -947,9 +1049,15 @@ async fn api_session_active_returns_sessions_envelope() {
     let _ = create_test_session(&router).await;
     let (status, body) = json_get(router, "/api/session/active").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body["sessions"].is_array(), "must have sessions array, got: {body}");
+    assert!(
+        body["sessions"].is_array(),
+        "must have sessions array, got: {body}"
+    );
     let arr = body["sessions"].as_array().unwrap();
-    assert!(!arr.is_empty(), "sessions array should not be empty after creating a session");
+    assert!(
+        !arr.is_empty(),
+        "sessions array should not be empty after creating a session"
+    );
     assert!(arr[0]["id"].is_string());
     assert!(arr[0]["state"].is_string());
 }
@@ -961,7 +1069,10 @@ async fn api_session_create_endpoint_returns_session() {
     let (_, router) = router_with_state();
     let (status, body) = json_post(router, "/api/session/create", json!({})).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body["session"].is_object(), "must have session object, got: {body}");
+    assert!(
+        body["session"].is_object(),
+        "must have session object, got: {body}"
+    );
     assert!(body["session"]["id"].is_string(), "session must have id");
 }
 
@@ -982,7 +1093,11 @@ async fn global_session_delete_uses_full_cascade() {
         )
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::NO_CONTENT, "must return 204 (full cascade handler)");
+    assert_eq!(
+        response.status(),
+        StatusCode::NO_CONTENT,
+        "must return 204 (full cascade handler)"
+    );
     let (_, body) = json_get(router, "/session").await;
     let sessions = body.as_array().unwrap();
     assert!(
@@ -998,7 +1113,10 @@ async fn session_v1_and_v2_list_return_same_data() {
     let (_, router) = router_with_state();
     let (_, v1) = json_get(router.clone(), "/session").await;
     let (_, v2) = json_get(router, "/api/session").await;
-    assert_eq!(v1, v2, "v1 /session and v2 /api/session must return identical lists");
+    assert_eq!(
+        v1, v2,
+        "v1 /session and v2 /api/session must return identical lists"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1126,7 +1244,8 @@ async fn agent_abort_nonexistent_returns_ok_with_cancelled_false() {
 async fn agent_interrupt_returns_ok() {
     let (_, router) = router_with_state();
     let id = create_test_session(&router).await;
-    let (status, body) = json_post(router, &format!("/api/session/{id}/interrupt"), json!({})).await;
+    let (status, body) =
+        json_post(router, &format!("/api/session/{id}/interrupt"), json!({})).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["ok"], true);
 }
@@ -1255,8 +1374,10 @@ async fn agent_shell_executes_echo() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.get("info").is_some() || body.get("output").is_some(),
-        "shell response should contain info or output, got: {body}");
+    assert!(
+        body.get("info").is_some() || body.get("output").is_some(),
+        "shell response should contain info or output, got: {body}"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1301,7 +1422,12 @@ async fn lifecycle_init_nonexistent_returns_200_or_404() {
 async fn lifecycle_fork_creates_child_session() {
     let (_, router) = router_with_state();
     let parent_id = create_test_session(&router).await;
-    let (status, body) = json_post(router.clone(), &format!("/session/{parent_id}/fork"), json!({})).await;
+    let (status, body) = json_post(
+        router.clone(),
+        &format!("/session/{parent_id}/fork"),
+        json!({}),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert!(body["id"].is_string(), "forked session must have an id");
     assert_ne!(body["id"], parent_id, "child must have different id");
@@ -1335,12 +1461,19 @@ async fn lifecycle_summarize_returns_ok() {
 async fn lifecycle_share_sets_share_url() {
     let (_, router) = router_with_state();
     let id = create_test_session(&router).await;
-    let (status, body) = json_post(router.clone(), &format!("/session/{id}/share"), json!({})).await;
+    let (status, body) =
+        json_post(router.clone(), &format!("/session/{id}/share"), json!({})).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body["share"].is_object(), "session must have share object, got: {body}");
+    assert!(
+        body["share"].is_object(),
+        "session must have share object, got: {body}"
+    );
     assert!(body["share"]["url"].is_string(), "share must have url");
     let (_, after) = json_get(router, &format!("/session/{id}")).await;
-    assert!(after["share"].is_object(), "session should be persisted as shared");
+    assert!(
+        after["share"].is_object(),
+        "session should be persisted as shared"
+    );
 }
 
 #[tokio::test]
@@ -1382,7 +1515,10 @@ async fn lifecycle_unshare_v2_clears_share() {
     let status = delete_raw(router.clone(), &format!("/api/session/{id}/share")).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
     let (_, body) = json_get(router, &format!("/session/{id}")).await;
-    assert!(body["share"].is_null(), "share must be cleared after v2 unshare");
+    assert!(
+        body["share"].is_null(),
+        "share must be cleared after v2 unshare"
+    );
 }
 
 // ─── GET /session/:id/children ────────────────────────────────────
@@ -1401,8 +1537,18 @@ async fn lifecycle_children_returns_empty_for_session_without_forks() {
 async fn lifecycle_children_returns_forked_sessions() {
     let (_, router) = router_with_state();
     let parent_id = create_test_session(&router).await;
-    let _ = json_post(router.clone(), &format!("/session/{parent_id}/fork"), json!({})).await;
-    let _ = json_post(router.clone(), &format!("/session/{parent_id}/fork"), json!({})).await;
+    let _ = json_post(
+        router.clone(),
+        &format!("/session/{parent_id}/fork"),
+        json!({}),
+    )
+    .await;
+    let _ = json_post(
+        router.clone(),
+        &format!("/session/{parent_id}/fork"),
+        json!({}),
+    )
+    .await;
     let (status, body) = json_get(router, &format!("/session/{parent_id}/children")).await;
     assert_eq!(status, StatusCode::OK);
     let children = body.as_array().unwrap();
@@ -1463,7 +1609,8 @@ async fn lifecycle_v2_init_returns_ok() {
 async fn lifecycle_v2_fork_creates_child() {
     let (_, router) = router_with_state();
     let parent_id = create_test_session(&router).await;
-    let (status, body) = json_post(router, &format!("/api/session/{parent_id}/fork"), json!({})).await;
+    let (status, body) =
+        json_post(router, &format!("/api/session/{parent_id}/fork"), json!({})).await;
     assert_eq!(status, StatusCode::OK);
     assert!(body["id"].is_string());
     assert_ne!(body["id"], parent_id);
@@ -1473,7 +1620,8 @@ async fn lifecycle_v2_fork_creates_child() {
 async fn lifecycle_v2_summarize_returns_ok() {
     let (_, router) = router_with_state();
     let id = create_test_session(&router).await;
-    let (status, body) = json_post(router, &format!("/api/session/{id}/summarize"), json!({})).await;
+    let (status, body) =
+        json_post(router, &format!("/api/session/{id}/summarize"), json!({})).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["ok"], true);
 }
@@ -1482,7 +1630,12 @@ async fn lifecycle_v2_summarize_returns_ok() {
 async fn lifecycle_v2_share_sets_url() {
     let (_, router) = router_with_state();
     let id = create_test_session(&router).await;
-    let (status, body) = json_post(router.clone(), &format!("/api/session/{id}/share"), json!({})).await;
+    let (status, body) = json_post(
+        router.clone(),
+        &format!("/api/session/{id}/share"),
+        json!({}),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert!(body["share"]["url"].is_string());
 }

@@ -18,12 +18,12 @@ use serde_json::{json, Value};
 
 use crate::agent_runner::{run_agent, RunCompletion};
 use crate::location::LocationQuery;
-use crate::translator;
 use crate::state::{
     begin_run, emit, end_run, lookup_run, make_session, new_message_id, new_part_id,
     new_session_id, persist_messages, persist_parts, persist_session, persist_session_cascade,
     persist_session_delete, MessageInfo, ModelInfo, PartInfo, SessionInfo, SharedState,
 };
+use crate::translator;
 
 /// SessionNotFoundError response body (contract shape: `{sessionID, message}`).
 fn session_not_found(session_id: &str) -> Response {
@@ -118,10 +118,7 @@ pub async fn patch_session(
 }
 
 /// `DELETE /session/:id` — remove session.
-pub async fn delete_session(
-    State(state): State<SharedState>,
-    Path(id): Path<String>,
-) -> Response {
+pub async fn delete_session(State(state): State<SharedState>, Path(id): Path<String>) -> Response {
     let existed = state.sessions.write().remove(&id).is_some();
     if existed {
         // Drop per-session state too so a re-create is clean.
@@ -216,10 +213,7 @@ async fn prompt_v2(state: SharedState, session_id: String, body: Value) -> Respo
         .unwrap_or(0);
 
     // ── Admit the input: create the user message durably ──────────────
-    let agent_name = session
-        .agent
-        .clone()
-        .unwrap_or_else(|| "build".to_string());
+    let agent_name = session.agent.clone().unwrap_or_else(|| "build".to_string());
     let user_info = MessageInfo {
         id: message_id.clone(),
         session_id: session_id.clone(),
@@ -346,19 +340,30 @@ async fn prompt_v2(state: SharedState, session_id: String, body: Value) -> Respo
         };
         let final_info = {
             let mut messages = state_bg.messages.write();
-            let message = messages.get_mut(&sid).and_then(|messages| {
-                messages
-                    .iter_mut()
-                    .find(|m| m.id == assistant_message_id)
-            });
+            let message = messages
+                .get_mut(&sid)
+                .and_then(|messages| messages.iter_mut().find(|m| m.id == assistant_message_id));
             if let Some(message) = message {
                 message.finish = Some(finish.to_string());
                 message.time = json!({"created": now_bg, "completed": completed});
+                if let Err(error) = &outcome {
+                    message.error = Some(json!({"message": error}));
+                }
                 serde_json::to_value(message).unwrap_or(Value::Null)
             } else {
                 Value::Null
             }
         };
+        if let Err(error) = &outcome {
+            emit(
+                &state_bg,
+                "session.error",
+                json!({
+                    "sessionID": &sid,
+                    "error": {"name": "UnknownError", "data": {"message": error}}
+                }),
+            );
+        }
         persist_messages(&state_bg, &sid);
         persist_parts(&state_bg, &assistant_message_id);
         emit(
@@ -366,12 +371,8 @@ async fn prompt_v2(state: SharedState, session_id: String, body: Value) -> Respo
             "message.updated",
             json!({"sessionID": &sid, "info": final_info}),
         );
-        translator::close_open_text_parts(
-            &state_bg,
-            &sid,
-            &assistant_message_id,
-            completed,
-        );
+        translator::finalize_text_part(&state_bg, &sid, &assistant_message_id);
+        translator::finalize_all_reasoning_parts(&state_bg, &sid, &assistant_message_id);
         emit(
             &state_bg,
             "session.status",
@@ -794,11 +795,8 @@ pub async fn session_abort(
     State(state): State<SharedState>,
     Path(session_id): Path<String>,
 ) -> Json<Value> {
-    match lookup_run(&state, &session_id) {
-        Some(token) => {
-            token.cancel();
-        }
-        None => {}
+    if let Some(ref token) = lookup_run(&state, &session_id) {
+        token.cancel();
     }
     if let Some(ref token) = lookup_run(&state, &session_id) {
         end_run(&state, &session_id, token.generation());
@@ -1322,6 +1320,9 @@ pub(crate) async fn run_prompt(
         if let Some(message) = message {
             message.finish = Some(finish.to_string());
             message.time = json!({"created": now, "completed": completed});
+            if let Err(error) = &outcome {
+                message.error = Some(json!({"message": error}));
+            }
             serde_json::to_value(message).unwrap_or(Value::Null)
         } else {
             Value::Null
@@ -1334,12 +1335,8 @@ pub(crate) async fn run_prompt(
         "message.updated",
         json!({"sessionID": session_id, "info": final_info}),
     );
-    translator::close_open_text_parts(
-        &state,
-        &session_id,
-        &assistant_message_id,
-        completed,
-    );
+    translator::finalize_text_part(&state, &session_id, &assistant_message_id);
+    translator::finalize_all_reasoning_parts(&state, &session_id, &assistant_message_id);
     emit(
         &state,
         "session.status",

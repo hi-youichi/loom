@@ -42,18 +42,15 @@ pub async fn get_vcs_status() -> Json<Value> {
             };
             Json(json!(parse_file_status(&status_output, &numstat)))
         }
-        GitResult::NotARepo => error_envelope(
-            "NOT_A_REPO",
-            &format!("not a git repository: {dir}"),
-        ),
-        GitResult::OtherError(msg) => error_envelope(
-            "GIT_ERROR",
-            &format!("git status failed: {msg}"),
-        ),
-        GitResult::Unavailable(msg) => error_envelope(
-            "GIT_UNAVAILABLE",
-            &format!("failed to execute git: {msg}"),
-        ),
+        GitResult::NotARepo => {
+            error_envelope("NOT_A_REPO", &format!("not a git repository: {dir}"))
+        }
+        GitResult::OtherError(msg) => {
+            error_envelope("GIT_ERROR", &format!("git status failed: {msg}"))
+        }
+        GitResult::Unavailable(msg) => {
+            error_envelope("GIT_UNAVAILABLE", &format!("failed to execute git: {msg}"))
+        }
     }
 }
 
@@ -99,7 +96,8 @@ pub async fn get_vcs_diff_raw() -> Response {
             error_envelope("GIT_ERROR", &format!("git diff failed: {msg}")).into_response()
         }
         GitResult::Unavailable(msg) => {
-            error_envelope("GIT_UNAVAILABLE", &format!("failed to execute git: {msg}")).into_response()
+            error_envelope("GIT_UNAVAILABLE", &format!("failed to execute git: {msg}"))
+                .into_response()
         }
     }
 }
@@ -188,8 +186,7 @@ fn error_envelope(code: &str, message: &str) -> Json<Value> {
 /// Parse `git status --porcelain` + `git diff --numstat HEAD` into
 /// `Vcs.FileStatus[] = [{file, additions, deletions, status}]`.
 fn parse_file_status(status_output: &str, numstat: &str) -> Vec<Value> {
-    let mut stats: std::collections::HashMap<String, (i64, i64)> =
-        std::collections::HashMap::new();
+    let mut stats: std::collections::HashMap<String, (i64, i64)> = std::collections::HashMap::new();
     for line in numstat.lines() {
         let parts: Vec<&str> = line.splitn(3, '\t').collect();
         if parts.len() == 3 {
@@ -299,7 +296,7 @@ fn clean_path(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_file_status, parse_file_diffs};
+    use super::{parse_file_diffs, parse_file_status};
 
     #[test]
     fn parse_file_status_maps_porcelain_codes() {

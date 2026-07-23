@@ -190,10 +190,7 @@ pub async fn list(State(state): State<SharedState>) -> Response {
 /// `GET /api/integration/:integrationID` (integration.ts:25-39) — one
 /// integration. Success is `UndefinedOr(Integration.Info)`: when the id is
 /// unknown the response carries no `data` (200, not 404).
-pub async fn get(
-    State(state): State<SharedState>,
-    Path(integration_id): Path<String>,
-) -> Response {
+pub async fn get(State(state): State<SharedState>, Path(integration_id): Path<String>) -> Response {
     let integrations = build_catalog(&state);
     if let Some(info) = integrations.into_iter().find(|i| i.id == integration_id) {
         return location_response(&state, info).into_response();
@@ -263,10 +260,7 @@ pub async fn connect_key(
     Json(body): Json<ConnectKeyBody>,
 ) -> Result<StatusCode, (StatusCode, Json<Value>)> {
     if body.key.trim().is_empty() {
-        return Err(invalid_request(
-            "key is required",
-            Some("key"),
-        ));
+        return Err(invalid_request("key is required", Some("key")));
     }
     let cred_id = new_credential_id();
     {

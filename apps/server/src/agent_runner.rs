@@ -109,6 +109,9 @@ pub async fn run_agent(
     agent_name: Option<String>,
     cancellation: RunCancellation,
 ) -> Result<RunCompletion, String> {
+    state.active_text.write().remove(&message_id);
+    state.active_reasoning.write().remove(&message_id);
+
     let opts = build_run_options_for_prompt(
         &session_id,
         working_folder,

@@ -30,7 +30,10 @@ pub struct WriteFileTool {
 impl WriteFileTool {
     /// Creates a new WriteFileTool with the given working folder.
     pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
-        Self { working_folder, allow_outside }
+        Self {
+            working_folder,
+            allow_outside,
+        }
     }
 }
 

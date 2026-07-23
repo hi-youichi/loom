@@ -157,7 +157,8 @@ fn build_session_stream(
         async move { serialize_event(&event, ChannelKind::V2) }
     });
 
-    seed.chain(stream::iter(replay)).chain(stream::select(bus, heartbeat))
+    seed.chain(stream::iter(replay))
+        .chain(stream::select(bus, heartbeat))
 }
 
 fn event_matches_session(event: &GlobalEvent, session_id: &str) -> bool {
@@ -240,8 +241,7 @@ mod tests {
         // Flat shape: id + type at top level, data (not properties),
         // location:{directory,workspaceID?}, no payload wrapper, no top-level
         // directory/project/workspace.
-        let parsed: serde_json::Value =
-            serde_json::from_str(&serialized_v2).expect("valid JSON");
+        let parsed: serde_json::Value = serde_json::from_str(&serialized_v2).expect("valid JSON");
         assert_eq!(parsed["type"], "test.event");
         assert_eq!(parsed["data"]["hello"], "world");
         assert!(parsed["id"].as_str().unwrap().starts_with("evt_"));

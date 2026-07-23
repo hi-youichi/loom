@@ -351,10 +351,10 @@ mod tests {
 // Integration tests with SessionNotifier
 #[cfg(test)]
 mod session_notifier_integration_tests {
-    
-    use agent_client_protocol::schema::v1::SessionId;
+
     use crate::stream_bridge::SessionNotifier;
-    
+    use agent_client_protocol::schema::v1::SessionId;
+
     use std::time::Duration;
     use tokio::sync::mpsc;
 

@@ -277,7 +277,10 @@ mod tests {
         // Valid text round-trips.
         assert_eq!(decode_input(b"hello"), Some("hello".to_string()));
         // Multibyte UTF-8 is valid.
-        assert_eq!(decode_input("héllowörld".as_bytes()), Some("héllowörld".to_string()));
+        assert_eq!(
+            decode_input("héllowörld".as_bytes()),
+            Some("héllowörld".to_string())
+        );
         // Empty frame is valid UTF-8 -> Some("").
         assert_eq!(decode_input(b""), Some(String::new()));
         // Lone continuation / invalid lead byte -> None.

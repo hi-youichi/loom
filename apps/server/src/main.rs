@@ -91,18 +91,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match config::load_full_config("loom") {
                     Ok(cfg) => {
                         let count = cfg.providers.len();
-                        let default = cfg
-                            .default_provider
-                            .as_deref()
-                            .unwrap_or("(none)");
-                        tracing::info!(
-                            "SIGHUP reload OK: {count} providers, default={default}"
-                        );
+                        let default = cfg.default_provider.as_deref().unwrap_or("(none)");
+                        tracing::info!("SIGHUP reload OK: {count} providers, default={default}");
                     }
                     Err(e) => {
-                        tracing::error!(
-                            "SIGHUP reload FAILED — keeping previous config: {e}"
-                        );
+                        tracing::error!("SIGHUP reload FAILED — keeping previous config: {e}");
                     }
                 }
             }

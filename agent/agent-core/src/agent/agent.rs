@@ -3,7 +3,6 @@ use crate::agent::react::{ReactBuildConfig, ReactRunner};
 use crate::runner_common::StreamRunOutcome;
 use crate::state::ReActState;
 use checkpoint::RunnableConfig;
-use loom_llm::MessageChunkKind;
 use std::sync::Arc;
 use stream_event::StreamEvent;
 
@@ -131,9 +130,9 @@ impl Agent {
 
 fn map_stream_event(ev: StreamEvent<ReActState>) -> Option<AgentEvent> {
     match ev {
-        StreamEvent::Messages { chunk, .. } => match chunk.kind {
-            MessageChunkKind::Thinking => Some(AgentEvent::ReasoningChunk(chunk.content)),
-            MessageChunkKind::Message => Some(AgentEvent::TextChunk(chunk.content)),
+        StreamEvent::TextDelta { content, .. } => Some(AgentEvent::TextChunk(content)),
+        StreamEvent::ReasoningDelta { content, .. } => {
+            Some(AgentEvent::ReasoningChunk(content))
         },
         StreamEvent::ToolCall {
             name, arguments, ..
@@ -154,17 +153,11 @@ fn map_stream_event(ev: StreamEvent<ReActState>) -> Option<AgentEvent> {
             result,
             is_error,
         }),
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            cached_tokens,
-            ..
-        } => Some(AgentEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            cached_tokens,
+        StreamEvent::TurnFinish { usage, .. } => Some(AgentEvent::Usage {
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
+            cached_tokens: usage.cached_tokens,
         }),
         _ => None,
     }
@@ -176,9 +169,7 @@ mod tests {
     use crate::agent::react::build::build_react_runner;
     use crate::ReactBuildConfig;
     use loom_llm::client::{FixedLlmProvider, MockLlm};
-    use loom_llm::MessageChunk;
-    use std::sync::Arc;
-    use stream_event::StreamMetadata;
+    use stream_event::{StreamMetadata, Usage};
 
     fn base_config() -> ReactBuildConfig {
         let mut cfg = ReactBuildConfig::from_env();
@@ -194,17 +185,11 @@ mod tests {
         }
     }
 
-    fn message_chunk(content: &str, kind: MessageChunkKind) -> MessageChunk {
-        MessageChunk {
-            content: content.to_string(),
-            kind,
-        }
-    }
-
+    use std::sync::Arc;
     #[test]
     fn map_messages_text_chunk() {
-        let ev = StreamEvent::<ReActState>::Messages {
-            chunk: message_chunk("hello", MessageChunkKind::Message),
+        let ev = StreamEvent::<ReActState>::TextDelta {
+            content: "hello".to_string(),
             metadata: stream_metadata(),
         };
         assert!(matches!(
@@ -215,8 +200,9 @@ mod tests {
 
     #[test]
     fn map_messages_reasoning_chunk() {
-        let ev = StreamEvent::<ReActState>::Messages {
-            chunk: message_chunk("thinking...", MessageChunkKind::Thinking),
+        let ev = StreamEvent::<ReActState>::ReasoningDelta {
+            id: "r0".to_string(),
+            content: "thinking...".to_string(),
             metadata: stream_metadata(),
         };
         assert!(matches!(
@@ -288,13 +274,14 @@ mod tests {
 
     #[test]
     fn map_usage() {
-        let ev = StreamEvent::<ReActState>::Usage {
-            prompt_tokens: 100,
-            completion_tokens: 50,
-            total_tokens: 150,
-            cached_tokens: None,
-            prefill_duration: None,
-            decode_duration: None,
+        let ev = StreamEvent::<ReActState>::TurnFinish {
+            reason: "stop".to_string(),
+            usage: Usage {
+                prompt_tokens: 100,
+                completion_tokens: 50,
+                total_tokens: 150,
+                cached_tokens: None,
+            },
         };
         assert!(matches!(
             map_stream_event(ev),
@@ -309,13 +296,14 @@ mod tests {
 
     #[test]
     fn map_usage_event_propagates_cached_tokens() {
-        let ev = StreamEvent::<ReActState>::Usage {
-            prompt_tokens: 100,
-            completion_tokens: 50,
-            total_tokens: 150,
-            cached_tokens: Some(40),
-            prefill_duration: None,
-            decode_duration: None,
+        let ev = StreamEvent::<ReActState>::TurnFinish {
+            reason: "stop".to_string(),
+            usage: Usage {
+                prompt_tokens: 100,
+                completion_tokens: 50,
+                total_tokens: 150,
+                cached_tokens: Some(40),
+            },
         };
         let mapped = map_stream_event(ev);
         if let Some(AgentEvent::Usage {

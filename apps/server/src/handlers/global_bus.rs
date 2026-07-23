@@ -56,9 +56,7 @@ pub async fn get_global_version() -> Json<Value> {
 /// launched by the host process and has no self-update capability. Returns
 /// 501 honestly rather than a success-shaped stub that would claim an update
 /// was applied.
-pub async fn post_global_instance_update(
-    Json(_body): Json<Value>,
-) -> (StatusCode, Json<Value>) {
+pub async fn post_global_instance_update(Json(_body): Json<Value>) -> (StatusCode, Json<Value>) {
     (
         StatusCode::NOT_IMPLEMENTED,
         Json(json!({ "error": "instance update is not supported" })),
@@ -113,11 +111,7 @@ pub async fn patch_global_config(
             }
             Err(error) => tracing::warn!(%error, "failed to serialize global config"),
         }
-        emit(
-            &state,
-            "server.config.changed",
-            json!({}),
-        );
+        emit(&state, "server.config.changed", json!({}));
     }
     response
 }

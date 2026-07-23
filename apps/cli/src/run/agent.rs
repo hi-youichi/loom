@@ -19,7 +19,6 @@ use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use stream_event::Envelope;
-use stream_event::MessageChunkKind;
 
 type StreamCallback = Arc<Mutex<dyn FnMut(Value) + Send>>;
 
@@ -474,11 +473,37 @@ pub async fn run_agent_wrapper(
 
 use crate::display::StreamingMarkdownRenderer;
 
-fn print_stream_chunk(
-    chunk: &stream_event::MessageChunk,
-    renderer: &mut StreamingMarkdownRenderer,
+fn print_stream_chunk(content: &str, renderer: &mut StreamingMarkdownRenderer) {
+    renderer.push_text(content);
+}
+
+fn handle_stream_content(
+    s: &mut EventState,
+    content: &str,
+    is_thinking: bool,
+    output_timestamp: bool,
 ) {
-    renderer.push_chunk(chunk);
+    if is_thinking {
+        s.in_thinking = true;
+    }
+    if let Some(sp) = s.spinner.take() {
+        sp.finish_box();
+    }
+    if !s.reply_started {
+        if let Some(ref ad) = s.agent_display {
+            eprintln!("{}", panel_format::format_panel_line("AGENT", ad));
+        }
+        if output_timestamp {
+            print_reply_timestamp();
+        }
+        s.reply_started = true;
+    }
+    if s.in_thinking && !is_thinking {
+        eprintln!();
+        eprintln!("{}", panel_format::format_thinking_separator());
+        s.in_thinking = false;
+    }
+    print_stream_chunk(content, &mut s.markdown_renderer);
 }
 
 fn on_event_react(
@@ -501,7 +526,8 @@ fn on_event_react(
             "observe" => "TaskEnd(observe)",
             _ => "TaskEnd(other)",
         },
-        StreamEvent::Messages { .. } => "Messages",
+        StreamEvent::TextDelta { .. } => "TextDelta",
+        StreamEvent::ReasoningDelta { .. } => "ReasoningDelta",
         StreamEvent::Values(_) => "Values",
         StreamEvent::Updates { .. } => "Updates",
         StreamEvent::Custom(_) => "Custom",
@@ -529,30 +555,11 @@ fn on_event_react(
             log_node_enter(s.last_node.as_deref(), node_id, verbose);
             s.last_node = Some(node_id.clone());
         }
-        StreamEvent::Messages { chunk, .. } => {
-            if chunk.kind == MessageChunkKind::Thinking {
-                // Thinking content: dimmed on TTY, prefixed on pipe
-                s.in_thinking = true;
-            }
-            if let Some(sp) = s.spinner.take() {
-                sp.finish_box();
-            }
-            if !s.reply_started {
-                if let Some(ref ad) = s.agent_display {
-                    eprintln!("{}", panel_format::format_panel_line("AGENT", ad));
-                }
-                if output_timestamp {
-                    print_reply_timestamp();
-                }
-                s.reply_started = true;
-            }
-            // Print separator when transitioning from thinking to reply
-            if s.in_thinking && chunk.kind != MessageChunkKind::Thinking {
-                eprintln!();
-                eprintln!("{}", panel_format::format_thinking_separator());
-                s.in_thinking = false;
-            }
-            print_stream_chunk(chunk, &mut s.markdown_renderer);
+        StreamEvent::TextDelta { content, .. } => {
+            handle_stream_content(s, content, false, output_timestamp);
+        }
+        StreamEvent::ReasoningDelta { content, .. } => {
+            handle_stream_content(s, content, true, output_timestamp);
         }
         StreamEvent::Updates {
             node_id,
@@ -725,19 +732,8 @@ fn on_event_react(
                 s.pending_tool_results.clear();
             }
         }
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            prefill_duration,
-            decode_duration,
-            ..
-        } => {
-            s.accumulate_usage(
-                *prompt_tokens,
-                *completion_tokens,
-                *prefill_duration,
-                *decode_duration,
-            );
+        StreamEvent::TurnFinish { usage, .. } => {
+            s.accumulate_usage(usage.prompt_tokens, usage.completion_tokens);
         }
         _ => {}
     }
@@ -757,20 +753,11 @@ fn on_event_dup(
             log_node_enter(s.last_node.as_deref(), node_id, verbose);
             s.last_node = Some(node_id.clone());
         }
-        StreamEvent::Messages { chunk, .. } => {
-            if let Some(sp) = s.spinner.take() {
-                sp.finish_box();
-            }
-            if !s.reply_started {
-                if let Some(ref ad) = s.agent_display {
-                    eprintln!("{}", panel_format::format_panel_line("AGENT", ad));
-                }
-                if output_timestamp {
-                    print_reply_timestamp();
-                }
-                s.reply_started = true;
-            }
-            print_stream_chunk(chunk, &mut s.markdown_renderer);
+        StreamEvent::TextDelta { content, .. } => {
+            handle_stream_content(s, content, false, output_timestamp);
+        }
+        StreamEvent::ReasoningDelta { content, .. } => {
+            handle_stream_content(s, content, true, output_timestamp);
         }
         StreamEvent::Updates { node_id, state, .. } => {
             if verbose {
@@ -818,19 +805,8 @@ fn on_event_dup(
                 }
             }
         }
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            prefill_duration,
-            decode_duration,
-            ..
-        } => {
-            s.accumulate_usage(
-                *prompt_tokens,
-                *completion_tokens,
-                *prefill_duration,
-                *decode_duration,
-            );
+        StreamEvent::TurnFinish { usage, .. } => {
+            s.accumulate_usage(usage.prompt_tokens, usage.completion_tokens);
         }
         _ => {}
     }
@@ -872,20 +848,11 @@ fn on_event_tot(
                 );
             }
         }
-        StreamEvent::Messages { chunk, .. } => {
-            if let Some(sp) = s.spinner.take() {
-                sp.finish_box();
-            }
-            if !s.reply_started {
-                if let Some(ref ad) = s.agent_display {
-                    eprintln!("{}", panel_format::format_panel_line("AGENT", ad));
-                }
-                if output_timestamp {
-                    print_reply_timestamp();
-                }
-                s.reply_started = true;
-            }
-            print_stream_chunk(chunk, &mut s.markdown_renderer);
+        StreamEvent::TextDelta { content, .. } => {
+            handle_stream_content(s, content, false, output_timestamp);
+        }
+        StreamEvent::ReasoningDelta { content, .. } => {
+            handle_stream_content(s, content, true, output_timestamp);
         }
         StreamEvent::Updates { node_id, state, .. } => {
             if verbose {
@@ -901,19 +868,8 @@ fn on_event_tot(
             } else if node_id == "act" && !state.core.tool_calls.is_empty() {
             }
         }
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            prefill_duration,
-            decode_duration,
-            ..
-        } => {
-            s.accumulate_usage(
-                *prompt_tokens,
-                *completion_tokens,
-                *prefill_duration,
-                *decode_duration,
-            );
+        StreamEvent::TurnFinish { usage, .. } => {
+            s.accumulate_usage(usage.prompt_tokens, usage.completion_tokens);
         }
         _ => {}
     }
@@ -927,9 +883,9 @@ struct EventState {
     reply_started: bool,
     /// Agent name (source) to print before first reply chunk when set.
     agent_display: Option<String>,
-    /// Accumulated prompt tokens from all StreamEvent::Usage in this run.
+    /// Accumulated prompt tokens from all StreamEvent::TurnFinish in this run.
     total_prompt_tokens: u32,
-    /// Accumulated completion tokens from all StreamEvent::Usage in this run.
+    /// Accumulated completion tokens from all StreamEvent::TurnFinish in this run.
     total_completion_tokens: u32,
     /// Whether we're currently in a thinking state (for separator on transition).
     in_thinking: bool,
@@ -950,19 +906,11 @@ struct EventState {
 }
 
 impl EventState {
-    fn accumulate_usage(
-        &mut self,
-        prompt_tokens: u32,
-        completion_tokens: u32,
-        prefill_duration: Option<std::time::Duration>,
-        decode_duration: Option<std::time::Duration>,
-    ) {
+    fn accumulate_usage(&mut self, prompt_tokens: u32, completion_tokens: u32) {
         self.total_prompt_tokens = self.total_prompt_tokens.saturating_add(prompt_tokens);
         self.total_completion_tokens = self
             .total_completion_tokens
             .saturating_add(completion_tokens);
-        self.last_prefill_duration = prefill_duration;
-        self.last_decode_duration = decode_duration;
         tracing::info!(
             prompt_tokens,
             completion_tokens,
@@ -1094,20 +1042,11 @@ fn on_event_got(
                 );
             }
         }
-        StreamEvent::Messages { chunk, .. } => {
-            if let Some(sp) = s.spinner.take() {
-                sp.finish_box();
-            }
-            if !s.reply_started {
-                if let Some(ref ad) = s.agent_display {
-                    eprintln!("AGENT: {}", ad);
-                }
-                if output_timestamp {
-                    print_reply_timestamp();
-                }
-                s.reply_started = true;
-            }
-            print_stream_chunk(chunk, &mut s.markdown_renderer);
+        StreamEvent::TextDelta { content, .. } => {
+            handle_stream_content(s, content, false, output_timestamp);
+        }
+        StreamEvent::ReasoningDelta { content, .. } => {
+            handle_stream_content(s, content, true, output_timestamp);
         }
         StreamEvent::Updates { node_id, state, .. } => {
             if verbose {
@@ -1115,19 +1054,8 @@ fn on_event_got(
                 eprintln!("{}", format_got_state_display(state, display_max_len));
             }
         }
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            prefill_duration,
-            decode_duration,
-            ..
-        } => {
-            s.accumulate_usage(
-                *prompt_tokens,
-                *completion_tokens,
-                *prefill_duration,
-                *decode_duration,
-            );
+        StreamEvent::TurnFinish { usage, .. } => {
+            s.accumulate_usage(usage.prompt_tokens, usage.completion_tokens);
         }
         _ => {}
     }
@@ -1474,8 +1402,8 @@ mod tests {
             false,
         );
         on_event_tot(
-            &StreamEvent::Messages {
-                chunk: stream_event::MessageChunk::message("tok"),
+            &StreamEvent::TextDelta {
+                content: "tok".to_string(),
                 metadata: stream_event::StreamMetadata {
                     loom_node: "think_expand".to_string(),
                     namespace: None,
@@ -1528,8 +1456,8 @@ mod tests {
             false,
         );
         on_event_tot(
-            &StreamEvent::Messages {
-                chunk: stream_event::MessageChunk::message("chunk"),
+            &StreamEvent::TextDelta {
+                content: "chunk".to_string(),
                 metadata: stream_event::StreamMetadata {
                     loom_node: "execute_graph".to_string(),
                     namespace: None,

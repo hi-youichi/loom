@@ -181,10 +181,7 @@ pub struct ListQuery {
 /// Success: `Location.response(FileSystem.Entry[])` — `{ location, data: [
 /// {path, type} ] }`. Returns a real `read_dir` listing (never an empty stub);
 /// a non-existent directory yields 404, an escaping path yields 403.
-pub async fn list(
-    State(state): State<SharedState>,
-    Query(q): Query<ListQuery>,
-) -> Response {
+pub async fn list(State(state): State<SharedState>, Query(q): Query<ListQuery>) -> Response {
     let root = location_root(&state, &q.location);
     let dir = match resolve_within(&root, q.path.as_deref()) {
         Ok(p) => p,
@@ -293,7 +290,11 @@ pub async fn delete(
         std::fs::remove_file(&resolved)
     };
     match result {
-        Ok(_) => (StatusCode::OK, Json(json!({"path": relative_to(&root, &resolved)}))).into_response(),
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({"path": relative_to(&root, &resolved)})),
+        )
+            .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": e.to_string()})),
@@ -388,10 +389,7 @@ pub struct StatQuery {
     pub path: Option<String>,
 }
 
-pub async fn stat(
-    State(state): State<SharedState>,
-    Query(q): Query<StatQuery>,
-) -> Response {
+pub async fn stat(State(state): State<SharedState>, Query(q): Query<StatQuery>) -> Response {
     let root = location_root(&state, &q.location);
     let resolved = match resolve_within(&root, q.path.as_deref()) {
         Ok(p) => p,
@@ -450,10 +448,7 @@ pub struct FindQuery {
 ///
 /// Uses ripgrep (`rg --files`) when available for speed, with a recursive walk
 /// fallback — the same search strategy as the legacy `/find` handler.
-pub async fn find(
-    State(state): State<SharedState>,
-    Query(q): Query<FindQuery>,
-) -> Response {
+pub async fn find(State(state): State<SharedState>, Query(q): Query<FindQuery>) -> Response {
     let Some(query) = q.query.as_deref() else {
         return (
             StatusCode::BAD_REQUEST,
@@ -495,10 +490,7 @@ fn find_entries(root: &StdPath, needle: &str, kind_filter: Option<&str>) -> Vec<
         if let Some(files) = find_via_ripgrep(root, &lc) {
             return files
                 .into_iter()
-                .map(|path| FsEntry {
-                    path,
-                    kind: "file",
-                })
+                .map(|path| FsEntry { path, kind: "file" })
                 .collect();
         }
     }
@@ -551,15 +543,13 @@ fn walk_find(
         let path = entry.path();
         let is_dir = path.is_dir();
         let rel = relative_to(root, &path);
-        let matches = rel.to_lowercase().contains(needle_lc) || name.to_lowercase().contains(needle_lc);
+        let matches =
+            rel.to_lowercase().contains(needle_lc) || name.to_lowercase().contains(needle_lc);
         if matches {
             let kind = if is_dir { "directory" } else { "file" };
             let wanted = (is_dir && want_dirs) || (!is_dir && want_files);
             if wanted {
-                results.push(FsEntry {
-                    path: rel,
-                    kind,
-                });
+                results.push(FsEntry { path: rel, kind });
             }
         }
         if is_dir {

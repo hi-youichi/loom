@@ -23,7 +23,11 @@ struct HubInner {
 const REPLAY_CAPACITY: usize = 512;
 
 impl Default for AcpHub {
-    fn default() -> Self { Self { inner: Mutex::new(None) } }
+    fn default() -> Self {
+        Self {
+            inner: Mutex::new(None),
+        }
+    }
 }
 
 impl AcpHub {
@@ -31,11 +35,14 @@ impl AcpHub {
     /// ACP agent. A later attach replaces only delivery, never session state.
     pub async fn attach(
         &self,
-    ) -> Result<(
-        Arc<loom_acp::LoomAcpAgent>,
-        mpsc::Receiver<SessionNotification>,
-        oneshot::Receiver<()>,
-    ), String> {
+    ) -> Result<
+        (
+            Arc<loom_acp::LoomAcpAgent>,
+            mpsc::Receiver<SessionNotification>,
+            oneshot::Receiver<()>,
+        ),
+        String,
+    > {
         let mut guard = self.inner.lock().await;
         if guard.is_none() {
             let (events_tx, mut events_rx) = mpsc::channel::<SessionNotification>(256);
@@ -46,16 +53,25 @@ impl AcpHub {
             tokio::spawn(async move {
                 while let Some(event) = events_rx.recv().await {
                     let mut buffer = replay_for_task.lock().await;
-                    if buffer.len() == REPLAY_CAPACITY { buffer.pop_front(); }
+                    if buffer.len() == REPLAY_CAPACITY {
+                        buffer.pop_front();
+                    }
                     buffer.push_back(event.clone());
                     drop(buffer);
                     let target = recipient_for_task.lock().await.clone();
-                    if let Some(tx) = target { let _ = tx.send(event).await; }
+                    if let Some(tx) = target {
+                        let _ = tx.send(event).await;
+                    }
                 }
             });
             let agent = loom_acp::LoomAcpAgent::with_session_update_tx(events_tx)
                 .map_err(|e| e.to_string())?;
-            *guard = Some(HubInner { agent: Arc::new(agent), recipient, replay, lease_cancel: None });
+            *guard = Some(HubInner {
+                agent: Arc::new(agent),
+                recipient,
+                replay,
+                lease_cancel: None,
+            });
         }
         let inner = guard.as_mut().expect("hub initialized");
         if let Some(previous) = inner.lease_cancel.take() {
@@ -69,7 +85,9 @@ impl AcpHub {
             // The bounded buffer and channel have the same capacity; a full
             // receiver means the caller attached too slowly, so preserve the
             // newest state and stop replaying older notifications.
-            if tx.try_send(event).is_err() { break; }
+            if tx.try_send(event).is_err() {
+                break;
+            }
         }
         *inner.recipient.lock().await = Some(tx);
         Ok((inner.agent.clone(), rx, lease))

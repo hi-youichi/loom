@@ -218,9 +218,7 @@ pub async fn reload_config() -> Response {
     match config::load_full_config(CONFIG_APP_NAME) {
         Ok(cfg) => {
             let provider_count = cfg.providers.len();
-            let default = cfg
-                .default_provider
-                .unwrap_or_else(|| "(none)".to_string());
+            let default = cfg.default_provider.unwrap_or_else(|| "(none)".to_string());
             Json(json!({
                 "status": "ok",
                 "message": "config reloaded",
@@ -229,16 +227,13 @@ pub async fn reload_config() -> Response {
             }))
             .into_response()
         }
-        Err(e) => {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "status": "error",
-                    "error": format!("config reload failed: {e}"),
-                })),
-            )
-                .into_response()
-        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "status": "error",
+                "error": format!("config reload failed: {e}"),
+            })),
+        )
+            .into_response(),
     }
 }
-

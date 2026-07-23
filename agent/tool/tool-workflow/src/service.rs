@@ -77,9 +77,8 @@ pub(crate) async fn start_workflow(
             let working_folder = runtime.working_folder();
             let path =
                 resolve_workflow(w, &working_folder).map_err(ToolSourceError::InvalidInput)?;
-            let source = std::fs::read_to_string(&path).map_err(|e| {
-                ToolSourceError::ToolError(format!("Failed to read workflow: {e}"))
-            })?;
+            let source = std::fs::read_to_string(&path)
+                .map_err(|e| ToolSourceError::ToolError(format!("Failed to read workflow: {e}")))?;
             let display_name = path
                 .file_stem()
                 .or_else(|| path.file_name())
@@ -113,9 +112,7 @@ pub(crate) async fn start_workflow(
         .base_dir(&base_dir)
         .concurrency(concurrency)
         .build()
-        .map_err(|e| {
-            ToolSourceError::ToolError(format!("Workflow engine build failed: {e}"))
-        })?;
+        .map_err(|e| ToolSourceError::ToolError(format!("Workflow engine build failed: {e}")))?;
 
     let run_handle = if let Some(id) = resume_from_id {
         luft.start_resume(id)
@@ -343,9 +340,8 @@ pub(crate) async fn read_status(
         let raw = std::fs::read_to_string(&instance_json_path).map_err(|e| {
             ToolSourceError::ToolError(format!("Failed to read instance summary: {e}"))
         })?;
-        let value: Value = serde_json::from_str(&raw).map_err(|e| {
-            ToolSourceError::ToolError(format!("Invalid instance summary: {e}"))
-        })?;
+        let value: Value = serde_json::from_str(&raw)
+            .map_err(|e| ToolSourceError::ToolError(format!("Invalid instance summary: {e}")))?;
         let sanitized = sanitize_instance_for_public(value);
         return Ok(ToolCallContent::Text(
             serde_json::to_string_pretty(&sanitized).unwrap_or_default(),
@@ -822,9 +818,8 @@ pub(crate) fn read_source(
         .resolve_instance_path(dir)
         .ok_or_else(|| ToolSourceError::InvalidInput(format!("Instance '{dir}' not found")))?;
 
-    let source = std::fs::read_to_string(resolved.join("workflow.lua")).map_err(|e| {
-        ToolSourceError::ToolError(format!("Failed to read workflow source: {e}"))
-    })?;
+    let source = std::fs::read_to_string(resolved.join("workflow.lua"))
+        .map_err(|e| ToolSourceError::ToolError(format!("Failed to read workflow source: {e}")))?;
 
     let (preview, truncated) = if source.len() > DEFAULT_SOURCE_PREVIEW_LIMIT {
         (
@@ -985,13 +980,19 @@ mod tests {
 
     #[test]
     fn list_limit_explicit_value() {
-        assert_eq!(parse_list_instances_limit(&json!({"limit": 50})).unwrap(), 50);
+        assert_eq!(
+            parse_list_instances_limit(&json!({"limit": 50})).unwrap(),
+            50
+        );
     }
 
     #[test]
     fn list_limit_at_bounds() {
         assert_eq!(parse_list_instances_limit(&json!({"limit": 1})).unwrap(), 1);
-        assert_eq!(parse_list_instances_limit(&json!({"limit": 100})).unwrap(), 100);
+        assert_eq!(
+            parse_list_instances_limit(&json!({"limit": 100})).unwrap(),
+            100
+        );
     }
 
     #[test]
@@ -1013,7 +1014,10 @@ mod tests {
 
     #[test]
     fn list_limit_null_treated_as_default() {
-        assert_eq!(parse_list_instances_limit(&json!({"limit": null})).unwrap(), 20);
+        assert_eq!(
+            parse_list_instances_limit(&json!({"limit": null})).unwrap(),
+            20
+        );
     }
 
     #[test]
@@ -1041,12 +1045,18 @@ mod tests {
 
     #[test]
     fn list_status_filter_missing_returns_none() {
-        assert!(parse_list_instances_status_filter(&json!({})).unwrap().is_none());
+        assert!(parse_list_instances_status_filter(&json!({}))
+            .unwrap()
+            .is_none());
     }
 
     #[test]
     fn list_status_filter_null_returns_none() {
-        assert!(parse_list_instances_status_filter(&json!({"status_filter": null})).unwrap().is_none());
+        assert!(
+            parse_list_instances_status_filter(&json!({"status_filter": null}))
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -1080,11 +1090,7 @@ mod tests {
 
     #[test]
     fn list_entry_from_checkpoint_skips_non_terminal() {
-        assert!(build_entry_from_checkpoint(
-            &sample_checkpoint("r", "running", 1),
-            "r"
-        )
-        .is_none());
+        assert!(build_entry_from_checkpoint(&sample_checkpoint("r", "running", 1), "r").is_none());
     }
 
     #[test]
@@ -1219,7 +1225,10 @@ mod tests {
         let mut set = HashSet::new();
         set.insert("run_done");
         assert!(event_matches_types(&ev(json!({"type": "run_done"})), &set));
-        assert!(!event_matches_types(&ev(json!({"type": "agent_started"})), &set));
+        assert!(!event_matches_types(
+            &ev(json!({"type": "agent_started"})),
+            &set
+        ));
     }
 
     #[test]
@@ -1417,11 +1426,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let wf_dir = tmp.path().join(".loom").join("workflows");
         std::fs::create_dir_all(&wf_dir).unwrap();
-        std::fs::write(
-            wf_dir.join("alpha.lua"),
-            "-- alpha\nfunction main() end\n",
-        )
-        .unwrap();
+        std::fs::write(wf_dir.join("alpha.lua"), "-- alpha\nfunction main() end\n").unwrap();
         std::fs::write(
             wf_dir.join("beta.lua"),
             "\n\n-- beta\nfunction main() end\n",
