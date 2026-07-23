@@ -99,37 +99,67 @@ impl AgentBackend for LoomAgentBackend {
         let run_id = ctx.run_id;
         let slot = output_slot.clone();
 
-        let run = tokio::select! {
-            result = agent.run(&task.prompt, {
-                let tokens = tokens.clone();
-                let event_sender = event_sender.clone();
-                move |ev: LoomAgentEvent| {
-                    match &ev {
-                        LoomAgentEvent::Usage {
-                            prompt_tokens,
-                            completion_tokens,
-                            cached_tokens,
-                            ..
-                        } => {
-                            let mut t = tokens.lock().unwrap();
-                            t.input += *prompt_tokens as u64;
-                            t.output += *completion_tokens as u64;
-                            if let Some(ct) = cached_tokens {
-                                t.cache_read += *ct as u64;
-                            }
+        let prompt = task.prompt.clone();
+        let callback = {
+            let tokens = tokens.clone();
+            let event_sender = event_sender.clone();
+            move |ev: LoomAgentEvent| {
+                match &ev {
+                    LoomAgentEvent::Usage {
+                        prompt_tokens,
+                        completion_tokens,
+                        cached_tokens,
+                        ..
+                    } => {
+                        let mut t = tokens.lock().unwrap();
+                        t.input += *prompt_tokens as u64;
+                        t.output += *completion_tokens as u64;
+                        if let Some(ct) = cached_tokens {
+                            t.cache_read += *ct as u64;
                         }
-                        _ => {
-                            if let Some(delta) = map_loom_event_to_delta(&ev) {
-                                let _ = event_sender.send(LuftAgentEvent::AgentProgress {
-                                    run_id,
-                                    agent_id,
-                                    delta,
-                                });
-                            }
+                    }
+                    _ => {
+                        if let Some(delta) = map_loom_event_to_delta(&ev) {
+                            let _ = event_sender.send(LuftAgentEvent::AgentProgress {
+                                run_id,
+                                agent_id,
+                                delta,
+                            });
                         }
                     }
                 }
-            }) => result,
+            }
+        };
+
+        let run_handle = tokio::spawn(async move {
+            agent.run(&prompt, callback).await
+        });
+
+        let run = tokio::select! {
+            result = run_handle => match result {
+                Ok(r) => r,
+                Err(join_err) => {
+                    let msg = if join_err.is_panic() {
+                        let panic = join_err.into_panic();
+                        if let Some(s) = panic.downcast_ref::<&str>() {
+                            s.to_string()
+                        } else if let Some(s) = panic.downcast_ref::<String>() {
+                            s.clone()
+                        } else {
+                            "unknown panic payload".to_string()
+                        }
+                    } else {
+                        "task was cancelled".to_string()
+                    };
+                    tracing::error!(
+                        target: "workflow::backend",
+                        agent_id = %task.agent_id,
+                        msg = %msg,
+                        "agent task panicked; converting to AgentError"
+                    );
+                    Err(agent::agent::AgentError::Run(format!("agent panicked: {msg}")))
+                }
+            },
             _ = ctx.cancel.cancelled() => {
                 return Ok(AgentResult {
                     agent_id: task.agent_id,
@@ -144,13 +174,9 @@ impl AgentBackend for LoomAgentBackend {
             }
         };
 
-        let result = run.map_err(|e| BackendError::Execution(format!("agent run failed: {e}")))?;
+        let slot_output = slot.lock().unwrap().take();
 
-        let output = slot
-            .lock()
-            .unwrap()
-            .take()
-            .unwrap_or_else(|| Value::String(result.reply.clone()));
+        let output = finalize_output(run, slot_output)?;
 
         let tokens_used = *tokens.lock().unwrap();
 
@@ -168,5 +194,83 @@ impl AgentBackend for LoomAgentBackend {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+/// Decide the final `output` value after an agent run.
+///
+/// - Ok + slot filled  → slot value (structured_output takes priority)
+/// - Ok + slot empty    → agent reply text
+/// - Err + slot filled  → slot value (salvage: agent crashed *after* capturing structured output)
+/// - Err + slot empty   → propagate error
+fn finalize_output(
+    run_result: Result<agent::agent::AgentResult, agent::agent::AgentError>,
+    slot_output: Option<Value>,
+) -> Result<Value, BackendError> {
+    match (run_result, slot_output) {
+        (Ok(_result), Some(slot)) => Ok(slot),
+        (Ok(result), None) => Ok(Value::String(result.reply)),
+        (Err(e), Some(slot)) => {
+            tracing::warn!(
+                target: "workflow::backend",
+                "agent run failed but structured_output was captured, salvaging: {e}"
+            );
+            Ok(slot)
+        }
+        (Err(e), None) => Err(BackendError::Execution(format!("agent run failed: {e}"))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agent::agent::{AgentError, AgentResult as LoomAgentResult};
+    use serde_json::json;
+
+    #[test]
+    fn finalize_ok_with_slot_prefers_slot() {
+        let result = LoomAgentResult {
+            reply: "agent reply text".into(),
+            reasoning: None,
+        };
+        let slot = Some(json!({ "changed": true, "summary": "done" }));
+
+        let output = finalize_output(Ok(result), slot).unwrap();
+        assert_eq!(output, json!({ "changed": true, "summary": "done" }));
+    }
+
+    #[test]
+    fn finalize_ok_without_slot_uses_reply() {
+        let result = LoomAgentResult {
+            reply: "plain text reply".into(),
+            reasoning: None,
+        };
+
+        let output = finalize_output(Ok(result), None).unwrap();
+        assert_eq!(output, Value::String("plain text reply".to_string()));
+    }
+
+    #[test]
+    fn finalize_err_with_slot_salvages() {
+        let err = AgentError::Run("LLM timed out on follow-up call".into());
+        let slot = Some(json!({ "changed": true, "files": ["a.rs"], "summary": "ok" }));
+
+        let output = finalize_output(Err(err), slot).unwrap();
+        assert_eq!(
+            output,
+            json!({ "changed": true, "files": ["a.rs"], "summary": "ok" })
+        );
+    }
+
+    #[test]
+    fn finalize_err_without_slot_propagates() {
+        let err = AgentError::Run("total failure".into());
+
+        let result = finalize_output(Err(err), None);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            BackendError::Execution(msg) => assert!(msg.contains("total failure")),
+            other => panic!("expected BackendError::Execution, got {other:?}"),
+        }
     }
 }
