@@ -100,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // This allows us to distinguish between shell-set and config.toml-set LOG_FILE.
     let shell_env = preserve_shell_env();
 
-    print_config_report();
+    print_config_report(args.verbose);
 
     let _log_guard = init_logging(&args, shell_env);
 

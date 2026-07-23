@@ -18,8 +18,8 @@ pub(crate) struct ShellEnv {
     pub log_file: Option<OsString>,
 }
 
-pub(crate) fn print_config_report() {
-    if std::env::var("LOOM_TEST_MODE").is_ok() {
+pub(crate) fn print_config_report(verbose: u8) {
+    if verbose < 3 || std::env::var("LOOM_TEST_MODE").is_ok() {
         return;
     }
     if let Ok(report) = config::load_and_apply_with_report("loom", None::<&std::path::Path>) {
