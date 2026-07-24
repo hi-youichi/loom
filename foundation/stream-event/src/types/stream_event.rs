@@ -116,6 +116,12 @@ where
         /// Number of new edges added.
         edges_added: usize,
     },
+    /// Provider started streaming the input for one tool call.
+    ToolInputStart { call_id: String, name: String },
+    /// Incremental JSON argument text for an already-started tool call.
+    ToolInputDelta { call_id: String, arguments_delta: String },
+    /// Provider completed the input for one tool call.
+    ToolInputEnd { call_id: String, arguments: String },
     /// LLM decided to call a tool (Think node, complete arguments).
     ToolCall {
         call_id: Option<String>,

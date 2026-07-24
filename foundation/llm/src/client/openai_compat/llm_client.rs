@@ -10,10 +10,10 @@ use crate::support::http_retry::{
 use crate::support::thinking::{
     collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser,
 };
-use crate::support::tool_call_accumulator::{RawToolCallDelta, ToolCallAccumulator};
+use crate::support::tool_call_accumulator::{fallback_call_id, RawToolCallDelta, ToolCallAccumulator};
 use crate::support::uuid6::uuid6;
 use crate::tool::ToolCall;
-use crate::traits::{LlmClient, LlmResponse, LlmUsage, MessageChunk, StreamSink};
+use crate::traits::{LlmClient, LlmResponse, LlmUsage, MessageChunk, StreamSink, ToolCallChunk};
 
 use super::audit::AuditCtx;
 use super::request::{ChatCompletionRequest, ChatCompletionResponse, ModelsResponse};
@@ -37,6 +37,80 @@ fn send_chunk(
     let ts = sink.try_send_message(chunk, node_id);
     if first_chunk_at.is_none() {
         *first_chunk_at = ts;
+    }
+}
+
+#[derive(Default)]
+struct ToolCallStreamForwarder {
+    calls: std::collections::HashMap<u32, PendingToolCall>,
+}
+
+#[derive(Default)]
+struct PendingToolCall {
+    call_id: String,
+    name: String,
+    arguments: String,
+    started: bool,
+}
+
+impl ToolCallStreamForwarder {
+    fn push(
+        &mut self,
+        index: u32,
+        id: Option<String>,
+        name: Option<String>,
+        arguments: Option<String>,
+        sink: &dyn StreamSink,
+        node_id: &str,
+    ) {
+        let pending = self.calls.entry(index).or_insert_with(|| PendingToolCall {
+            call_id: id.clone().filter(|v| !v.is_empty()).unwrap_or_else(|| fallback_call_id(index)),
+            ..Default::default()
+        });
+        // Keep the id chosen for the first visible event. A provider may send
+        // its id after name/arguments; changing it would orphan the TUI part.
+        if let Some(name) = name {
+            pending.name.push_str(&name);
+        }
+        if let Some(ref arguments) = arguments {
+            pending.arguments.push_str(&arguments);
+        }
+
+        if !pending.started && !pending.name.is_empty() {
+            pending.started = true;
+            let _ = sink.try_send_tool_call(
+                ToolCallChunk::Started { call_id: pending.call_id.clone(), name: pending.name.clone() },
+                node_id,
+            );
+            if !pending.arguments.is_empty() {
+                let _ = sink.try_send_tool_call(
+                    ToolCallChunk::Delta {
+                        call_id: pending.call_id.clone(),
+                        arguments_delta: pending.arguments.clone(),
+                    },
+                    node_id,
+                );
+            }
+        } else if pending.started {
+            // The arguments carried by this delta have not previously been
+            // forwarded. Name fragments are intentionally not resent: the
+            // OpenCode protocol has no tool-name delta event.
+            if let Some(arguments) = arguments {
+                let _ = sink.try_send_tool_call(
+                    ToolCallChunk::Delta { call_id: pending.call_id.clone(), arguments_delta: arguments },
+                    node_id,
+                );
+            }
+        }
+    }
+
+    fn finish(self, sink: &dyn StreamSink, node_id: &str) {
+        for pending in self.calls.into_values().filter(|pending| pending.started) {
+            let _ = sink.try_send_tool_call(
+                ToolCallChunk::Ended { call_id: pending.call_id, arguments: pending.arguments },
+                node_id,
+            );
+        }
     }
 }
 
@@ -321,6 +395,7 @@ impl LlmClient for ChatOpenAICompat {
         let mut full_reasoning_content = String::new();
         let mut sent_any_content = false;
         let mut tool_calls_acc = ToolCallAccumulator::new();
+        let mut tool_calls_forwarder = ToolCallStreamForwarder::default();
         let mut stream_usage: Option<LlmUsage> = None;
         let mut thinking_parser = self.parse_thinking_tags.then(ThinkingTagParser::new);
         let mut first_chunk_at: Option<std::time::Instant> = None;
@@ -428,6 +503,14 @@ impl LlmClient for ChatOpenAICompat {
                                 Some(f) => (f.name, f.arguments),
                                 None => (None, None),
                             };
+                            tool_calls_forwarder.push(
+                                tc.index,
+                                tc.id.clone(),
+                                name.clone(),
+                                arguments.clone(),
+                                sink,
+                                node_id,
+                            );
                             tool_calls_acc.push(RawToolCallDelta {
                                 index: tc.index,
                                 id: tc.id,
@@ -507,6 +590,8 @@ impl LlmClient for ChatOpenAICompat {
                 &mut first_chunk_at,
             );
         }
+
+        tool_calls_forwarder.finish(sink, node_id);
 
         let tool_calls = tool_calls_acc.finish();
 

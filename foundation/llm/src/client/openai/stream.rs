@@ -16,9 +16,9 @@ use async_openai::types::chat::{
 use crate::support::thinking::{
     collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser,
 };
-use crate::support::tool_call_accumulator::ToolCallAccumulator;
+use crate::support::tool_call_accumulator::{fallback_call_id, ToolCallAccumulator};
 use crate::traits::MessageChunk;
-use crate::traits::{LlmUsage, StreamSink};
+use crate::traits::{LlmUsage, StreamSink, ToolCallChunk};
 
 /// Accumulates streaming SSE chunks into a complete response.
 pub(super) struct StreamAccumulator {
@@ -28,6 +28,15 @@ pub(super) struct StreamAccumulator {
     sent_any_content: bool,
     thinking_parser: Option<ThinkingTagParser>,
     parse_thinking_tags: bool,
+    live_tool_calls: std::collections::HashMap<u32, LiveToolCall>,
+}
+
+#[derive(Default)]
+struct LiveToolCall {
+    call_id: String,
+    name: String,
+    arguments: String,
+    started: bool,
 }
 
 pub(super) struct StreamResult {
@@ -50,6 +59,7 @@ impl StreamAccumulator {
             sent_any_content: false,
             thinking_parser: parse_thinking.then(ThinkingTagParser::new),
             parse_thinking_tags: parse_thinking,
+            live_tool_calls: std::collections::HashMap::new(),
         }
     }
 
@@ -83,7 +93,7 @@ impl StreamAccumulator {
             }
 
             if let Some(ref tool_calls) = delta.tool_calls {
-                self.process_tool_calls_delta(tool_calls);
+                self.process_tool_calls_delta(tool_calls, sink, node_id);
             }
         }
         first_chunk
@@ -125,14 +135,53 @@ impl StreamAccumulator {
         }
     }
 
-    fn process_tool_calls_delta(&mut self, tool_calls: &[ChatCompletionMessageToolCallChunk]) {
+    fn process_tool_calls_delta(
+        &mut self,
+        tool_calls: &[ChatCompletionMessageToolCallChunk],
+        sink: &dyn StreamSink,
+        node_id: &str,
+    ) {
         use crate::support::tool_call_accumulator::RawToolCallDelta;
         for tc in tool_calls {
+            let name = tc.function.as_ref().and_then(|f| f.name.clone());
+            let arguments = tc.function.as_ref().and_then(|f| f.arguments.clone());
+            let live = self.live_tool_calls.entry(tc.index).or_insert_with(|| LiveToolCall {
+                call_id: tc.id.clone().filter(|id| !id.is_empty()).unwrap_or_else(|| fallback_call_id(tc.index)),
+                ..Default::default()
+            });
+            // The first visible id is immutable for the lifetime of the
+            // call; see ToolCallAccumulator's late-id fallback rule.
+            if let Some(ref name) = name {
+                live.name.push_str(name);
+            }
+            if let Some(ref arguments) = arguments {
+                live.arguments.push_str(arguments);
+            }
+            if !live.started && !live.name.is_empty() {
+                live.started = true;
+                let _ = sink.try_send_tool_call(
+                    ToolCallChunk::Started { call_id: live.call_id.clone(), name: live.name.clone() },
+                    node_id,
+                );
+                if !live.arguments.is_empty() {
+                    let _ = sink.try_send_tool_call(
+                        ToolCallChunk::Delta { call_id: live.call_id.clone(), arguments_delta: live.arguments.clone() },
+                        node_id,
+                    );
+                }
+            } else if live.started {
+                if let Some(arguments) = arguments.clone() {
+                    let _ = sink.try_send_tool_call(
+                        ToolCallChunk::Delta { call_id: live.call_id.clone(), arguments_delta: arguments },
+                        node_id,
+                    );
+                }
+            }
             self.tool_calls.push(RawToolCallDelta {
                 index: tc.index,
                 id: tc.id.clone(),
-                name: tc.function.as_ref().and_then(|f| f.name.clone()),
-                arguments: tc.function.as_ref().and_then(|f| f.arguments.clone()),
+                name,
+                arguments,
             });
 
             tracing::trace!(
@@ -155,6 +204,17 @@ impl StreamAccumulator {
             }
         }
         None
+    }
+
+    /// Close every live tool input before the completed tool calls are handed
+    /// to the agent. This preserves the provider's original event ordering.
+    pub fn finish_tool_inputs(&mut self, sink: &dyn StreamSink, node_id: &str) {
+        for call in self.live_tool_calls.values().filter(|call| call.started) {
+            let _ = sink.try_send_tool_call(
+                ToolCallChunk::Ended { call_id: call.call_id.clone(), arguments: call.arguments.clone() },
+                node_id,
+            );
+        }
     }
 
     /// Send full content as one chunk if no incremental content was sent

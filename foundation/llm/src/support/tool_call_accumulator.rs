@@ -38,13 +38,21 @@ impl ToolCallAccumulator {
     pub fn push(&mut self, delta: RawToolCallDelta) {
         let entry = self.map.entry(delta.index).or_insert_with(|| {
             (
-                delta.id.clone().unwrap_or_default(),
+                delta
+                    .id
+                    .clone()
+                    .filter(|id| !id.is_empty())
+                    .unwrap_or_else(|| fallback_call_id(delta.index)),
                 String::new(),
                 String::new(),
             )
         });
         if let Some(ref id) = delta.id {
-            if !id.is_empty() {
+            // Once a fallback was exposed through a live ToolInputStart it
+            // becomes the protocol identity for this turn. Do not replace it
+            // with a late provider id, or ToolCall/ToolEnd would target a
+            // different UI part.
+            if !id.is_empty() && !entry.0.starts_with("stream_tool_") {
                 entry.0 = id.clone();
             }
         }
@@ -54,6 +62,13 @@ impl ToolCallAccumulator {
         if let Some(args) = delta.arguments {
             entry.2.push_str(&args);
         }
+    }
+
+    /// Stable id assigned to this streamed call. Providers sometimes omit an
+    /// id in their first (or all) deltas; the generated id must be shared by
+    /// the live events and the completed `ToolCall`.
+    pub fn call_id(&self, index: u32) -> Option<&str> {
+        self.map.get(&index).map(|entry| entry.0.as_str())
     }
 
     /// Returns true if no tool calls have been accumulated.
@@ -78,7 +93,7 @@ impl ToolCallAccumulator {
                     ToolCall {
                         name,
                         arguments: sanitized_args,
-                        id: if id.is_empty() { None } else { Some(id) },
+                id: Some(id),
                     },
                 )
             })
@@ -95,6 +110,10 @@ impl ToolCallAccumulator {
                 .insert(i as u32, (tc.id.unwrap_or_default(), tc.name, tc.arguments));
         }
     }
+}
+
+pub fn fallback_call_id(index: u32) -> String {
+    format!("stream_tool_{index}")
 }
 
 impl Default for ToolCallAccumulator {

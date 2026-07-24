@@ -34,7 +34,7 @@ pub use loom_graph_core::{GraphError, Interrupt};
 // Re-exports — LLM traits and response types
 pub use traits::{
     CompletionTokensDetails, LlmClient, LlmHeaders, LlmProvider, LlmResponse, LlmUsage,
-    MessageChunk, MessageChunkKind, ModelCapabilities, ModelInfo, PromptTokensDetails, StreamSink,
+    MessageChunk, MessageChunkKind, ModelCapabilities, ModelInfo, PromptTokensDetails, StreamSink, ToolCallChunk,
     ToolChoiceMode,
 };
 

@@ -12,8 +12,8 @@ use crate::state::{ModelConfig, ReActState};
 use env_config::load_provider_configs_from_xdg;
 use loom_graph_core::{run_cancellable, Next, Node, RunContext};
 use loom_llm::{
-    GraphError, LlmClient, LlmProvider, LlmResponse, LlmUsage, Message, MessageChunk,
-    StreamSink, ToolCall,
+    GraphError, LlmClient, LlmProvider, LlmResponse, LlmUsage, Message, MessageChunk, StreamSink,
+    ToolCall, ToolCallChunk,
 };
 use model_spec_core::resolve_tier_intelligent;
 use model_spec_core::ModelTier;
@@ -66,6 +66,20 @@ impl StreamSink for BlockTrackerSink {
                 let _ = self.stream_tx.try_send(event);
             }
         }
+        Some(Instant::now())
+    }
+
+    fn try_send_tool_call(&self, chunk: ToolCallChunk, _node_id: &str) -> Option<Instant> {
+        let event = match chunk {
+            ToolCallChunk::Started { call_id, name } => StreamEvent::ToolInputStart { call_id, name },
+            ToolCallChunk::Delta { call_id, arguments_delta } => {
+                StreamEvent::ToolInputDelta { call_id, arguments_delta }
+            }
+            ToolCallChunk::Ended { call_id, arguments } => {
+                StreamEvent::ToolInputEnd { call_id, arguments }
+            }
+        };
+        let _ = self.stream_tx.try_send(event);
         Some(Instant::now())
     }
 }

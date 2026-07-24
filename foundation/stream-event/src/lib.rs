@@ -12,7 +12,7 @@ pub mod wire;
 pub use block_tracker::BlockTracker;
 pub use codex::CodexEvent;
 pub use sink::stream_writer::StreamWriter;
-pub use types::message::{MessageChunk, MessageChunkKind, StreamSink};
+pub use types::message::{MessageChunk, MessageChunkKind, StreamSink, ToolCallChunk};
 pub use types::metadata::{CheckpointEvent, StreamMetadata};
 pub use types::stream_event::{StreamEvent, Usage};
 pub use types::stream_mode::StreamMode;

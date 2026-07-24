@@ -145,6 +145,15 @@ where
             nodes_added: *nodes_added,
             edges_added: *edges_added,
         },
+        StreamEvent::ToolInputStart { call_id, name } => ProtocolEvent::Custom {
+            value: json!({ "type": "tool_input_start", "call_id": call_id, "name": name }),
+        },
+        StreamEvent::ToolInputDelta { call_id, arguments_delta } => ProtocolEvent::Custom {
+            value: json!({ "type": "tool_input_delta", "call_id": call_id, "arguments_delta": arguments_delta }),
+        },
+        StreamEvent::ToolInputEnd { call_id, arguments } => ProtocolEvent::Custom {
+            value: json!({ "type": "tool_input_end", "call_id": call_id, "arguments": arguments }),
+        },
         StreamEvent::ToolCall {
             call_id,
             name,
@@ -319,6 +328,15 @@ where
         }),
         StreamEvent::TurnFinish { reason, usage } => json!({
             "TurnFinish": { "reason": reason, "usage": usage }
+        }),
+        StreamEvent::ToolInputStart { call_id, name } => json!({
+            "ToolInputStart": { "call_id": call_id, "name": name }
+        }),
+        StreamEvent::ToolInputDelta { call_id, arguments_delta } => json!({
+            "ToolInputDelta": { "call_id": call_id, "arguments_delta": arguments_delta }
+        }),
+        StreamEvent::ToolInputEnd { call_id, arguments } => json!({
+            "ToolInputEnd": { "call_id": call_id, "arguments": arguments }
         }),
         StreamEvent::ToolCall {
             call_id,
