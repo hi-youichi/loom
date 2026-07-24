@@ -25,7 +25,11 @@ use std::time::Duration;
 
 use axum::{
     extract::{Path, Query, State},
-    response::sse::{Event, KeepAlive, Sse},
+    http::StatusCode,
+    response::{
+        sse::{Event, KeepAlive, Sse},
+        IntoResponse, Response,
+    },
 };
 use futures::{stream, Stream, StreamExt};
 use serde_json::json;
@@ -48,7 +52,7 @@ pub async fn event_stream(
 pub async fn api_event_stream(
     State(state): State<SharedState>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let stream = build_stream(state, ChannelKind::V2);
+    let stream = build_v2_stream(state);
     Sse::new(stream).keep_alive(keepalive())
 }
 
@@ -57,9 +61,20 @@ pub async fn api_session_event_stream(
     State(state): State<SharedState>,
     Path(session_id): Path<String>,
     Query(query): Query<EventQuery>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let stream = build_session_stream(state, session_id, query.after);
-    Sse::new(stream).keep_alive(keepalive())
+) -> Response {
+    let after = match query.after.as_deref().unwrap_or("0").parse::<u64>() {
+        Ok(after) => after,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "`after` must be a non-negative u64",
+            )
+                .into_response()
+        }
+    };
+    Sse::new(build_v2_session_stream(state, session_id, after))
+        .keep_alive(keepalive())
+        .into_response()
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -107,67 +122,50 @@ fn build_stream(
     seed.chain(stream::select(bus, heartbeat))
 }
 
-fn build_session_stream(
-    state: SharedState,
-    session_id: String,
-    after: Option<String>,
-) -> impl Stream<Item = Result<Event, Infallible>> {
-    let replay_session_id = session_id.clone();
-    let replay = crate::state::snapshot_replay(&state, after.as_deref())
-        .into_iter()
-        .filter(move |event| event_matches_session(event, &replay_session_id))
-        .filter_map(|event| serialize_event(&event, ChannelKind::V2));
-
-    let live_session_id = session_id.clone();
-    let rx = state.event_tx.subscribe();
-    let bus = BroadcastStream::new(rx).filter_map(move |result| {
-        let live_session_id = live_session_id.clone();
-        async move {
-            let event = result.ok()?;
-            if !event_matches_session(&event, &live_session_id) {
-                return None;
-            }
-            serialize_event(&event, ChannelKind::V2)
-        }
-    });
-
-    let connected = connection_event(
-        &state,
-        "server.connected",
-        json!({
-            "sessionID": session_id,
-            "version": env!("CARGO_PKG_VERSION")
-        }),
-    );
-    let seed = stream::once(async move { serialize_event(&connected, ChannelKind::V2) })
-        .filter_map(|event| async move { event });
-
-    let heartbeat_state = state;
-    let heartbeat_session_id = session_id;
-    let heartbeat = IntervalStream::new(tokio::time::interval_at(
-        tokio::time::Instant::now() + HEARTBEAT_INTERVAL,
-        HEARTBEAT_INTERVAL,
-    ))
-    .filter_map(move |_| {
-        let event = connection_event(
-            &heartbeat_state,
-            "server.heartbeat",
-            json!({ "sessionID": heartbeat_session_id }),
-        );
-        async move { serialize_event(&event, ChannelKind::V2) }
-    });
-
-    seed.chain(stream::iter(replay))
-        .chain(stream::select(bus, heartbeat))
+/// `/api/event` is the OpenCode v2 event bus. It never serializes a legacy
+/// `GlobalEvent`, even though the legacy global endpoint still does.
+fn build_v2_stream(state: SharedState) -> impl Stream<Item = Result<Event, Infallible>> {
+    let rx = crate::v2_event::subscribe(&state);
+    BroadcastStream::new(rx).filter_map(|result| async move {
+        let event = result.ok()?;
+        v2_sse_event(&event)
+    })
 }
 
-fn event_matches_session(event: &GlobalEvent, session_id: &str) -> bool {
-    event
-        .payload
-        .properties
-        .get("sessionID")
-        .and_then(serde_json::Value::as_str)
-        == Some(session_id)
+fn build_v2_session_stream(
+    state: SharedState,
+    session_id: String,
+    after: u64,
+) -> impl Stream<Item = Result<Event, Infallible>> {
+    // Subscribe before the snapshot, then use the watermark to ensure an
+    // event can appear in exactly one of replay/live, never both.
+    let rx = crate::v2_event::subscribe(&state);
+    let watermark = crate::v2_event::watermark(&state, &session_id);
+    let replay = crate::v2_event::replay_after(&state, &session_id, after)
+        .into_iter()
+        .filter(move |event| event.durable.as_ref().is_some_and(|d| d.seq <= watermark))
+        .filter_map(|event| v2_sse_event(&event));
+    let live_session_id = session_id;
+    let floor = watermark.max(after);
+    let live = BroadcastStream::new(rx).filter_map(move |result| {
+        let session_id = live_session_id.clone();
+        async move {
+            let event = result.ok()?;
+            let durable = event.durable.as_ref()?;
+            if durable.aggregate_id != session_id || durable.seq <= floor {
+                return None;
+            }
+            v2_sse_event(&event)
+        }
+    });
+    stream::iter(replay).chain(live)
+}
+
+fn v2_sse_event(event: &crate::v2_event::V2Event) -> Option<Result<Event, Infallible>> {
+    serde_json::to_string(event)
+        .map(|data| Ok(Event::default().event("message").data(data)))
+        .map_err(|error| tracing::warn!(%error, "failed to serialize v2 SSE event"))
+        .ok()
 }
 
 fn connection_event(

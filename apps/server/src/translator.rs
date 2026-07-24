@@ -54,12 +54,13 @@
 //!   emitting an orphan part would break the TUI's reactive coalescing.
 
 use agent::run::{RunCompletion, TypedAnyStreamEvent};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use stream_event::StreamEvent;
 
 use crate::agent_runner::push_part;
-use crate::state::{SharedState, emit, new_part_id};
+use crate::state::{emit, new_part_id, SharedState};
+use crate::v2_event::{publish_durable, publish_live};
 
 /// Translate a `TypedAnyStreamEvent` into opencode SSE events on `state`.
 /// `assistant_msg_id` is the message id the agent loop assigned.
@@ -71,6 +72,338 @@ pub fn translate_and_emit(
 ) {
     if let TypedAnyStreamEvent::React(stream_ev) = ev {
         translate_stream_event(stream_ev, session_id, assistant_msg_id, state);
+        translate_v2_stream_event(stream_ev, session_id, assistant_msg_id, state);
+    }
+}
+
+/// Publish the replayable OpenCode v2 boundaries alongside the established
+/// legacy part stream.  Deltas deliberately stay on the legacy bus for now:
+/// the v2 session endpoint is durable-only and reconnect reconstructs text
+/// from `*.ended` events.
+fn translate_v2_stream_event<S: Clone + Send + Sync + std::fmt::Debug + 'static>(
+    ev: &StreamEvent<S>,
+    session_id: &str,
+    assistant_msg_id: &str,
+    state: &SharedState,
+) {
+    let now = chrono::Utc::now().timestamp_millis();
+    let run_info = || {
+        let session = state.sessions.read().get(session_id).cloned();
+        let agent = session
+            .as_ref()
+            .and_then(|s| s.agent.clone())
+            .unwrap_or_else(|| "build".to_string());
+        let model = session
+            .and_then(|s| s.model)
+            .map(|model| {
+                json!({
+                    "id": model.model_id,
+                    "providerID": model.provider_id,
+                    "variant": model.variant,
+                })
+            })
+            .unwrap_or_else(|| json!({"id":"unknown","providerID":"loom"}));
+        (agent, model)
+    };
+    match ev {
+        StreamEvent::TurnStart => {
+            let (agent, model) = run_info();
+            let _ = publish_durable(
+                state,
+                "session.next.step.started",
+                json!({
+                    "timestamp": now, "sessionID": session_id,
+                    "assistantMessageID": assistant_msg_id, "agent": agent, "model": model,
+                }),
+                1,
+            );
+        }
+        StreamEvent::TurnFinish { reason, usage } => {
+            let finish = serde_json::to_value(reason)
+                .ok()
+                .and_then(|value| value.as_str().map(str::to_string))
+                .unwrap_or_else(|| "unknown".to_string());
+            let _ = publish_durable(
+                state,
+                "session.next.step.ended",
+                json!({
+                    "timestamp": now, "sessionID": session_id,
+                    "assistantMessageID": assistant_msg_id, "finish": finish, "cost": 0.0,
+                    "tokens": {"input": usage.input, "output": usage.output,
+                        "reasoning": usage.reasoning,
+                        "cache": {"read": usage.cache_read, "write": usage.cache_write}},
+                }),
+                2,
+            );
+        }
+        StreamEvent::TextBlockStart { .. } => {
+            if let Some(text_id) = state.active_text.read().get(assistant_msg_id).cloned() {
+                let _ = publish_durable(
+                    state,
+                    "session.next.text.started",
+                    json!({
+                        "timestamp": now, "sessionID": session_id,
+                        "assistantMessageID": assistant_msg_id, "textID": text_id,
+                    }),
+                    1,
+                );
+            }
+        }
+        StreamEvent::TextDelta { content, .. } => {
+            if let Some(text_id) = state.active_text.read().get(assistant_msg_id).cloned() {
+                publish_live(
+                    state,
+                    "session.next.text.delta",
+                    json!({
+                        "timestamp": now, "sessionID": session_id,
+                        "assistantMessageID": assistant_msg_id, "textID": text_id, "delta": content,
+                    }),
+                );
+            }
+        }
+        StreamEvent::TextBlockEnd { .. } => {
+            let text = state
+                .parts
+                .read()
+                .get(assistant_msg_id)
+                .and_then(|parts| parts.iter().rev().find(|part| part.part_type == "text"))
+                .map(|part| {
+                    (
+                        part.id.clone(),
+                        part.data["text"].as_str().unwrap_or_default().to_string(),
+                    )
+                });
+            if let Some((text_id, text)) = text {
+                let _ = publish_durable(
+                    state,
+                    "session.next.text.ended",
+                    json!({
+                        "timestamp": now, "sessionID": session_id,
+                        "assistantMessageID": assistant_msg_id, "textID": text_id, "text": text,
+                    }),
+                    1,
+                );
+            }
+        }
+        StreamEvent::ReasoningBlockStart { id, .. } => {
+            if let Some(reasoning_id) = state
+                .active_reasoning
+                .read()
+                .get(assistant_msg_id)
+                .and_then(|parts| parts.get(id))
+                .cloned()
+            {
+                state
+                    .v2_reasoning_ids
+                    .write()
+                    .entry(assistant_msg_id.to_string())
+                    .or_default()
+                    .insert(id.clone(), reasoning_id.clone());
+                let _ = publish_durable(
+                    state,
+                    "session.next.reasoning.started",
+                    json!({
+                        "timestamp": now, "sessionID": session_id,
+                        "assistantMessageID": assistant_msg_id, "reasoningID": reasoning_id,
+                    }),
+                    1,
+                );
+            }
+        }
+        StreamEvent::ReasoningDelta { id, content, .. } => {
+            if let Some(reasoning_id) = state
+                .v2_reasoning_ids
+                .read()
+                .get(assistant_msg_id)
+                .and_then(|ids| ids.get(id))
+                .cloned()
+            {
+                publish_live(
+                    state,
+                    "session.next.reasoning.delta",
+                    json!({
+                        "timestamp": now, "sessionID": session_id,
+                        "assistantMessageID": assistant_msg_id,
+                        "reasoningID": reasoning_id, "delta": content,
+                    }),
+                );
+            }
+        }
+        StreamEvent::ReasoningBlockEnd { id, .. } => {
+            let reasoning_id = state
+                .v2_reasoning_ids
+                .write()
+                .get_mut(assistant_msg_id)
+                .and_then(|ids| ids.remove(id));
+            if let Some(reasoning_id) = reasoning_id {
+                let text = state
+                    .parts
+                    .read()
+                    .get(assistant_msg_id)
+                    .and_then(|parts| parts.iter().find(|part| part.id == reasoning_id))
+                    .and_then(|part| part.data["text"].as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let _ = publish_durable(
+                    state,
+                    "session.next.reasoning.ended",
+                    json!({
+                        "timestamp": now, "sessionID": session_id,
+                        "assistantMessageID": assistant_msg_id, "reasoningID": reasoning_id, "text": text,
+                    }),
+                    1,
+                );
+            }
+        }
+        StreamEvent::ToolInputStart { call_id, name } => {
+            state.v2_started_tool_calls.write().insert((
+                assistant_msg_id.to_string(),
+                call_id.to_string(),
+            ));
+            let _ = publish_durable(state, "session.next.tool.input.started", json!({
+                "timestamp": now, "sessionID": session_id,
+                "assistantMessageID": assistant_msg_id, "callID": call_id, "name": name,
+            }), 1);
+        }
+        StreamEvent::ToolInputDelta { call_id, arguments_delta } => {
+            publish_live(state, "session.next.tool.input.delta", json!({
+                "timestamp": now, "sessionID": session_id,
+                "assistantMessageID": assistant_msg_id, "callID": call_id,
+                "delta": arguments_delta,
+            }));
+        }
+        StreamEvent::ToolInputEnd { call_id, arguments } => {
+            let _ = publish_durable(state, "session.next.tool.input.ended", json!({
+                "timestamp": now, "sessionID": session_id,
+                "assistantMessageID": assistant_msg_id, "callID": call_id, "text": arguments,
+            }), 1);
+        }
+        StreamEvent::ToolCall {
+            call_id,
+            name,
+            arguments,
+        } => {
+            if let Some(call_id) = call_id.as_deref() {
+                let input = arguments
+                    .as_object()
+                    .cloned()
+                    .map(Value::Object)
+                    .unwrap_or_else(|| json!({"value": arguments}));
+                let input_text = serde_json::to_string(&input).unwrap_or_else(|_| "{}".to_string());
+                let base = json!({"timestamp": now, "sessionID": session_id,
+                    "assistantMessageID": assistant_msg_id, "callID": call_id});
+                let started_live = state.v2_started_tool_calls.read().contains(&(
+                    assistant_msg_id.to_string(), call_id.to_string(),
+                ));
+                if !started_live {
+                    let mut started = base.clone();
+                    started["name"] = json!(name);
+                    let _ = publish_durable(state, "session.next.tool.input.started", started, 1);
+                    // Clients without native tool deltas retain the former
+                    // complete-call fallback sequence.
+                    publish_live(state, "session.next.tool.input.delta", json!({
+                        "timestamp": now, "sessionID": session_id,
+                        "assistantMessageID": assistant_msg_id, "callID": call_id,
+                        "delta": &input_text,
+                    }));
+                    let mut ended = base.clone();
+                    ended["text"] = json!(input_text);
+                    let _ = publish_durable(state, "session.next.tool.input.ended", ended, 1);
+                }
+                let mut called = base;
+                called["tool"] = json!(name);
+                called["input"] = input;
+                called["provider"] = json!({"executed": false});
+                let _ = publish_durable(state, "session.next.tool.called", called, 1);
+            }
+        }
+        StreamEvent::ToolOutput {
+            call_id, content, ..
+        } => {
+            if let Some(call_id) = call_id.as_deref() {
+                let _ = publish_durable(
+                    state,
+                    "session.next.tool.progress",
+                    json!({
+                        "timestamp": now, "sessionID": session_id,
+                        "assistantMessageID": assistant_msg_id, "callID": call_id,
+                        "structured": {}, "content": [{"type":"text", "text": content}],
+                    }),
+                    1,
+                );
+            }
+        }
+        StreamEvent::ToolEnd {
+            call_id,
+            result,
+            is_error,
+            raw_result,
+            ..
+        } => {
+            if let Some(call_id) = call_id.as_deref() {
+                let key = (assistant_msg_id.to_string(), call_id.to_string());
+                if !state.v2_terminal_tool_calls.write().insert(key) {
+                    return;
+                }
+                let output = raw_result.as_deref().unwrap_or(result);
+                if *is_error {
+                    let _ = publish_durable(
+                        state,
+                        "session.next.tool.failed",
+                        json!({
+                            "timestamp": now, "sessionID": session_id,
+                            "assistantMessageID": assistant_msg_id, "callID": call_id,
+                            "error": {"type":"unknown", "message": output},
+                            "result": output, "provider": {"executed": false},
+                        }),
+                        1,
+                    );
+                } else {
+                    let _ = publish_durable(
+                        state,
+                        "session.next.tool.success",
+                        json!({
+                            "timestamp": now, "sessionID": session_id,
+                            "assistantMessageID": assistant_msg_id, "callID": call_id,
+                            "structured": {}, "content": [{"type":"text", "text": output}],
+                            "result": output, "provider": {"executed": false},
+                        }),
+                        1,
+                    );
+                }
+            }
+        }
+        StreamEvent::ToolError { call_id, error } => {
+            if let Some(call_id) = call_id.as_deref() {
+                let key = (assistant_msg_id.to_string(), call_id.to_string());
+                if state.v2_terminal_tool_calls.write().insert(key) {
+                    let _ = publish_durable(
+                        state,
+                        "session.next.tool.failed",
+                        json!({
+                            "timestamp": now, "sessionID": session_id,
+                            "assistantMessageID": assistant_msg_id, "callID": call_id,
+                            "error": {"type":"unknown", "message": error},
+                            "result": error, "provider": {"executed": false},
+                        }),
+                        1,
+                    );
+                }
+            }
+        }
+        StreamEvent::ProviderError { message } => {
+            let _ = publish_durable(
+                state,
+                "session.next.step.failed",
+                json!({
+                    "timestamp": now, "sessionID": session_id,
+                    "assistantMessageID": assistant_msg_id,
+                    "error": {"type":"unknown", "message": message},
+                }),
+                2,
+            );
+        }
+        _ => {}
     }
 }
 
@@ -185,6 +518,24 @@ fn translate_stream_event<S: Clone + Send + Sync + std::fmt::Debug + 'static>(
                     },
                     "time": { "start": now, "end": now, "created": now, "completed": now },
                 }),
+            );
+        }
+        StreamEvent::ToolInputStart { call_id, name } => {
+            create_or_update_tool_part(
+                state, assistant_msg_id, session_id, Some(call_id), name,
+                ToolTransition::Create { input: json!({}) },
+            );
+        }
+        StreamEvent::ToolInputDelta { .. } => {
+            // The v1 part has no input-delta field. Its position is fixed at
+            // start; the complete input is installed by ToolInputEnd.
+        }
+        StreamEvent::ToolInputEnd { call_id, arguments } => {
+            let input = serde_json::from_str(arguments)
+                .unwrap_or_else(|_| json!({"_raw_args": arguments}));
+            create_or_update_tool_part(
+                state, assistant_msg_id, session_id, Some(call_id), "tool",
+                ToolTransition::UpdateInput { input },
             );
         }
         StreamEvent::ToolCall {
@@ -365,6 +716,8 @@ fn fail_tool_call(
 enum ToolTransition {
     /// First event for this tool call: create the part with `input`.
     Create { input: serde_json::Value },
+    /// Replace the pending input after provider streaming completes.
+    UpdateInput { input: serde_json::Value },
     /// Execution actually started. Transitions pending → running.
     Start,
     /// Append one chunk of output. Many events per tool call.
@@ -460,6 +813,12 @@ fn apply_transition(data: &mut serde_json::Value, transition: &ToolTransition) {
                 "metadata": {},
                 "time": { "start": chrono::Utc::now().timestamp_millis() },
             });
+        }
+        ToolTransition::UpdateInput { input } => {
+            let raw = serde_json::to_string(input).unwrap_or_default();
+            let obj = data["state"].as_object_mut().expect("state object");
+            obj.insert("input".into(), input.clone());
+            obj.insert("raw".into(), json!(raw));
         }
         ToolTransition::Start => {
             let obj = data["state"].as_object_mut().expect("state object");
@@ -897,7 +1256,10 @@ mod tests {
         let p2_id = {
             let active = state.active_reasoning.read();
             let msg_active = active.get("msg").expect("reasoning map survives");
-            assert!(msg_active.get("r1").is_none(), "r1 must be removed from active map");
+            assert!(
+                msg_active.get("r1").is_none(),
+                "r1 must be removed from active map"
+            );
             assert!(msg_active.get("r2").is_some(), "r2 must remain active");
             msg_active.get("r2").cloned().expect("r2 part id present")
         };
@@ -1347,7 +1709,9 @@ mod tests {
         );
         let events = snapshot_replay(&state, None);
         assert!(
-            !events.iter().any(|ev| ev.payload.event_type == "message.tokens"),
+            !events
+                .iter()
+                .any(|ev| ev.payload.event_type == "message.tokens"),
             "TurnFinish must not emit message.tokens (folded into step-finish part.tokens)"
         );
         let parts = state.parts.read();
@@ -1709,5 +2073,48 @@ mod tests {
         let before = state.event_buffer.read().len();
         append_to_part(&state, "sess", "msg", "prt_does_not_exist", "x");
         assert_eq!(state.event_buffer.read().len(), before);
+    }
+
+    #[test]
+    fn provider_tool_input_start_fixes_tool_part_position_before_later_text() {
+        let state = new_state();
+        translate_stream_event(
+            &StreamEvent::<TestState>::ToolInputStart {
+                call_id: "call_early".into(),
+                name: "read".into(),
+            },
+            "sess", "msg", &state,
+        );
+        translate_stream_event(
+            &StreamEvent::<TestState>::TextBlockStart { metadata: meta() },
+            "sess", "msg", &state,
+        );
+        translate_stream_event(
+            &StreamEvent::<TestState>::TextDelta { content: "after tool".into(), metadata: meta() },
+            "sess", "msg", &state,
+        );
+        translate_stream_event(
+            &StreamEvent::<TestState>::ToolInputEnd {
+                call_id: "call_early".into(),
+                arguments: r#"{"path":"README.md"}"#.into(),
+            },
+            "sess", "msg", &state,
+        );
+        translate_stream_event(
+            &StreamEvent::<TestState>::ToolCall {
+                call_id: Some("call_early".into()),
+                name: "read".into(),
+                arguments: json!({"path":"README.md"}),
+            },
+            "sess", "msg", &state,
+        );
+
+        let parts = state.parts.read();
+        let parts = parts.get("msg").expect("parts");
+        assert_eq!(parts.len(), 2, "ToolCall must update the placeholder, not append another tool");
+        assert_eq!(parts[0].part_type, "tool");
+        assert_eq!(parts[0].data["callID"], "call_early");
+        assert_eq!(parts[0].data["state"]["input"], json!({"path":"README.md"}));
+        assert_eq!(parts[1].part_type, "text");
     }
 }
