@@ -6,9 +6,8 @@ fn event_id_monotonic_across_many_events() {
 
     let a = to_json(
         &ProtocolEvent::Usage {
-            prompt_tokens: 1,
-            completion_tokens: 2,
-            total_tokens: 3,
+            input: 1,
+            output: 2,
         },
         &mut state,
     )
@@ -60,9 +59,8 @@ fn node_id_defaults_to_run_0_until_first_node_enter() {
 
     let v = to_json(
         &ProtocolEvent::Usage {
-            prompt_tokens: 1,
-            completion_tokens: 1,
-            total_tokens: 2,
+            input: 1,
+            output: 1,
         },
         &mut state,
     )

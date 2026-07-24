@@ -106,15 +106,15 @@ impl AgentBackend for LoomAgentBackend {
                 move |ev: LoomAgentEvent| {
                     match &ev {
                         LoomAgentEvent::Usage {
-                            prompt_tokens,
-                            completion_tokens,
-                            cached_tokens,
+                            input,
+                            output,
+                            cache_read,
                             ..
                         } => {
                             let mut t = tokens.lock().unwrap();
-                            t.input += *prompt_tokens as u64;
-                            t.output += *completion_tokens as u64;
-                            if let Some(ct) = cached_tokens {
+                            t.input += *input as u64;
+                            t.output += *output as u64;
+                            if let Some(ct) = cache_read {
                                 t.cache_read += *ct as u64;
                             }
                         }

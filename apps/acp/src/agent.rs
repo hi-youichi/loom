@@ -1577,10 +1577,10 @@ where
 {
     match ev {
         stream_event::StreamEvent::TurnFinish { usage, .. } => Some((
-            usage.prompt_tokens,
-            usage.completion_tokens,
-            usage.total_tokens,
-            usage.cached_tokens,
+            usage.input,
+            usage.output,
+            usage.input + usage.output,
+            usage.cache_read,
         )),
         _ => None,
     }
@@ -2073,21 +2073,25 @@ mod tests {
 
         let acc = Arc::new(Mutex::new(TurnUsage::default()));
 
-        let ev1 = TypedAnyStreamEvent::React(StreamEvent::<ReActState>::Usage {
-            prompt_tokens: 500,
-            completion_tokens: 100,
-            total_tokens: 600,
-            cached_tokens: Some(50),
-            prefill_duration: None,
-            decode_duration: None,
+        let ev1 = TypedAnyStreamEvent::React(StreamEvent::<ReActState>::TurnFinish {
+            reason: "stop".to_string(),
+            usage: stream_event::Usage {
+                input: 500,
+                output: 100,
+                reasoning: None,
+                cache_read: Some(50),
+                cache_write: None,
+            },
         });
-        let ev2 = TypedAnyStreamEvent::React(StreamEvent::<ReActState>::Usage {
-            prompt_tokens: 800,
-            completion_tokens: 200,
-            total_tokens: 1000,
-            cached_tokens: None,
-            prefill_duration: None,
-            decode_duration: None,
+        let ev2 = TypedAnyStreamEvent::React(StreamEvent::<ReActState>::TurnFinish {
+            reason: "stop".to_string(),
+            usage: stream_event::Usage {
+                input: 800,
+                output: 200,
+                reasoning: None,
+                cache_read: None,
+                cache_write: None,
+            },
         });
 
         capture_turn_usage(&ev1, &acc);

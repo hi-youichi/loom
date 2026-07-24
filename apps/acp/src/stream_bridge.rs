@@ -1086,8 +1086,8 @@ where
 {
     match ev {
         StreamEvent::TurnFinish { usage, .. } => {
-            let total = usage.total_tokens as u64;
-            let cached = usage.cached_tokens.unwrap_or(0) as u64;
+            let total = (usage.input + usage.output) as u64;
+            let cached = usage.cache_read.unwrap_or(0) as u64;
             Some(total.saturating_sub(cached))
         }
         _ => None,
@@ -1099,7 +1099,7 @@ where
     S: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
     match ev {
-        StreamEvent::TurnFinish { usage, .. } => Some(usage.prompt_tokens),
+        StreamEvent::TurnFinish { usage, .. } => Some(usage.input),
         _ => None,
     }
 }
@@ -1265,13 +1265,15 @@ mod token_usage_meta_tests {
             .with_usage_acc(acc.clone());
 
         // Inject a synthetic Usage event covering all four fields.
-        let ev = TypedAnyStreamEvent::React(StreamEvent::Usage {
-            prompt_tokens: 100,
-            completion_tokens: 50,
-            total_tokens: 150,
-            cached_tokens: Some(20),
-            decode_duration: None,
-            prefill_duration: None,
+        let ev = TypedAnyStreamEvent::React(StreamEvent::TurnFinish {
+            reason: "stop".to_string(),
+            usage: stream_event::Usage {
+                input: 100,
+                output: 50,
+                reasoning: None,
+                cache_read: Some(20),
+                cache_write: None,
+            },
         });
         capture_turn_usage(&ev, &acc);
 
@@ -1301,13 +1303,15 @@ mod token_usage_meta_tests {
             (200, 80, None),
             (50, 30, Some(10)),
         ] {
-            let ev = TypedAnyStreamEvent::React(StreamEvent::Usage {
-                prompt_tokens: prompt,
-                completion_tokens: completion,
-                total_tokens: prompt + completion,
-                cached_tokens: cached,
-                decode_duration: None,
-                prefill_duration: None,
+            let ev = TypedAnyStreamEvent::React(StreamEvent::TurnFinish {
+                reason: "stop".to_string(),
+                usage: stream_event::Usage {
+                    input: prompt,
+                    output: completion,
+                    reasoning: None,
+                    cache_read: cached,
+                    cache_write: None,
+                },
             });
             capture_turn_usage(&ev, &acc);
         }
@@ -1330,13 +1334,15 @@ mod token_usage_meta_tests {
             .with_context_window_size(8192)
             .with_usage_acc(acc.clone());
 
-        let ev = TypedAnyStreamEvent::React(StreamEvent::Usage {
-            prompt_tokens: 4096,
-            completion_tokens: 512,
-            total_tokens: 4608,
-            cached_tokens: Some(1024),
-            decode_duration: None,
-            prefill_duration: None,
+        let ev = TypedAnyStreamEvent::React(StreamEvent::TurnFinish {
+            reason: "stop".to_string(),
+            usage: stream_event::Usage {
+                input: 4096,
+                output: 512,
+                reasoning: None,
+                cache_read: Some(1024),
+                cache_write: None,
+            },
         });
         capture_turn_usage(&ev, &acc);
         notifier.try_send_event(&ev);
@@ -1371,13 +1377,15 @@ mod token_usage_meta_tests {
         let notifier =
             SessionNotifier::new(tx, SessionId::new("sess")).with_context_window_size(8192);
 
-        let ev = TypedAnyStreamEvent::React(StreamEvent::Usage {
-            prompt_tokens: 100,
-            completion_tokens: 20,
-            total_tokens: 120,
-            cached_tokens: Some(0),
-            decode_duration: None,
-            prefill_duration: None,
+        let ev = TypedAnyStreamEvent::React(StreamEvent::TurnFinish {
+            reason: "stop".to_string(),
+            usage: stream_event::Usage {
+                input: 100,
+                output: 20,
+                reasoning: None,
+                cache_read: Some(0),
+                cache_write: None,
+            },
         });
         notifier.try_send_event(&ev);
 

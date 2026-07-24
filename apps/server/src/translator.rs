@@ -25,8 +25,8 @@
 //! | `ReasoningDelta { id }`                        | `message.part.updated`     | Append to `active_reasoning[msg_id][id]`.                   |
 //! | `ReasoningBlockEnd { id }`                     | `message.part.updated`     | Finalize reasoning part under `id`.                         |
 //! | `TurnStart`                                    | `message.part.updated`     | `step-start` marker part.                                   |
-//! | `TurnFinish { reason, usage }`                 | `message.part.updated` +   | `step-finish` marker part, finalize text/reasoning parts,   |
-//! |                                                | `message.tokens`           | emit `message.tokens` for TUI consumption.                  |
+//! | `TurnFinish { reason, usage }`                 | `message.part.updated`     | `step-finish` marker part, finalize text/reasoning parts,   |
+//! |                                                |                            | tokens embedded in part.tokens (no separate event).        |
 //! | `ToolCall`                                     | `message.part.updated`     | Create pending tool part with `input`.                      |
 //! | `ToolStart`                                    | `message.part.updated`     | pending → running.                                          |
 //! | `ToolOutput`                                   | `message.part.updated`     | Append output chunk.                                        |
@@ -56,7 +56,7 @@
 use agent::run::{RunCompletion, TypedAnyStreamEvent};
 use serde_json::json;
 use std::collections::HashMap;
-use stream_event::{StreamEvent, Usage};
+use stream_event::StreamEvent;
 
 use crate::agent_runner::push_part;
 use crate::state::{SharedState, emit, new_part_id};
@@ -175,15 +175,17 @@ fn translate_stream_event<S: Clone + Send + Sync + std::fmt::Debug + 'static>(
                     "type": "step-finish",
                     "reason": reason,
                     "tokens": {
-                        "prompt": usage.prompt_tokens,
-                        "completion": usage.completion_tokens,
-                        "total": usage.total_tokens,
-                        "cached": usage.cached_tokens,
+                        "input": usage.input,
+                        "output": usage.output,
+                        "reasoning": usage.reasoning,
+                        "cache": {
+                            "read": usage.cache_read,
+                            "write": usage.cache_write,
+                        },
                     },
                     "time": { "start": now, "end": now, "created": now, "completed": now },
                 }),
             );
-            emit_usage(state, session_id, assistant_msg_id, usage);
         }
         StreamEvent::ToolCall {
             call_id,
@@ -318,19 +320,6 @@ fn append_to_part(
             }),
         );
     }
-}
-
-fn emit_usage(state: &SharedState, session_id: &str, assistant_msg_id: &str, usage: &Usage) {
-    emit(
-        state,
-        "message.tokens",
-        json!({
-            "sessionID": session_id,
-            "messageID": assistant_msg_id,
-            "input": usage.prompt_tokens,
-            "output": usage.completion_tokens,
-        }),
-    );
 }
 
 fn fail_tool_call(
@@ -1316,10 +1305,11 @@ mod tests {
             &StreamEvent::<TestState>::TurnFinish {
                 reason: "stop".into(),
                 usage: Usage {
-                    prompt_tokens: 11,
-                    completion_tokens: 22,
-                    total_tokens: 33,
-                    cached_tokens: Some(4),
+                    input: 11,
+                    output: 22,
+                    reasoning: None,
+                    cache_read: Some(4),
+                    cache_write: None,
                 },
             },
             "sess",
@@ -1332,23 +1322,23 @@ mod tests {
             .and_then(|l| l.iter().find(|p| p.part_type == "step-finish"))
             .expect("step-finish part");
         assert_eq!(p.data["reason"], "stop");
-        assert_eq!(p.data["tokens"]["prompt"], 11);
-        assert_eq!(p.data["tokens"]["completion"], 22);
-        assert_eq!(p.data["tokens"]["total"], 33);
-        assert_eq!(p.data["tokens"]["cached"], 4);
+        assert_eq!(p.data["tokens"]["input"], 11);
+        assert_eq!(p.data["tokens"]["output"], 22);
+        assert_eq!(p.data["tokens"]["cache"]["read"], 4);
     }
 
     #[test]
-    fn turn_finish_emits_message_tokens_with_counts() {
+    fn turn_finish_embeds_tokens_in_step_finish_part() {
         let state = new_state();
         translate_stream_event(
             &StreamEvent::<TestState>::TurnFinish {
                 reason: "stop".into(),
                 usage: Usage {
-                    prompt_tokens: 150,
-                    completion_tokens: 250,
-                    total_tokens: 400,
-                    cached_tokens: Some(10),
+                    input: 150,
+                    output: 250,
+                    reasoning: None,
+                    cache_read: Some(10),
+                    cache_write: None,
                 },
             },
             "sess",
@@ -1356,15 +1346,18 @@ mod tests {
             &state,
         );
         let events = snapshot_replay(&state, None);
-        let tokens_ev = events
-            .iter()
-            .find(|ev| ev.payload.event_type == "message.tokens")
-            .expect("message.tokens event");
-        let props = &tokens_ev.payload.properties;
-        assert_eq!(props["input"], 150);
-        assert_eq!(props["output"], 250);
-        assert_eq!(props["sessionID"], "sess");
-        assert_eq!(props["messageID"], "msg");
+        assert!(
+            !events.iter().any(|ev| ev.payload.event_type == "message.tokens"),
+            "TurnFinish must not emit message.tokens (folded into step-finish part.tokens)"
+        );
+        let parts = state.parts.read();
+        let p = parts
+            .get("msg")
+            .and_then(|l| l.iter().find(|p| p.part_type == "step-finish"))
+            .expect("step-finish part");
+        assert_eq!(p.data["tokens"]["input"], 150);
+        assert_eq!(p.data["tokens"]["output"], 250);
+        assert_eq!(p.data["tokens"]["cache"]["read"], 10);
     }
 
     /// `TurnFinish` finalizes any still-open text and reasoning parts on
@@ -1401,10 +1394,11 @@ mod tests {
             &StreamEvent::<TestState>::TurnFinish {
                 reason: "stop".into(),
                 usage: Usage {
-                    prompt_tokens: 0,
-                    completion_tokens: 0,
-                    total_tokens: 0,
-                    cached_tokens: None,
+                    input: 0,
+                    output: 0,
+                    reasoning: None,
+                    cache_read: None,
+                    cache_write: None,
                 },
             },
             "sess",
@@ -1460,13 +1454,14 @@ mod tests {
                 vec![StreamEvent::TurnFinish {
                     reason: "stop".into(),
                     usage: Usage {
-                        prompt_tokens: 10,
-                        completion_tokens: 20,
-                        total_tokens: 30,
-                        cached_tokens: None,
+                        input: 10,
+                        output: 20,
+                        reasoning: None,
+                        cache_read: None,
+                        cache_write: None,
                     },
                 }],
-                vec!["message.part.updated", "message.tokens"],
+                vec!["message.part.updated"],
             ),
             (
                 "ToolCall",

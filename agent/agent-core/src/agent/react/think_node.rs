@@ -184,13 +184,18 @@ impl ThinkNode {
                 .prompt_tokens_details
                 .as_ref()
                 .and_then(|d| d.cached_tokens);
+            let reasoning_tokens = usage
+                .completion_tokens_details
+                .as_ref()
+                .and_then(|d| d.reasoning_tokens);
             let _ = stream_tx.try_send(StreamEvent::TurnFinish {
                 reason: finish_reason.unwrap_or("stop").to_string(),
                 usage: Usage {
-                    prompt_tokens: usage.prompt_tokens,
-                    completion_tokens: usage.completion_tokens,
-                    total_tokens: usage.total_tokens,
-                    cached_tokens,
+                    input: usage.prompt_tokens,
+                    output: usage.completion_tokens,
+                    reasoning: reasoning_tokens,
+                    cache_read: cached_tokens,
+                    cache_write: None,
                 },
             });
         }

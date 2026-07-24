@@ -42,13 +42,11 @@ pub enum AgentEvent {
         is_error: bool,
     },
     Usage {
-        prompt_tokens: u32,
-        completion_tokens: u32,
-        total_tokens: u32,
-        /// Cached prompt tokens (OpenAI `prompt_tokens_details.cached_tokens`).
-        /// `None` when the provider does not report cache hits, or when the
-        /// current request had no cacheable prefix.
-        cached_tokens: Option<u32>,
+        input: u32,
+        output: u32,
+        reasoning: Option<u32>,
+        cache_read: Option<u32>,
+        cache_write: Option<u32>,
     },
 }
 
@@ -154,10 +152,11 @@ fn map_stream_event(ev: StreamEvent<ReActState>) -> Option<AgentEvent> {
             is_error,
         }),
         StreamEvent::TurnFinish { usage, .. } => Some(AgentEvent::Usage {
-            prompt_tokens: usage.prompt_tokens,
-            completion_tokens: usage.completion_tokens,
-            total_tokens: usage.total_tokens,
-            cached_tokens: usage.cached_tokens,
+            input: usage.input,
+            output: usage.output,
+            reasoning: usage.reasoning,
+            cache_read: usage.cache_read,
+            cache_write: usage.cache_write,
         }),
         _ => None,
     }
@@ -277,19 +276,21 @@ mod tests {
         let ev = StreamEvent::<ReActState>::TurnFinish {
             reason: "stop".to_string(),
             usage: Usage {
-                prompt_tokens: 100,
-                completion_tokens: 50,
-                total_tokens: 150,
-                cached_tokens: None,
+                input: 100,
+                output: 50,
+                reasoning: None,
+                cache_read: None,
+                cache_write: None,
             },
         };
         assert!(matches!(
             map_stream_event(ev),
             Some(AgentEvent::Usage {
-                prompt_tokens: 100,
-                completion_tokens: 50,
-                total_tokens: 150,
-                cached_tokens: None,
+                input: 100,
+                output: 50,
+                reasoning: None,
+                cache_read: None,
+                cache_write: None,
             })
         ));
     }
@@ -299,24 +300,27 @@ mod tests {
         let ev = StreamEvent::<ReActState>::TurnFinish {
             reason: "stop".to_string(),
             usage: Usage {
-                prompt_tokens: 100,
-                completion_tokens: 50,
-                total_tokens: 150,
-                cached_tokens: Some(40),
+                input: 100,
+                output: 50,
+                reasoning: None,
+                cache_read: Some(40),
+                cache_write: None,
             },
         };
         let mapped = map_stream_event(ev);
         if let Some(AgentEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            cached_tokens,
+            input,
+            output,
+            reasoning,
+            cache_read,
+            cache_write,
         }) = mapped
         {
-            assert_eq!(prompt_tokens, 100);
-            assert_eq!(completion_tokens, 50);
-            assert_eq!(total_tokens, 150);
-            assert_eq!(cached_tokens, Some(40));
+            assert_eq!(input, 100);
+            assert_eq!(output, 50);
+            assert_eq!(reasoning, None);
+            assert_eq!(cache_read, Some(40));
+            assert_eq!(cache_write, None);
         } else {
             panic!("expected AgentEvent::Usage, got {mapped:?}");
         }

@@ -5,11 +5,14 @@ use std::fmt::Debug;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Usage {
-    pub prompt_tokens: u32,
-    pub completion_tokens: u32,
-    pub total_tokens: u32,
+    pub input: u32,
+    pub output: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cached_tokens: Option<u32>,
+    pub reasoning: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_read: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write: Option<u32>,
 }
 
 /// Streamed event emitted while running a graph.
@@ -294,15 +297,16 @@ mod tests {
         let ev = StreamEvent::<TestState>::TurnFinish {
             reason: "stop".to_string(),
             usage: Usage {
-                prompt_tokens: 10,
-                completion_tokens: 20,
-                total_tokens: 30,
-                cached_tokens: Some(5),
+                input: 10,
+                output: 20,
+                reasoning: None,
+                cache_read: Some(5),
+                cache_write: None,
             },
         };
         if let StreamEvent::TurnFinish { usage, .. } = ev {
-            assert_eq!(usage.total_tokens, 30);
-            assert_eq!(usage.cached_tokens, Some(5));
+            assert_eq!(usage.input, 10);
+            assert_eq!(usage.cache_read, Some(5));
         } else {
             panic!("expected TurnFinish");
         }

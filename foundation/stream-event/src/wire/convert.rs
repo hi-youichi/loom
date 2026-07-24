@@ -83,9 +83,8 @@ where
             id: loom_node.clone(),
         },
         StreamEvent::TurnFinish { usage, .. } => ProtocolEvent::Usage {
-            prompt_tokens: usage.prompt_tokens,
-            completion_tokens: usage.completion_tokens,
-            total_tokens: usage.total_tokens,
+            input: usage.input,
+            output: usage.output,
         },
         StreamEvent::Values(state) => ProtocolEvent::Values {
             state: serde_json::to_value(state)?,
@@ -465,17 +464,18 @@ mod tests {
         let ev: StreamEvent<DummyState> = StreamEvent::TurnFinish {
             reason: "stop".to_string(),
             usage: crate::Usage {
-                prompt_tokens: 10,
-                completion_tokens: 5,
-                total_tokens: 15,
-                cached_tokens: None,
+                input: 10,
+                output: 5,
+                reasoning: None,
+                cache_read: None,
+                cache_write: None,
             },
         };
         let pe = stream_event_to_protocol_event(&ev).unwrap();
         let v = pe.to_value().unwrap();
         assert_eq!(v["type"], "usage");
-        assert_eq!(v["prompt_tokens"], 10);
-        assert_eq!(v["total_tokens"], 15);
+        assert_eq!(v["input"], 10);
+        assert_eq!(v["output"], 5);
     }
 
     #[test]
@@ -528,10 +528,11 @@ mod tests {
         let usage: StreamEvent<DummyState> = StreamEvent::TurnFinish {
             reason: "stop".to_string(),
             usage: crate::Usage {
-                prompt_tokens: 1,
-                completion_tokens: 2,
-                total_tokens: 3,
-                cached_tokens: None,
+                input: 1,
+                output: 2,
+                reasoning: None,
+                cache_read: None,
+                cache_write: None,
             },
         };
 
@@ -869,15 +870,16 @@ mod tests {
         let ev: StreamEvent<DummyState> = StreamEvent::TurnFinish {
             reason: "stop".to_string(),
             usage: crate::Usage {
-                prompt_tokens: 10,
-                completion_tokens: 5,
-                total_tokens: 15,
-                cached_tokens: None,
+                input: 10,
+                output: 5,
+                reasoning: None,
+                cache_read: None,
+                cache_write: None,
             },
         };
         let v = stream_event_to_format_a(&ev).unwrap();
-        assert_eq!(v["TurnFinish"]["usage"]["prompt_tokens"], 10);
-        assert_eq!(v["TurnFinish"]["usage"]["completion_tokens"], 5);
+        assert_eq!(v["TurnFinish"]["usage"]["input"], 10);
+        assert_eq!(v["TurnFinish"]["usage"]["output"], 5);
     }
 
     #[test]

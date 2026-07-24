@@ -201,6 +201,7 @@ impl Default for HighFreqUsageTracker {
 mod tests {
     use super::*;
     use std::thread;
+    use std::time::Duration;
 
     #[test]
     fn test_new_tracker_initialization() {

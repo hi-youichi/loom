@@ -733,7 +733,7 @@ fn on_event_react(
             }
         }
         StreamEvent::TurnFinish { usage, .. } => {
-            s.accumulate_usage(usage.prompt_tokens, usage.completion_tokens);
+            s.accumulate_usage(usage.input, usage.output);
         }
         _ => {}
     }
@@ -806,7 +806,7 @@ fn on_event_dup(
             }
         }
         StreamEvent::TurnFinish { usage, .. } => {
-            s.accumulate_usage(usage.prompt_tokens, usage.completion_tokens);
+            s.accumulate_usage(usage.input, usage.output);
         }
         _ => {}
     }
@@ -869,7 +869,7 @@ fn on_event_tot(
             }
         }
         StreamEvent::TurnFinish { usage, .. } => {
-            s.accumulate_usage(usage.prompt_tokens, usage.completion_tokens);
+            s.accumulate_usage(usage.input, usage.output);
         }
         _ => {}
     }
@@ -906,15 +906,15 @@ struct EventState {
 }
 
 impl EventState {
-    fn accumulate_usage(&mut self, prompt_tokens: u32, completion_tokens: u32) {
-        self.total_prompt_tokens = self.total_prompt_tokens.saturating_add(prompt_tokens);
+    fn accumulate_usage(&mut self, input: u32, output: u32) {
+        self.total_prompt_tokens = self.total_prompt_tokens.saturating_add(input);
         self.total_completion_tokens = self
             .total_completion_tokens
-            .saturating_add(completion_tokens);
+            .saturating_add(output);
         tracing::info!(
-            prompt_tokens,
-            completion_tokens,
-            total_tokens = prompt_tokens + completion_tokens,
+            input,
+            output,
+            total_tokens = input + output,
             "LLM usage"
         );
     }
@@ -1055,7 +1055,7 @@ fn on_event_got(
             }
         }
         StreamEvent::TurnFinish { usage, .. } => {
-            s.accumulate_usage(usage.prompt_tokens, usage.completion_tokens);
+            s.accumulate_usage(usage.input, usage.output);
         }
         _ => {}
     }

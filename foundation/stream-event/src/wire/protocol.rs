@@ -56,9 +56,8 @@ pub enum ProtocolEvent {
     },
     /// Token usage for the last LLM call in this node.
     Usage {
-        prompt_tokens: u32,
-        completion_tokens: u32,
-        total_tokens: u32,
+        input: u32,
+        output: u32,
     },
     /// Full state snapshot. Emitted to replace client state with the given graph state.
     /// Shape depends on agent type (ReAct, ToT, GoT, etc.). Contrast with [`Updates`](Self::Updates) (incremental).
@@ -361,15 +360,13 @@ mod tests {
     #[test]
     fn usage_serializes() {
         let event = ProtocolEvent::Usage {
-            prompt_tokens: 100,
-            completion_tokens: 50,
-            total_tokens: 150,
+            input: 100,
+            output: 50,
         };
         let v = event.to_value().unwrap();
         assert_eq!(v["type"], "usage");
-        assert_eq!(v["prompt_tokens"], 100);
-        assert_eq!(v["completion_tokens"], 50);
-        assert_eq!(v["total_tokens"], 150);
+        assert_eq!(v["input"], 100);
+        assert_eq!(v["output"], 50);
     }
 
     #[test]

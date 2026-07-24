@@ -158,19 +158,19 @@ fn handle_messages(
 
 fn handle_usage(
     s: &mut EventState,
-    prompt_tokens: &u32,
-    completion_tokens: &u32,
+    input: &u32,
+    output: &u32,
     verbose: bool,
 ) {
-    s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*prompt_tokens);
-    s.total_completion_tokens = s.total_completion_tokens.saturating_add(*completion_tokens);
+    s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*input);
+    s.total_completion_tokens = s.total_completion_tokens.saturating_add(*output);
 
     eprintln!(
         "\n{}",
         panel_format::format_usage_line(
             std::time::Duration::ZERO,
-            *prompt_tokens,
-            *completion_tokens,
+            *input,
+            *output,
             None,
             None,
             verbose,
@@ -178,9 +178,9 @@ fn handle_usage(
     );
 
     tracing::info!(
-        prompt_tokens,
-        completion_tokens,
-        total_tokens = *prompt_tokens + *completion_tokens,
+        input,
+        output,
+        total_tokens = *input + *output,
         "LLM usage"
     );
 }
@@ -370,8 +370,8 @@ pub fn on_event_react(
         StreamEvent::TurnFinish { usage, .. } => {
             handle_usage(
                 s,
-                &usage.prompt_tokens,
-                &usage.completion_tokens,
+                &usage.input,
+                &usage.output,
                 verbose,
             );
         }
@@ -416,8 +416,8 @@ pub fn on_event_dup(
         StreamEvent::TurnFinish { usage, .. } => {
             handle_usage(
                 s,
-                &usage.prompt_tokens,
-                &usage.completion_tokens,
+                &usage.input,
+                &usage.output,
                 verbose,
             );
         }
@@ -478,8 +478,8 @@ pub fn on_event_tot(
         StreamEvent::TurnFinish { usage, .. } => {
             handle_usage(
                 s,
-                &usage.prompt_tokens,
-                &usage.completion_tokens,
+                &usage.input,
+                &usage.output,
                 verbose,
             );
         }
@@ -549,8 +549,8 @@ pub fn on_event_got(
         StreamEvent::TurnFinish { usage, .. } => {
             handle_usage(
                 s,
-                &usage.prompt_tokens,
-                &usage.completion_tokens,
+                &usage.input,
+                &usage.output,
                 verbose,
             );
         }
