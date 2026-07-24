@@ -129,9 +129,7 @@ impl Agent {
 fn map_stream_event(ev: StreamEvent<ReActState>) -> Option<AgentEvent> {
     match ev {
         StreamEvent::TextDelta { content, .. } => Some(AgentEvent::TextChunk(content)),
-        StreamEvent::ReasoningDelta { content, .. } => {
-            Some(AgentEvent::ReasoningChunk(content))
-        },
+        StreamEvent::ReasoningDelta { content, .. } => Some(AgentEvent::ReasoningChunk(content)),
         StreamEvent::ToolCall {
             name, arguments, ..
         } => Some(AgentEvent::ToolCallStart {

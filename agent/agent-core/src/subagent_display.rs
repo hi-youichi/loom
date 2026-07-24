@@ -46,9 +46,7 @@ impl SubagentDisplay {
 
             StreamEvent::TextDelta { content, .. } => self.format_message_text(content),
 
-            StreamEvent::ReasoningDelta { content, .. } => {
-                self.format_message_reasoning(content)
-            }
+            StreamEvent::ReasoningDelta { content, .. } => self.format_message_reasoning(content),
 
             StreamEvent::Updates { node_id, state, .. } => self.format_updates(node_id, state),
 

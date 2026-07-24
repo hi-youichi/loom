@@ -908,15 +908,8 @@ struct EventState {
 impl EventState {
     fn accumulate_usage(&mut self, input: u32, output: u32) {
         self.total_prompt_tokens = self.total_prompt_tokens.saturating_add(input);
-        self.total_completion_tokens = self
-            .total_completion_tokens
-            .saturating_add(output);
-        tracing::info!(
-            input,
-            output,
-            total_tokens = input + output,
-            "LLM usage"
-        );
+        self.total_completion_tokens = self.total_completion_tokens.saturating_add(output);
+        tracing::info!(input, output, total_tokens = input + output, "LLM usage");
     }
 }
 

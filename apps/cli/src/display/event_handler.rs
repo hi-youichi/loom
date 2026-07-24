@@ -127,12 +127,7 @@ pub fn print_stream_chunk(content: &str, renderer: &mut StreamingMarkdownRendere
     renderer.push_text(content);
 }
 
-fn handle_messages(
-    s: &mut EventState,
-    content: &str,
-    is_thinking: bool,
-    output_timestamp: bool,
-) {
+fn handle_messages(s: &mut EventState, content: &str, is_thinking: bool, output_timestamp: bool) {
     if is_thinking {
         s.in_thinking = true;
     }
@@ -156,12 +151,7 @@ fn handle_messages(
     print_stream_chunk(content, &mut s.markdown_renderer);
 }
 
-fn handle_usage(
-    s: &mut EventState,
-    input: &u32,
-    output: &u32,
-    verbose: bool,
-) {
+fn handle_usage(s: &mut EventState, input: &u32, output: &u32, verbose: bool) {
     s.total_prompt_tokens = s.total_prompt_tokens.saturating_add(*input);
     s.total_completion_tokens = s.total_completion_tokens.saturating_add(*output);
 
@@ -177,12 +167,7 @@ fn handle_usage(
         )
     );
 
-    tracing::info!(
-        input,
-        output,
-        total_tokens = *input + *output,
-        "LLM usage"
-    );
+    tracing::info!(input, output, total_tokens = *input + *output, "LLM usage");
 }
 
 pub fn on_event_react(
@@ -368,12 +353,7 @@ pub fn on_event_react(
             }
         }
         StreamEvent::TurnFinish { usage, .. } => {
-            handle_usage(
-                s,
-                &usage.input,
-                &usage.output,
-                verbose,
-            );
+            handle_usage(s, &usage.input, &usage.output, verbose);
         }
         _ => {}
     }
@@ -414,12 +394,7 @@ pub fn on_event_dup(
             }
         }
         StreamEvent::TurnFinish { usage, .. } => {
-            handle_usage(
-                s,
-                &usage.input,
-                &usage.output,
-                verbose,
-            );
+            handle_usage(s, &usage.input, &usage.output, verbose);
         }
         _ => {}
     }
@@ -476,12 +451,7 @@ pub fn on_event_tot(
             }
         }
         StreamEvent::TurnFinish { usage, .. } => {
-            handle_usage(
-                s,
-                &usage.input,
-                &usage.output,
-                verbose,
-            );
+            handle_usage(s, &usage.input, &usage.output, verbose);
         }
         _ => {}
     }
@@ -547,12 +517,7 @@ pub fn on_event_got(
             eprintln!("{}", format_got_state_display(state, display_max_len));
         }
         StreamEvent::TurnFinish { usage, .. } => {
-            handle_usage(
-                s,
-                &usage.input,
-                &usage.output,
-                verbose,
-            );
+            handle_usage(s, &usage.input, &usage.output, verbose);
         }
         _ => {}
     }

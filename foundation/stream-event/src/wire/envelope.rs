@@ -207,8 +207,7 @@ mod tests {
     #[test]
     fn reply_envelope_uses_next_event_id_without_advancing() {
         let mut state = EnvelopeState::new("sess-1".to_string());
-        let mut event =
-            json!({"type":"usage","input":1,"output":1});
+        let mut event = json!({"type":"usage","input":1,"output":1});
         state.inject_into(&mut event);
         assert_eq!(event["event_id"], 1);
 

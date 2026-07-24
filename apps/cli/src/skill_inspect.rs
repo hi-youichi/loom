@@ -247,9 +247,7 @@ fn safe_join_under(skill_dir: &Path, file_path: &str) -> Result<PathBuf, SkillIn
     let target = skill_dir.join(file_path);
 
     // Point 1: canonicalize skill directory first
-    let canonical_skill = skill_dir
-        .canonicalize()
-        .map_err(SkillInspectError::Io)?;
+    let canonical_skill = skill_dir.canonicalize().map_err(SkillInspectError::Io)?;
 
     // Point 2: canonicalize target and confirm prefix membership
     let canonical_target = target
@@ -720,9 +718,8 @@ pub fn run(
 
     // ---- JSON branch (§5.2) ----
     if json {
-        let json_value = serde_json::to_value(&output).map_err(|e| {
-            SkillInspectError::Io(std::io::Error::other(e))
-        })?;
+        let json_value = serde_json::to_value(&output)
+            .map_err(|e| SkillInspectError::Io(std::io::Error::other(e)))?;
         write_json_output(&json_value, output_file, pretty)?;
         return Ok(());
     }
