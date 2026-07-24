@@ -14,6 +14,11 @@ path = "src/main.rs"
 name = "loom_server"
 path = "src/lib.rs"
 
+[features]
+# Exposes deterministic LLM injection for the server's black-box integration
+# suite. Production routes never select this path.
+test-support = []
+
 [dependencies]
 agent = { path = "../../agent/agent-core" }
 loom-llm = { path = "../../foundation/llm" }
@@ -53,3 +58,4 @@ clap = { workspace = true }
 tower = { version = "0.5", features = ["util"] }
 tower-test = "0.4"
 tokio-tungstenite = "0.24"
+reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls"] }

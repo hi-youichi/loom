@@ -503,8 +503,7 @@ pub async fn get_find_file(
             .flatten()
             .map(|e| {
                 let abs = e.path();
-                abs
-                    .strip_prefix(&root)
+                abs.strip_prefix(&root)
                     .unwrap_or(&abs)
                     .to_string_lossy()
                     .to_string()

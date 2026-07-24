@@ -21,6 +21,7 @@ use std::collections::{HashMap, VecDeque};
 use parking_lot::RwLock;
 
 use crate::state::{GlobalEvent, MessageInfo, PartInfo, SessionInfo};
+use crate::v2_event::V2Event;
 
 /// Bounded event ring capacity — matches `state::EVENT_BUFFER_CAP`.
 const STORE_EVENT_CAP: usize = 512;
@@ -52,6 +53,8 @@ pub trait Store: Send + Sync {
 
     /// Append an event to the bounded ring (evicts oldest on overflow).
     fn push_event(&self, event: &GlobalEvent);
+    fn append_v2_session_event(&self, event: &V2Event);
+    fn delete_v2_session_events(&self, session_id: &str);
 
     // ── read (load-on-startup) ──
 
@@ -59,6 +62,7 @@ pub trait Store: Send + Sync {
     fn load_messages(&self) -> HashMap<String, Vec<MessageInfo>>;
     fn load_parts(&self) -> HashMap<String, Vec<PartInfo>>;
     fn load_events(&self) -> VecDeque<GlobalEvent>;
+    fn load_v2_session_events(&self) -> HashMap<String, VecDeque<V2Event>>;
 }
 
 /// Default in-memory implementation — mirrors the existing `AppState` maps.
@@ -70,6 +74,7 @@ pub struct InMemoryStore {
     messages: RwLock<HashMap<String, Vec<MessageInfo>>>,
     parts: RwLock<HashMap<String, Vec<PartInfo>>>,
     events: RwLock<VecDeque<GlobalEvent>>,
+    v2_events: RwLock<HashMap<String, VecDeque<V2Event>>>,
 }
 
 impl InMemoryStore {
@@ -117,6 +122,22 @@ impl Store for InMemoryStore {
         events.push_back(event.clone());
     }
 
+    fn append_v2_session_event(&self, event: &V2Event) {
+        let Some(session_id) = event.durable.as_ref().map(|d| d.aggregate_id.clone()) else {
+            return;
+        };
+        let mut logs = self.v2_events.write();
+        let log = logs.entry(session_id).or_default();
+        if log.len() >= STORE_EVENT_CAP {
+            log.pop_front();
+        }
+        log.push_back(event.clone());
+    }
+
+    fn delete_v2_session_events(&self, session_id: &str) {
+        self.v2_events.write().remove(session_id);
+    }
+
     fn load_sessions(&self) -> HashMap<String, SessionInfo> {
         self.sessions.read().clone()
     }
@@ -131,6 +152,10 @@ impl Store for InMemoryStore {
 
     fn load_events(&self) -> VecDeque<GlobalEvent> {
         self.events.read().clone()
+    }
+
+    fn load_v2_session_events(&self) -> HashMap<String, VecDeque<V2Event>> {
+        self.v2_events.read().clone()
     }
 }
 

@@ -26,10 +26,10 @@ mod storage;
 
 pub use storage::{InMemoryStore, Store as StoreTrait};
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize, Serializer};
 use tokio::sync::broadcast;
 use tool_core::active_operation::RunCancellation;
@@ -120,6 +120,20 @@ pub struct AppState {
     /// Replay buffer for `GET /api/session/:id/event` (task P2.17).
     /// Capped at `EVENT_BUFFER_CAP` (≈ 5 minutes of streaming).
     pub event_buffer: RwLock<VecDeque<GlobalEvent>>,
+    /// Separate OpenCode v2 event bus. Unlike `event_tx`, session durable
+    /// events carry a per-session aggregate sequence.
+    pub v2_event_tx: broadcast::Sender<crate::v2_event::V2Event>,
+    pub v2_session_events: RwLock<HashMap<String, VecDeque<crate::v2_event::V2Event>>>,
+    pub v2_next_seq: RwLock<HashMap<String, u64>>,
+    pub v2_reasoning_ids: RwLock<HashMap<String, HashMap<String, String>>>,
+    /// Tool inputs already opened by provider-native stream deltas.
+    pub v2_started_tool_calls: RwLock<HashSet<(String, String)>>,
+    pub v2_terminal_tool_calls: RwLock<HashSet<(String, String)>>,
+    /// Materialized compacted context and a staged session revert transaction.
+    pub session_contexts: RwLock<HashMap<String, String>>,
+    pub staged_reverts: RwLock<HashMap<String, serde_json::Value>>,
+    pub v2_file_log: Option<Arc<crate::v2_event::V2FileLog>>,
+    pub v2_publish_lock: Mutex<()>,
     /// Global config blob (task P2.23 + P0.2). Read on `GET /config` and
     /// `GET /global/config`; written through `PATCH /global/config`.
     pub config: RwLock<ConfigInfo>,
@@ -823,6 +837,21 @@ pub fn load_from_store(state: &SharedState) {
     *state.messages.write() = store.load_messages();
     *state.parts.write() = store.load_parts();
     *state.event_buffer.write() = store.load_events();
+    let v2_events = store.load_v2_session_events();
+    let v2_next_seq = v2_events
+        .iter()
+        .map(|(session_id, events)| {
+            let next = events
+                .iter()
+                .filter_map(|event| event.durable.as_ref().map(|durable| durable.seq))
+                .max()
+                .unwrap_or(0)
+                + 1;
+            (session_id.clone(), next)
+        })
+        .collect();
+    *state.v2_session_events.write() = v2_events;
+    *state.v2_next_seq.write() = v2_next_seq;
 }
 
 /// Reload config from disk and update in-memory state. Called by the SIGHUP
@@ -869,6 +898,15 @@ fn new_state_with_store(
     store: Option<Arc<dyn StoreTrait + Send + Sync>>,
 ) -> SharedState {
     let (event_tx, _) = broadcast::channel(1024);
+    let (v2_event_tx, _) = broadcast::channel(1024);
+    let v2_file_log = if persist_config {
+        crate::v2_event::V2FileLog::open(config::home::loom_home().join("server").join("v2-events"))
+            .map(Arc::new)
+            .map_err(|error| tracing::error!(%error, "failed to initialize v2 durable log"))
+            .ok()
+    } else {
+        None
+    };
     let state = Arc::new(AppState {
         acp_hub: Arc::new(crate::acp_hub::AcpHub::default()),
         sessions: RwLock::new(HashMap::new()),
@@ -879,6 +917,16 @@ fn new_state_with_store(
         abort_tokens: RwLock::new(HashMap::new()),
         event_tx,
         event_buffer: RwLock::new(VecDeque::with_capacity(EVENT_BUFFER_CAP)),
+        v2_event_tx,
+        v2_session_events: RwLock::new(HashMap::new()),
+        v2_next_seq: RwLock::new(HashMap::new()),
+        v2_reasoning_ids: RwLock::new(HashMap::new()),
+        v2_started_tool_calls: RwLock::new(HashSet::new()),
+        v2_terminal_tool_calls: RwLock::new(HashSet::new()),
+        session_contexts: RwLock::new(HashMap::new()),
+        staged_reverts: RwLock::new(HashMap::new()),
+        v2_file_log,
+        v2_publish_lock: Mutex::new(()),
         config: RwLock::new(ConfigInfo::default()),
         persist_config,
         project: RwLock::new(ProjectInfo::from_env()),
@@ -891,6 +939,7 @@ fn new_state_with_store(
     if state.store.is_some() {
         load_from_store(&state);
     }
+    crate::v2_event::load_file_log(&state);
     state
 }
 
