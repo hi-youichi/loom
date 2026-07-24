@@ -35,6 +35,8 @@ luft = { version = "0.3", features = ["testing"] }
 luft-core = { version = "0.3", features = ["testing"] }
 skill = { path = "../../skill" }
 
-[[bin]]
-name = "resume_child"
-path = "tests/resume_child.rs"
+# [[bin]] disabled to avoid duplicate-target conflict with `tests/resume_child.rs`
+# which Cargo also auto-discovers as an integration test.
+# [[bin]]
+# name = "resume_child"
+# path = "tests/resume_child.rs"
