@@ -13,8 +13,8 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use loom_acp::tools::{
-    ClientBridgeTrait, ReadTextFileTool, TerminalExitResult, TerminalOutput, WriteTextFileTool,
-    set_client_bridge,
+    set_client_bridge, ClientBridgeTrait, ReadTextFileTool, TerminalExitResult, TerminalOutput,
+    WriteTextFileTool,
 };
 use serde_json::json;
 use tool_core::{Tool, ToolCallContent};

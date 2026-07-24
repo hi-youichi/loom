@@ -829,39 +829,37 @@ async fn v1_message_and_part_crud_uses_info_parts_shape() {
     );
 }
 
-// [BEHAVIOR] SSE content-type + session-scoped replay filtering (LS-002).
+// [BEHAVIOR] v2 SSE content-type + durable per-session replay filtering.
 #[tokio::test]
 async fn session_event_endpoint_is_sse_and_replays_only_that_session() {
     let (state, router) = router_with_state();
-    loom_server::state::emit(
+    loom_server::v2_event::publish_durable(
         &state,
-        "message.updated",
-        serde_json::json!({"sessionID": "sess_replay", "n": 1}),
-    );
-    let cursor = state
-        .event_buffer
-        .read()
-        .back()
-        .unwrap()
-        .payload
-        .event_id
-        .clone();
-    loom_server::state::emit(
+        "session.next.synthetic",
+        serde_json::json!({"timestamp": 1, "sessionID": "sess_replay", "messageID": "msg_1", "text": "one"}),
+        1,
+    )
+    .unwrap();
+    loom_server::v2_event::publish_durable(
         &state,
-        "message.updated",
-        serde_json::json!({"sessionID": "sess_replay", "n": 2}),
-    );
-    loom_server::state::emit(
+        "session.next.context.updated",
+        serde_json::json!({"timestamp": 2, "sessionID": "sess_replay", "messageID": "msg_1", "text": "two"}),
+        1,
+    )
+    .unwrap();
+    loom_server::v2_event::publish_durable(
         &state,
-        "message.updated",
-        serde_json::json!({"sessionID": "sess_other", "n": 3}),
-    );
+        "session.next.synthetic",
+        serde_json::json!({"timestamp": 3, "sessionID": "sess_other", "messageID": "msg_2", "text": "other"}),
+        1,
+    )
+    .unwrap();
 
     let response = router
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri(format!("/api/session/sess_replay/event?after={cursor}"))
+                .uri("/api/session/sess_replay/event?after=1")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -887,15 +885,17 @@ async fn session_event_endpoint_is_sse_and_replays_only_that_session() {
             .expect("sse body")
             .expect("sse bytes");
         wire.push_str(&String::from_utf8_lossy(&chunk));
-        if wire.contains("\"n\":2") {
+        if wire.contains("session.next.context.updated") {
             break;
         }
     }
-    assert!(wire.contains("server.connected"), "{wire}");
+    assert!(wire.contains("event: message"), "{wire}");
     assert!(wire.contains("\"sessionID\":\"sess_replay\""), "{wire}");
-    assert!(wire.contains("\"n\":2"), "{wire}");
-    assert!(!wire.contains("\"n\":1"), "{wire}");
-    assert!(!wire.contains("\"n\":3"), "{wire}");
+    assert!(wire.contains("session.next.context.updated"), "{wire}");
+    assert!(wire.contains("\"seq\":2"), "{wire}");
+    assert!(!wire.contains("\"text\":\"one\""), "{wire}");
+    assert!(!wire.contains("\"text\":\"other\""), "{wire}");
+    assert!(!wire.contains("server.connected"), "{wire}");
 }
 
 // [BEHAVIOR] real shell execution + output persisted to message parts.
