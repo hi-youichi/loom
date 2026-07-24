@@ -4,7 +4,7 @@
 
 `terminal/kill` 是 Agent → Client 请求协议，用于强制终止正在运行的终端进程。Agent 发送包含要终止终端的 `session_id` 的 `KillTerminalRequest`。Client 执行 OS 级终止（Unix 上 SIGKILL，Windows 上 `taskkill /F /T`），成功时返回空 JSON 对象 `{}`。
 
-规范参考：`docs/rust-agent-client-protocol-index.md:471-477`
+规范参考：`docs/opencode-protocol/archive/2025-snapshots/acp-adjacent/rust-agent-client-protocol-index.md:471-477`
 
 ---
 

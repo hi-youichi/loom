@@ -28,7 +28,7 @@ N/A — 协议未实现。
 
 ## 差距与问题
 
-- 该协议在 `docs/rust-agent-client-protocol-index.md:522` 中被记录为稳定，但没有任何对应的实现或 crate 特性。
+- 该协议在 `docs/opencode-protocol/archive/2025-snapshots/acp-adjacent/rust-agent-client-protocol-index.md:522` 中被记录为稳定，但没有任何对应的实现或 crate 特性。
 - `session/load` 存在并加载+回放历史，但不提供用于活动/暂停 session 的轻量级 resume 路径。
 - 在 ACP 层中未找到 session 级 resume 的替代命名（`restore`、`reconnect` 等）。
 - 依赖 `session/resume` 的 client 将收到不支持的协议错误。

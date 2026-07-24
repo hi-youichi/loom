@@ -248,7 +248,7 @@ pub enum EnsureError {
 
 ## 7. 文档与运维
 
-- 本文档沉淀在 `docs/design/acp-websocket-cli-ensure.md`。
+- 本文档沉淀在 `docs/opencode-protocol/acp-adjacent/acp-websocket-cli-ensure.md`。
 - 用户面 README 段落（在 `docs/design/acp-websocket.md` 末尾追加）：
 
   > 如果 IDE 报告 `ws://...` 拒连，可在仓库根目录先执行：

@@ -5,7 +5,7 @@
 > 范围: `foundation/llm/`、`apps/server/`、loom 端零改动
 > 关联文档:
 > - `.loom/skills/auto/software-engineering/repository-protocol-analysis/references/loom-reasoning-streaming-protocol.md`（技术参考，本设计的深度诊断底座）
-> - `docs/audit/loom-vs-opencode-endpoints.md`（端点合规审计，本设计是其延伸）
+> - `docs/opencode-protocol/audits/loom-vs-opencode-endpoints.md`（端点合规审计，本设计是其延伸）
 
 ## 1. 背景
 
@@ -276,6 +276,6 @@ loom v1 当前只发 `message.part.updated`（累积快照）。如果 opencode 
 
 ## 8. 后续跟踪
 
-- 完成 P0 #1/#2/#3 后，重新跑 `scripts/check-protocol.ps1` 与 `docs/audit/loom-vs-opencode-endpoints.md` 中关联的 M2/M4 检查项
-- 当 openchamber 前端确认消费 `session.next.reasoning.*`，可在 `docs/audit/loom-vs-opencode-endpoints.md` 中把 reasoning 维度从"潜在 bug 区"移出
+- 完成 P0 #1/#2/#3 后，重新跑 `scripts/check-protocol.ps1` 与 `docs/opencode-protocol/audits/loom-vs-opencode-endpoints.md` 中关联的 M2/M4 检查项
+- 当 openchamber 前端确认消费 `session.next.reasoning.*`，可在 `docs/opencode-protocol/audits/loom-vs-opencode-endpoints.md` 中把 reasoning 维度从"潜在 bug 区"移出
 - 跟踪 v1 `message.part.delta` 实际消费者；如果只有 v1 TUI 增量渲染路径依赖且 v2 已弃用，可把 P3 #5 推迟或砍掉

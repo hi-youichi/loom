@@ -39,4 +39,4 @@ opencode 服务器同时暴露两套 HTTP API 面：
 
 opencode 定义约 **180 个端点**（v1 ~105 + v2 ~55，其中 ~40 个功能重叠）。loom-server 已实现约 100 个，未实现/TODO 约 45 个，stub/501 约 25 个。
 
-详细端点矩阵见 `specs/v2/protocol-v1-v2-comparison.md`。
+详细端点矩阵见 `docs/opencode-protocol/specs/protocol-v1-v2-comparison.md`。

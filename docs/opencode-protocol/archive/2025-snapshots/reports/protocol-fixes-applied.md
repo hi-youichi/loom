@@ -3,7 +3,7 @@
 **Date**: 2025-08-19  
 **Branch**: `feature/cli-server-backend`  
 **Worktree**: `C:/Users/heycj/dev/worktrees/loom/cli-server-backend`  
-**Reference**: `docs/protocol-code-diff-report.zh.md`
+**Reference**: `docs/opencode-protocol/reports/protocol-code-diff-report.zh.md`
 
 ## Summary
 

@@ -21,7 +21,7 @@ Loom 当前未实现 `session/delete` 协议处理器。
 | `apps/acp/src/session.rs` | 116-266 | Session 管理；未实现 delete 操作 |
 | `apps/acp/src/session_config_store.rs` | 112-118 | Session 配置持久化；无 delete 方法 |
 | `protocols.lua` | 86 | 仅协议清单引用 |
-| `docs/rust-agent-client-protocol-index.md` | 370-376 | 协议文档条目 |
+| `docs/opencode-protocol/archive/2025-snapshots/acp-adjacent/rust-agent-client-protocol-index.md` | 370-376 | 协议文档条目 |
 
 该协议在 `protocols.lua` 中列出并在协议索引中记录，但任何 session 管理模块中都没有相应的处理器、命令或 delete 逻辑。
 
@@ -34,7 +34,7 @@ Loom 当前未实现 `session/delete` 协议处理器。
 - **缺少处理器**：`agent.rs` 请求路由（第 384-386 行附近）中没有 `session_delete` 或等效函数。
 - **缺少 repository 方法**：`session_config_store.rs` 没有 delete 操作；无法从持久化存储中删除 session。
 - **缺少 CLI 命令**：`stdio_loop.rs` 未向用户公开 `session delete` 命令。
-- **协议已列出但未实现**：该协议出现在 `protocols.lua:86` 和索引文档（`docs/rust-agent-client-protocol-index.md:370-376`）中，但没有任何实现。
+- **协议已列出但未实现**：该协议出现在 `protocols.lua:86` 和索引文档（`docs/opencode-protocol/archive/2025-snapshots/acp-adjacent/rust-agent-client-protocol-index.md:370-376`）中，但没有任何实现。
 
 ## 验证
 

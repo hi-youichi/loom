@@ -20,7 +20,7 @@
 
 ### 文档引用（已失效）
 
-- **`docs/rust-agent-client-protocol-index.md:266–272`** — 将 `extMethod` 文档化为有效的入站请求处理器。
+- **`docs/opencode-protocol/archive/2025-snapshots/acp-adjacent/rust-agent-client-protocol-index.md:266–272`** — 将 `extMethod` 文档化为有效的入站请求处理器。
 - **`docs/acp-audit/04-ext-method.md`** — **已被引用但不存在。** `docs/acp-audit/` 目录本身在代码库中缺失。
 
 ### Agent 实现（仅骨架）
@@ -54,7 +54,7 @@
 通过交叉引用以下 5 个已确认的文件执行对抗性验证：
 
 1. **`protocols.lua:77`** — 已确认 `extMethod` 注册项，模式为 `_.*`。
-2. **`docs/rust-agent-client-protocol-index.md:266–272`** — 已确认将 `extMethod` 列为入站处理器的文档。
+2. **`docs/opencode-protocol/archive/2025-snapshots/acp-adjacent/rust-agent-client-protocol-index.md:266–272`** — 已确认将 `extMethod` 列为入站处理器的文档。
 3. **`apps/acp/src/agent.rs:349–1416`** — 已确认不存在处理函数；`ExtMethod` 结构体存在但未用作入站处理器。
 4. **`apps/acp/src/protocol.rs:1–129`** — 已确认无 `extMethod` 路由或文档。
 5. **`apps/acp/tests/e2e/common/jsonrpc.rs:72–86`** — 已确认 `ExtMethod(String)` 仅用于出站分类。

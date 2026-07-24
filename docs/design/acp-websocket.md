@@ -41,6 +41,14 @@ $env:LOOM_ACP_ALLOWED_ORIGINS = "https://ui.example.com,https://staging.example.
 
 原生 CLI 不发送 `Origin`，因此不会被该浏览器防护规则阻断；仍应启用 Bearer token 并经由 WSS 反向代理暴露公网服务。
 
+## 持久 Agent 与重连语义（实现说明）
+
+目标链路：Zed ←stdio→ `loom acp --bridge`（纯转发）←WS→ loom-server（`AcpHub` + agent，持久）。
+
+WS 断开时，server 内的 agent 继续跑 prompt，`session/update` 写入 replay buffer；Zed 重连后 `AcpHub::attach` 灌入 buffer，prompt 结果不丢。
+
+详细设计见 [acp-websocket-persistent-agent.md](../opencode-protocol/archive/2025-snapshots/acp-adjacent/acp-websocket-persistent-agent.md)。落地前，handler 的实现是 stdio 桥：每连接 spawn `loom acp` 子进程跑 agent，断线即中断 prompt（参见该文档 §1 现状分析）。
+
 ## 快速拉起服务端（`loom acp --websocket`）
 
 如果 IDE / 远程 CLI 报告 `ws://127.0.0.1:3030/acp` 拒连，可以直接在仓库根目录运行：
@@ -52,4 +60,4 @@ loom acp --websocket --server http://127.0.0.1:18081
 
 命令会探测目标端口是否已有健康的 `loom-server`，缺失时后台拉起一个并等待就绪，随后退出 0，
 不接管终端。子进程作为共享 detached daemon 运行；如需关闭：`pkill -f loom-server`。
-详细设计见 [acp-websocket-cli-ensure.md](acp-websocket-cli-ensure.md)。
+详细设计见 [acp-websocket-cli-ensure.md](../opencode-protocol/archive/2025-snapshots/acp-adjacent/acp-websocket-cli-ensure.md)。
