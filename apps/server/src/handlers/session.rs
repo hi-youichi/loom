@@ -24,6 +24,7 @@ use crate::state::{
     persist_session_delete, MessageInfo, ModelInfo, PartInfo, SessionInfo, SharedState,
 };
 use crate::translator;
+use crate::v2_event::publish_durable;
 
 /// SessionNotFoundError response body (contract shape: `{sessionID, message}`).
 fn session_not_found(session_id: &str) -> Response {
@@ -98,12 +99,43 @@ pub async fn patch_session(
     let Some(session) = sessions.get_mut(&id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    let previous_directory = session.directory.clone();
     apply_session_patch(session, &body);
     session.time.updated = Utc::now().timestamp_millis();
 
     let cloned = session.clone();
     drop(sessions);
     persist_session(&state, &cloned);
+    if cloned.directory != previous_directory {
+        let _ = publish_durable(
+            &state,
+            "session.next.moved",
+            json!({
+                "timestamp": Utc::now().timestamp_millis(), "sessionID": &id,
+                "location": {"directory": &cloned.directory},
+            }),
+            1,
+        );
+    }
+    if let Some(message_id) = state
+        .messages
+        .read()
+        .get(&id)
+        .and_then(|messages| messages.last())
+        .map(|message| message.id.clone())
+    {
+        if let Some(agent) = cloned.agent.as_deref() {
+            let _ = publish_durable(
+                &state,
+                "session.next.agent.switched",
+                json!({
+                    "timestamp": Utc::now().timestamp_millis(), "sessionID": &id,
+                    "messageID": message_id, "agent": agent,
+                }),
+                1,
+            );
+        }
+    }
 
     emit(
         &state,
@@ -132,6 +164,7 @@ pub async fn delete_session(State(state): State<SharedState>, Path(id): Path<Str
         }
         persist_session_delete(&state, &id);
         persist_session_cascade(&state, &id, &msg_ids);
+        crate::v2_event::clear_session(&state, &id);
         if let Some(run) = lookup_run(&state, &id) {
             run.cancel();
             end_run(&state, &id, run.generation());
@@ -197,7 +230,8 @@ async fn prompt_v2(state: SharedState, session_id: String, body: Value) -> Respo
     let delivery = body
         .get("delivery")
         .and_then(Value::as_str)
-        .unwrap_or("push");
+        .filter(|value| matches!(*value, "queue" | "steer"))
+        .unwrap_or("queue");
 
     let now = Utc::now().timestamp_millis();
     let message_id = body
@@ -211,6 +245,21 @@ async fn prompt_v2(state: SharedState, session_id: String, body: Value) -> Respo
         .get(&session_id)
         .map(|m| m.len() as u64)
         .unwrap_or(0);
+
+    // Prompted is the intent boundary; it is durable even when admission
+    // subsequently fails.  The v2 schema permits only queue/steer delivery.
+    let _ = publish_durable(
+        &state,
+        "session.next.prompted",
+        json!({
+            "timestamp": now,
+            "sessionID": &session_id,
+            "messageID": &message_id,
+            "prompt": &prompt_obj,
+            "delivery": delivery,
+        }),
+        1,
+    );
 
     // ── Admit the input: create the user message durably ──────────────
     let agent_name = session.agent.clone().unwrap_or_else(|| "build".to_string());
@@ -239,6 +288,19 @@ async fn prompt_v2(state: SharedState, session_id: String, body: Value) -> Respo
         .or_default()
         .push(user_info.clone());
     persist_messages(&state, &session_id);
+
+    let _ = publish_durable(
+        &state,
+        "session.next.prompt.admitted",
+        json!({
+            "timestamp": now,
+            "sessionID": &session_id,
+            "messageID": &message_id,
+            "prompt": &prompt_obj,
+            "delivery": delivery,
+        }),
+        1,
+    );
 
     // Store prompt text as a text part for the user message.
     let part = json!({"id": new_part_id(), "type": "text", "text": prompt_text});
@@ -434,6 +496,25 @@ pub async fn api_session_prompt(
     let cloned = session.clone();
     drop(sessions);
     persist_session(&state, &cloned);
+    if let (Some(message_id), Some(agent)) = (
+        state
+            .messages
+            .read()
+            .get(&session_id)
+            .and_then(|messages| messages.last())
+            .map(|message| message.id.clone()),
+        cloned.agent.as_deref(),
+    ) {
+        let _ = publish_durable(
+            &state,
+            "session.next.agent.switched",
+            json!({
+                "timestamp": Utc::now().timestamp_millis(), "sessionID": &session_id,
+                "messageID": message_id, "agent": agent,
+            }),
+            1,
+        );
+    }
     emit(
         &state,
         "session.updated",
@@ -452,8 +533,8 @@ pub async fn api_session_prompt(
 pub async fn switch_model(
     State(state): State<SharedState>,
     Path(session_id): Path<String>,
-    Json(body): Json<Value>,
     _loc: Query<LocationQuery>,
+    Json(body): Json<Value>,
 ) -> Response {
     let mut sessions = state.sessions.write();
     let Some(session) = sessions.get_mut(&session_id) else {
@@ -462,7 +543,10 @@ pub async fn switch_model(
     if let Some(model) = body.get("model") {
         if let (Some(provider_id), Some(model_id)) = (
             model.get("providerID").and_then(Value::as_str),
-            model.get("modelID").and_then(Value::as_str),
+            model
+                .get("id")
+                .or_else(|| model.get("modelID"))
+                .and_then(Value::as_str),
         ) {
             session.model = Some(ModelInfo {
                 provider_id: provider_id.to_string(),
@@ -478,6 +562,27 @@ pub async fn switch_model(
     let cloned = session.clone();
     drop(sessions);
     persist_session(&state, &cloned);
+    if let (Some(message_id), Some(model)) = (
+        state
+            .messages
+            .read()
+            .get(&session_id)
+            .and_then(|messages| messages.last())
+            .map(|message| message.id.clone()),
+        cloned.model.as_ref(),
+    ) {
+        let _ = publish_durable(
+            &state,
+            "session.next.model.switched",
+            json!({
+                "timestamp": Utc::now().timestamp_millis(), "sessionID": &session_id,
+                "messageID": message_id,
+                "model": {"id": &model.model_id, "providerID": &model.provider_id,
+                    "variant": &model.variant},
+            }),
+            1,
+        );
+    }
     emit(
         &state,
         "session.updated",
@@ -500,14 +605,57 @@ pub async fn compact(
     if !state.sessions.read().contains_key(&session_id) {
         return session_not_found(&session_id);
     }
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(json!({
-            "_tag": "ServiceUnavailableError",
-            "message": "compact not implemented: no summarization backend"
-        })),
-    )
-        .into_response()
+    let messages = state
+        .messages
+        .read()
+        .get(&session_id)
+        .cloned()
+        .unwrap_or_default();
+    let message_id = messages
+        .last()
+        .map(|message| message.id.clone())
+        .unwrap_or_else(new_message_id);
+    let _ = publish_durable(
+        &state,
+        "session.next.compaction.started",
+        json!({
+            "timestamp": Utc::now().timestamp_millis(), "sessionID": &session_id,
+            "messageID": &message_id, "reason": "manual",
+        }),
+        1,
+    );
+    let text = format!("Compacted {} prior session message(s).", messages.len());
+    state
+        .session_contexts
+        .write()
+        .insert(session_id.clone(), text.clone());
+    crate::v2_event::publish_live(
+        &state,
+        "session.next.compaction.delta",
+        json!({
+            "timestamp": Utc::now().timestamp_millis(), "sessionID": &session_id,
+            "messageID": &message_id, "text": &text,
+        }),
+    );
+    let _ = publish_durable(
+        &state,
+        "session.next.context.updated",
+        json!({
+            "timestamp": Utc::now().timestamp_millis(), "sessionID": &session_id,
+            "messageID": &message_id, "text": &text,
+        }),
+        1,
+    );
+    let _ = publish_durable(
+        &state,
+        "session.next.compaction.ended",
+        json!({
+            "timestamp": Utc::now().timestamp_millis(), "sessionID": &session_id,
+            "messageID": &message_id, "reason": "manual", "text": &text, "recent": &text,
+        }),
+        1,
+    );
+    StatusCode::NO_CONTENT.into_response()
 }
 
 /// `POST /api/session/:sessionID/wait` — session.wait (contract).
@@ -573,25 +721,29 @@ pub async fn get_context(
     Json(json!({"data": data})).into_response()
 }
 
-/// `GET /api/session/:sessionID/history` — session.history (contract).
-/// Genuinely unsupported: loom-server has no durable session event store.
-/// Returns 501 Not Implemented (after confirming the session exists for 404).
+/// `GET /api/session/:sessionID/history` — returns the same durable source as
+/// session SSE. `after` is deliberately exclusive and sequence based.
 pub async fn get_history(
     State(state): State<SharedState>,
     Path(session_id): Path<String>,
+    Query(query): Query<crate::sse::EventQuery>,
     _loc: Query<LocationQuery>,
 ) -> Response {
     if !state.sessions.read().contains_key(&session_id) {
         return session_not_found(&session_id);
     }
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(json!({
-            "_tag": "UnknownError",
-            "message": "history not implemented: no durable event store"
-        })),
-    )
-        .into_response()
+    let after = match query.after.as_deref().unwrap_or("0").parse::<u64>() {
+        Ok(value) => value,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "`after` must be a non-negative u64",
+            )
+                .into_response()
+        }
+    };
+    let events = crate::v2_event::replay_after(&state, &session_id, after);
+    Json(json!({"data": events})).into_response()
 }
 
 /// `POST /api/session/:id/command` — v2 command dispatch (task P1.9).
@@ -601,6 +753,65 @@ pub async fn api_session_command(
     Json(body): Json<Value>,
 ) -> Response {
     run_command(state, session_id, body).await
+}
+
+/// Re-run the most recent user text. This gives integrations a real retry
+/// operation (rather than emitting a retry notification without executing
+/// anything) and records the retry boundary in the v2 durable log.
+pub async fn api_session_retry(
+    State(state): State<SharedState>,
+    Path(session_id): Path<String>,
+) -> Response {
+    if !state.sessions.read().contains_key(&session_id) {
+        return session_not_found(&session_id);
+    }
+    let text = {
+        let messages = state.messages.read();
+        let Some(message) = messages
+            .get(&session_id)
+            .and_then(|messages| messages.iter().rev().find(|message| message.role == "user"))
+        else {
+            return (StatusCode::CONFLICT, "no user prompt to retry").into_response();
+        };
+        state
+            .parts
+            .read()
+            .get(&message.id)
+            .and_then(|parts| parts.iter().find(|part| part.part_type == "text"))
+            .and_then(|part| part.data["text"].as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    if text.is_empty() {
+        return (StatusCode::CONFLICT, "last user prompt has no text").into_response();
+    }
+    let attempt = state
+        .messages
+        .read()
+        .get(&session_id)
+        .map(|messages| {
+            messages
+                .iter()
+                .filter(|message| message.role == "user")
+                .count() as f64
+        })
+        .unwrap_or(1.0);
+    let _ = publish_durable(
+        &state,
+        "session.next.retried",
+        json!({
+            "timestamp": Utc::now().timestamp_millis(), "sessionID": &session_id, "attempt": attempt,
+            "error": {"message":"manual retry", "isRetryable": true},
+        }),
+        1,
+    );
+    run_prompt(
+        state,
+        session_id,
+        json!({"parts":[{"type":"text", "text":text}]}),
+        false,
+    )
+    .await
 }
 
 /// `POST /api/session/:id/shell` — v2 single-shot shell exec (task P1.10).
@@ -679,6 +890,18 @@ async fn run_shell(state: SharedState, session_id: String, body: Value) -> Respo
             .into_response();
     }
 
+    let message_id = new_message_id();
+    let call_id = format!("shell_{}", uuid::Uuid::new_v4().simple());
+    let _ = publish_durable(
+        &state,
+        "session.next.shell.started",
+        json!({
+            "timestamp": Utc::now().timestamp_millis(), "sessionID": &session_id,
+            "messageID": &message_id, "callID": &call_id, "command": &command,
+        }),
+        1,
+    );
+
     emit(
         &state,
         "session.status",
@@ -699,7 +922,6 @@ async fn run_shell(state: SharedState, session_id: String, body: Value) -> Respo
     };
 
     let now = Utc::now().timestamp_millis();
-    let message_id = new_message_id();
     let (finish, text, exit_code) = match output {
         Ok(output) => {
             let mut text = String::from_utf8_lossy(&output.stdout).to_string();
@@ -764,6 +986,15 @@ async fn run_shell(state: SharedState, session_id: String, body: Value) -> Respo
     crate::agent_runner::push_part(&state, &message_id, &session_id, "text", part);
     persist_messages(&state, &session_id);
     persist_parts(&state, &message_id);
+    let _ = publish_durable(
+        &state,
+        "session.next.shell.ended",
+        json!({
+            "timestamp": Utc::now().timestamp_millis(), "sessionID": &session_id,
+            "callID": call_id, "output": &text,
+        }),
+        1,
+    );
     emit(
         &state,
         "message.updated",
@@ -988,6 +1219,53 @@ pub async fn post_api_session_summarize(
     Json(json!({ "ok": true, "summary": "" }))
 }
 
+/// Add an explicitly synthetic session message. This is used by integrations
+/// that materialize an externally generated context note without invoking a
+/// provider run.
+pub async fn post_api_session_synthetic(
+    State(state): State<SharedState>,
+    Path(session_id): Path<String>,
+    Json(body): Json<Value>,
+) -> Response {
+    if !state.sessions.read().contains_key(&session_id) {
+        return session_not_found(&session_id);
+    }
+    let Some(text) = body.get("text").and_then(Value::as_str) else {
+        return (StatusCode::BAD_REQUEST, "text is required").into_response();
+    };
+    let now = Utc::now().timestamp_millis();
+    let message_id = new_message_id();
+    let message = MessageInfo {
+        id: message_id.clone(),
+        session_id: session_id.clone(),
+        role: "synthetic".to_string(),
+        time: json!({"created": now}),
+        agent: "system".to_string(),
+        ..Default::default()
+    };
+    state
+        .messages
+        .write()
+        .entry(session_id.clone())
+        .or_default()
+        .push(message.clone());
+    persist_messages(&state, &session_id);
+    let _ = publish_durable(
+        &state,
+        "session.next.synthetic",
+        json!({
+            "timestamp": now, "sessionID": &session_id, "messageID": &message_id, "text": text,
+        }),
+        1,
+    );
+    emit(
+        &state,
+        "message.updated",
+        json!({"sessionID": &session_id, "info": message}),
+    );
+    Json(json!({"data": {"id": message_id}})).into_response()
+}
+
 /// `POST /api/session/:id/init` — TUI's "create session in worktree"
 /// endpoint. We always succeed (no worktree plumbing in MVP).
 pub async fn post_api_session_init(
@@ -999,15 +1277,105 @@ pub async fn post_api_session_init(
     Json(json!({ "ok": true }))
 }
 
-/// `POST /api/session/:id/revert` — placeholder; real implementation
-/// lives in `handlers/revert.rs`.
-pub async fn post_api_session_revert(
+/// Stage a revert target.  The staged state is durable session state, not a
+/// success-shaped placeholder: commit removes messages after the target.
+pub async fn revert_stage(
     State(state): State<SharedState>,
     Path(session_id): Path<String>,
-    Json(_body): Json<Value>,
-) -> Json<Value> {
-    emit(&state, "session.revert", json!({ "sessionID": session_id }));
-    Json(json!({ "ok": true }))
+    Json(body): Json<Value>,
+) -> Response {
+    if !state.sessions.read().contains_key(&session_id) {
+        return session_not_found(&session_id);
+    }
+    let Some(message_id) = body.get("messageID").and_then(Value::as_str) else {
+        return (StatusCode::BAD_REQUEST, "messageID is required").into_response();
+    };
+    if !state
+        .messages
+        .read()
+        .get(&session_id)
+        .is_some_and(|messages| messages.iter().any(|message| message.id == message_id))
+    {
+        return (StatusCode::NOT_FOUND, "revert message not found").into_response();
+    }
+    let staged = json!({
+        "messageID": message_id,
+        "partID": body.get("partID"), "snapshot": body.get("snapshot"),
+        "diff": body.get("diff"), "files": body.get("files"),
+    });
+    state
+        .staged_reverts
+        .write()
+        .insert(session_id.clone(), staged.clone());
+    let _ = publish_durable(
+        &state,
+        "session.next.revert.staged",
+        json!({
+            "timestamp": Utc::now().timestamp_millis(), "sessionID": &session_id, "revert": staged,
+        }),
+        1,
+    );
+    StatusCode::NO_CONTENT.into_response()
+}
+
+pub async fn revert_clear(
+    State(state): State<SharedState>,
+    Path(session_id): Path<String>,
+) -> Response {
+    if !state.sessions.read().contains_key(&session_id) {
+        return session_not_found(&session_id);
+    }
+    state.staged_reverts.write().remove(&session_id);
+    let _ = publish_durable(
+        &state,
+        "session.next.revert.cleared",
+        json!({
+            "timestamp": Utc::now().timestamp_millis(), "sessionID": &session_id,
+        }),
+        1,
+    );
+    StatusCode::NO_CONTENT.into_response()
+}
+
+pub async fn revert_commit(
+    State(state): State<SharedState>,
+    Path(session_id): Path<String>,
+) -> Response {
+    if !state.sessions.read().contains_key(&session_id) {
+        return session_not_found(&session_id);
+    }
+    let Some(staged) = state.staged_reverts.write().remove(&session_id) else {
+        return (StatusCode::CONFLICT, "no revert is staged").into_response();
+    };
+    let message_id = staged["messageID"].as_str().unwrap_or_default().to_string();
+    let removed_ids = {
+        let mut messages = state.messages.write();
+        let Some(list) = messages.get_mut(&session_id) else {
+            return session_not_found(&session_id);
+        };
+        let Some(index) = list.iter().position(|message| message.id == message_id) else {
+            return (StatusCode::NOT_FOUND, "revert message not found").into_response();
+        };
+        list.drain(index + 1..)
+            .map(|message| message.id)
+            .collect::<Vec<_>>()
+    };
+    {
+        let mut parts = state.parts.write();
+        for removed_id in removed_ids {
+            parts.remove(&removed_id);
+        }
+    }
+    persist_messages(&state, &session_id);
+    let _ = publish_durable(
+        &state,
+        "session.next.revert.committed",
+        json!({
+            "timestamp": Utc::now().timestamp_millis(), "sessionID": &session_id, "messageID": &message_id,
+        }),
+        1,
+    );
+    StatusCode::NO_CONTENT.into_response()
 }
 
 /// `DELETE /session/:id/share` — unshare a session.

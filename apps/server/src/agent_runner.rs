@@ -109,6 +109,61 @@ pub async fn run_agent(
     agent_name: Option<String>,
     cancellation: RunCancellation,
 ) -> Result<RunCompletion, String> {
+    run_agent_with_client(
+        state,
+        session_id,
+        message_id,
+        working_folder,
+        text,
+        model,
+        agent_name,
+        cancellation,
+        None,
+    )
+    .await
+}
+
+/// Test-only seam that keeps integration tests on the production agent,
+/// translator and SSE path while replacing just the remote LLM client.
+#[cfg(feature = "test-support")]
+#[allow(clippy::too_many_arguments)]
+pub async fn run_agent_with_test_client(
+    state: SharedState,
+    session_id: String,
+    message_id: String,
+    working_folder: PathBuf,
+    text: String,
+    model: Option<String>,
+    agent_name: Option<String>,
+    cancellation: RunCancellation,
+    client: Box<dyn loom_llm::LlmClient>,
+) -> Result<RunCompletion, String> {
+    run_agent_with_client(
+        state,
+        session_id,
+        message_id,
+        working_folder,
+        text,
+        model,
+        agent_name,
+        cancellation,
+        Some(client),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_agent_with_client(
+    state: SharedState,
+    session_id: String,
+    message_id: String,
+    working_folder: PathBuf,
+    text: String,
+    model: Option<String>,
+    agent_name: Option<String>,
+    cancellation: RunCancellation,
+    client: Option<Box<dyn loom_llm::LlmClient>>,
+) -> Result<RunCompletion, String> {
     state.active_text.write().remove(&message_id);
     state.active_reasoning.write().remove(&message_id);
 
@@ -143,7 +198,7 @@ pub async fn run_agent(
             verbose: false,
             cancellation: opts.cancellation.clone(),
             any_stream_event_sender: None,
-            llm_override: None,
+            llm_override: client,
         },
         Some(on_event),
     )

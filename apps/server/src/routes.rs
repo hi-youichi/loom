@@ -414,6 +414,10 @@ pub fn build_router(state: SharedState) -> Router {
             post(handlers::session::api_session_command),
         )
         .route(
+            "/api/session/:sessionID/retry",
+            post(handlers::session::api_session_retry),
+        )
+        .route(
             "/api/session/:sessionID/shell",
             post(handlers::session::api_session_shell),
         )
@@ -426,12 +430,44 @@ pub fn build_router(state: SharedState) -> Router {
             get(handlers::session::session_status),
         )
         .route(
+            "/api/session/:sessionID/model",
+            post(handlers::session::switch_model),
+        )
+        .route(
+            "/api/session/:sessionID/context",
+            get(handlers::session::get_context),
+        )
+        .route(
+            "/api/session/:sessionID/history",
+            get(handlers::session::get_history),
+        )
+        .route(
+            "/api/session/:sessionID/compact",
+            post(handlers::session::compact),
+        )
+        .route(
+            "/api/session/:sessionID/revert/stage",
+            post(handlers::session::revert_stage),
+        )
+        .route(
+            "/api/session/:sessionID/revert/clear",
+            post(handlers::session::revert_clear),
+        )
+        .route(
+            "/api/session/:sessionID/revert/commit",
+            post(handlers::session::revert_commit),
+        )
+        .route(
             "/api/session/:sessionID/fork",
             post(handlers::session::post_api_session_fork),
         )
         .route(
             "/api/session/:sessionID/summarize",
             post(handlers::session::post_api_session_summarize),
+        )
+        .route(
+            "/api/session/:sessionID/synthetic",
+            post(handlers::session::post_api_session_synthetic),
         )
         .route(
             "/api/session/:sessionID/init",
