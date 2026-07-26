@@ -142,6 +142,10 @@ pub struct ModelEntry {
     pub family: Option<String>,
     /// Model version/generation (e.g., "5", "latest").
     pub version: Option<String>,
+
+    /// Full model spec from models.dev, if this model could be matched.
+    /// Populated for `fetch_models` providers via spec enrichment.
+    pub spec: Option<crate::Model>,
 }
 
 impl ModelEntry {

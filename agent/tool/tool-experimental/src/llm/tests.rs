@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use model_spec_core::limit::ModelLimit;
+use model_spec_core::ModelLimit;
 use model_spec_core::Model;
 use serde_json::{json, Value};
 

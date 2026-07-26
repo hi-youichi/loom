@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::Model;
+use super::model::Model;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Provider {

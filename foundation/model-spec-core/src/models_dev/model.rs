@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::cost::Cost;
-use crate::limit::{Modalities, ModelLimit};
 use crate::tier::{tier_of, ModelTier};
+
+use super::cost::Cost;
+use super::limit::{Modalities, ModelLimit};
 
 fn default_true() -> bool {
     true

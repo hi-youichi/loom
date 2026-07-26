@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::cost::Cost;
+use crate::models_dev::Cost;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -52,13 +52,13 @@ impl ModelTier {
 /// Filters by [`tier_of`], then picks the one with the most recent `release_date`.
 /// Returns `None` if no model matches, or if `tier` is [`ModelTier::None`].
 pub fn pick_best_for_tier<'a>(
-    models: &'a std::collections::HashMap<String, crate::model::Model>,
+    models: &'a std::collections::HashMap<String, crate::models_dev::Model>,
     tier: ModelTier,
-) -> Option<(&'a String, &'a crate::model::Model)> {
+) -> Option<(&'a String, &'a crate::models_dev::Model)> {
     if tier == ModelTier::None {
         return None;
     }
-    let mut candidates: Vec<(&'a String, &'a crate::model::Model)> =
+    let mut candidates: Vec<(&'a String, &'a crate::models_dev::Model)> =
         models.iter().filter(|(_, m)| m.tier() == tier).collect();
 
     if candidates.is_empty() {

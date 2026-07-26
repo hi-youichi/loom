@@ -98,6 +98,8 @@ If a workflow needs to be stopped (wrong arguments, user changed mind, stuck on 
 
 The in-flight agent (if any) finishes its current turn and returns a `Cancelled` error; the checkpoint is then marked `"cancelled"` instead of `"completed"`. There is no way to resume a cancelled run — restart the workflow with `workflow_start({ script: "..." })` or `workflow_start({ resume_from_id: "<id>" })` after starting a fresh instance.
 
+A `failed` run (status set when the script returned a script error or the runtime panicked) **is** resumable: any agents that completed before the failure wrote their results to the journal cache, so resuming re-runs only the failing agent and hits the cache for the rest. The only terminal statuses that block resume are `completed` and `cancelled`.
+
 The lookup targets the same in-memory registry that `workflow_start` uses, so cancel works only for runs owned by the current process. After the run reaches a terminal state (or belongs to a different process), cancel returns `result="not_found_or_terminal"` — verify with `workflow_status` first if unsure.
 
 ## 2. Execution model

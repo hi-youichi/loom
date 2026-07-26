@@ -4,13 +4,14 @@ mod cached;
 mod composite;
 mod config_model;
 mod config_override;
-mod models_dev;
 
 pub use cached::CachedResolver;
 pub use composite::CompositeResolver;
 pub use config_model::{ConfigModelEntry, ConfigProviderEntry};
 pub use config_override::ConfigOverride;
-pub use models_dev::{HttpClient, ModelsDevResolver, ReqwestHttpClient, DEFAULT_MODELS_DEV_URL};
+pub use crate::models_dev::resolver::{
+    HttpClient, ModelsDevResolver, ReqwestHttpClient, DEFAULT_MODELS_DEV_URL,
+};
 
 use std::sync::Arc;
 

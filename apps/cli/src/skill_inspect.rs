@@ -25,6 +25,7 @@ use crate::output::write_json_output;
 ///
 /// `pub(crate)` — internal to the inspect module, not part of the public CLI API.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub(crate) struct BuiltinSkillContribution {
     /// Tool that provided the builtin skill.
     pub tool_name: String,

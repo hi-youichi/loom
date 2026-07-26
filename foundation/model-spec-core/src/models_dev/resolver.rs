@@ -10,9 +10,8 @@ use loom_http_retry::{
     is_retryable_reqwest_error, retry_backoff_for_attempt, TRANSIENT_HTTP_MAX_RETRIES,
 };
 
-use super::ModelResolver;
-use crate::parser::{parse_all_providers, parse_model, parse_provider};
-use crate::{Model, Provider};
+use super::parser::{parse_all_providers, parse_model, parse_provider};
+use super::{Model, Provider};
 
 /// Default models.dev API URL.
 pub const DEFAULT_MODELS_DEV_URL: &str = "https://models.dev/api.json";
@@ -164,7 +163,7 @@ impl Default for ModelsDevResolver {
 }
 
 #[async_trait]
-impl ModelResolver for ModelsDevResolver {
+impl super::super::resolver::ModelResolver for ModelsDevResolver {
     async fn resolve(&self, provider_id: &str, model_id: &str) -> Option<Model> {
         let body = self.http_client.get(&self.base_url).await.ok()?;
         let json: Value = serde_json::from_str(&body).ok()?;

@@ -73,7 +73,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
-    use crate::resolver::models_dev::{HttpClient, ModelsDevResolver};
+    use crate::models_dev::resolver::{HttpClient, ModelsDevResolver};
     use crate::ModelLimit;
 
     struct CountingMockClient {

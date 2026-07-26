@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::cost::Cost;
-use crate::limit::{Modalities, ModalityType, ModelLimit};
-use crate::model::Model;
-use crate::provider::Provider;
+use super::cost::Cost;
+use super::limit::{Modalities, ModalityType, ModelLimit};
+use super::model::Model;
+use super::provider::Provider;
 
 /// Parse Provider from JSON
 pub fn parse_provider(provider_id: &str, value: &Value) -> Option<Provider> {

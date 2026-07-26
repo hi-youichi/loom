@@ -136,6 +136,7 @@ pub(crate) fn model_entry_from_config(
         max_tokens: None,
         family: None,
         version: None,
+        spec: None,
     })
 }
 
@@ -283,6 +284,7 @@ pub(crate) async fn resolve_title_provider(
         max_tokens: None,
         family: None,
         version: None,
+        spec: None,
     };
     let thread_id = config
         .trace_thread_id
