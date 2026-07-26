@@ -10,6 +10,11 @@ pub use models_dev::resolver::{
     HttpClient, ModelsDevResolver, ReqwestHttpClient, DEFAULT_MODELS_DEV_URL,
 };
 
+#[cfg(feature = "resolver")]
+pub use models_dev::yaml_provider::{
+    load_yaml_plugins, YamlModelDef, YamlPluginFile, YamlProviderMeta,
+};
+
 pub use models_dev::{
     Cost, CostTier, CostTierInfo, Experimental, ExperimentalMode,
     ExperimentalProviderConfig, Interleaved, InterleavedField, Modalities,

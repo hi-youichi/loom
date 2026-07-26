@@ -1,0 +1,138 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+use async_trait::async_trait;
+
+use super::ModelResolver;
+use crate::models_dev::yaml_provider::{load_yaml_plugins, YamlPluginFile};
+use crate::Model;
+
+/// A resolver backed by YAML plugin files.
+///
+/// YAML files in `~/.loom/providers/*.yaml` define custom providers
+/// that completely replace models.dev data for the given provider ID.
+pub struct PluginModelResolver {
+    /// provider_id → (provider_type, models)
+    plugins: HashMap<String, PluginData>,
+}
+
+struct PluginData {
+    provider_type: Option<String>,
+    models: HashMap<String, Model>,
+}
+
+impl PluginModelResolver {
+    /// Load plugins from a directory and create a resolver.
+    pub fn load(dir: &std::path::Path) -> Self {
+        let plugins = load_yaml_plugins(dir);
+        let mut map: HashMap<String, PluginData> = HashMap::new();
+
+        for plugin in plugins {
+            let provider_type = plugin.provider.r#type.clone();
+            let models = plugin
+                .models
+                .into_iter()
+                .filter_map(|(id, def)| {
+                    let model = def.into_model(&id)?;
+                    Some((id, model))
+                })
+                .collect();
+
+            map.insert(
+                plugin.provider.id.clone(),
+                PluginData {
+                    provider_type,
+                    models,
+                },
+            );
+        }
+
+        Self { plugins: map }
+    }
+
+    /// Create from pre-parsed YAML plugin files.
+    pub fn from_plugins(plugins: Vec<YamlPluginFile>) -> Self {
+        let mut map: HashMap<String, PluginData> = HashMap::new();
+
+        for plugin in plugins {
+            let provider_type = plugin.provider.r#type.clone();
+            let models = plugin
+                .models
+                .into_iter()
+                .filter_map(|(id, def)| {
+                    let model = def.into_model(&id)?;
+                    Some((id, model))
+                })
+                .collect();
+
+            map.insert(
+                plugin.provider.id.clone(),
+                PluginData {
+                    provider_type,
+                    models,
+                },
+            );
+        }
+
+        Self { plugins: map }
+    }
+
+    /// Check if a provider is registered as a plugin.
+    pub fn has_provider(&self, provider_id: &str) -> bool {
+        self.plugins.contains_key(provider_id)
+    }
+
+    /// Get the provider type override for a provider, if any.
+    pub fn provider_type(&self, provider_id: &str) -> Option<&str> {
+        self.plugins
+            .get(provider_id)
+            .and_then(|p| p.provider_type.as_deref())
+    }
+
+    /// Return the list of provider IDs that have plugins.
+    pub fn provider_ids(&self) -> Vec<String> {
+        self.plugins.keys().cloned().collect()
+    }
+}
+
+#[async_trait]
+impl ModelResolver for PluginModelResolver {
+    async fn resolve(&self, provider_id: &str, model_id: &str) -> Option<Model> {
+        self.plugins
+            .get(provider_id)
+            .and_then(|data| data.models.get(model_id).cloned())
+    }
+}
+
+/// Convenience function: load plugins from the default providers directory.
+pub fn load_default_plugins() -> PluginModelResolver {
+    let dir = dirs_default_providers_dir();
+    PluginModelResolver::load(&dir)
+}
+
+/// Resolve the default providers directory (~/.loom/providers/).
+pub fn default_providers_dir() -> std::path::PathBuf {
+    dirs_default_providers_dir()
+}
+
+fn dirs_default_providers_dir() -> PathBuf {
+    let home = std::env::var("LOOM_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            home_dir()
+                .map(|h| h.join(".loom"))
+                .unwrap_or_else(|| PathBuf::from(".loom"))
+        });
+    home.join("providers")
+}
+
+fn home_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var("USERPROFILE").ok().map(PathBuf::from)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::env::var("HOME").ok().map(PathBuf::from)
+    }
+}

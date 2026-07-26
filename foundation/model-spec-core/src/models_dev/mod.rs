@@ -15,6 +15,8 @@ pub mod parser;
 pub mod provider;
 #[cfg(feature = "resolver")]
 pub mod resolver;
+#[cfg(feature = "resolver")]
+pub mod yaml_provider;
 
 pub use cost::{Cost, CostTier, CostTierInfo};
 pub use limit::{Modalities, ModalityType, ModelLimit};

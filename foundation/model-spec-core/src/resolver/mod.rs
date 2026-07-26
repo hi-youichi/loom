@@ -4,11 +4,13 @@ mod cached;
 mod composite;
 mod config_model;
 mod config_override;
+pub mod plugin;
 
 pub use cached::CachedResolver;
 pub use composite::CompositeResolver;
 pub use config_model::{ConfigModelEntry, ConfigProviderEntry};
 pub use config_override::ConfigOverride;
+pub use plugin::PluginModelResolver;
 pub use crate::models_dev::resolver::{
     HttpClient, ModelsDevResolver, ReqwestHttpClient, DEFAULT_MODELS_DEV_URL,
 };
@@ -86,7 +88,7 @@ pub async fn resolve_model_context_limit(
 
 /// Build a `CompositeResolver` with a standard priority chain.
 ///
-/// Chain: `ConfigOverride` → `ConfigModelResolver` → `CachedResolver<ModelsDevResolver>`
+/// Chain: `PluginModelResolver` → `ConfigOverride` → `ConfigModelResolver` → `CachedResolver<ModelsDevResolver>`
 ///
 /// Pass `config_providers` from `config.toml`'s `[[providers]]` section to enable
 /// manual model spec overrides.
@@ -96,13 +98,22 @@ pub fn build_composite_resolver(
 ) -> Arc<CompositeResolver> {
     let mut sources: Vec<Arc<dyn ModelResolver>> = Vec::new();
 
+    // 1. Highest priority: YAML plugins from ~/.loom/providers/*.yaml
+    let plugin_resolver = PluginModelResolver::load(&plugin::default_providers_dir());
+    if !plugin_resolver.provider_ids().is_empty() {
+        sources.push(Arc::new(plugin_resolver));
+    }
+
+    // 2. Config override (from CompactionConfig.max_context_tokens)
     if let Some(cfg) = config_override {
         sources.push(Arc::new(cfg));
     }
 
+    // 3. Config model resolver (from config.toml [[providers.models]])
     let config_model = config_model::ConfigModelResolver::from_providers(&config_providers);
     sources.push(Arc::new(config_model));
 
+    // 4. Lowest priority: models.dev remote API (with cache)
     let models_dev = ModelsDevResolver::new();
     let cached = CachedResolver::new(models_dev);
     sources.push(Arc::new(cached));

@@ -199,6 +199,7 @@ fn parse_all_models(body: &str) -> Result<HashMap<String, Model>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resolver::ModelResolver;
 
     struct MockHttpClient {
         body: String,
