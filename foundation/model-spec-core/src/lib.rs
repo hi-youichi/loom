@@ -11,7 +11,10 @@ pub use models_dev::resolver::{
 };
 
 pub use models_dev::{
-    Cost, Modalities, ModalityType, ModelLimit, Model, Provider,
+    Cost, CostTier, CostTierInfo, Experimental, ExperimentalMode,
+    ExperimentalProviderConfig, Interleaved, InterleavedField, Modalities,
+    ModalityType, ModelLimit, Model, ModelProviderConfig, ModelStatus,
+    Provider, ProviderShape, ReasoningEffort, ReasoningOption,
 };
 pub use models_dev::parser::{
     extract_provider_api_from_models_dev_json, parse_all_providers, parse_model, parse_model_limit,

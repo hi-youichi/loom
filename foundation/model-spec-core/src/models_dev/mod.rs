@@ -2,7 +2,9 @@
 //!
 //! This module is the single entry point for all models.dev-related code:
 //!
-//! - **Schema types**: [`Provider`], [`Model`], [`Cost`], [`ModelLimit`], [`Modalities`]
+//! - **Schema types**: [`Provider`], [`Model`], [`Cost`], [`CostTier`],
+//!   [`ModelLimit`], [`Modalities`], [`ReasoningOption`], [`Interleaved`],
+//!   [`ModelStatus`], [`Experimental`], [`ModelProviderConfig`]
 //! - **JSON parser**: [`parse_provider`], [`parse_model`], [`parse_all_providers`]
 //! - **HTTP resolver**: [`ModelsDevResolver`], [`HttpClient`], [`ReqwestHttpClient`]
 
@@ -14,9 +16,13 @@ pub mod provider;
 #[cfg(feature = "resolver")]
 pub mod resolver;
 
-pub use cost::Cost;
+pub use cost::{Cost, CostTier, CostTierInfo};
 pub use limit::{Modalities, ModalityType, ModelLimit};
-pub use model::Model;
+pub use model::{
+    Experimental, ExperimentalMode, ExperimentalProviderConfig, Interleaved,
+    InterleavedField, Model, ModelProviderConfig, ModelStatus, ProviderShape,
+    ReasoningEffort, ReasoningOption,
+};
 pub use parser::{
     extract_provider_api_from_models_dev_json, parse_all_providers, parse_model, parse_model_limit,
     parse_provider,

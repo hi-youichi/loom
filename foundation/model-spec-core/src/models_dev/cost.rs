@@ -9,13 +9,25 @@ pub struct Cost {
     pub output: f64,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<f64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_read: Option<f64>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_write: Option<f64>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reasoning: Option<f64>,
+    pub input_audio: Option<f64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_audio: Option<f64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_over_200k: Option<Box<Cost>>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tiers: Option<Vec<CostTier>>,
 }
 
 impl Cost {
@@ -23,9 +35,13 @@ impl Cost {
         Self {
             input,
             output,
+            reasoning: None,
             cache_read: None,
             cache_write: None,
-            reasoning: None,
+            input_audio: None,
+            output_audio: None,
+            context_over_200k: None,
+            tiers: None,
         }
     }
 
@@ -42,4 +58,25 @@ impl Cost {
         let output_cost = self.output_cost_usd() * (output_tokens as f64 / 1_000_000.0);
         input_cost + output_cost
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CostTier {
+    #[serde(flatten)]
+    pub cost: Cost,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<CostTierInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CostTierInfo {
+    #[serde(default = "default_tier_type")]
+    pub r#type: String,
+
+    pub size: u64,
+}
+
+fn default_tier_type() -> String {
+    "context".to_string()
 }

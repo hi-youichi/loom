@@ -479,6 +479,7 @@ fn model_to_json(m: &Model) -> Value {
     json!({
         "id": m.id,
         "name": m.name,
+        "description": m.description,
         "family": m.family,
         "reasoning": m.reasoning,
         "tool_call": m.tool_call,
@@ -492,16 +493,17 @@ fn model_to_json(m: &Model) -> Value {
         },
         "limit": {
             "context": m.limit.context,
+            "input": m.limit.input,
             "output": m.limit.output,
-            "cache_read": m.limit.cache_read,
-            "cache_write": m.limit.cache_write,
         },
         "cost": m.cost.as_ref().map(|c| json!({
             "input": c.input,
             "output": c.output,
+            "reasoning": c.reasoning,
             "cache_read": c.cache_read,
             "cache_write": c.cache_write,
-            "reasoning": c.reasoning,
+            "input_audio": c.input_audio,
+            "output_audio": c.output_audio,
         })),
         "knowledge": m.knowledge,
         "release_date": m.release_date,

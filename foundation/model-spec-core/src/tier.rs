@@ -65,7 +65,7 @@ pub fn pick_best_for_tier<'a>(
         return None;
     }
 
-    candidates.sort_by_key(|a| std::cmp::Reverse(a.1.release_date.as_deref().unwrap_or("")));
+    candidates.sort_by_key(|a| std::cmp::Reverse(a.1.release_date.as_str()));
 
     candidates.into_iter().next()
 }

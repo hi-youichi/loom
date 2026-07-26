@@ -45,32 +45,23 @@ impl Modalities {
 pub struct ModelLimit {
     pub context: u32,
 
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<u32>,
+
     pub output: u32,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cache_read: Option<u32>,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cache_write: Option<u32>,
 }
 
 impl ModelLimit {
     pub fn new(context: u32, output: u32) -> Self {
         Self {
             context,
+            input: None,
             output,
-            cache_read: None,
-            cache_write: None,
         }
     }
 
-    pub fn with_cache_read(mut self, limit: u32) -> Self {
-        self.cache_read = Some(limit);
-        self
-    }
-
-    pub fn with_cache_write(mut self, limit: u32) -> Self {
-        self.cache_write = Some(limit);
+    pub fn with_input(mut self, limit: u32) -> Self {
+        self.input = Some(limit);
         self
     }
 }

@@ -349,7 +349,7 @@ mod tests {
         assert!(model.attachment);
         assert!(!model.reasoning);
         assert!(model.tool_call);
-        assert!(model.temperature);
+        assert_eq!(model.temperature, Some(true));
         assert_eq!(model.knowledge, Some("2024-04-30".to_string()));
 
         assert!(model.modalities.supports_vision());

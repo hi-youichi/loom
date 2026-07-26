@@ -10,6 +10,10 @@ fn cost_new_basic() {
     assert_eq!(c.cache_read, None);
     assert_eq!(c.cache_write, None);
     assert_eq!(c.reasoning, None);
+    assert_eq!(c.input_audio, None);
+    assert_eq!(c.output_audio, None);
+    assert_eq!(c.context_over_200k, None);
+    assert_eq!(c.tiers, None);
 }
 
 #[test]
@@ -35,7 +39,6 @@ fn cost_estimate_one_million_tokens() {
 #[test]
 fn cost_estimate_custom_tokens() {
     let c = Cost::new(1.0, 2.0);
-    // 500K input * 1.0/1M = 0.5; 250K output * 2.0/1M = 0.5; total = 1.0
     let cost = c.estimate(500_000, 250_000);
     assert!((cost - 1.0).abs() < f64::EPSILON);
 }
@@ -50,13 +53,15 @@ fn cost_serde_roundtrip() {
 
 #[test]
 fn cost_with_optional_fields_serde() {
-    let json = r#"{"input":1.0,"output":2.0,"cache_read":0.5,"cache_write":0.25,"reasoning":3.0}"#;
+    let json = r#"{"input":1.0,"output":2.0,"cache_read":0.5,"cache_write":0.25,"reasoning":3.0,"input_audio":0.1,"output_audio":0.2}"#;
     let c: Cost = serde_json::from_str(json).unwrap();
     assert_eq!(c.input, 1.0);
     assert_eq!(c.output, 2.0);
     assert_eq!(c.cache_read, Some(0.5));
     assert_eq!(c.cache_write, Some(0.25));
     assert_eq!(c.reasoning, Some(3.0));
+    assert_eq!(c.input_audio, Some(0.1));
+    assert_eq!(c.output_audio, Some(0.2));
 }
 
 #[test]
@@ -75,24 +80,20 @@ fn model_limit_new() {
     let l = ModelLimit::new(128_000, 4096);
     assert_eq!(l.context, 128_000);
     assert_eq!(l.output, 4096);
-    assert_eq!(l.cache_read, None);
-    assert_eq!(l.cache_write, None);
+    assert_eq!(l.input, None);
 }
 
 #[test]
 fn model_limit_builder_pattern() {
-    let l = ModelLimit::new(200_000, 8192)
-        .with_cache_read(200_000)
-        .with_cache_write(50_000);
+    let l = ModelLimit::new(200_000, 8192).with_input(100_000);
     assert_eq!(l.context, 200_000);
     assert_eq!(l.output, 8192);
-    assert_eq!(l.cache_read, Some(200_000));
-    assert_eq!(l.cache_write, Some(50_000));
+    assert_eq!(l.input, Some(100_000));
 }
 
 #[test]
 fn model_limit_serde_roundtrip() {
-    let l = ModelLimit::new(100_000, 4096).with_cache_read(100_000);
+    let l = ModelLimit::new(100_000, 4096).with_input(50_000);
     let json = serde_json::to_string(&l).unwrap();
     let de: ModelLimit = serde_json::from_str(&json).unwrap();
     assert_eq!(l, de);
@@ -161,18 +162,8 @@ fn model_tier_derived() {
         id: "gpt-4o-mini".to_string(),
         name: "GPT-4o Mini".to_string(),
         family: Some("gpt-4o-mini".to_string()),
-        attachment: false,
-        reasoning: false,
-        tool_call: true,
-        temperature: true,
-        structured_output: None,
-        knowledge: None,
-        release_date: None,
-        last_updated: None,
-        modalities: Modalities::default(),
-        open_weights: false,
         cost: None,
-        limit: ModelLimit::default(),
+        ..Default::default()
     };
     assert_eq!(m.tier(), ModelTier::Light);
 }
@@ -182,15 +173,16 @@ fn model_serde_roundtrip() {
     let m = Model {
         id: "test-model".to_string(),
         name: "Test Model".to_string(),
+        description: "A test model".to_string(),
         family: None,
         attachment: true,
         reasoning: true,
         tool_call: true,
-        temperature: true,
+        temperature: Some(true),
         structured_output: Some(true),
         knowledge: Some("2024-01".to_string()),
-        release_date: Some("2024-01-01".to_string()),
-        last_updated: Some("2024-06-01".to_string()),
+        release_date: "2024-01-01".to_string(),
+        last_updated: "2024-06-01".to_string(),
         modalities: Modalities {
             input: vec![ModalityType::Text, ModalityType::Image],
             output: vec![ModalityType::Text],
@@ -198,6 +190,7 @@ fn model_serde_roundtrip() {
         open_weights: false,
         cost: Some(Cost::new(5.0, 15.0)),
         limit: ModelLimit::new(128_000, 4096),
+        ..Default::default()
     };
     let json = serde_json::to_string(&m).unwrap();
     let de: Model = serde_json::from_str(&json).unwrap();
@@ -206,15 +199,15 @@ fn model_serde_roundtrip() {
 
 #[test]
 fn model_defaults() {
-    let json = r#"{"id":"x","name":"X"}"#;
+    let json = r#"{"id":"x","name":"X","description":"D","release_date":"2024-01","last_updated":"2024-01","limit":{"context":4096,"output":1024}}"#;
     let m: Model = serde_json::from_str(json).unwrap();
     assert_eq!(m.id, "x");
     assert_eq!(m.name, "X");
     assert_eq!(m.family, None);
     assert!(!m.attachment);
     assert!(!m.reasoning);
-    assert!(m.tool_call); // default_true (matches ModelSpec behavior)
-    assert!(m.temperature); // default_true
+    assert!(m.tool_call);
+    assert_eq!(m.temperature, None);
     assert_eq!(m.structured_output, None);
     assert!(!m.open_weights);
 }
@@ -245,6 +238,7 @@ use std::collections::HashMap;
 fn parse_model_full() {
     let json = serde_json::json!({
         "name": "GPT-4o",
+        "description": "GPT-4o model",
         "family": "gpt-4o",
         "attachment": true,
         "reasoning": false,
@@ -256,6 +250,7 @@ fn parse_model_full() {
     let model = parse_model("gpt-4o", &json).unwrap();
     assert_eq!(model.id, "gpt-4o");
     assert_eq!(model.name, "GPT-4o");
+    assert_eq!(model.description, "GPT-4o model");
     assert_eq!(model.family, Some("gpt-4o".to_string()));
     assert!(model.attachment);
     assert!(model.tool_call);
@@ -276,18 +271,16 @@ fn parse_model_minimal() {
 }
 
 #[test]
-fn parse_model_limit_with_cache() {
+fn parse_model_limit_with_input() {
     let json = serde_json::json!({
         "context": 200000,
         "output": 8192,
-        "cache_read": 200000,
-        "cache_write": 50000
+        "input": 100000
     });
     let limit = parse_model_limit(&json).unwrap();
     assert_eq!(limit.context, 200000);
     assert_eq!(limit.output, 8192);
-    assert_eq!(limit.cache_read, Some(200000));
-    assert_eq!(limit.cache_write, Some(50000));
+    assert_eq!(limit.input, Some(100000));
 }
 
 #[test]
@@ -376,23 +369,7 @@ fn pick_best_for_tier_none_tier_returns_none() {
     let mut models = HashMap::new();
     models.insert(
         "model-1".to_string(),
-        Model {
-            id: "model-1".to_string(),
-            name: "M1".to_string(),
-            family: None,
-            attachment: false,
-            reasoning: false,
-            tool_call: false,
-            temperature: true,
-            structured_output: None,
-            knowledge: None,
-            release_date: None,
-            last_updated: None,
-            modalities: Modalities::default(),
-            open_weights: false,
-            cost: None,
-            limit: ModelLimit::default(),
-        },
+        Model::minimal("model-1", ModelLimit::new(128_000, 4_096)),
     );
     assert!(pick_best_for_tier(&models, ModelTier::None).is_none());
 }
@@ -406,46 +383,16 @@ fn pick_best_for_tier_empty_models_returns_none() {
 #[test]
 fn pick_best_for_tier_picks_latest_release() {
     let mut models = HashMap::new();
-    models.insert(
-        "model-a".to_string(),
-        Model {
-            id: "model-a".to_string(),
-            name: "A".to_string(),
-            family: None,
-            attachment: false,
-            reasoning: false,
-            tool_call: false,
-            temperature: true,
-            structured_output: None,
-            knowledge: None,
-            release_date: Some("2024-01-01".to_string()),
-            last_updated: None,
-            modalities: Modalities::default(),
-            open_weights: false,
-            cost: Some(Cost::new(3.0, 10.0)),
-            limit: ModelLimit::default(),
-        },
-    );
-    models.insert(
-        "model-b".to_string(),
-        Model {
-            id: "model-b".to_string(),
-            name: "B".to_string(),
-            family: None,
-            attachment: false,
-            reasoning: false,
-            tool_call: false,
-            temperature: true,
-            structured_output: None,
-            knowledge: None,
-            release_date: Some("2024-06-01".to_string()),
-            last_updated: None,
-            modalities: Modalities::default(),
-            open_weights: false,
-            cost: Some(Cost::new(3.0, 10.0)),
-            limit: ModelLimit::default(),
-        },
-    );
+    let mut m_a = Model::minimal("model-a", ModelLimit::default());
+    m_a.release_date = "2024-01-01".to_string();
+    m_a.cost = Some(Cost::new(3.0, 10.0));
+    models.insert("model-a".to_string(), m_a);
+
+    let mut m_b = Model::minimal("model-b", ModelLimit::default());
+    m_b.release_date = "2024-06-01".to_string();
+    m_b.cost = Some(Cost::new(3.0, 10.0));
+    models.insert("model-b".to_string(), m_b);
+
     // Both are Standard tier by default
     let result = pick_best_for_tier(&models, ModelTier::Standard);
     assert!(result.is_some());

@@ -2,12 +2,16 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use super::cost::Cost;
+use super::cost::{Cost, CostTier, CostTierInfo};
 use super::limit::{Modalities, ModalityType, ModelLimit};
-use super::model::Model;
+use super::model::{
+    Experimental, ExperimentalMode, ExperimentalProviderConfig, Interleaved,
+    InterleavedField, Model, ModelProviderConfig, ModelStatus, ProviderShape,
+    ReasoningEffort, ReasoningOption,
+};
 use super::provider::Provider;
 
-/// Parse Provider from JSON
+/// Parse Provider from JSON.
 pub fn parse_provider(provider_id: &str, value: &Value) -> Option<Provider> {
     let name = value
         .get("name")
@@ -89,6 +93,12 @@ pub fn parse_model(model_id: &str, value: &Value) -> Option<Model> {
         .unwrap_or(model_id)
         .to_string();
 
+    let description = value
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
     let family = value
         .get("family")
         .and_then(|v| v.as_str())
@@ -104,17 +114,21 @@ pub fn parse_model(model_id: &str, value: &Value) -> Option<Model> {
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
+    let reasoning_options = value
+        .get("reasoning_options")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(parse_reasoning_option).collect());
+
     let tool_call = value
         .get("tool_call")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let temperature = value
-        .get("temperature")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
+    let interleaved = value.get("interleaved").and_then(parse_interleaved);
 
     let structured_output = value.get("structured_output").and_then(|v| v.as_bool());
+
+    let temperature = value.get("temperature").and_then(|v| v.as_bool());
 
     let knowledge = value
         .get("knowledge")
@@ -124,12 +138,14 @@ pub fn parse_model(model_id: &str, value: &Value) -> Option<Model> {
     let release_date = value
         .get("release_date")
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+        .unwrap_or("")
+        .to_string();
 
     let last_updated = value
         .get("last_updated")
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+        .unwrap_or("")
+        .to_string();
 
     let modalities = value
         .get("modalities")
@@ -145,15 +161,29 @@ pub fn parse_model(model_id: &str, value: &Value) -> Option<Model> {
 
     let limit = value.get("limit").and_then(parse_model_limit)?;
 
+    let status = value
+        .get("status")
+        .and_then(|v| v.as_str())
+        .and_then(parse_model_status);
+
+    let experimental = value.get("experimental").and_then(parse_experimental);
+
+    let provider = value
+        .get("provider")
+        .and_then(parse_model_provider_config);
+
     Some(Model {
         id: model_id.to_string(),
         name,
+        description,
         family,
         attachment,
         reasoning,
+        reasoning_options,
         tool_call,
-        temperature,
+        interleaved,
         structured_output,
+        temperature,
         knowledge,
         release_date,
         last_updated,
@@ -161,6 +191,9 @@ pub fn parse_model(model_id: &str, value: &Value) -> Option<Model> {
         open_weights,
         cost,
         limit,
+        status,
+        experimental,
+        provider,
     })
 }
 
@@ -169,21 +202,15 @@ pub fn parse_model_limit(limit: &Value) -> Option<ModelLimit> {
     let context = limit.get("context")?.as_u64()? as u32;
     let output = limit.get("output")?.as_u64()? as u32;
 
-    let cache_read = limit
-        .get("cache_read")
-        .and_then(|v| v.as_u64())
-        .map(|v| v as u32);
-
-    let cache_write = limit
-        .get("cache_write")
+    let input = limit
+        .get("input")
         .and_then(|v| v.as_u64())
         .map(|v| v as u32);
 
     Some(ModelLimit {
         context,
+        input,
         output,
-        cache_read,
-        cache_write,
     })
 }
 
@@ -207,65 +234,214 @@ pub fn extract_provider_api_from_models_dev_json(
         .map(ToString::to_string)
 }
 
+// ── Private parsing helpers ──
+
 fn parse_modalities(value: &Value) -> Modalities {
     let input = value
         .get("input")
         .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| {
-                    v.as_str().and_then(|s| match s {
-                        "text" => Some(ModalityType::Text),
-                        "image" => Some(ModalityType::Image),
-                        "audio" => Some(ModalityType::Audio),
-                        "video" => Some(ModalityType::Video),
-                        "pdf" => Some(ModalityType::Pdf),
-                        _ => None,
-                    })
-                })
-                .collect()
-        })
+        .map(|arr| arr.iter().filter_map(parse_modality_type).collect())
         .unwrap_or_default();
 
     let output = value
         .get("output")
         .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| {
-                    v.as_str().and_then(|s| match s {
-                        "text" => Some(ModalityType::Text),
-                        "image" => Some(ModalityType::Image),
-                        "audio" => Some(ModalityType::Audio),
-                        "video" => Some(ModalityType::Video),
-                        "pdf" => Some(ModalityType::Pdf),
-                        _ => None,
-                    })
-                })
-                .collect()
-        })
+        .map(|arr| arr.iter().filter_map(parse_modality_type).collect())
         .unwrap_or_default();
 
     Modalities { input, output }
 }
 
+fn parse_modality_type(v: &Value) -> Option<ModalityType> {
+    v.as_str().and_then(|s| match s {
+        "text" => Some(ModalityType::Text),
+        "image" => Some(ModalityType::Image),
+        "audio" => Some(ModalityType::Audio),
+        "video" => Some(ModalityType::Video),
+        "pdf" => Some(ModalityType::Pdf),
+        _ => None,
+    })
+}
+
 fn parse_cost(value: &Value) -> Option<Cost> {
     let input = value.get("input").and_then(|v| v.as_f64())?;
-
     let output = value.get("output").and_then(|v| v.as_f64())?;
 
-    let cache_read = value.get("cache_read").and_then(|v| v.as_f64());
-
-    let cache_write = value.get("cache_write").and_then(|v| v.as_f64());
-
     let reasoning = value.get("reasoning").and_then(|v| v.as_f64());
+    let cache_read = value.get("cache_read").and_then(|v| v.as_f64());
+    let cache_write = value.get("cache_write").and_then(|v| v.as_f64());
+    let input_audio = value.get("input_audio").and_then(|v| v.as_f64());
+    let output_audio = value.get("output_audio").and_then(|v| v.as_f64());
+
+    let context_over_200k = value
+        .get("context_over_200k")
+        .and_then(parse_cost)
+        .map(Box::new);
+
+    let tiers = value
+        .get("tiers")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(parse_cost_tier).collect());
 
     Some(Cost {
         input,
         output,
+        reasoning,
         cache_read,
         cache_write,
-        reasoning,
+        input_audio,
+        output_audio,
+        context_over_200k,
+        tiers,
+    })
+}
+
+fn parse_cost_tier(value: &Value) -> Option<CostTier> {
+    let cost = parse_cost(value)?;
+    let tier = value.get("tier").and_then(|t| {
+        let size = t.get("size")?.as_u64()?;
+        Some(CostTierInfo {
+            r#type: t
+                .get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("context")
+                .to_string(),
+            size,
+        })
+    });
+    Some(CostTier { cost, tier })
+}
+
+fn parse_reasoning_option(v: &Value) -> Option<ReasoningOption> {
+    let typ = v.get("type")?.as_str()?;
+    match typ {
+        "toggle" => Some(ReasoningOption::Toggle),
+        "effort" => {
+            let values = v
+                .get("values")
+                .and_then(|v| v.as_array())?
+                .iter()
+                .map(parse_reasoning_effort)
+                .collect();
+            Some(ReasoningOption::Effort { values })
+        }
+        "budget_tokens" => {
+            let min = v.get("min").and_then(|v| v.as_f64());
+            let max = v.get("max").and_then(|v| v.as_f64());
+            Some(ReasoningOption::BudgetTokens { min, max })
+        }
+        _ => None,
+    }
+}
+
+fn parse_reasoning_effort(v: &Value) -> Option<ReasoningEffort> {
+    if v.is_null() {
+        return None;
+    }
+    v.as_str().and_then(|s| match s {
+        "none" => Some(ReasoningEffort::None),
+        "minimal" => Some(ReasoningEffort::Minimal),
+        "low" => Some(ReasoningEffort::Low),
+        "medium" => Some(ReasoningEffort::Medium),
+        "high" => Some(ReasoningEffort::High),
+        "xhigh" => Some(ReasoningEffort::Xhigh),
+        "max" => Some(ReasoningEffort::Max),
+        "default" => Some(ReasoningEffort::Default),
+        _ => None,
+    })
+}
+
+fn parse_interleaved(v: &Value) -> Option<Interleaved> {
+    if v.as_bool() == Some(true) {
+        return Some(Interleaved::Simple);
+    }
+    let field = v
+        .get("field")
+        .and_then(|v| v.as_str())
+        .and_then(|s| match s {
+            "reasoning_content" => Some(InterleavedField::ReasoningContent),
+            "reasoning_details" => Some(InterleavedField::ReasoningDetails),
+            _ => None,
+        })?;
+    Some(Interleaved::Field { field })
+}
+
+fn parse_model_status(s: &str) -> Option<ModelStatus> {
+    match s {
+        "alpha" => Some(ModelStatus::Alpha),
+        "beta" => Some(ModelStatus::Beta),
+        "deprecated" => Some(ModelStatus::Deprecated),
+        _ => None,
+    }
+}
+
+fn parse_experimental(v: &Value) -> Option<Experimental> {
+    let modes = v
+        .get("modes")
+        .and_then(|v| v.as_object())
+        .map(|obj| {
+            obj.iter()
+                .filter_map(|(key, mode_val)| {
+                    parse_experimental_mode(mode_val).map(|m| (key.clone(), m))
+                })
+                .collect()
+        });
+    Some(Experimental { modes })
+}
+
+fn parse_experimental_mode(v: &Value) -> Option<ExperimentalMode> {
+    let cost = v.get("cost").and_then(parse_cost);
+    let provider = v
+        .get("provider")
+        .and_then(parse_experimental_provider_config);
+    Some(ExperimentalMode { cost, provider })
+}
+
+fn parse_experimental_provider_config(v: &Value) -> Option<ExperimentalProviderConfig> {
+    let body = v
+        .get("body")
+        .and_then(|v| v.as_object())
+        .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect());
+    let headers = v
+        .get("headers")
+        .and_then(|v| v.as_object())
+        .map(|obj| {
+            obj.iter()
+                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                .collect()
+        });
+    Some(ExperimentalProviderConfig { body, headers })
+}
+
+fn parse_model_provider_config(v: &Value) -> Option<ModelProviderConfig> {
+    let npm = v.get("npm").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let api = v.get("api").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let shape = v
+        .get("shape")
+        .and_then(|v| v.as_str())
+        .and_then(|s| match s {
+            "responses" => Some(ProviderShape::Responses),
+            "completions" => Some(ProviderShape::Completions),
+            _ => None,
+        });
+    let body = v
+        .get("body")
+        .and_then(|v| v.as_object())
+        .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect());
+    let headers = v
+        .get("headers")
+        .and_then(|v| v.as_object())
+        .map(|obj| {
+            obj.iter()
+                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                .collect()
+        });
+    Some(ModelProviderConfig {
+        npm,
+        api,
+        shape,
+        body,
+        headers,
     })
 }
 
