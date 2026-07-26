@@ -18,6 +18,7 @@ function main()
 end
 "#;
 
+#[allow(dead_code)]
 pub const SCRIPT_MULTI_AGENT: &str = r#"
 function main()
   phase("research")

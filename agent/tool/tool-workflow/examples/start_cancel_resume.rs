@@ -23,7 +23,6 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use luft::LuftBuilder;
 use luft_core::contract::backend::{

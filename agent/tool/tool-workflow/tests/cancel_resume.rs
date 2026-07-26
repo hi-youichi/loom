@@ -11,7 +11,6 @@ use std::sync::Arc;
 
 use luft::LuftBuilder;
 use luft_core::testing::SharedBackend;
-use luft_core::wait_for_calls;
 use serde_json::json;
 
 const SCRIPT_LONG: &str = r#"

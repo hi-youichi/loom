@@ -57,7 +57,7 @@ pub(crate) fn model_entry_from_config(
         })
     });
 
-    if let Some(ref mp) = matched {
+    if let Some(mp) = matched {
         tracing::info!(
             provider = %mp.name,
             model = %model,

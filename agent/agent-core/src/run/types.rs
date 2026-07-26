@@ -48,7 +48,7 @@ pub struct RunOptions {
     pub verbose: bool,
     /// Raw `-v` / `-vv` count from CLI. Level 0 = minimal, 1 = +skills one-liner
     /// + runtime details, 2+ = also multiline tools/skills with sources. Only the
-    /// CLI startup banner uses this; downstream runtime stays on `verbose: bool`.
+    ///   CLI startup banner uses this; downstream runtime stays on `verbose: bool`.
     pub verbose_level: u8,
     pub got_adaptive: bool,
     pub display_max_len: usize,
