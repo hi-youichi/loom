@@ -227,7 +227,7 @@ pub fn format_skills_multiline_block(rows: &[SkillBannerRow<'_>]) -> String {
             } else {
                 prefix
             };
-            let desc = truncate_display(&row.description, 80);
+            let desc = truncate_display(row.description, 80);
             let requires = if row.requires_tools.is_empty() {
                 String::new()
             } else {

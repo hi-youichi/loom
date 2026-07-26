@@ -190,7 +190,7 @@ pub fn build_inspect_registry(
     Box<dyn std::error::Error>,
 > {
     let mut registry = skill::discovery::SkillRegistry::discover(working_folder, extra_dirs)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
 
     let mut contributions = Vec::new();
 
@@ -247,7 +247,7 @@ fn safe_join_under(skill_dir: &Path, file_path: &str) -> Result<PathBuf, SkillIn
     // Point 1: canonicalize skill directory first
     let canonical_skill = skill_dir
         .canonicalize()
-        .map_err(|e| SkillInspectError::Io(e))?;
+        .map_err(SkillInspectError::Io)?;
 
     // Point 2: canonicalize target and confirm prefix membership
     let canonical_target = target
@@ -621,7 +621,7 @@ pub fn run(
     pretty: bool,
     output_file: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let cwd = std::env::current_dir().map_err(|e| SkillInspectError::Io(e))?;
+    let cwd = std::env::current_dir().map_err(SkillInspectError::Io)?;
     let (registry, _contributions) = build_inspect_registry(&cwd, &[])?;
 
     // ---- Mutual exclusion (§4.4) ----
@@ -694,7 +694,7 @@ pub fn run(
         } else {
             // Disk-backed: path-traversal guard + 5 MiB cap.
             let target = safe_join_under(&entry.base_path, file_path_str.as_ref())?;
-            let metadata = std::fs::metadata(&target).map_err(|e| SkillInspectError::Io(e))?;
+            let metadata = std::fs::metadata(&target).map_err(SkillInspectError::Io)?;
             if metadata.len() > MAX_FILE_SIZE_BYTES {
                 return Err(SkillInspectError::BadCombo(format!(
                     "file '{}' exceeds the {} byte limit (is {} bytes)",
@@ -704,7 +704,7 @@ pub fn run(
                 ))
                 .into());
             }
-            let content = std::fs::read_to_string(&target).map_err(|e| SkillInspectError::Io(e))?;
+            let content = std::fs::read_to_string(&target).map_err(SkillInspectError::Io)?;
             println!("{}", content);
             return Ok(());
         }
@@ -719,7 +719,7 @@ pub fn run(
     // ---- JSON branch (§5.2) ----
     if json {
         let json_value = serde_json::to_value(&output).map_err(|e| {
-            SkillInspectError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))
+            SkillInspectError::Io(std::io::Error::other(e))
         })?;
         write_json_output(&json_value, output_file, pretty)?;
         return Ok(());
@@ -817,7 +817,7 @@ mod tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink(&link_target, &link).ok();
         #[cfg(windows)]
-        std::os::windows::fs::symlink_file(&link_target, &link).ok();
+        std::os::windows::fs::symlink_file(link_target, &link).ok();
 
         let result = safe_join_under(&skill_dir, "link.md");
         assert!(

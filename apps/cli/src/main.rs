@@ -1,6 +1,6 @@
-//! Loom CLI binary: run ReAct or DUP agent from the command line.
+//! Loom CLI binary: run agentic workflows from the command line.
 //!
-//! Subcommands: `react` (default ReAct), `dup` (DUP), `tot` (ToT), `got` (GoT), `tool` (list/show tools), `models` (list models), `mcp` (manage MCP servers).
+//! Subcommands: `react` (default), `dup`, `tot`, `got`, `tool` (list/show tools), `models` (list models), `mcp` (manage MCP servers).
 //! Dispatch lives here; see `args`, `bootstrap`, `display_limits`, `run_flow`, and `subcommands` for implementation.
 
 mod args;

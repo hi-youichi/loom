@@ -7,11 +7,11 @@ use clap::{Parser, Subcommand};
 use crate::session::SessionArgs;
 
 /// Config directory: ~/.loom (or $LOOM_HOME). config.toml [env] is applied as env vars; project .env overrides.
-pub(crate) const CONFIG_DIR_HELP: &str = "\nConfiguration:\n  Config directory: ~/.loom (override with $LOOM_HOME).\n  File: config.toml with [env] table; values are applied as environment variables.\n  Project .env in working directory overrides config.toml.";
+pub(crate) const CONFIG_DIR_HELP: &str = "\nConfiguration:\n  Config directory: ~/.loom (override with $LOOM_HOME).\n  File: config.toml with [env] table; values are applied as environment variables.\n  Project .env in working directory overrides config.toml.\n\nSession:\n  Use --session-id (-s) to resume a previous session. The session ID is printed at end of run.";
 
 #[derive(Parser, Debug, Default)]
 #[command(name = "loom")]
-#[command(about = "Loom — run ReAct or DUP agent from CLI", after_help = CONFIG_DIR_HELP)]
+#[command(about = "Loom — agentic AI assistant for development", after_help = CONFIG_DIR_HELP)]
 pub(crate) struct Args {
     #[command(subcommand)]
     pub(crate) cmd: Option<Command>,
@@ -57,7 +57,7 @@ pub(crate) struct Args {
     pub(crate) agent: Option<String>,
 
     /// Session ID for conversation continuity (checkpointer)
-    #[arg(long, value_name = "ID")]
+    #[arg(short('s'), long, value_name = "ID")]
     pub(crate) session_id: Option<String>,
 
     /// Increase output verbosity (counted). `-v` adds skill list and runtime step info;
@@ -129,15 +129,15 @@ pub(crate) struct Args {
 
 #[derive(Subcommand, Debug, Clone)]
 pub(crate) enum Command {
-    /// Run ReAct graph (think → act → observe)
+    /// Run the agent (default mode)
     React,
-    /// Run DUP graph (understand → plan → act → observe)
+    /// Run agent with deep understanding phase
     Dup,
-    /// Run ToT graph (think_expand → think_evaluate → act → observe)
+    /// Run agent with multiple reasoning paths
     Tot,
-    /// Run GoT graph (plan_graph → execute_graph)
+    /// Run agent with adaptive graph planning
     Got(GotArgs),
-    /// List or show tool definitions (same tools as used by react/dup/tot/got)
+    /// List or show available tool definitions
     Tool(ToolArgs),
     /// Manage conversation sessions (list, show, delete)
     Session(SessionArgs),
