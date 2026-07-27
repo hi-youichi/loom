@@ -340,6 +340,7 @@ mod tests {
             family: Some("test_family".to_string()),
             version: None,
             max_tokens: Some(2048),
+            spec: None,
         };
 
         let resolved = ResolvedTierModel::from_entry(entry);
@@ -363,6 +364,7 @@ mod tests {
             family: None,
             version: None,
             max_tokens: None,
+            spec: None,
         };
 
         let resolved = ResolvedTierModel::from_entry(entry);
@@ -386,6 +388,7 @@ mod tests {
             family: None,
             version: None,
             max_tokens: None,
+            spec: None,
         };
 
         let resolved = ResolvedTierModel::from_entry(entry);

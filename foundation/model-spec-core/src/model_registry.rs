@@ -14,6 +14,9 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::RwLock;
 
+use crate::models_dev::bundled_providers::load_bundled_providers;
+use crate::models_dev::yaml_provider::load_yaml_plugins;
+use crate::resolver::plugin::default_providers_dir;
 use crate::tier_error::TierError;
 use crate::Provider as SpecProvider;
 
@@ -268,26 +271,42 @@ impl ModelRegistry {
     async fn fetch_or_get_cached_spec_providers(
         &self,
     ) -> Result<HashMap<String, SpecProvider>, TierError> {
+        // 检查缓存（命中时合并本地数据后返回）
         {
             let inner = self.inner.read().await;
             if let Some(cached) = &inner.cache {
                 if !cached.is_expired(self.ttl) {
-                    return Ok(cached.providers.clone());
+                    let mut all = load_bundled_providers();
+                    Self::merge_yaml_plugins(&mut all);
+                    // 缓存只存远程 API 数据，不覆盖本地数据
+                    for (key, provider) in &cached.providers {
+                        all.entry(key.clone()).or_insert_with(|| provider.clone());
+                    }
+                    return Ok(all);
                 }
             }
         }
 
+        // 1. 编译时静态 providers（最高优先级）
+        let mut providers = load_bundled_providers();
+
+        // 2. YAML 插件（覆盖同名 key）
+        Self::merge_yaml_plugins(&mut providers);
+
+        // 3. 远程 API（只插入不存在的 key，最低优先级）
         let fetched = crate::resolver::ModelsDevResolver::new()
             .fetch_all_providers()
             .await
             .map_err(|e| {
                 TierError::execution(format!("failed to fetch model spec providers: {e}"))
             })?;
-        let providers: HashMap<String, SpecProvider> = fetched
-            .into_iter()
-            .map(|(k, v)| (Self::normalize_provider_name(&k), v))
-            .collect();
+        for (key, provider) in fetched {
+            providers
+                .entry(Self::normalize_provider_name(&key))
+                .or_insert(provider);
+        }
 
+        // 写入缓存（只缓存远程 API 部分，本地数据每次都实时合并）
         {
             let mut inner = self.inner.write().await;
             inner.cache = Some(CachedSpecProviders {
@@ -297,6 +316,21 @@ impl ModelRegistry {
         }
 
         Ok(providers)
+    }
+
+    /// Merge YAML plugin providers from ~/.loom/providers/*.yaml into the map.
+    /// Higher-priority (already in map) entries are NOT overwritten by plugins.
+    fn merge_yaml_plugins(providers: &mut HashMap<String, SpecProvider>) {
+        let plugins_dir = default_providers_dir();
+        for plugin in load_yaml_plugins(&plugins_dir) {
+            let (provider, models) = plugin.into_provider_and_models();
+            let key = Self::normalize_provider_name(&provider.id);
+            let provider = SpecProvider {
+                models,
+                ..provider
+            };
+            providers.insert(key, provider);
+        }
     }
 
     pub async fn invalidate(&self, provider_name: &str) {

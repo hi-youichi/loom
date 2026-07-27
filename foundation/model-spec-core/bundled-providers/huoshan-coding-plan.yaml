@@ -1,0 +1,35 @@
+provider:
+  id: "huoshan-coding-plan"
+  name: "Huoshan Coding Plan"
+  api: "https://ark.cn-beijing.volces.com/api/coding/v3"
+  type: "openai_compat"
+
+models:
+  doubao-seed-2-1-pro-260628:
+    name: "Doubao Seed 2.1 Pro"
+    family: "doubao-seed-2.1"
+    limit:
+      context: 262144
+      input: 262144
+      output: 262144
+    reasoning: true
+    tool_call: true
+    structured_output: true
+    modalities:
+      input: ["text", "image", "video"]
+      output: ["text"]
+    reasoning_options:
+      - type: "effort"
+        values: ["low", "medium", "high"]
+
+  deepseek-v4-flash-260425:
+    name: "DeepSeek V4 Flash"
+    family: "deepseek-v4"
+    limit:
+      context: 1048576
+      output: 393216
+    reasoning: true
+    tool_call: true
+    modalities:
+      input: ["text"]
+      output: ["text"]
