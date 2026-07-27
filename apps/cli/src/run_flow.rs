@@ -317,6 +317,7 @@ fn print_session_status(session_id: Option<&str>, ended: bool, json: bool) {
     if let Some(session_id) = session_id {
         if ended {
             eprintln!("Session ended: {}", session_id);
+            eprintln!("  Hint: loom session cat {}  |  loom session list", session_id);
         } else {
             eprintln!("Session: {}", session_id);
         }

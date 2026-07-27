@@ -176,10 +176,6 @@ pub fn build_react_config(
             .agent
             .clone()
             .unwrap_or_else(|| "default".to_string()),
-        effective_opts
-            .model
-            .clone()
-            .unwrap_or_else(|| "default".to_string()),
         wf,
     );
     let _cached = cache.get_or_build(key.clone(), || std::sync::Arc::new(base.clone()));

@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 use crate::session::SessionArgs;
 
 /// Config directory: ~/.loom (or $LOOM_HOME). config.toml [env] is applied as env vars; project .env overrides.
-pub(crate) const CONFIG_DIR_HELP: &str = "\nConfiguration:\n  Config directory: ~/.loom (override with $LOOM_HOME).\n  File: config.toml with [env] table; values are applied as environment variables.\n  Project .env in working directory overrides config.toml.\n\nSession:\n  Use --session-id (-s) to resume a previous session. The session ID is printed at end of run.";
+pub(crate) const CONFIG_DIR_HELP: &str = "\nConfiguration:\n  Config directory: ~/.loom (override with $LOOM_HOME).\n  File: config.toml with [env] table; values are applied as environment variables.\n  Project .env in working directory overrides config.toml.\n\nSession:\n  Use --session-id (-s) to resume a previous session. The session ID is printed at end of run.\n  Use 'loom session list' to browse all sessions, and 'loom session cat <ID>' to view content.";
 
 #[derive(Parser, Debug, Default)]
 #[command(name = "loom")]

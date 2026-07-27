@@ -30,26 +30,23 @@ pub const MAX_CACHE_SIZE: usize = 128;
 /// inline before each `get_or_build`).
 pub const IDLE_EVICTION_SECS: u64 = 3600;
 
-/// Cache key — combination of (agent_id, model_id, working_folder).
+/// Cache key — combination of (agent_id, working_folder).
 /// Together these uniquely identify the runtime configuration an
 /// `AgentHandle` was built for; different keys must produce
 /// independent handles.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct AgentKey {
     pub agent_id: String,
-    pub model_id: String,
     pub working_folder: String,
 }
 
 impl AgentKey {
     pub fn new(
         agent_id: impl Into<String>,
-        model_id: impl Into<String>,
         working_folder: impl Into<String>,
     ) -> Self {
         Self {
             agent_id: agent_id.into(),
-            model_id: model_id.into(),
             working_folder: working_folder.into(),
         }
     }
@@ -186,7 +183,7 @@ mod tests {
     #[test]
     fn get_or_build_caches_on_second_call() {
         let cache = AgentCache::<DummyHandle>::new();
-        let key = AgentKey::new("a", "m", "/tmp");
+        let key = AgentKey::new("a", "/tmp");
         let build_count = Arc::new(AtomicUsize::new(0));
         let bc = build_count.clone();
         let h1 = cache.get_or_build(key.clone(), move || {
@@ -202,8 +199,8 @@ mod tests {
     #[test]
     fn get_or_build_distinguishes_keys() {
         let cache = AgentCache::<DummyHandle>::new();
-        let k1 = AgentKey::new("a", "m", "/tmp");
-        let k2 = AgentKey::new("b", "m", "/tmp");
+        let k1 = AgentKey::new("a", "/tmp");
+        let k2 = AgentKey::new("b", "/tmp");
         let h1 = cache.get_or_build(k1, || Arc::new(DummyHandle(1)));
         let h2 = cache.get_or_build(k2, || Arc::new(DummyHandle(2)));
         assert_eq!(h1.0, 1);
@@ -214,9 +211,9 @@ mod tests {
     #[test]
     fn lru_evicts_when_over_capacity() {
         let cache = AgentCache::<DummyHandle>::with_capacity(2);
-        let k1 = AgentKey::new("a", "m", "/tmp");
-        let k2 = AgentKey::new("b", "m", "/tmp");
-        let k3 = AgentKey::new("c", "m", "/tmp");
+        let k1 = AgentKey::new("a", "/tmp");
+        let k2 = AgentKey::new("b", "/tmp");
+        let k3 = AgentKey::new("c", "/tmp");
         cache.get_or_build(k1.clone(), || Arc::new(DummyHandle(1)));
         cache.get_or_build(k2.clone(), || Arc::new(DummyHandle(2)));
         cache.get_or_build(k3.clone(), || Arc::new(DummyHandle(3)));
@@ -229,7 +226,7 @@ mod tests {
     #[test]
     fn sweep_idle_evicts_stale_entries() {
         let cache = AgentCache::<DummyHandle>::new();
-        let key = AgentKey::new("a", "m", "/tmp");
+        let key = AgentKey::new("a", "/tmp");
         cache.get_or_build(key.clone(), || Arc::new(DummyHandle(1)));
         // Force last_used into the past.
         {
@@ -245,7 +242,7 @@ mod tests {
     #[test]
     fn sweep_idle_keeps_fresh_entries() {
         let cache = AgentCache::<DummyHandle>::new();
-        let key = AgentKey::new("a", "m", "/tmp");
+        let key = AgentKey::new("a", "/tmp");
         cache.get_or_build(key, || Arc::new(DummyHandle(1)));
         let evicted = cache.sweep_idle();
         assert_eq!(evicted, 0);
