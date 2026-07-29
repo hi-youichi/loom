@@ -3,17 +3,18 @@
 //! This crate defines the wire shape of a single stream event and envelope injection.
 //! It does not depend on loom. Loom bridges `StreamEvent<S>` into `ProtocolEvent` and calls `to_json`.
 
+pub mod block_tracker;
 pub mod codex;
 pub mod sink;
 pub mod types;
 pub mod wire;
 
+pub use block_tracker::BlockTracker;
 pub use codex::CodexEvent;
-pub use sink::event_sink::StreamEventSink;
 pub use sink::stream_writer::StreamWriter;
-pub use types::message::{MessageChunk, MessageChunkKind, StreamSink};
+pub use types::message::{MessageChunk, MessageChunkKind, StreamSink, ToolCallChunk};
 pub use types::metadata::{CheckpointEvent, StreamMetadata};
-pub use types::stream_event::StreamEvent;
+pub use types::stream_event::{StreamEvent, Usage};
 pub use types::stream_mode::StreamMode;
 pub use wire::convert::{
     stream_event_to_format_a, stream_event_to_protocol_envelope, ProtocolEventEnvelope,
@@ -33,8 +34,6 @@ mod tests {
         let _ = std::mem::size_of::<ProtocolEvent>();
         let _ = std::mem::size_of::<StreamMode>();
         let _ = std::mem::size_of::<CheckpointEvent<String>>();
-        let _ = std::mem::size_of::<MessageChunk>();
-        let _ = std::mem::size_of::<MessageChunkKind>();
         let _ = std::mem::size_of::<StreamWriter<String>>();
     }
 

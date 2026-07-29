@@ -439,16 +439,17 @@ pub async fn run_review(
                 }
             }
             AgentEvent::Usage {
-                prompt_tokens,
-                completion_tokens,
-                total_tokens,
-                cached_tokens,
+                input,
+                output,
+                reasoning: _,
+                cache_read,
+                cache_write: _,
             } => {
                 tokens_clone.lock().unwrap().record(&AgentTokenUsage {
-                    prompt_tokens,
-                    completion_tokens,
-                    total_tokens,
-                    cached_tokens,
+                    prompt_tokens: input,
+                    completion_tokens: output,
+                    total_tokens: input + output,
+                    cached_tokens: cache_read,
                 });
             }
             _ => {}

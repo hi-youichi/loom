@@ -20,6 +20,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use crate::connection::AcpConnection;
 use tool_core::active_operation::RunCancellation;
 use uuid::Uuid;
 
@@ -94,6 +95,8 @@ pub struct SessionEntry {
     pub cancellation: Arc<SessionCancellationState>,
     /// MCP servers from ACP session/new or session/load, pre-converted to Loom's [`config::McpServerDef`].
     pub mcp_servers: Vec<config::McpServerDef>,
+    /// Per-session connection binding. Outer Arc for Clone-sharing; inner RwLock for interior mutability.
+    pub connection: Arc<std::sync::RwLock<Option<Arc<AcpConnection>>>>,
 }
 
 #[derive(Debug, Default)]
@@ -155,6 +158,7 @@ impl SessionStore {
             session_config: SessionConfig::default(),
             cancellation: Arc::new(SessionCancellationState::default()),
             mcp_servers: Vec::new(),
+            connection: Arc::new(std::sync::RwLock::new(None)),
         };
         guard.insert(session_id.clone(), entry.clone());
         entry
@@ -175,6 +179,18 @@ impl SessionStore {
     /// Begin a new prompt generation and return a fresh runtime cancellation handle.
     pub fn begin_prompt(&self, session_id: &SessionId) -> Option<RunCancellation> {
         if let Some(entry) = recover_read(&self.inner).get(session_id) {
+            // ACP turns are serialized per session. Replacing an active turn
+            // would orphan its cancellation token and interleave updates.
+            if entry
+                .cancellation
+                .current_turn
+                .read()
+                .ok()
+                .and_then(|turn| turn.as_ref().cloned())
+                .is_some()
+            {
+                return None;
+            }
             let generation = entry
                 .cancellation
                 .current_generation
@@ -192,6 +208,22 @@ impl SessionStore {
             return Some(cancellation);
         }
         None
+    }
+
+    /// Bind a connection to a session (for per-session bridge lookup).
+    pub fn set_connection(&self, session_id: &SessionId, conn: Arc<AcpConnection>) {
+        let guard = recover_read(&self.inner);
+        if let Some(entry) = guard.get(session_id) {
+            *recover_write(&*entry.connection) = Some(conn);
+        }
+    }
+
+    /// Get the connection bound to a session.
+    pub fn get_connection(&self, session_id: &SessionId) -> Option<Arc<AcpConnection>> {
+        let guard = recover_read(&self.inner);
+        guard
+            .get(session_id)
+            .and_then(|entry| recover_read(&*entry.connection).as_ref().cloned())
     }
 
     /// Mark the current generation as cancelled and trigger its runtime token.
@@ -274,6 +306,7 @@ impl Clone for SessionEntry {
             session_config: self.session_config.clone(),
             cancellation: Arc::clone(&self.cancellation),
             mcp_servers: self.mcp_servers.clone(),
+            connection: Arc::clone(&self.connection),
         }
     }
 }
@@ -337,5 +370,15 @@ mod tests {
             .read()
             .expect("read current turn")
             .is_none());
+    }
+
+    #[test]
+    fn begin_prompt_rejects_overlapping_turns() {
+        let store = SessionStore::new();
+        let id = store.create(None);
+        let first = store.begin_prompt(&id).expect("first prompt");
+        assert!(store.begin_prompt(&id).is_none());
+        store.finish_prompt(&id, first.generation());
+        assert!(store.begin_prompt(&id).is_some());
     }
 }

@@ -34,8 +34,7 @@ pub struct ReactRunner {
     runnable_config: Option<RunnableConfig>,
     system_prompt: String,
     cancellation: Option<RunCancellation>,
-    any_stream_event_sender:
-        Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
+    any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
     title_provider: Arc<dyn LlmProvider>,
     resume_mode: bool,
 }

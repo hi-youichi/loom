@@ -30,7 +30,10 @@ pub struct MoveFileTool {
 impl MoveFileTool {
     /// Creates a new MoveFileTool with the given working folder.
     pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
-        Self { working_folder, allow_outside }
+        Self {
+            working_folder,
+            allow_outside,
+        }
     }
 }
 
@@ -79,8 +82,16 @@ impl Tool for MoveFileTool {
             .get("target")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolSourceError::InvalidInput("missing target".to_string()))?;
-        let source = resolve_path(self.working_folder.as_ref(), source_param, self.allow_outside)?;
-        let target = resolve_path(self.working_folder.as_ref(), target_param, self.allow_outside)?;
+        let source = resolve_path(
+            self.working_folder.as_ref(),
+            source_param,
+            self.allow_outside,
+        )?;
+        let target = resolve_path(
+            self.working_folder.as_ref(),
+            target_param,
+            self.allow_outside,
+        )?;
         if !source.exists() {
             return Err(ToolSourceError::InvalidInput(format!(
                 "source not found: {}",

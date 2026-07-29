@@ -752,7 +752,12 @@ impl LoomAcpAgent {
         let cancellation = self
             .sessions
             .begin_prompt(&key)
-            .ok_or_else(|| agent_client_protocol::Error::new(-32602, "unknown session"))?;
+            .ok_or_else(|| {
+                agent_client_protocol::Error::new(
+                    -32000,
+                    "a prompt is already in progress for this session",
+                )
+            })?;
 
         let user_content =
             content_blocks_to_user_content(args.prompt.as_slice()).map_err(|_| {
@@ -1576,17 +1581,11 @@ where
     S: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
     match ev {
-        stream_event::StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            cached_tokens,
-            ..
-        } => Some((
-            *prompt_tokens,
-            *completion_tokens,
-            *total_tokens,
-            *cached_tokens,
+        stream_event::StreamEvent::TurnFinish { usage, .. } => Some((
+            usage.input,
+            usage.output,
+            usage.input + usage.output,
+            usage.cache_read,
         )),
         _ => None,
     }
@@ -2079,21 +2078,25 @@ mod tests {
 
         let acc = Arc::new(Mutex::new(TurnUsage::default()));
 
-        let ev1 = TypedAnyStreamEvent::React(StreamEvent::<ReActState>::Usage {
-            prompt_tokens: 500,
-            completion_tokens: 100,
-            total_tokens: 600,
-            cached_tokens: Some(50),
-            prefill_duration: None,
-            decode_duration: None,
+        let ev1 = TypedAnyStreamEvent::React(StreamEvent::<ReActState>::TurnFinish {
+            reason: "stop".to_string(),
+            usage: stream_event::Usage {
+                input: 500,
+                output: 100,
+                reasoning: None,
+                cache_read: Some(50),
+                cache_write: None,
+            },
         });
-        let ev2 = TypedAnyStreamEvent::React(StreamEvent::<ReActState>::Usage {
-            prompt_tokens: 800,
-            completion_tokens: 200,
-            total_tokens: 1000,
-            cached_tokens: None,
-            prefill_duration: None,
-            decode_duration: None,
+        let ev2 = TypedAnyStreamEvent::React(StreamEvent::<ReActState>::TurnFinish {
+            reason: "stop".to_string(),
+            usage: stream_event::Usage {
+                input: 800,
+                output: 200,
+                reasoning: None,
+                cache_read: None,
+                cache_write: None,
+            },
         });
 
         capture_turn_usage(&ev1, &acc);

@@ -1,6 +1,6 @@
 use crate::state::ReActState;
 use std::time::Instant;
-use stream_event::{MessageChunk, MessageChunkKind, StreamEvent};
+use stream_event::StreamEvent;
 
 pub struct SubagentDisplay {
     agent_name: String,
@@ -44,7 +44,9 @@ impl SubagentDisplay {
                 ))
             }
 
-            StreamEvent::Messages { chunk, .. } => self.format_message(chunk),
+            StreamEvent::TextDelta { content, .. } => self.format_message_text(content),
+
+            StreamEvent::ReasoningDelta { content, .. } => self.format_message_reasoning(content),
 
             StreamEvent::Updates { node_id, state, .. } => self.format_updates(node_id, state),
 
@@ -61,20 +63,20 @@ impl SubagentDisplay {
         }
     }
 
-    fn format_message(&self, chunk: &MessageChunk) -> Option<String> {
-        if chunk.content.trim().is_empty() {
+    fn format_message_text(&self, content: &str) -> Option<String> {
+        if content.trim().is_empty() {
             return None;
         }
-        match chunk.kind {
-            MessageChunkKind::Thinking => {
-                let text = truncate(&chunk.content, 50);
-                Some(format!("{} {}", self.prefix(), dim(&text)))
-            }
-            MessageChunkKind::Message => {
-                let text = truncate(&chunk.content.replace('\n', " "), 100);
-                Some(format!("{} {}", self.prefix(), text))
-            }
+        let text = truncate(&content.replace('\n', " "), 100);
+        Some(format!("{} {}", self.prefix(), text))
+    }
+
+    fn format_message_reasoning(&self, content: &str) -> Option<String> {
+        if content.trim().is_empty() {
+            return None;
         }
+        let text = truncate(content, 50);
+        Some(format!("{} {}", self.prefix(), dim(&text)))
     }
 
     fn format_updates(&self, node_id: &str, state: &ReActState) -> Option<String> {

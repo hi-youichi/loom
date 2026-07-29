@@ -38,13 +38,21 @@ impl ToolCallAccumulator {
     pub fn push(&mut self, delta: RawToolCallDelta) {
         let entry = self.map.entry(delta.index).or_insert_with(|| {
             (
-                delta.id.clone().unwrap_or_default(),
+                delta
+                    .id
+                    .clone()
+                    .filter(|id| !id.is_empty())
+                    .unwrap_or_else(|| fallback_call_id(delta.index)),
                 String::new(),
                 String::new(),
             )
         });
         if let Some(ref id) = delta.id {
-            if !id.is_empty() {
+            // Once a fallback was exposed through a live ToolInputStart it
+            // becomes the protocol identity for this turn. Do not replace it
+            // with a late provider id, or ToolCall/ToolEnd would target a
+            // different UI part.
+            if !id.is_empty() && !entry.0.starts_with("stream_tool_") {
                 entry.0 = id.clone();
             }
         }
@@ -56,33 +64,42 @@ impl ToolCallAccumulator {
         }
     }
 
+    /// Stable id assigned to this streamed call. Providers sometimes omit an
+    /// id in their first (or all) deltas; the generated id must be shared by
+    /// the live events and the completed `ToolCall`.
+    pub fn call_id(&self, index: u32) -> Option<&str> {
+        self.map.get(&index).map(|entry| entry.0.as_str())
+    }
+
     /// Returns true if no tool calls have been accumulated.
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
     }
 
-    /// Consume the accumulator and produce sorted `Vec<ToolCall>`.
-    ///
-    /// Tool calls are sorted by name for deterministic order.
+    /// Consume the accumulator and produce `Vec<ToolCall>` ordered by the
+    /// streaming index (the order the LLM sent them).
     pub fn finish(self) -> Vec<ToolCall> {
-        let mut tool_calls: Vec<ToolCall> = self
+        let mut entries: Vec<(u32, ToolCall)> = self
             .map
-            .into_values()
-            .map(|(id, name, arguments)| {
+            .into_iter()
+            .map(|(index, (id, name, arguments))| {
                 let sanitized_args = sanitize_arguments(
                     if id.is_empty() { None } else { Some(&id) },
                     &name,
                     &arguments,
                 );
-                ToolCall {
-                    name,
-                    arguments: sanitized_args,
-                    id: if id.is_empty() { None } else { Some(id) },
-                }
+                (
+                    index,
+                    ToolCall {
+                        name,
+                        arguments: sanitized_args,
+                id: Some(id),
+                    },
+                )
             })
             .collect();
-        tool_calls.sort_by_key(|a| a.name.clone());
-        tool_calls
+        entries.sort_by_key(|(index, _)| *index);
+        entries.into_iter().map(|(_, tc)| tc).collect()
     }
 
     /// Replace all accumulated tool calls with an externally-provided list.
@@ -93,6 +110,10 @@ impl ToolCallAccumulator {
                 .insert(i as u32, (tc.id.unwrap_or_default(), tc.name, tc.arguments));
         }
     }
+}
+
+pub fn fallback_call_id(index: u32) -> String {
+    format!("stream_tool_{index}")
 }
 
 impl Default for ToolCallAccumulator {
@@ -182,23 +203,23 @@ mod tests {
     }
 
     #[test]
-    fn finish_sorts_by_name() {
+    fn finish_preserves_index_order() {
         let mut a = ToolCallAccumulator::new();
         a.push(RawToolCallDelta {
             index: 1,
             id: None,
-            name: Some("z".into()),
+            name: Some("a".into()),
             arguments: None,
         });
         a.push(RawToolCallDelta {
             index: 0,
             id: None,
-            name: Some("a".into()),
+            name: Some("z".into()),
             arguments: None,
         });
         let v = a.finish();
-        assert_eq!(v[0].name, "a");
-        assert_eq!(v[1].name, "z");
+        assert_eq!(v[0].name, "z", "index 0 must come first");
+        assert_eq!(v[1].name, "a", "index 1 must come second");
     }
 
     #[test]

@@ -11,7 +11,7 @@
 //! |---------|---------|-------------|
 //! | **user_message_chunk** | Chunk of user message | History replay only (`Message::User`). |
 //! | **agent_message_chunk** | Chunk of agent reply (streamed text) | Any node's non-Thinking text output. |
-//! | **agent_thought_chunk** | Chunk of agent reasoning | `StreamEvent::Messages` with `chunk.kind == Thinking`, or `TaskStart` (node entry). |
+//! | **agent_thought_chunk** | Chunk of agent reasoning | `StreamEvent::ReasoningDelta`, or `TaskStart` (node entry). |
 //! | **tool_call** | New tool call started | Act node decides to call a tool: tool_call_id, name, input, kind, status: Pending. |
 //! | **tool_call_update** | Update to existing tool call | Start -> Pending/Running; done -> Success/Failure + output/content. |
 //! | plan / available_commands_update / current_mode_update | Plan, command list, mode | Optional; DUP/ToT/GoT etc. can map. |
@@ -46,7 +46,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
-use stream_event::{MessageChunkKind, StreamEvent};
+use stream_event::StreamEvent;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -201,18 +201,17 @@ where
 {
     match ev {
         StreamEvent::TaskStart { node_id: _, .. } => vec![],
-        StreamEvent::Messages { chunk, .. } => {
-            if chunk.kind == MessageChunkKind::Thinking {
-                vec![StreamUpdate::AgentThoughtChunk {
-                    text: chunk.content.clone(),
-                    message_id: None,
-                }]
-            } else {
-                vec![StreamUpdate::AgentMessageChunk {
-                    text: chunk.content.clone(),
-                    message_id: None,
-                }]
-            }
+        StreamEvent::TextDelta { content, .. } => {
+            vec![StreamUpdate::AgentMessageChunk {
+                text: content.clone(),
+                message_id: None,
+            }]
+        }
+        StreamEvent::ReasoningDelta { content, .. } => {
+            vec![StreamUpdate::AgentThoughtChunk {
+                text: content.clone(),
+                message_id: None,
+            }]
         }
         StreamEvent::ToolCall {
             call_id,
@@ -1004,10 +1003,12 @@ impl SessionNotifier {
         })
     }
 
-
     /// Test-only helper: update tokens on the internal high-freq tracker.
     #[cfg(test)]
-    pub(crate) fn test_update_high_freq_tokens(&self, delta: u64) -> Option<crate::high_freq_usage::UsageUpdateInfo> {
+    pub(crate) fn test_update_high_freq_tokens(
+        &self,
+        delta: u64,
+    ) -> Option<crate::high_freq_usage::UsageUpdateInfo> {
         let mut tracker = self.high_freq_tracker.lock().unwrap();
         tracker.as_mut().and_then(|t| t.update_tokens(delta))
     }
@@ -1084,15 +1085,9 @@ where
     S: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
     match ev {
-        StreamEvent::Usage {
-            prompt_tokens: _,
-            completion_tokens: _,
-            total_tokens,
-            cached_tokens,
-            ..
-        } => {
-            let total = *total_tokens as u64;
-            let cached = cached_tokens.unwrap_or(0) as u64;
+        StreamEvent::TurnFinish { usage, .. } => {
+            let total = (usage.input + usage.output) as u64;
+            let cached = usage.cache_read.unwrap_or(0) as u64;
             Some(total.saturating_sub(cached))
         }
         _ => None,
@@ -1104,7 +1099,7 @@ where
     S: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
     match ev {
-        StreamEvent::Usage { prompt_tokens, .. } => Some(*prompt_tokens),
+        StreamEvent::TurnFinish { usage, .. } => Some(usage.input),
         _ => None,
     }
 }
@@ -1270,13 +1265,15 @@ mod token_usage_meta_tests {
             .with_usage_acc(acc.clone());
 
         // Inject a synthetic Usage event covering all four fields.
-        let ev = TypedAnyStreamEvent::React(StreamEvent::Usage {
-            prompt_tokens: 100,
-            completion_tokens: 50,
-            total_tokens: 150,
-            cached_tokens: Some(20),
-            decode_duration: None,
-            prefill_duration: None,
+        let ev = TypedAnyStreamEvent::React(StreamEvent::TurnFinish {
+            reason: "stop".to_string(),
+            usage: stream_event::Usage {
+                input: 100,
+                output: 50,
+                reasoning: None,
+                cache_read: Some(20),
+                cache_write: None,
+            },
         });
         capture_turn_usage(&ev, &acc);
 
@@ -1306,13 +1303,15 @@ mod token_usage_meta_tests {
             (200, 80, None),
             (50, 30, Some(10)),
         ] {
-            let ev = TypedAnyStreamEvent::React(StreamEvent::Usage {
-                prompt_tokens: prompt,
-                completion_tokens: completion,
-                total_tokens: prompt + completion,
-                cached_tokens: cached,
-                decode_duration: None,
-                prefill_duration: None,
+            let ev = TypedAnyStreamEvent::React(StreamEvent::TurnFinish {
+                reason: "stop".to_string(),
+                usage: stream_event::Usage {
+                    input: prompt,
+                    output: completion,
+                    reasoning: None,
+                    cache_read: cached,
+                    cache_write: None,
+                },
             });
             capture_turn_usage(&ev, &acc);
         }
@@ -1335,13 +1334,15 @@ mod token_usage_meta_tests {
             .with_context_window_size(8192)
             .with_usage_acc(acc.clone());
 
-        let ev = TypedAnyStreamEvent::React(StreamEvent::Usage {
-            prompt_tokens: 4096,
-            completion_tokens: 512,
-            total_tokens: 4608,
-            cached_tokens: Some(1024),
-            decode_duration: None,
-            prefill_duration: None,
+        let ev = TypedAnyStreamEvent::React(StreamEvent::TurnFinish {
+            reason: "stop".to_string(),
+            usage: stream_event::Usage {
+                input: 4096,
+                output: 512,
+                reasoning: None,
+                cache_read: Some(1024),
+                cache_write: None,
+            },
         });
         capture_turn_usage(&ev, &acc);
         notifier.try_send_event(&ev);
@@ -1376,13 +1377,15 @@ mod token_usage_meta_tests {
         let notifier =
             SessionNotifier::new(tx, SessionId::new("sess")).with_context_window_size(8192);
 
-        let ev = TypedAnyStreamEvent::React(StreamEvent::Usage {
-            prompt_tokens: 100,
-            completion_tokens: 20,
-            total_tokens: 120,
-            cached_tokens: Some(0),
-            decode_duration: None,
-            prefill_duration: None,
+        let ev = TypedAnyStreamEvent::React(StreamEvent::TurnFinish {
+            reason: "stop".to_string(),
+            usage: stream_event::Usage {
+                input: 100,
+                output: 20,
+                reasoning: None,
+                cache_read: Some(0),
+                cache_write: None,
+            },
         });
         notifier.try_send_event(&ev);
 

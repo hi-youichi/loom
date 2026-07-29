@@ -9,10 +9,10 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Notify;
 
 use agent::commands::{self as loom_command};
-use cli::{run_cli_turn, RunCmd, RunError, RunOptions, RunOutput, StreamOut};
+use cli::{run_cli_turn, RunCmd, RunError, RunOptions, RunOutput};
 use loom_llm::message::UserContent;
 
-use crate::output::{emit_run_output, OutputConfig};
+use crate::output::{emit_run_output, EventSink, OutputConfig};
 use crate::Command;
 
 fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
@@ -48,7 +48,7 @@ pub async fn run_repl_loop(
     cmd: &Command,
     max_reply_len: usize,
     output: OutputConfig,
-    stream_out: StreamOut,
+    stream_out: EventSink,
     force_quit: Arc<Notify>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut reader = BufReader::new(tokio::io::stdin()).lines();
@@ -166,7 +166,7 @@ fn is_quit_command(s: &str) -> bool {
 pub async fn run_one_turn(
     opts: &RunOptions,
     cmd: &Command,
-    stream_out: StreamOut,
+    stream_out: EventSink,
 ) -> Result<RunOutput, RunError> {
     let run_cmd = cmd_to_runcmd(cmd);
     run_cli_turn(opts, &run_cmd, stream_out).await

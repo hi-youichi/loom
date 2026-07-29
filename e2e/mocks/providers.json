@@ -1,0 +1,6 @@
+{
+  "providers": [
+    { "id": "openai", "name": "OpenAI", "status": "connected", "models": ["gpt-4o"] },
+    { "id": "anthropic", "name": "Anthropic", "status": "connected", "models": ["claude-3-5-sonnet"] }
+  ]
+}

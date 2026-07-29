@@ -555,6 +555,8 @@ impl LlmClient for ChatOpenAI {
             }
         }
 
+        acc.finish_tool_inputs(sink, node_id);
+
         let result = acc.finish();
         trace!(
             trace_id = %trace_id,

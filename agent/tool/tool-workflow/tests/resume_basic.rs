@@ -45,7 +45,11 @@ async fn t0_resume_completed_all_cached() {
     match result {
         Ok(handle2) => {
             let outcome2 = handle2.join().await.unwrap();
-            assert_eq!(backend2.total_calls(), 0, "all agents should be cached on resume");
+            assert_eq!(
+                backend2.total_calls(),
+                0,
+                "all agents should be cached on resume"
+            );
             assert!(outcome2.result.is_ok());
         }
         Err(e) => {

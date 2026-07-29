@@ -188,6 +188,7 @@ pub mod agent;
 pub mod agent_registry;
 pub mod client_capabilities;
 pub mod client_methods;
+pub mod connection;
 pub mod content;
 pub mod goal_runner;
 pub mod high_freq_usage;
@@ -208,7 +209,7 @@ pub use agent::{LoomAcpAgent, ModelOption, ModelProvider};
 pub use content::{content_blocks_to_message, ContentBlockLike, ContentError};
 pub use high_freq_usage::{HighFreqUsageTracker, UsageUpdateInfo};
 pub use session::{SessionConfig, SessionEntry, SessionId, SessionStore};
-pub use stdio_loop::{run_stdio_loop, StdioLoopResult};
+pub use stdio_loop::{run_agent_connection, run_stdio_loop, StdioLoopResult};
 pub use stream_bridge::{
     loom_event_to_updates, stream_update_to_session_notification, StreamUpdate,
 };

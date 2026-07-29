@@ -34,7 +34,10 @@ pub struct ReadFileTool {
 impl ReadFileTool {
     /// Creates a new ReadFileTool with the given working folder.
     pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
-        Self { working_folder, allow_outside }
+        Self {
+            working_folder,
+            allow_outside,
+        }
     }
 }
 

@@ -1,0 +1,14 @@
+{
+  "name": "e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npx playwright test",
+    "report": "npx playwright show-report",
+    "ui": "npx playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "latest"
+  }
+}

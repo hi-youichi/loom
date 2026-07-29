@@ -51,11 +51,7 @@ async fn cancel_phase0_shared_registry() {
     assert_eq!(payload["instance_dir"], "synthetic-run-1");
 
     // Unknown dir → "not_found_or_terminal"
-    let payload = text(
-        cancel
-            .call(json!({"instance": "not-existing"}), None)
-            .await,
-    );
+    let payload = text(cancel.call(json!({"instance": "not-existing"}), None).await);
     assert_eq!(payload["result"], "not_found_or_terminal");
 }
 
@@ -91,11 +87,7 @@ async fn cancel_accepts_instance_dir_fallback() {
     runtime.register_run("abc-123".to_string());
 
     let cancel = WorkflowCancelTool::new(runtime);
-    let payload = text(
-        cancel
-            .call(json!({"instance_dir": "abc-123"}), None)
-            .await,
-    );
+    let payload = text(cancel.call(json!({"instance_dir": "abc-123"}), None).await);
     assert_eq!(payload["result"], "cancelling");
 }
 
@@ -156,13 +148,12 @@ async fn status_after_cancel_reflects_cancelled() {
     )
     .await
     .unwrap();
-    tokio::fs::write(instance_path.join("events.jsonl"), "").await.unwrap();
-    tokio::fs::write(
-        instance_path.join("workflow.lua"),
-        "-- placeholder --",
-    )
-    .await
-    .unwrap();
+    tokio::fs::write(instance_path.join("events.jsonl"), "")
+        .await
+        .unwrap();
+    tokio::fs::write(instance_path.join("workflow.lua"), "-- placeholder --")
+        .await
+        .unwrap();
 
     let status = WorkflowStatusTool::new(runtime);
     let payload = text(status.call(json!({"instance": dir}), None).await);
@@ -181,13 +172,12 @@ async fn status_running_when_active() {
     let instance_path = tmp.path().join(".loom").join("instances").join(dir);
     tokio::fs::create_dir_all(&instance_path).await.unwrap();
     // events.jsonl is optional — we just need the instance dir present.
-    tokio::fs::write(instance_path.join("events.jsonl"), "").await.unwrap();
-    tokio::fs::write(
-        instance_path.join("workflow.lua"),
-        "-- placeholder --",
-    )
-    .await
-    .unwrap();
+    tokio::fs::write(instance_path.join("events.jsonl"), "")
+        .await
+        .unwrap();
+    tokio::fs::write(instance_path.join("workflow.lua"), "-- placeholder --")
+        .await
+        .unwrap();
 
     let status = WorkflowStatusTool::new(runtime);
     let payload = text(status.call(json!({"instance": dir}), None).await);

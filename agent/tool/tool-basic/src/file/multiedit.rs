@@ -25,7 +25,10 @@ pub struct MultieditTool {
 
 impl MultieditTool {
     pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
-        Self { working_folder, allow_outside }
+        Self {
+            working_folder,
+            allow_outside,
+        }
     }
 }
 

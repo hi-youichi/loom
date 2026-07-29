@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Test artifacts
+test-results/
+playwright-report/
+
+# Local overrides
+*.local.ts
+
+# macOS
+.DS_Store

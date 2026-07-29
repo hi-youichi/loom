@@ -512,10 +512,10 @@ mod tests {
         assert!(sent);
 
         let received = rx.recv().await.unwrap();
-        if let StreamEvent::Messages { chunk, .. } = received {
-            assert_eq!(chunk.content, "Hello world");
+        if let StreamEvent::TextDelta { content, .. } = received {
+            assert_eq!(content, "Hello world");
         } else {
-            panic!("Expected Messages event");
+            panic!("Expected TextDelta event");
         }
     }
 
@@ -663,7 +663,7 @@ mod tests {
         let event2 = rx.recv().await.unwrap();
 
         assert!(matches!(event1, StreamEvent::Custom(_)));
-        assert!(matches!(event2, StreamEvent::Messages { .. }));
+        assert!(matches!(event2, StreamEvent::TextDelta { .. }));
     }
 
     // Default implementation for tests

@@ -5,7 +5,7 @@ use stream_event::codex::{
     agent_message_item, command_execution_item, mcp_tool_call_item, reasoning_item, CodexEvent,
     McpToolCallItemError,
 };
-use stream_event::{MessageChunkKind, StreamEvent};
+use stream_event::StreamEvent;
 
 use crate::approval::ApprovalManager;
 
@@ -67,38 +67,32 @@ fn convert_stream_event_inner(
     _approval: &Arc<ApprovalManager>,
 ) -> Vec<CodexEvent> {
     match ev_kind {
-        // ── Text / Thinking message chunks ──────────────────────────────────
-        StreamEventKind::Messages { content, kind } => {
+        StreamEventKind::TextDelta { content } => {
             let mut out = Vec::new();
-            match kind {
-                MessageChunkKind::Thinking => {
-                    // Reasoning: always emit as a single completed item.
-                    // We do not accumulate thinking chunks across events; each arrives complete.
-                    let id = tracker.next_id();
-                    out.push(CodexEvent::ItemStarted {
-                        item: reasoning_item(&id, &content),
-                    });
-                    out.push(CodexEvent::ItemCompleted {
-                        item: reasoning_item(&id, &content),
-                    });
-                }
-                MessageChunkKind::Message => {
-                    if let Some(ref id) = tracker.current_message_id.clone() {
-                        // Continue the open message item with a delta.
-                        out.push(CodexEvent::ItemUpdated {
-                            item: agent_message_item(id, &content),
-                        });
-                    } else {
-                        // Open a new message item.
-                        let id = tracker.next_id();
-                        tracker.current_message_id = Some(id.clone());
-                        out.push(CodexEvent::ItemStarted {
-                            item: agent_message_item(&id, &content),
-                        });
-                    }
-                }
+            if let Some(ref id) = tracker.current_message_id.clone() {
+                out.push(CodexEvent::ItemUpdated {
+                    item: agent_message_item(id, &content),
+                });
+            } else {
+                let id = tracker.next_id();
+                tracker.current_message_id = Some(id.clone());
+                out.push(CodexEvent::ItemStarted {
+                    item: agent_message_item(&id, &content),
+                });
             }
             out
+        }
+
+        StreamEventKind::ReasoningDelta { content } => {
+            let id = tracker.next_id();
+            vec![
+                CodexEvent::ItemStarted {
+                    item: reasoning_item(&id, &content),
+                },
+                CodexEvent::ItemCompleted {
+                    item: reasoning_item(&id, &content),
+                },
+            ]
         }
 
         // ── Tool decided by LLM (Think node emits complete arguments) ───────
@@ -286,9 +280,11 @@ fn close_message(tracker: &mut ItemTracker) -> Vec<CodexEvent> {
 /// A type-erased summary of the `StreamEvent<S>` fields we care about,
 /// extracted before the generic `S` state is dropped.
 enum StreamEventKind {
-    Messages {
+    TextDelta {
         content: String,
-        kind: MessageChunkKind,
+    },
+    ReasoningDelta {
+        content: String,
     },
     ToolCall {
         call_id: Option<String>,
@@ -319,9 +315,11 @@ where
     S: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
     match ev {
-        StreamEvent::Messages { chunk, .. } => StreamEventKind::Messages {
-            content: chunk.content.clone(),
-            kind: chunk.kind,
+        StreamEvent::TextDelta { content, .. } => StreamEventKind::TextDelta {
+            content: content.clone(),
+        },
+        StreamEvent::ReasoningDelta { content, .. } => StreamEventKind::ReasoningDelta {
+            content: content.clone(),
         },
         StreamEvent::ToolCall {
             call_id,

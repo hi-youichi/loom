@@ -24,6 +24,7 @@ members = [
     "foundation/model-spec-core",
 
     "apps/cli",
+    "apps/server",
 
     "foundation/stream-event",
 
@@ -63,6 +64,8 @@ members = [
     "foundation/loom-util",
 
     "foundation/loom-http-retry",
+
+    "foundation/pty-protocol",
 
     "experimental/codex",
 
@@ -105,9 +108,6 @@ serde_json = "1.0"
 tracing = "0.1"
 
 ctor = "0.2"
-
-
-
 [profile.test]
 
 opt-level = 2

@@ -19,11 +19,19 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn child_bin_path() -> PathBuf {
-    let exe = if cfg!(windows) { "resume_child.exe" } else { "resume_child" };
+    let exe = if cfg!(windows) {
+        "resume_child.exe"
+    } else {
+        "resume_child"
+    };
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let candidates = [
-        PathBuf::from(manifest_dir).join("../../target/debug").join(exe),
-        PathBuf::from(manifest_dir).join("../../../target/debug").join(exe),
+        PathBuf::from(manifest_dir)
+            .join("../../target/debug")
+            .join(exe),
+        PathBuf::from(manifest_dir)
+            .join("../../../target/debug")
+            .join(exe),
     ];
     for c in &candidates {
         if c.exists() {

@@ -148,7 +148,10 @@ pub struct ApplyPatchTool {
 
 impl ApplyPatchTool {
     pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
-        Self { working_folder, allow_outside }
+        Self {
+            working_folder,
+            allow_outside,
+        }
     }
 }
 
@@ -270,7 +273,11 @@ impl Tool for ApplyPatchTool {
                         ToolSourceError::Transport(format!("write {}: {}", p.display(), e))
                     })?;
                     if let Some(move_to) = move_path {
-                        let dest = resolve_path(self.working_folder.as_ref(), &move_to, self.allow_outside)?;
+                        let dest = resolve_path(
+                            self.working_folder.as_ref(),
+                            &move_to,
+                            self.allow_outside,
+                        )?;
                         if let Some(parent) = dest.parent() {
                             if !parent.exists() {
                                 std::fs::create_dir_all(parent).map_err(|e| {

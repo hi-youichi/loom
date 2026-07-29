@@ -181,7 +181,7 @@ mod tests {
         )
         .unwrap();
         let chunk = to_json(
-            &ProtocolEvent::MessageChunk {
+            &ProtocolEvent::TextDelta {
                 content: "hello".to_string(),
                 id: "think".to_string(),
             },
@@ -207,8 +207,7 @@ mod tests {
     #[test]
     fn reply_envelope_uses_next_event_id_without_advancing() {
         let mut state = EnvelopeState::new("sess-1".to_string());
-        let mut event =
-            json!({"type":"usage","prompt_tokens":1,"completion_tokens":1,"total_tokens":2});
+        let mut event = json!({"type":"usage","input":1,"output":1});
         state.inject_into(&mut event);
         assert_eq!(event["event_id"], 1);
 
@@ -313,7 +312,7 @@ mod tests {
         assert_eq!(enter_think["session_id"], "s-1");
 
         // Message within that node
-        let mut msg = json!({"type":"message_chunk","id":"think","content":"hi"});
+        let mut msg = json!({"type":"text_delta","id":"think","content":"hi"});
         state.inject_into(&mut msg);
         assert_eq!(msg["node_id"], "run-think-0");
 
@@ -323,7 +322,7 @@ mod tests {
         assert_eq!(enter_act["node_id"], "run-act-1");
 
         // Message within second node
-        let mut msg2 = json!({"type":"message_chunk","id":"act","content":"done"});
+        let mut msg2 = json!({"type":"text_delta","id":"act","content":"done"});
         state.inject_into(&mut msg2);
         assert_eq!(msg2["node_id"], "run-act-1");
     }
@@ -348,7 +347,7 @@ mod tests {
 
     #[test]
     fn to_json_with_non_node_enter_event() {
-        let ev = ProtocolEvent::MessageChunk {
+        let ev = ProtocolEvent::TextDelta {
             content: "hello".to_string(),
             id: "think".to_string(),
         };

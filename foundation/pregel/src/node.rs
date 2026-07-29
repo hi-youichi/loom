@@ -84,19 +84,28 @@ impl PregelNodeContext {
         let Some(tx) = &self.stream_tx else {
             return false;
         };
-        tx.send(StreamEvent::Messages {
-            chunk,
-            metadata: StreamMetadata {
-                loom_node: node_id.into(),
-                namespace: if self.run_config.checkpoint_ns.is_empty() {
-                    None
-                } else {
-                    Some(self.run_config.checkpoint_ns.clone())
-                },
+        let node_id = node_id.into();
+        let metadata = StreamMetadata {
+            loom_node: node_id.clone(),
+            namespace: if self.run_config.checkpoint_ns.is_empty() {
+                None
+            } else {
+                Some(self.run_config.checkpoint_ns.clone())
             },
-        })
-        .await
-        .is_ok()
+        };
+        let event = if chunk.is_thinking() {
+            StreamEvent::ReasoningDelta {
+                id: node_id,
+                content: chunk.content,
+                metadata,
+            }
+        } else {
+            StreamEvent::TextDelta {
+                content: chunk.content,
+                metadata,
+            }
+        };
+        tx.send(event).await.is_ok()
     }
 
     /// Returns whether a specific stream mode is enabled.

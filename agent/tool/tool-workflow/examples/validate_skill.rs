@@ -164,7 +164,9 @@ fn main() {
 
     // 8. apply_toolset_filters: hides when workflow_start tool missing
     let mut registry2 = SkillRegistry::empty();
-    if let Some(s) = WorkflowStartTool::new(Arc::new(WorkflowRuntime::new(AgentConfig::default()))).builtin_skill() {
+    if let Some(s) = WorkflowStartTool::new(Arc::new(WorkflowRuntime::new(AgentConfig::default())))
+        .builtin_skill()
+    {
         registry2.add_builtin(
             &s.name,
             &s.description,

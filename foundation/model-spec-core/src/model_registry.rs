@@ -264,6 +264,18 @@ impl ModelRegistry {
         Some((provider_cfg, spec_provider.clone()))
     }
 
+    /// Get all spec providers (from models.dev), using the cache when fresh.
+    ///
+    /// This exposes the same cached data used internally by
+    /// [`list_all_models`](Self::list_all_models), so callers can enrich
+    /// model entries with full metadata (modalities, limits, tool support, …)
+    /// without a second HTTP fetch.
+    pub async fn get_spec_providers(&self) -> Result<HashMap<String, SpecProvider>, String> {
+        self.fetch_or_get_cached_spec_providers()
+            .await
+            .map_err(|e| e.to_string())
+    }
+
     pub fn normalize_provider_name(name: &str) -> String {
         name.trim().to_ascii_lowercase()
     }

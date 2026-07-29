@@ -3,7 +3,6 @@ use crate::agent::react::{ReactBuildConfig, ReactRunner};
 use crate::runner_common::StreamRunOutcome;
 use crate::state::ReActState;
 use checkpoint::RunnableConfig;
-use loom_llm::MessageChunkKind;
 use std::sync::Arc;
 use stream_event::StreamEvent;
 
@@ -43,13 +42,11 @@ pub enum AgentEvent {
         is_error: bool,
     },
     Usage {
-        prompt_tokens: u32,
-        completion_tokens: u32,
-        total_tokens: u32,
-        /// Cached prompt tokens (OpenAI `prompt_tokens_details.cached_tokens`).
-        /// `None` when the provider does not report cache hits, or when the
-        /// current request had no cacheable prefix.
-        cached_tokens: Option<u32>,
+        input: u32,
+        output: u32,
+        reasoning: Option<u32>,
+        cache_read: Option<u32>,
+        cache_write: Option<u32>,
     },
 }
 
@@ -131,10 +128,8 @@ impl Agent {
 
 fn map_stream_event(ev: StreamEvent<ReActState>) -> Option<AgentEvent> {
     match ev {
-        StreamEvent::Messages { chunk, .. } => match chunk.kind {
-            MessageChunkKind::Thinking => Some(AgentEvent::ReasoningChunk(chunk.content)),
-            MessageChunkKind::Message => Some(AgentEvent::TextChunk(chunk.content)),
-        },
+        StreamEvent::TextDelta { content, .. } => Some(AgentEvent::TextChunk(content)),
+        StreamEvent::ReasoningDelta { content, .. } => Some(AgentEvent::ReasoningChunk(content)),
         StreamEvent::ToolCall {
             name, arguments, ..
         } => Some(AgentEvent::ToolCallStart {
@@ -154,17 +149,12 @@ fn map_stream_event(ev: StreamEvent<ReActState>) -> Option<AgentEvent> {
             result,
             is_error,
         }),
-        StreamEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            cached_tokens,
-            ..
-        } => Some(AgentEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            cached_tokens,
+        StreamEvent::TurnFinish { usage, .. } => Some(AgentEvent::Usage {
+            input: usage.input,
+            output: usage.output,
+            reasoning: usage.reasoning,
+            cache_read: usage.cache_read,
+            cache_write: usage.cache_write,
         }),
         _ => None,
     }
@@ -176,9 +166,7 @@ mod tests {
     use crate::agent::react::build::build_react_runner;
     use crate::ReactBuildConfig;
     use loom_llm::client::{FixedLlmProvider, MockLlm};
-    use loom_llm::MessageChunk;
-    use std::sync::Arc;
-    use stream_event::StreamMetadata;
+    use stream_event::{StreamMetadata, Usage};
 
     fn base_config() -> ReactBuildConfig {
         let mut cfg = ReactBuildConfig::from_env();
@@ -194,17 +182,11 @@ mod tests {
         }
     }
 
-    fn message_chunk(content: &str, kind: MessageChunkKind) -> MessageChunk {
-        MessageChunk {
-            content: content.to_string(),
-            kind,
-        }
-    }
-
+    use std::sync::Arc;
     #[test]
     fn map_messages_text_chunk() {
-        let ev = StreamEvent::<ReActState>::Messages {
-            chunk: message_chunk("hello", MessageChunkKind::Message),
+        let ev = StreamEvent::<ReActState>::TextDelta {
+            content: "hello".to_string(),
             metadata: stream_metadata(),
         };
         assert!(matches!(
@@ -215,8 +197,9 @@ mod tests {
 
     #[test]
     fn map_messages_reasoning_chunk() {
-        let ev = StreamEvent::<ReActState>::Messages {
-            chunk: message_chunk("thinking...", MessageChunkKind::Thinking),
+        let ev = StreamEvent::<ReActState>::ReasoningDelta {
+            id: "r0".to_string(),
+            content: "thinking...".to_string(),
             metadata: stream_metadata(),
         };
         assert!(matches!(
@@ -288,47 +271,54 @@ mod tests {
 
     #[test]
     fn map_usage() {
-        let ev = StreamEvent::<ReActState>::Usage {
-            prompt_tokens: 100,
-            completion_tokens: 50,
-            total_tokens: 150,
-            cached_tokens: None,
-            prefill_duration: None,
-            decode_duration: None,
+        let ev = StreamEvent::<ReActState>::TurnFinish {
+            reason: "stop".to_string(),
+            usage: Usage {
+                input: 100,
+                output: 50,
+                reasoning: None,
+                cache_read: None,
+                cache_write: None,
+            },
         };
         assert!(matches!(
             map_stream_event(ev),
             Some(AgentEvent::Usage {
-                prompt_tokens: 100,
-                completion_tokens: 50,
-                total_tokens: 150,
-                cached_tokens: None,
+                input: 100,
+                output: 50,
+                reasoning: None,
+                cache_read: None,
+                cache_write: None,
             })
         ));
     }
 
     #[test]
     fn map_usage_event_propagates_cached_tokens() {
-        let ev = StreamEvent::<ReActState>::Usage {
-            prompt_tokens: 100,
-            completion_tokens: 50,
-            total_tokens: 150,
-            cached_tokens: Some(40),
-            prefill_duration: None,
-            decode_duration: None,
+        let ev = StreamEvent::<ReActState>::TurnFinish {
+            reason: "stop".to_string(),
+            usage: Usage {
+                input: 100,
+                output: 50,
+                reasoning: None,
+                cache_read: Some(40),
+                cache_write: None,
+            },
         };
         let mapped = map_stream_event(ev);
         if let Some(AgentEvent::Usage {
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            cached_tokens,
+            input,
+            output,
+            reasoning,
+            cache_read,
+            cache_write,
         }) = mapped
         {
-            assert_eq!(prompt_tokens, 100);
-            assert_eq!(completion_tokens, 50);
-            assert_eq!(total_tokens, 150);
-            assert_eq!(cached_tokens, Some(40));
+            assert_eq!(input, 100);
+            assert_eq!(output, 50);
+            assert_eq!(reasoning, None);
+            assert_eq!(cache_read, Some(40));
+            assert_eq!(cache_write, None);
         } else {
             panic!("expected AgentEvent::Usage, got {mapped:?}");
         }

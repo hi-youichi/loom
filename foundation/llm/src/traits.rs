@@ -219,7 +219,7 @@ impl LlmResponse {
 }
 
 // Re-export streaming types from stream-event for backward compatibility
-pub use stream_event::{MessageChunk, MessageChunkKind, StreamSink};
+pub use stream_event::{MessageChunk, MessageChunkKind, StreamSink, ToolCallChunk};
 
 /// Provider-level factory that can create [`LlmClient`] instances for different model names.
 ///

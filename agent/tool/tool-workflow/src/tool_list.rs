@@ -15,7 +15,9 @@ pub struct WorkflowListTool {
 }
 
 impl WorkflowListTool {
-    pub fn new(runtime: Arc<WorkflowRuntime>) -> Self { Self { runtime } }
+    pub fn new(runtime: Arc<WorkflowRuntime>) -> Self {
+        Self { runtime }
+    }
 }
 
 #[async_trait]

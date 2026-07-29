@@ -5,7 +5,7 @@ use tokio::sync::Notify;
 
 use crate::args::{TaskArgs, TaskCommand};
 use crate::display_limits::{generate_session_id, max_message_len};
-use crate::output::{emit_run_output, make_stream_out, OutputConfig};
+use crate::output::{emit_run_output, make_stream_out, EventSink, OutputConfig};
 use crate::repl::{run_one_turn, run_repl_loop};
 use cli::RunOptions;
 use loom_llm::message::UserContent;
@@ -290,7 +290,7 @@ async fn run_interactive_mode(
     initial_message: Option<String>,
     reply_len: usize,
     output: &OutputConfig,
-    stream_out: cli::StreamOut,
+    stream_out: EventSink,
     force_quit: Arc<Notify>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(session_id) = opts.thread_id.as_deref() {

@@ -1,6 +1,6 @@
 //! Think node: read messages, call LLM, write assistant message and optional tool_calls.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -11,14 +11,77 @@ use tracing::{debug, trace};
 use crate::state::{ModelConfig, ReActState};
 use env_config::load_provider_configs_from_xdg;
 use loom_graph_core::{run_cancellable, Next, Node, RunContext};
-use loom_llm::{GraphError, LlmClient, LlmProvider, LlmResponse, LlmUsage, Message, ToolCall};
+use loom_llm::{
+    GraphError, LlmClient, LlmProvider, LlmResponse, LlmUsage, Message, MessageChunk, StreamSink,
+    ToolCall, ToolCallChunk,
+};
 use model_spec_core::resolve_tier_intelligent;
 use model_spec_core::ModelTier;
-use stream_event::{MessageChunk, StreamEvent, StreamEventSink, StreamMetadata, StreamMode};
+use stream_event::{BlockTracker, StreamEvent, StreamMetadata, StreamMode, Usage};
 
 pub struct ThinkNode {
     provider: Arc<dyn LlmProvider>,
     client_cache: DashMap<String, Arc<dyn LlmClient>>,
+}
+
+struct BlockTrackerSink {
+    tracker: Mutex<BlockTracker<ReActState>>,
+    stream_tx: tokio::sync::mpsc::Sender<StreamEvent<ReActState>>,
+}
+
+impl BlockTrackerSink {
+    fn new(stream_tx: tokio::sync::mpsc::Sender<StreamEvent<ReActState>>) -> Self {
+        Self {
+            tracker: Mutex::new(BlockTracker::new()),
+            stream_tx,
+        }
+    }
+
+    fn finish(&self, node_id: &str) {
+        let metadata = StreamMetadata {
+            loom_node: node_id.to_string(),
+            namespace: None,
+        };
+        if let Ok(mut tracker) = self.tracker.lock() {
+            for event in tracker.close_current(&metadata) {
+                let _ = self.stream_tx.try_send(event);
+            }
+        }
+    }
+}
+
+impl StreamSink for BlockTrackerSink {
+    fn try_send_message(&self, chunk: MessageChunk, node_id: &str) -> Option<Instant> {
+        let metadata = StreamMetadata {
+            loom_node: node_id.to_string(),
+            namespace: None,
+        };
+        if let Ok(mut tracker) = self.tracker.lock() {
+            let events = if chunk.is_thinking() {
+                tracker.on_reasoning_delta(&chunk.content, &metadata)
+            } else {
+                tracker.on_text_delta(&chunk.content, &metadata)
+            };
+            for event in events {
+                let _ = self.stream_tx.try_send(event);
+            }
+        }
+        Some(Instant::now())
+    }
+
+    fn try_send_tool_call(&self, chunk: ToolCallChunk, _node_id: &str) -> Option<Instant> {
+        let event = match chunk {
+            ToolCallChunk::Started { call_id, name } => StreamEvent::ToolInputStart { call_id, name },
+            ToolCallChunk::Delta { call_id, arguments_delta } => {
+                StreamEvent::ToolInputDelta { call_id, arguments_delta }
+            }
+            ToolCallChunk::Ended { call_id, arguments } => {
+                StreamEvent::ToolInputEnd { call_id, arguments }
+            }
+        };
+        let _ = self.stream_tx.try_send(event);
+        Some(Instant::now())
+    }
 }
 
 impl ThinkNode {
@@ -69,15 +132,14 @@ impl ThinkNode {
         Ok(client)
     }
 
-    /// Emits stream events after the LLM returns and before state is committed (messages, tool calls).
-    /// `Usage` is sent separately after [`ReActState::apply_think`] to match prior event ordering.
+    /// Emits tool call events after the LLM returns and before state is committed.
     #[allow(clippy::too_many_arguments)]
     async fn emit_post_response_events(
         &self,
         ctx: &RunContext<ReActState>,
-        content: &str,
-        should_stream: bool,
-        streamed_chunks: u64,
+        _content: &str,
+        _should_stream: bool,
+        _streamed_chunks: u64,
         tool_calls: &[ToolCall],
         should_stream_tools: bool,
         is_cancelled: impl Fn() -> bool,
@@ -85,16 +147,6 @@ impl ThinkNode {
         let Some(stream_tx) = ctx.stream_tx.as_ref() else {
             return Ok(());
         };
-
-        if should_stream && !content.is_empty() && streamed_chunks == 0 {
-            let _ = stream_tx.try_send(StreamEvent::Messages {
-                chunk: MessageChunk::message(content.to_string()),
-                metadata: StreamMetadata {
-                    loom_node: self.id().to_string(),
-                    namespace: None,
-                },
-            });
-        }
 
         if should_stream_tools && !tool_calls.is_empty() {
             for tc in tool_calls {
@@ -114,12 +166,13 @@ impl ThinkNode {
         Ok(())
     }
 
-    async fn emit_usage_event(
+    async fn emit_finish_events(
         &self,
         ctx: &RunContext<ReActState>,
         call_start: Instant,
         first_token_at: Option<Instant>,
-        usage: &LlmUsage,
+        finish_reason: Option<&str>,
+        usage: Option<&LlmUsage>,
     ) {
         let Some(stream_tx) = ctx.stream_tx.as_ref() else {
             return;
@@ -132,26 +185,35 @@ impl ThinkNode {
             }
             None => (None, None),
         };
-        trace!(
-            prompt_tokens = usage.prompt_tokens,
-            completion_tokens = usage.completion_tokens,
-            total_tokens = usage.total_tokens,
-            ?prefill_duration,
-            ?decode_duration,
-            "think: stream usage"
-        );
-        let cached_tokens = usage
-            .prompt_tokens_details
-            .as_ref()
-            .and_then(|d| d.cached_tokens);
-        let _ = stream_tx.try_send(StreamEvent::Usage {
-            prompt_tokens: usage.prompt_tokens,
-            completion_tokens: usage.completion_tokens,
-            total_tokens: usage.total_tokens,
-            cached_tokens,
-            prefill_duration,
-            decode_duration,
-        });
+        if let Some(usage) = usage {
+            trace!(
+                prompt_tokens = usage.prompt_tokens,
+                completion_tokens = usage.completion_tokens,
+                total_tokens = usage.total_tokens,
+                ?prefill_duration,
+                ?decode_duration,
+                "think: stream usage"
+            );
+            let cached_tokens = usage
+                .prompt_tokens_details
+                .as_ref()
+                .and_then(|d| d.cached_tokens);
+            let reasoning_tokens = usage
+                .completion_tokens_details
+                .as_ref()
+                .and_then(|d| d.reasoning_tokens);
+            let _ = stream_tx.try_send(StreamEvent::TurnFinish {
+                reason: finish_reason.unwrap_or("stop").to_string(),
+                usage: Usage {
+                    input: usage.prompt_tokens,
+                    output: usage.completion_tokens,
+                    reasoning: reasoning_tokens,
+                    cache_read: cached_tokens,
+                    cache_write: None,
+                },
+            });
+        }
+        let _ = stream_tx.try_send(StreamEvent::Finish);
     }
 }
 
@@ -170,11 +232,10 @@ async fn invoke_think_llm(
         return Ok((response, 0, None));
     }
 
-    // New streaming path: LLM calls sink.try_send_message() directly. No intermediate
-    // channel, no separate forwarder task, no .await on send inside LLM.
-    let sink = StreamEventSink::new(stream_tx, None);
-
+    let _ = stream_tx.try_send(StreamEvent::TurnStart);
+    let sink = BlockTrackerSink::new(stream_tx);
     let result = llm.invoke_stream(messages, Some(&sink), node_id).await;
+    sink.finish(node_id);
     let response = result?;
     // We don't have a per-chunk count anymore (no forwarder). Use first_chunk_at as
     // a proxy: at least one chunk was forwarded iff first_chunk_at is Some.
@@ -260,7 +321,7 @@ impl Node<ReActState> for ThinkNode {
             tool_calls,
             usage,
             first_chunk_at: _,
-            finish_reason: _,
+            finish_reason,
             ..
         } = response;
 
@@ -291,10 +352,14 @@ impl Node<ReActState> for ThinkNode {
 
         let new_state = state.apply_think(content, reasoning_content, tool_calls, usage);
 
-        if let Some(ref u) = new_state.usage {
-            self.emit_usage_event(ctx, call_start, first_token_at, u)
-                .await;
-        }
+        self.emit_finish_events(
+            ctx,
+            call_start,
+            first_token_at,
+            finish_reason.as_deref(),
+            new_state.usage.as_ref(),
+        )
+        .await;
 
         Ok((new_state, Next::Continue))
     }
