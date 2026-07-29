@@ -57,6 +57,12 @@ pub(crate) fn model_entry_from_config(
         })
     });
 
+    let matched = matched.or_else(|| {
+        let full_config = env_config::load_full_config("loom").ok()?;
+        let default_name = full_config.default_provider.as_deref()?;
+        providers.iter().find(|p| p.name.eq_ignore_ascii_case(default_name))
+    });
+
     if let Some(mp) = matched {
         tracing::info!(
             provider = %mp.name,

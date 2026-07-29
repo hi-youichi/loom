@@ -562,12 +562,18 @@ fn apply_model_provider_resolution(opts: &mut RunOptions) {
         (None, raw_model.trim().to_string())
     };
 
-    let effective_provider = provider_only.as_deref().or(resolved_provider.as_deref());
+    let effective_provider = provider_only
+        .clone()
+        .or(resolved_provider.clone())
+        .or_else(|| {
+            env_config::load_full_config("loom")
+                .ok()
+                .and_then(|c| c.default_provider)
+        });
+
     opts.model = Some(model_name.clone());
     if opts.provider.is_none() {
-        if let Some(ref p) = resolved_provider {
-            opts.provider = Some(p.clone());
-        }
+        opts.provider = effective_provider.clone();
     }
 
     tracing::info!(
@@ -576,8 +582,7 @@ fn apply_model_provider_resolution(opts: &mut RunOptions) {
         effective_provider
     );
 
-    if let Some(name) = effective_provider {
-        let name = name.to_string();
+    if let Some(ref name) = effective_provider {
         resolve_provider_fields_into_opts(Some(name.as_str()), opts);
     }
 }
