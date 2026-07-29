@@ -8,7 +8,6 @@ use luft::LuftBuilder;
 use luft_core::contract::event::AgentEvent as LuftAgentEvent;
 use serde_json::{json, Value};
 use std::collections::HashSet;
-use std::future::IntoFuture;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
@@ -193,68 +192,108 @@ async fn background_finalize(
     workflow_arg_owned: Option<String>,
 ) {
     let run_dir_name = run_handle.run_dir_name().to_string();
+
+    // ── Set up a one-shot channel so we can call run_handle.cancel()     ──
+    //    before consuming it with join().                                 ──
+    let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    let cancel_token_for_spawn = cancel_token.clone();
+    tokio::spawn(async move {
+        cancel_token_for_spawn.cancelled().await;
+        let _ = cancel_tx.send(());
+    });
+
     let mut done_rx = run_handle.subscribe();
+
+    // Wait for either the cancel token or the first broadcast event.
+    // If the cancel token fires first, cancel the run_handle before
+    // consuming it, so the JoinFuture resolves promptly.
+    let mut cancelled = false;
+    let cancel_handled = tokio::select! {
+        _ = &mut cancel_rx => {
+            run_handle.cancel();
+            cancelled = true;
+            true
+        }
+        _ = done_rx.recv() => {
+            false
+        }
+    };
+
+    // ── Consume run_handle with join() — this creates a future that      ──
+    //    resolves when the execution task finishes.                       ──
+    let mut join_fut = std::pin::pin!(run_handle.join());
 
     #[allow(unused_assignments)]
     let mut final_status: Option<&'static str> = None;
     let mut final_report: Option<Value> = None;
-    let mut cancelled = false;
 
-    loop {
-        tokio::select! {
-            ev = done_rx.recv() => {
-                match ev {
-                    Ok(event) => {
-                        if let Some(ref send) = sender {
-                            send(luft_event_to_json(&event));
+    // If the cancel token already fired, skip the loop and go straight to
+    // finalization. The join_fut will resolve when the execution task
+    // notices the cancellation.
+    if !cancel_handled {
+        loop {
+            tokio::select! {
+                ev = done_rx.recv() => {
+                    match ev {
+                        Ok(event) => {
+                            if let Some(ref send) = sender {
+                                send(luft_event_to_json(&event));
+                            }
+                            if let LuftAgentEvent::RunDone { report, status, .. } = event {
+                                final_status = Some(match status {
+                                    luft_core::contract::event::RunStatus::Completed => "completed",
+                                    luft_core::contract::event::RunStatus::Failed => "failed",
+                                    luft_core::contract::event::RunStatus::Cancelled => "cancelled",
+                                    luft_core::contract::event::RunStatus::Partial => "completed",
+                                });
+                                final_report = Some(report);
+                                break;
+                            }
                         }
-                        if let LuftAgentEvent::RunDone { report, status, .. } = event {
-                            final_status = Some(match status {
-                                luft_core::contract::event::RunStatus::Completed => "completed",
-                                luft_core::contract::event::RunStatus::Failed => "failed",
-                                luft_core::contract::event::RunStatus::Cancelled => "cancelled",
-                                luft_core::contract::event::RunStatus::Partial => "completed",
-                            });
-                            final_report = Some(report);
+                        Err(RecvError::Lagged(_)) => continue,
+                        Err(RecvError::Closed) => {
+                            if final_status.is_none() {
+                                final_status = Some(if cancelled { "cancelled" } else { "failed" });
+                            }
                             break;
                         }
                     }
-                    Err(RecvError::Lagged(_)) => continue,
-                    Err(RecvError::Closed) => {
-                        if final_status.is_none() {
-                            final_status = Some(if cancelled { "cancelled" } else { "failed" });
+                }
+                _ = cancel_token.cancelled(), if !cancelled => {
+                    cancelled = true;
+                    // run_handle.cancel() was already called (or was never
+                    // needed because the cancel token fired before join()).
+                    // The JoinFuture will resolve when the execution task
+                    // notices the cancellation.
+                }
+                result = &mut join_fut => {
+                    // The execution task finished — this is the safety net
+                    // for the case where the task finished without sending
+                    // RunDone (e.g., prepare failed, task panicked, etc.).
+                    if final_status.is_none() {
+                        final_status = Some(if cancelled { "cancelled" } else { "completed" });
+                    }
+                    if final_report.is_none() {
+                        if let Ok(outcome) = &result {
+                            if let Ok(report) = &outcome.result {
+                                final_report = Some(report.clone());
+                            }
                         }
+                    }
+                    break;
+                }
+                _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
+                    let status = runtime.terminal_checkpoint_status(&run_dir_name).await;
+                    if let Some(status) = status {
+                        final_status = Some(status);
                         break;
                     }
                 }
             }
-            _ = cancel_token.cancelled(), if !cancelled => {
-                cancelled = true;
-                run_handle.cancel();
-            }
-            _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
-                let status = runtime.terminal_checkpoint_status(&run_dir_name).await;
-                if let Some(status) = status {
-                    final_status = Some(status);
-                    break;
-                }
-            }
         }
     }
-    let final_status: &'static str = final_status.unwrap_or("unknown");
 
-    match run_handle.into_future().await {
-        Ok(outcome) => {
-            if final_report.is_none() {
-                if let Ok(report) = outcome.result {
-                    final_report = Some(report);
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("warning: workflow task drain failed: {e}");
-        }
-    }
+    let final_status: &'static str = final_status.unwrap_or("unknown");
 
     if let Err(e) = runtime
         .finalize(

@@ -16,9 +16,27 @@ cargo run -p loom-server -- serve --host 127.0.0.1 --port 18081
 
 CLI 应维持一条持久 WS，在该连接上先发送 `initialize`，再发送 `session/new`、`session/prompt` 等标准 ACP 方法。传统 IDE 子进程集成仍可使用 `loom acp` 的 stdio 入口。
 
+## 架构
+
+`/acp` WebSocket 端点使用**进程内分发**，不 spawn 任何子进程：
+
+```text
+Client ──WS text frames──→ handlers/acp.rs
+                               │
+                               ├── AcpHub::attach() → 获取持久 LoomAcpAgent
+                               ├── WS frame ↔ Lines transport 适配
+                               └── run_agent_connection() 驱动 ACP JSON-RPC dispatch
+                                       │
+                                       ├── initialize / session/new / session/prompt / ...
+                                       ├── notification drain task → session/update 推送
+                                       └── LoomAcpAgent → loom graph 执行
+```
+
+核心函数 `loom_acp::stdio_loop::run_agent_connection()` 接受任意 `Lines` 传输层（stdin/stdout 或 WebSocket），内含全部 ACP handler 注册和 `connect_with` 驱动。stdio 入口 `run_stdio_loop()` 是它的薄封装。
+
 ## 断线与重连
 
-服务端持有 ACP agent 与 session store，而非 WebSocket 持有它们：
+服务端通过 `AcpHub` 持有 ACP agent 与 session store，而非 WebSocket 连接持有它们：
 
 - WebSocket 断开不会取消正在运行的 prompt；取消必须显式发送 `session/cancel`。
 - 同一客户端重新连接并初始化后会重新绑定通知投递目标。
@@ -40,14 +58,6 @@ $env:LOOM_ACP_ALLOWED_ORIGINS = "https://ui.example.com,https://staging.example.
 ```
 
 原生 CLI 不发送 `Origin`，因此不会被该浏览器防护规则阻断；仍应启用 Bearer token 并经由 WSS 反向代理暴露公网服务。
-
-## 持久 Agent 与重连语义（实现说明）
-
-目标链路：Zed ←stdio→ `loom acp --bridge`（纯转发）←WS→ loom-server（`AcpHub` + agent，持久）。
-
-WS 断开时，server 内的 agent 继续跑 prompt，`session/update` 写入 replay buffer；Zed 重连后 `AcpHub::attach` 灌入 buffer，prompt 结果不丢。
-
-详细设计见 [acp-websocket-persistent-agent.md](../opencode-protocol/archive/2025-snapshots/acp-adjacent/acp-websocket-persistent-agent.md)。落地前，handler 的实现是 stdio 桥：每连接 spawn `loom acp` 子进程跑 agent，断线即中断 prompt（参见该文档 §1 现状分析）。
 
 ## 快速拉起服务端（`loom acp --websocket`）
 

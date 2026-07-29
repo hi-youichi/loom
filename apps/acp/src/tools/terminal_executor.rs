@@ -229,7 +229,7 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
             "bash execute called"
         );
 
-        let bridge = crate::tools::get_client_bridge().await.map_err(|e| {
+        let bridge = crate::tools::get_session_bridge(session_id).await.map_err(|e| {
             error!(error = %e, "failed to get client bridge");
             ToolSourceError::Transport(e)
         })?;

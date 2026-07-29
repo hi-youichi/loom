@@ -752,7 +752,12 @@ impl LoomAcpAgent {
         let cancellation = self
             .sessions
             .begin_prompt(&key)
-            .ok_or_else(|| agent_client_protocol::Error::new(-32602, "unknown session"))?;
+            .ok_or_else(|| {
+                agent_client_protocol::Error::new(
+                    -32000,
+                    "a prompt is already in progress for this session",
+                )
+            })?;
 
         let user_content =
             content_blocks_to_user_content(args.prompt.as_slice()).map_err(|_| {

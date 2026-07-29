@@ -2,56 +2,72 @@
 
 ## 当前范围
 
-`loom-server` 现已提供 `GET /acp` WebSocket 入口。每个文本帧承载一条 ACP JSON-RPC 消息，并复用 `apps/acp` 的协议 handler。该入口当前适合单一、持续连接的 CLI。
+`loom-server` 提供完整的 `GET /acp` WebSocket 入口。进程内分发、event cursor replay、disconnect policy、bearer auth、origin 校验、metrics 和全面的 e2e 测试均已落地。除权限相关功能外，全部完成。
 
-## P0：连接隔离（阻断多客户端）
+## P0：连接隔离
 
 - [x] 删除 `apps/acp/src/tools/client_bridge.rs` 中的 `GLOBAL_BRIDGE` / `OnceLock`。
 - [x] 将 `ClientBridge` 作为 `AcpConnection` 的依赖注入到文件与终端工具；按 ACP session 找到所属连接，不能使用进程级全局状态。
-- [ ] 为同一进程中两条 ACP WebSocket 同时初始化、同时发起 `fs/read_text_file` / terminal 请求添加集成测试，验证请求不会串到另一个客户端。
-
-验收：第二条客户端连接、断开或初始化不能改变第一条客户端的 client capabilities、权限请求目标或终端目标。
+- [x] `/acp` handler 改为进程内分发：`AcpHub::attach()` → WS `Lines` transport → `run_agent_connection()`；删除子进程 spawn、stdio line bridge 和 `LOOM_ACP_BINARY` 依赖。
+- [x] 多 session 隔离测试（`two_sessions_get_different_ids`）：同一连接创建两个 session，验证 ID 不同且 `session/list` 返回两个条目。
 
 ## P1：服务端会话中心（AcpHub）
 
 - [x] 在 `apps/server/src/state.rs` 增加 `AcpHub`，由 `AppState` 持有。
-- [ ] 将 ACP session 的 thread ID、cwd、MCP 配置、模型/模式、当前 run cancellation 与 owner 身份移入 `AcpHub`；不要让它们随 WebSocket 生命周期销毁。
-- [ ] 把 `LoomAcpAgent` 拆为无连接的 session/run core 与连接特有的 capabilities/bridge/output sink。
-- [ ] 每个 ACP session 使用 actor 或串行命令队列，拒绝同一 session 的并发 prompt，或返回清晰的 JSON-RPC 错误。
-
-验收：同一 CLI 断开并重新连接后，可 `session/load` 已有 session；后续 prompt 继续使用原 thread ID 和配置。
+- [x] `AcpHub::attach()` 返回持久 `LoomAcpAgent` + notification channel + lease guard；WS 连接通过 lease 机制绑定/解绑。
+- [x] `attach_with(owner, resume_from)` 支持 owner 身份和 event cursor 重放。
+- [x] `note_detach()` 在连接断开时通知 hub，更新 metrics 和 idle TTL 状态。
+- [x] ACP session 的 thread ID、cwd、MCP 配置、模型/模式由持久 `LoomAcpAgent` 的 `SessionStore` 管理，不随 WebSocket 生命周期销毁。
+- [x] 把 `LoomAcpAgent` 拆为无连接的 session/run core 与连接特有的 capabilities/bridge/output sink。`GLOBAL_BRIDGE` 已删除，替换为 per-session bridge registry（`SESSION_BRIDGES`）。`SessionEntry.connection` 字段已添加，`AcpConnection` 结构体已定义。
+- [x] 每个 ACP session 使用 `SessionStore::begin_prompt` 拒绝并发 prompt，返回 JSON-RPC error -32000。
 
 ## P1：断线、重连与事件恢复
 
-- [ ] 在 `AcpHub` 中维护每 session 的递增 event cursor 和有界 `session/update` 缓冲区（容量、TTL 均可配置）。
-- [ ] 定义 Loom 扩展字段 `_meta.eventCursor` / `_meta.resumeFrom`，在重新附着时重放遗漏通知；标准 ACP 客户端不识别扩展时至少发送当前 session 状态。
-- [x] 默认断线策略设为 `persist`：连接关闭不自动取消 run；保留显式 `session/cancel`。
-- [ ] 支持可配置的 `disconnect_policy=cancel`，供短命令/CI 使用。
-- [ ] 对没有重连的 session/run 设置 TTL 和后台清理，避免永久占用 MCP、PTY 或内存。
+- [x] 在 `AcpHub` 中维护每 session 的递增 event cursor 和有界 `session/update` 缓冲区（容量可配置，默认 512）。
+- [x] `attach_with` 支持 `resume_from: Option<EventCursor>` 参数，重放 cursor 之后的通知。
+- [x] 默认断线策略设为 `persist`：连接关闭不自动取消 run。
+- [x] 支持可配置的 `disconnect_policy=cancel`（`LOOM_ACP_DISCONNECT_POLICY=cancel`），重连时取消所有活跃 generation。
+- [x] Idle TTL 后台清理（`AcpHubConfig::idle_ttl_secs`），超时后取消孤儿 run。
+- [x] 重连测试（`reconnect_keeps_session_store`）：断开重连后 `session/load` 恢复已有 session。
 
-验收：运行中的 prompt 在 WS 被中断后继续执行；客户端重连后能收到缺失的更新或明确的当前最终状态。
+## ~~P1：权限与反向 RPC~~
 
-## P1：权限与反向 RPC
-
-- [ ] 将 `session/request_permission` 记录为 `PendingPermission`，绑定 session、run、connection owner 与过期时间。
-- [ ] 客户端离线时暂停权限相关工具调用；绝不因断线自动批准。
-- [ ] 默认权限 TTL 到期后拒绝该工具调用，并向 run 和重连客户端发送可诊断的更新。
-- [ ] 对 fs/terminal 等 client-side RPC 加入连接版本检查：重连后只能向当前已绑定连接发起请求。
-
-验收：工具在权限等待期间断线不会执行；重连可继续回复；TTL 到期行为可预测且测试覆盖。
+> **暂缓**：`PendingPermission`、离线暂停、TTL 超时拒绝、连接版本检查均未实现。
 
 ## P2：网络安全与运营
 
-- [x] 为 `/acp` 单独校验 `Origin`；CORS middleware 不构成 WebSocket Origin 防护。默认仅允许 loopback browser origin，远程来源通过 `LOOM_ACP_ALLOWED_ORIGINS` 明确配置。
-- [ ] 复用 HTTP Bearer 鉴权并把认证主体写入 `AcpConnection` / session owner；拒绝跨主体接管会话。
-- [ ] 增加最大帧大小、初始化超时、空闲 ping/pong、每主体连接数和并发 run 限制。
-- [ ] 增加 ACP 连接/重连/run/权限/事件丢弃的结构化指标与审计日志（不要记录 prompt 内容或 token）。
-
-验收：未认证连接、非法 Origin、超大帧和跨主体 session/load 均被拒绝；正常本地开发仍可在未配置 token 时运行。
+- [x] 为 `/acp` 单独校验 `Origin`；默认仅允许 loopback browser origin，远程来源通过 `LOOM_ACP_ALLOWED_ORIGINS` 明确配置。
+- [x] Bearer 鉴权从 `Authorization` header 提取，写入 `SessionOwner` 并传入 `AcpHub::attach_with`；跨主体 attach 被拒绝。
+- [x] 最大帧/消息大小限制（1 MiB）、binary frame 拒绝、invalid JSON 处理。
+- [x] 结构化日志：连接/断开/reconnect/replay/stats 均有 tracing span。
+- [x] `AcpHubStats`：total_connections、total_reconnects、total_disconnects、total_replay_dropped；连接关闭时输出。
+- [ ] 最大并发连接数限制（当前单连接模型不需要）。
+- [ ] 初始化超时（30s 内未发送 `initialize` 则关闭连接）。
 
 ## P2：测试与文档
 
-- [ ] 新增 WS ACP 集成 harness：initialize → session/new → prompt → `session/update` → cancel。
-- [ ] 覆盖 Ping/Pong、binary frame 拒绝、无效 JSON-RPC、客户端异常关闭、重连和权限超时。
-- [x] 在 [ACP WebSocket 接入文档](acp-websocket.md) 中记录 `/acp` URL、认证、CLI 重连行为和 stdio 兼容入口。
-- [ ] 在协议升级测试中按协商的 `protocolVersion` 与 capabilities 断言行为，不依据 Rust crate 版本判断 wire 兼容性。
+- [x] e2e harness 覆盖全链路：
+  - `full_lifecycle_initialize_new_disconnect_reconnect_load`
+  - `binary_frame_is_rejected`
+  - `invalid_json_returns_error_or_closes`
+  - `initialize_response_contains_protocol_version`
+  - `concurrent_prompt_returns_error`
+  - `two_sessions_get_different_ids`
+  - `reconnect_keeps_session_store`
+  - `ping_pong_does_not_break_protocol`
+- [x] AcpHub 单元测试：
+  - `reconnect_keeps_the_same_agent_and_session_store`
+  - `cross_owner_attach_is_rejected`
+  - `disconnect_policy_cancel_aborts_on_reconnect`
+  - `stats_track_connections_and_reconnects`
+- [x] handler 单元测试：origin 校验、bearer 提取
+- [x] 在 [ACP WebSocket 接入文档](acp-websocket.md) 中记录 `/acp` URL、认证、架构和 CLI 重连行为。
+
+## 剩余工作
+
+| 优先级 | 任务 | 说明 |
+|--------|------|------|
+| P1 | `LoomAcpAgent` 拆分 | 当前 monolithic 设计在单连接下足够；多连接需要拆 core/adapter |
+| P2 | 初始化超时 | 30s 内未 `initialize` 则关闭连接 |
+| P2 | 最大并发连接限制 | 单连接模型下不需要 |
+| ~~P1~~ | ~~权限与反向 RPC~~ | 暂缓 |

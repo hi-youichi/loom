@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tool_core::Tool;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
-use super::{create_tool_spec, get_client_bridge, ClientBridgeTrait};
+use super::{create_tool_spec, get_session_bridge, ClientBridgeTrait};
 
 // ============================================================================
 // ReadTextFile Tool
@@ -85,12 +85,16 @@ impl Tool for ReadTextFileTool {
     async fn call(
         &self,
         args: Value,
-        _ctx: Option<&ToolCallContext>,
+        ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         let args: ReadTextFileArgs = serde_json::from_value(args)
             .map_err(|e| ToolSourceError::InvalidInput(format!("Invalid arguments: {}", e)))?;
 
-        let bridge: Arc<dyn ClientBridgeTrait> = get_client_bridge().await.map_err(|e| {
+        let session_id = ctx
+            .and_then(|c| c.acp_session_id.as_deref())
+            .ok_or_else(|| ToolSourceError::Transport("no session_id in tool context".to_string()))?;
+
+        let bridge: Arc<dyn ClientBridgeTrait> = get_session_bridge(session_id).await.map_err(|e| {
             ToolSourceError::Transport(format!("Failed to get client bridge: {}", e))
         })?;
 
@@ -168,12 +172,16 @@ impl Tool for WriteTextFileTool {
     async fn call(
         &self,
         args: Value,
-        _ctx: Option<&ToolCallContext>,
+        ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         let args: WriteTextFileArgs = serde_json::from_value(args)
             .map_err(|e| ToolSourceError::InvalidInput(format!("Invalid arguments: {}", e)))?;
 
-        let bridge: Arc<dyn ClientBridgeTrait> = get_client_bridge().await.map_err(|e| {
+        let session_id = ctx
+            .and_then(|c| c.acp_session_id.as_deref())
+            .ok_or_else(|| ToolSourceError::Transport("no session_id in tool context".to_string()))?;
+
+        let bridge: Arc<dyn ClientBridgeTrait> = get_session_bridge(session_id).await.map_err(|e| {
             ToolSourceError::Transport(format!("Failed to get client bridge: {}", e))
         })?;
 

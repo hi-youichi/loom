@@ -1,29 +1,28 @@
 //! ACP-over-WebSocket endpoint.
 //!
-//! The WebSocket carries one complete ACP JSON-RPC message per text frame.
-//! Protocol dispatch itself remains in `apps/acp`; this module only adapts
-//! Axum's WebSocket to the ACP SDK's line transport.
+//! Each WebSocket text frame carries one complete ACP JSON-RPC message.
+//! The durable agent and session state live in [`AcpHub`]; this handler
+//! attaches a WebSocket transport to it.  On disconnect the agent persists —
+//! a new WebSocket connection resumes the session via `session/load`.
 
-use std::path::PathBuf;
-use std::process::Stdio;
+use std::time::Duration;
 
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     extract::State,
-    http::{header::ORIGIN, HeaderMap, StatusCode},
+    http::{header::AUTHORIZATION, header::ORIGIN, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
 use futures::{SinkExt, StreamExt};
-use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    process::Command,
-};
+use tokio::sync::mpsc;
 
+use crate::acp_hub::{AcpHub, EventCursor, SessionOwner};
 use crate::state::SharedState;
 
-const MAX_ACP_WS_MESSAGE_BYTES: usize = 1024 * 1024;
+/// Max ACP WS message / frame size.
+const MAX_MESSAGE_BYTES: usize = 1024 * 1024; // 1 MiB
 
-/// Upgrade an authenticated HTTP request to an ACP JSON-RPC WebSocket.
+/// Upgrade an HTTP request to an ACP JSON-RPC WebSocket.
 pub async fn connect(
     State(state): State<SharedState>,
     headers: HeaderMap,
@@ -32,14 +31,11 @@ pub async fn connect(
     if !origin_allowed(&headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    // `SharedState` is currently unused here: each ACP WebSocket connection
-    // spawns its own `loom acp` subprocess instead of borrowing the durable
-    // `AcpHub` agent. The `State` extractor is kept so the route signature
-    // and middleware chain remain unchanged.
-    let _ = state;
-    ws.max_message_size(MAX_ACP_WS_MESSAGE_BYTES)
-        .max_frame_size(MAX_ACP_WS_MESSAGE_BYTES)
-        .on_upgrade(handle_socket)
+    let owner = extract_owner(&headers);
+    tracing::info!(principal = %owner.principal, "ACP WS upgrade request");
+    ws.max_message_size(MAX_MESSAGE_BYTES)
+        .max_frame_size(MAX_MESSAGE_BYTES)
+        .on_upgrade(move |socket| handle_socket(state, owner, socket))
 }
 
 /// Browsers always send Origin on a WebSocket upgrade. Native CLI clients do
@@ -63,160 +59,163 @@ fn origin_allowed(headers: &HeaderMap) -> bool {
         || origin.starts_with("https://[::1]:")
 }
 
-/// Locate the `loom` binary used to spawn the ACP child process.
+/// Extract the session owner from the Authorization header.
 ///
-/// Resolution order:
-///   1. `LOOM_ACP_BINARY` environment variable (full path).
-///   2. `loom` / `loom.exe` next to the running `loom-server` binary.
-///   3. Bare `loom` (PATH lookup).
-fn loom_binary() -> PathBuf {
-    if let Ok(value) = std::env::var("LOOM_ACP_BINARY") {
-        return PathBuf::from(value);
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            for name in ["loom", "loom.exe"] {
-                let candidate = dir.join(name);
-                if candidate.exists() {
-                    return candidate;
-                }
-            }
+/// If `LOOM_AUTH_TOKEN` is set, the bearer token must match and the principal
+/// is the token itself (truncated for display). If not set, the owner is
+/// `local-anonymous`.
+fn extract_owner(headers: &HeaderMap) -> SessionOwner {
+    let Some(auth_header) = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok()) else {
+        return SessionOwner::anonymous();
+    };
+    let token = auth_header.strip_prefix("Bearer ").unwrap_or(auth_header);
+    if let Ok(expected) = std::env::var("LOOM_AUTH_TOKEN") {
+        if token == expected {
+            return SessionOwner::from_bearer(format!("token-{}", &token[..token.len().min(8)]));
         }
+        tracing::warn!("ACP WS bearer token mismatch");
     }
-    PathBuf::from("loom")
+    SessionOwner::anonymous()
 }
 
-async fn handle_socket(mut socket: WebSocket) {
-    let mut child = match Command::new(loom_binary())
-        .arg("acp")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .kill_on_drop(true)
-        .spawn()
-    {
-        Ok(child) => child,
-        Err(err) => {
-            tracing::error!(error = %err, "failed to spawn `loom acp` for ACP WebSocket bridge");
-            let _ = socket.send(Message::Close(None)).await;
-            return;
-        }
-    };
+/// Handle a single WebSocket connection.
+async fn handle_socket(state: SharedState, owner: SessionOwner, socket: WebSocket) {
+    let (ws_sink, ws_stream) = socket.split();
 
-    let child_stdin = match child.stdin.take() {
-        Some(stdin) => stdin,
-        None => {
-            tracing::error!("`loom acp` child is missing a stdin pipe");
-            return;
-        }
-    };
-    let child_stdout = match child.stdout.take() {
-        Some(stdout) => BufReader::new(stdout),
-        None => {
-            tracing::error!("`loom acp` child is missing a stdout pipe");
-            return;
-        }
-    };
-
-    let (mut ws_sink, mut ws_stream) = socket.split();
-
-    // WS text frame -> child stdin (newline-terminated JSON line).
-    let mut ws_to_child = tokio::spawn(async move {
-        let mut stdin = child_stdin;
+    // --- Incoming stream: WS text frames → io::Result<String> ---
+    let (text_tx, text_rx) = mpsc::channel::<std::io::Result<String>>(64);
+    tokio::spawn(async move {
+        let mut ws_stream = ws_stream;
         while let Some(frame) = ws_stream.next().await {
             match frame {
                 Ok(Message::Text(text)) => {
-                    let mut line = text.to_string();
-                    while matches!(line.as_bytes().last(), Some(b'\n') | Some(b'\r')) {
-                        line.pop();
-                    }
-                    if line.is_empty() {
-                        continue;
-                    }
-                    if stdin.write_all(line.as_bytes()).await.is_err()
-                        || stdin.write_all(b"\n").await.is_err()
-                    {
-                        break;
-                    }
-                    // ACP expects each JSON-RPC request on its own line; flush
-                    // so the child does not stall on buffered bytes.
-                    if stdin.flush().await.is_err() {
+                    if text_tx.send(Ok(text)).await.is_err() {
                         break;
                     }
                 }
                 Ok(Message::Close(_)) => break,
                 Ok(Message::Ping(_) | Message::Pong(_)) => continue,
-                Ok(Message::Binary(_)) => continue,
-                Err(err) => {
-                    tracing::debug!(error = %err, "ACP WebSocket read error");
+                Ok(Message::Binary(_)) => {
+                    let _ = text_tx
+                        .send(Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "binary frames not supported",
+                        )))
+                        .await;
+                    break;
+                }
+                Err(e) => {
+                    let _ = text_tx
+                        .send(Err(std::io::Error::other(e.to_string())))
+                        .await;
                     break;
                 }
             }
         }
-        // Dropping `stdin` closes the child's stdin; the child sees EOF and exits.
     });
+    let incoming = tokio_stream::wrappers::ReceiverStream::new(text_rx);
 
-    // child stdout lines -> WS text frames.
-    let mut child_to_ws = tokio::spawn(async move {
-        let mut lines = child_stdout.lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            if line.is_empty() {
-                continue;
-            }
-            if ws_sink.send(Message::Text(line)).await.is_err() {
-                break;
-            }
+    // --- Outgoing sink: String → WS text frames ---
+    let outgoing = ws_sink
+        .with(|line: String| async move { Ok::<_, axum::Error>(Message::Text(line)) })
+        .sink_map_err(|e| std::io::Error::other(e.to_string()));
+
+    let transport = agent_client_protocol::Lines::new(outgoing, incoming);
+
+    // --- Attach to AcpHub ---
+    let (agent, notification_rx, lease) = match state.acp_hub.attach_with(owner.clone(), None).await {
+        Ok(triple) => triple,
+        Err(e) => {
+            tracing::error!(error = %e, principal = %owner.principal, "AcpHub attach failed");
+            return;
         }
-        let _ = ws_sink.send(Message::Close(None)).await;
-    });
-
-    // Whichever side finishes first tears the bridge down; `child.wait()` is
-    // a safety net if the child dies before either task notices.
-    let child_status = tokio::select! {
-        _ = &mut ws_to_child => None,
-        _ = &mut child_to_ws => None,
-        status = child.wait() => Some(status),
     };
-    ws_to_child.abort();
-    child_to_ws.abort();
-    if let Some(Ok(status)) = child_status {
-        if !status.success() {
-            tracing::warn!(?status, "`loom acp` exited non-zero");
+
+    // --- Spawn ping/pong keep-alive task ---
+    //
+    // The axum WS sink is already consumed by the transport. We rely on
+    // axum's built-in ping/pong at the TCP level and the client's
+    // application-layer timeouts. If the client sends pings, the incoming
+    // reader task already silently continues on Ping/Pong frames.
+
+    // --- Run ACP dispatch ---
+    let hub_clone = state.acp_hub.clone();
+    let shutdown = async move {
+        let _ = lease.await;
+    };
+    if let Err(e) = loom_acp::stdio_loop::run_agent_connection(
+        agent,
+        notification_rx,
+        transport,
+        shutdown,
+    )
+    .await
+    {
+        let err_str = format!("{:?}", e);
+        if !err_str.contains("receiver dropped")
+            && !err_str.contains("broken pipe")
+            && !err_str.contains("unexpected eof")
+        {
+            tracing::error!(error = %err_str, "ACP WebSocket dispatch error");
         }
     }
-    let _ = child.wait().await;
-}
 
-#[allow(dead_code)]
-fn disconnect_cancels() -> bool {
-    std::env::var("LOOM_ACP_DISCONNECT_POLICY")
-        .map(|value| value.eq_ignore_ascii_case("cancel"))
-        .unwrap_or(false)
+    // Mark detachment for idle TTL tracking.
+    hub_clone.note_detach().await;
+
+    // Log connection stats.
+    let stats = hub_clone.stats().await;
+    tracing::info!(
+        total_connections = stats.total_connections,
+        total_reconnects = stats.total_reconnects,
+        total_disconnects = stats.total_disconnects,
+        replay_dropped = stats.total_replay_dropped,
+        "ACP WS connection closed"
+    );
+
+    // Grace period for pending notifications to flush.
+    tokio::time::sleep(Duration::from_millis(100)).await;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::HeaderMap;
 
     #[test]
-    fn local_and_native_clients_are_allowed_by_default() {
-        assert!(origin_allowed(&HeaderMap::new()));
-        let mut headers = HeaderMap::new();
-        headers.insert(ORIGIN, "http://localhost:3000".parse().unwrap());
-        assert!(origin_allowed(&headers));
-    }
+    fn origin_and_auth_tests() {
+        // All env-var-dependent tests in one function to avoid parallel races.
 
-    #[test]
-    fn remote_browser_origin_is_rejected_without_allowlist() {
+        // Default: local + native allowed
         std::env::remove_var("LOOM_ACP_ALLOWED_ORIGINS");
-        let mut headers = HeaderMap::new();
-        headers.insert(ORIGIN, "https://untrusted.example".parse().unwrap());
-        assert!(!origin_allowed(&headers));
-    }
+        assert!(origin_allowed(&HeaderMap::new()));
+        let mut h = HeaderMap::new();
+        h.insert(ORIGIN, "http://localhost:3000".parse().unwrap());
+        assert!(origin_allowed(&h));
 
-    #[test]
-    fn disconnect_policy_defaults_to_persist() {
-        std::env::remove_var("LOOM_ACP_DISCONNECT_POLICY");
-        assert!(!disconnect_cancels());
+        // Remote browser rejected without allowlist
+        let mut h = HeaderMap::new();
+        h.insert(ORIGIN, "https://untrusted.example".parse().unwrap());
+        assert!(!origin_allowed(&h));
+
+        // Remote browser allowed via env
+        std::env::set_var("LOOM_ACP_ALLOWED_ORIGINS", "https://trusted.example");
+        let mut h = HeaderMap::new();
+        h.insert(ORIGIN, "https://trusted.example".parse().unwrap());
+        assert!(origin_allowed(&h));
+        std::env::remove_var("LOOM_ACP_ALLOWED_ORIGINS");
+
+        // Owner extraction: anonymous without auth
+        std::env::remove_var("LOOM_AUTH_TOKEN");
+        let owner = extract_owner(&HeaderMap::new());
+        assert_eq!(owner.principal, "local-anonymous");
+
+        // Owner extraction: from bearer when token configured
+        std::env::set_var("LOOM_AUTH_TOKEN", "secret123");
+        let mut h = HeaderMap::new();
+        h.insert(AUTHORIZATION, "Bearer secret123".parse().unwrap());
+        let owner = extract_owner(&h);
+        assert!(owner.principal.starts_with("token-"));
+        std::env::remove_var("LOOM_AUTH_TOKEN");
     }
 }

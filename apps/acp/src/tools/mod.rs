@@ -11,8 +11,8 @@ mod fs_tools;
 mod terminal_executor;
 
 pub use client_bridge::{
-    clear_client_bridge, get_client_bridge, set_client_bridge, set_connection, AcpClientBridge,
-    ClientBridgeTrait, NoOpClientBridge, TerminalExitResult, TerminalOutput,
+    get_session_bridge, remove_session_bridge, set_connection_for_session, set_session_bridge,
+    AcpClientBridge, ClientBridgeTrait, NoOpClientBridge, TerminalExitResult, TerminalOutput,
 };
 pub use fs_tools::{ReadTextFileTool, WriteTextFileTool};
 pub use terminal_executor::{AcpBridgeCommandExecutor, TerminalCommandExecutor};

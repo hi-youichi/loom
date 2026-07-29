@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
 
 #[derive(Debug, Clone)]
@@ -53,30 +54,36 @@ pub trait ClientBridgeTrait: Send + Sync {
     async fn terminal_release(&self, session_id: &str, terminal_id: &str) -> Result<(), String>;
 }
 
-type BridgeStore = Arc<RwLock<Option<Arc<dyn ClientBridgeTrait>>>>;
+// Per-session bridge registry: session_id → bridge.
+// Replaces the old single GLOBAL_BRIDGE for multi-connection isolation.
+type SessionBridgeMap = Arc<RwLock<HashMap<String, Arc<dyn ClientBridgeTrait>>>>;
 
-static GLOBAL_BRIDGE: OnceLock<BridgeStore> = OnceLock::new();
+static SESSION_BRIDGES: OnceLock<SessionBridgeMap> = OnceLock::new();
 
-fn global_bridge_store() -> &'static BridgeStore {
-    GLOBAL_BRIDGE.get_or_init(|| Arc::new(RwLock::new(None)))
+fn session_bridges() -> &'static SessionBridgeMap {
+    SESSION_BRIDGES.get_or_init(|| Arc::new(RwLock::new(HashMap::new())))
 }
 
-pub async fn set_client_bridge(bridge: Arc<dyn ClientBridgeTrait>) {
-    let store = global_bridge_store();
-    *store.write().unwrap() = Some(bridge);
+/// Register a bridge for a specific session.
+pub fn set_session_bridge(session_id: &str, bridge: Arc<dyn ClientBridgeTrait>) {
+    let map = session_bridges();
+    map.write().unwrap().insert(session_id.to_string(), bridge);
 }
 
-pub async fn clear_client_bridge() {
-    let store = global_bridge_store();
-    *store.write().unwrap() = None;
-}
-
-pub async fn get_client_bridge() -> Result<Arc<dyn ClientBridgeTrait>, String> {
-    let store = global_bridge_store();
-    let guard = store.read().unwrap();
+/// Look up the bridge for a specific session.
+pub async fn get_session_bridge(session_id: &str) -> Result<Arc<dyn ClientBridgeTrait>, String> {
+    let map = session_bridges();
+    let guard = map.read().unwrap();
     guard
-        .clone()
-        .ok_or_else(|| "No client bridge available".to_string())
+        .get(session_id)
+        .cloned()
+        .ok_or_else(|| format!("No client bridge for session {session_id}"))
+}
+
+/// Remove the bridge for a session (on disconnect).
+pub fn remove_session_bridge(session_id: &str) {
+    let map = session_bridges();
+    map.write().unwrap().remove(session_id);
 }
 
 pub struct AcpClientBridge {
@@ -99,21 +106,18 @@ impl AcpClientBridge {
     }
 }
 
-pub fn set_connection(
+/// Set connection for a specific session.
+pub fn set_connection_for_session(
+    session_id: &str,
     conn: Arc<
         tokio::sync::RwLock<
             Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>,
         >,
     >,
 ) {
-    let bridge = Arc::new(AcpClientBridge::new(conn));
-    let store = global_bridge_store();
-    tracing::info!(
-        store_ptr = Arc::as_ptr(store) as usize,
-        "set_connection: storing bridge synchronously"
-    );
-    *store.write().unwrap() = Some(bridge);
-    tracing::info!("set_connection: bridge stored successfully");
+    let bridge: Arc<dyn ClientBridgeTrait> = Arc::new(AcpClientBridge::new(conn));
+    set_session_bridge(session_id, bridge);
+    tracing::info!(session_id, "set_connection_for_session: bridge stored");
 }
 
 #[async_trait::async_trait]
@@ -319,8 +323,8 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_global_bridge_default() {
-        let result = get_client_bridge().await;
+    async fn test_session_bridge_default() {
+        let result = get_session_bridge("nonexistent").await;
         assert!(result.is_err());
     }
 
