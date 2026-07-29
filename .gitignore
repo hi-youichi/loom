@@ -24,7 +24,7 @@ docs/dev
 target
 /target
 **/*.rs.bk
-Cargo.lock
+# Cargo.lock - kept for reproducible builds (workspace has binary targets)
 
 # Environment and secrets
 .env
