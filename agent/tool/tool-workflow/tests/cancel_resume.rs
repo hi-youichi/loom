@@ -153,9 +153,8 @@ async fn resume_after_completion_dispatches_nothing() {
     assert!(outcome.result.is_ok());
     let dir = outcome.run_dir_name;
 
-    // Resume a fresh run with a mirrored backend; call_count and
-    // calls Vec are shared, so any new dispatch increments total_calls.
-    let backend2 = backend.mirror();
+    // Resume with a cloned backend; all state is Arc-shared.
+    let backend2 = backend.clone();
     let luft2 = LuftBuilder::new()
         .backend(backend2.clone())
         .base_dir(tmp.path())
@@ -170,16 +169,7 @@ async fn resume_after_completion_dispatches_nothing() {
     assert_eq!(
         backend.total_calls(),
         3,
-        "only the original 3 calls should have happened"
-    );
-    let after_calls: Vec<_> = backend
-        .calls_snapshot()
-        .into_iter()
-        .filter(|c| c.seq > 3)
-        .collect();
-    assert!(
-        after_calls.is_empty(),
-        "resume of completed run should dispatch nothing"
+        "only the original 3 calls should have happened; resume dispatches nothing"
     );
 }
 

@@ -26,12 +26,13 @@ tool-core = { path = "../tool-core" }
 loom-llm = { path = "../../../foundation/llm" }
 agent = { path = "../../agent-core" }
 
-luft = "0.3"
-luft-core = "0.3"
+luft = "0.4"
+luft-core = "0.4"
+luft-service = "0.4"
 
 [dev-dependencies]
 tempfile = "3"
-luft = { version = "0.3", features = ["testing"] }
-luft-core = { version = "0.3", features = ["testing"] }
+luft = { version = "0.4", features = ["testing"] }
+luft-core = { version = "0.4", features = ["testing"] }
 skill = { path = "../../skill" }
 

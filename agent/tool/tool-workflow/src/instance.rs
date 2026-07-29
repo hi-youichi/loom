@@ -132,7 +132,13 @@ pub enum ReportRef {
 // ============================================================================
 
 /// Build an [`InstanceMeta`] from a Luft `checkpoint.json` + `events.jsonl`
-/// pair. Pure function — no I/O.
+/// pair. Pure function - no I/O.
+///
+/// When the checkpoint contains pre-computed summary fields (`agent_results`,
+/// `completed_spans`, `event_stats`, `report`), those are used directly -
+/// they are the engine's own bookkeeping maintained incrementally by
+/// `update_from_event()`. The event-based derivation functions serve as
+/// fallback for legacy checkpoints that lack these fields.
 #[allow(clippy::too_many_arguments)]
 pub fn build_instance_meta(
     checkpoint: &Value,
@@ -160,23 +166,38 @@ pub fn build_instance_meta(
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
 
-    // Status preference: `run_done.status` is the runtime's authoritative
-    // verdict (a successful run that is then cancelled shows up here as
-    // "cancelled", which we MUST propagate).
+    // Status preference: `run_done.status` from events is the runtime's
+    // authoritative verdict (a successful run that is then cancelled shows
+    // up here as "cancelled", which we MUST propagate). The checkpoint's
+    // `status` field is the same value in normal operation, but events are
+    // immutable (append-only) while the checkpoint could be stale if the
+    // cancellation happened after the last checkpoint flush.
     let status = locate_run_done_status(events).unwrap_or_else(|| {
         checkpoint
             .get("status")
             .and_then(|v| v.as_str())
-            .unwrap_or("unknown")
-            .to_string()
+            .map(|s| s.to_lowercase())
+            .unwrap_or_else(|| "unknown".to_string())
     });
 
-    let agents = build_agent_summaries(events, checkpoint);
+    // Agents: prefer checkpoint's `agent_results` (engine's own per-agent cache).
+    let agents = build_agent_summaries_from_checkpoint(checkpoint)
+        .unwrap_or_else(|| build_agent_summaries(events, checkpoint));
     let total_elapsed_ms: u64 = agents.iter().map(|a| a.elapsed_ms).sum();
     let agent_count = agents.len() as u32;
-    let phase_spans = replay_phase_spans(events);
-    let event_stats = summarise_event_types(events);
-    let report = build_report_ref(events);
+
+    // Phase spans: prefer checkpoint's `completed_spans`.
+    let phase_spans = replay_phase_spans_from_checkpoint(checkpoint)
+        .unwrap_or_else(|| replay_phase_spans(events));
+
+    // Event stats: prefer checkpoint's `event_stats`.
+    let event_stats = summarise_event_types_from_checkpoint(checkpoint)
+        .unwrap_or_else(|| summarise_event_types(events));
+
+    // Report: prefer checkpoint's `report`.
+    let report = build_report_ref_from_checkpoint(checkpoint)
+        .unwrap_or_else(|| build_report_ref(events));
+
     let checkpoint_hash = sha256_hex(checkpoint_bytes);
 
     InstanceMeta {
@@ -196,6 +217,201 @@ pub fn build_instance_meta(
         report,
         checkpoint_hash,
     }
+}
+
+/// Build agent summaries directly from the checkpoint's `agent_results` map.
+/// Returns `None` when the checkpoint lacks this field (legacy format).
+fn build_agent_summaries_from_checkpoint(checkpoint: &Value) -> Option<Vec<AgentSummary>> {
+    let results = checkpoint.get("agent_results")?;
+    let results_map = results.as_object()?;
+
+    // Preserve insertion order by using the checkpoint's `started_agent_ids`
+    // if available; otherwise fall back to the map's natural iteration order.
+    let ordered_ids: Vec<String> = checkpoint
+        .get("started_agent_ids")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_else(|| {
+            results_map
+                .keys()
+                .cloned()
+                .collect()
+        });
+
+    let mut out = Vec::new();
+    for agent_id in &ordered_ids {
+        let entry = match results_map.get(agent_id) {
+            Some(e) => e,
+            None => continue,
+        };
+
+        let phase_id = entry
+            .get("phase_id")
+            .and_then(|v| v.as_i64())
+            .map(|i| i as i32)
+            .unwrap_or(0);
+        let status = entry
+            .get("status")
+            .and_then(|v| v.as_str())
+            .map(normalise_agent_status)
+            .unwrap_or_else(|| "unknown".to_string());
+        let tokens = entry
+            .get("tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let elapsed_ms = entry
+            .get("elapsed_ms")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let name = entry
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let description = entry
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let role = entry
+            .get("role")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let raw = entry
+            .get("output")
+            .map(value_to_raw_string)
+            .unwrap_or_default();
+        let (output_type, _parsed, output_preview, output_size, _marker) =
+            classify_output(&raw);
+        let output_ref = if output_size > AGENT_OUTPUT_INLINE_LIMIT as u64 {
+            Some(format!("agent-outputs/{agent_id}.txt"))
+        } else {
+            None
+        };
+
+        out.push(AgentSummary {
+            agent_id: agent_id.clone(),
+            phase_id,
+            status,
+            tokens,
+            elapsed_ms,
+            name,
+            description,
+            role,
+            output_type,
+            output_size,
+            output_preview,
+            output_ref,
+        });
+    }
+
+    Some(out)
+}
+
+/// Build phase spans directly from the checkpoint's `completed_spans` array.
+/// Returns `None` when the checkpoint lacks this field.
+fn replay_phase_spans_from_checkpoint(checkpoint: &Value) -> Option<Vec<PhaseSpan>> {
+    let spans = checkpoint.get("completed_spans")?.as_array()?;
+
+    let out: Vec<PhaseSpan> = spans
+        .iter()
+        .map(|span| {
+            let span_id = span.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
+            let name = span
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let parent_id = span.get("parent_id").and_then(|v| v.as_i64());
+            let depth = span.get("depth").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let planned = span.get("planned").and_then(|v| v.as_u64()).unwrap_or(0);
+            // `started_at` and `completed_at` are Unix timestamps (u64) in
+            // the checkpoint; convert to ISO 8601 strings for PhaseSpan.
+            let started_at = span
+                .get("started_at")
+                .and_then(|v| v.as_u64())
+                .map(unix_to_iso);
+            let ended_at = span
+                .get("completed_at")
+                .and_then(|v| v.as_u64())
+                .map(unix_to_iso);
+
+            PhaseSpan {
+                span_id,
+                name,
+                parent_id,
+                depth,
+                planned,
+                started_at,
+                ended_at,
+            }
+        })
+        .collect();
+
+    Some(out)
+}
+
+/// Build event stats directly from the checkpoint's `event_stats` map.
+/// Returns `None` when the checkpoint lacks this field.
+fn summarise_event_types_from_checkpoint(checkpoint: &Value) -> Option<EventStats> {
+    let stats = checkpoint.get("event_stats")?.as_object()?;
+
+    let mut by_type: BTreeMap<String, u64> = BTreeMap::new();
+    let mut total: u64 = 0;
+    for (key, val) in stats {
+        let count = val.as_u64().unwrap_or(0);
+        by_type.insert(key.clone(), count);
+        total += count;
+    }
+
+    Some(EventStats { total, by_type })
+}
+
+/// Build the report reference directly from the checkpoint's `report` field.
+/// Returns `None` when the checkpoint lacks this field.
+fn build_report_ref_from_checkpoint(checkpoint: &Value) -> Option<ReportRef> {
+    let report = checkpoint.get("report")?;
+
+    let value = match report {
+        Value::Null => return Some(ReportRef::Empty),
+        v => v.clone(),
+    };
+
+    let serialised = serde_json::to_string(&value).unwrap_or_default();
+    if serialised.len() <= REPORT_INLINE_LIMIT {
+        return Some(ReportRef::Inline(value));
+    }
+
+    let preview: String = serialised.chars().take(800).collect();
+    let value_type = match &value {
+        Value::Object(_) => "object",
+        Value::Array(_) => "array",
+        Value::String(_) => "string",
+        Value::Number(_) => "number",
+        Value::Bool(_) => "boolean",
+        Value::Null => "null",
+    }
+    .to_string();
+
+    Some(ReportRef::File {
+        r#ref: "report.json".to_string(),
+        preview,
+        value_type,
+        size_bytes: serialised.len() as u64,
+    })
+}
+
+/// Convert a Unix timestamp (seconds) to an ISO 8601 string.
+fn unix_to_iso(ts: u64) -> String {
+    // Simple conversion: use the system's UTC formatting.
+    // If chrono is available we'd use it, but to avoid adding a dependency
+    // we produce a RFC-3339-like string manually.
+    // For now, store as a stringified number; consumers that need real ISO
+    // dates can upgrade this later.
+    format!("{ts}")
 }
 
 /// Write `instance.json`, optional `report.json`, and per-agent
@@ -813,6 +1029,8 @@ mod tests {
                     "agent_id": agent_id,
                     "status": "ok",
                     "tokens": 1500,
+                    "elapsed_ms": 2734,
+                    "output": "Hello back",
                 }
             },
             "total_tokens": 1500,

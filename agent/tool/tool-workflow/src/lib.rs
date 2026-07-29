@@ -2,7 +2,6 @@ mod backend;
 mod common;
 mod event_bridge;
 mod instance;
-mod json_to_lua;
 mod runtime;
 mod service;
 mod structured_output;

@@ -22,7 +22,12 @@ async fn t0_resume_completed_all_cached() {
         .unwrap();
 
     let handle = luft1.start_script(SCRIPT_3PHASE).await.unwrap();
-    wait_for_calls(&backend1, 3, 5000).await;
+    for _ in 0..50 {
+        if backend1.total_calls() >= 3 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
     let outcome = handle.join().await.unwrap();
     assert!(outcome.result.is_ok());
     assert_eq!(backend1.total_calls(), 3);

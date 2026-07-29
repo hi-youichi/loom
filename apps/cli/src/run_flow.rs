@@ -11,6 +11,8 @@ use crate::output::{emit_run_output, make_stream_out, OutputConfig};
 use crate::repl::{run_one_turn, run_repl_loop};
 use loom_llm::message::UserContent;
 
+use config::default_model as config_default_model;
+
 pub(crate) fn resolve_user_message(args: &Args) -> Option<String> {
     args.message.clone().or_else(|| {
         if args.rest.is_empty() {
@@ -42,7 +44,7 @@ pub(crate) fn build_run_options(args: &Args, message: String, got_adaptive: bool
         got_adaptive,
         display_max_len: max_message_len(),
         output_json: args.json,
-        model: args.model.clone(),
+        model: args.model.clone().or_else(|| Some(config_default_model())),
         mcp_config_path: args.mcp_config.clone(),
         output_timestamp: args.timestamp,
         dry_run: args.dry,

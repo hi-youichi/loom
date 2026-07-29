@@ -6,8 +6,8 @@
 
 use luft::LuftBuilder;
 use luft_core::contract::event::AgentEvent as LuftAgentEvent;
+use luft_core::params;
 use serde_json::{json, Value};
-use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
@@ -25,15 +25,8 @@ use crate::workflow_resolver::resolve_workflow;
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const DEFAULT_CONCURRENCY: usize = 4;
-const MAX_CONCURRENCY: usize = 64;
-
-const DEFAULT_EVENTS_LIMIT: u64 = 50;
-const MAX_EVENTS_LIMIT: u64 = 500;
 
 const DEFAULT_SOURCE_PREVIEW_LIMIT: usize = 8_192;
-const DEFAULT_LIST_INSTANCES_LIMIT: usize = 20;
-const MAX_LIST_INSTANCES_LIMIT: usize = 100;
-const LIST_INSTANCES_STATUS_FILTERS: &[&str] = &["completed", "failed", "cancelled"];
 
 // ── Start ───────────────────────────────────────────────────────────────────
 
@@ -93,9 +86,11 @@ pub(crate) async fn start_workflow(
         }
     };
 
-    let concurrency = parse_concurrency(&args)?;
-    let user_args = extract_user_args(&args);
-    let lua_source = inject_args_globals(&lua_source, user_args.as_ref());
+    let concurrency = params::parse_concurrency(&args)
+        .map_err(ToolSourceError::InvalidInput)?
+        .unwrap_or(DEFAULT_CONCURRENCY);
+    let user_args = params::extract_user_args(&args);
+    let lua_source = params::inject_args_globals(&lua_source, user_args.as_ref());
 
     let base_dir = runtime.instances_root();
     if let Err(e) = std::fs::create_dir_all(&base_dir) {
@@ -302,37 +297,6 @@ async fn background_finalize(
     }
 }
 
-fn parse_concurrency(args: &Value) -> Result<usize, ToolSourceError> {
-    let Some(v) = args.get("concurrency") else {
-        return Ok(DEFAULT_CONCURRENCY);
-    };
-    let n = v.as_u64().ok_or_else(|| {
-        ToolSourceError::InvalidInput(format!("'concurrency' must be a positive integer, got {v}"))
-    })?;
-    if !(1..=MAX_CONCURRENCY as u64).contains(&n) {
-        return Err(ToolSourceError::InvalidInput(format!(
-            "'concurrency' must be between 1 and {MAX_CONCURRENCY}, got {n}"
-        )));
-    }
-    Ok(n as usize)
-}
-
-fn extract_user_args(args: &Value) -> Option<Value> {
-    let v = args.get("args")?;
-    if v.is_null() {
-        return None;
-    }
-    Some(v.clone())
-}
-
-fn inject_args_globals(lua_source: &str, user_args: Option<&Value>) -> String {
-    let Some(args) = user_args else {
-        return lua_source.to_string();
-    };
-    let lua_expr = crate::json_to_lua::json_to_lua(args);
-    format!("_G._args = {lua_expr}\n{lua_source}")
-}
-
 // ── Status ──────────────────────────────────────────────────────────────────
 
 pub(crate) async fn read_status(
@@ -482,9 +446,11 @@ pub(crate) fn list_instances(
     runtime: &WorkflowRuntime,
     args: &Value,
 ) -> Result<ToolCallContent, ToolSourceError> {
-    let limit = parse_list_instances_limit(args)?;
-    let cursor = parse_list_instances_cursor(args);
-    let status_filter = parse_list_instances_status_filter(args)?;
+    let limit = params::parse_list_limit(args)
+        .map_err(ToolSourceError::InvalidInput)? as usize;
+    let cursor = params::parse_cursor(args);
+    let status_filter = params::parse_status_filter(args)
+        .map_err(ToolSourceError::InvalidInput)?;
 
     let mut entries: Vec<Value> = Vec::new();
     collect_instances_under(&runtime.instances_root(), &mut entries);
@@ -556,49 +522,6 @@ pub(crate) fn list_instances(
         }))
         .unwrap_or_default(),
     ))
-}
-
-fn parse_list_instances_limit(args: &Value) -> Result<usize, ToolSourceError> {
-    let Some(v) = args.get("limit") else {
-        return Ok(DEFAULT_LIST_INSTANCES_LIMIT);
-    };
-    if v.is_null() {
-        return Ok(DEFAULT_LIST_INSTANCES_LIMIT);
-    }
-    let n = v.as_u64().ok_or_else(|| {
-        ToolSourceError::InvalidInput(format!("'limit' must be a positive integer, got {v}"))
-    })?;
-    if !(1..=MAX_LIST_INSTANCES_LIMIT as u64).contains(&n) {
-        return Err(ToolSourceError::InvalidInput(format!(
-            "'limit' must be between 1 and {MAX_LIST_INSTANCES_LIMIT}, got {n}"
-        )));
-    }
-    Ok(n as usize)
-}
-
-fn parse_list_instances_cursor(args: &Value) -> Option<String> {
-    let v = args.get("cursor")?;
-    if v.is_null() {
-        return None;
-    }
-    v.as_str().filter(|s| !s.is_empty()).map(|s| s.to_string())
-}
-
-fn parse_list_instances_status_filter(args: &Value) -> Result<Option<String>, ToolSourceError> {
-    let v = match args.get("status_filter") {
-        None | Some(Value::Null) => return Ok(None),
-        Some(v) => v,
-    };
-    let s = v.as_str().ok_or_else(|| {
-        ToolSourceError::InvalidInput(format!("'status_filter' must be a string, got {v}"))
-    })?;
-    let lower = s.to_lowercase();
-    if !LIST_INSTANCES_STATUS_FILTERS.contains(&lower.as_str()) {
-        return Err(ToolSourceError::InvalidInput(format!(
-            "'status_filter' must be one of completed|failed|cancelled, got {s}"
-        )));
-    }
-    Ok(Some(lower))
 }
 
 fn build_entry_from_instance_json(v: &Value, dir_name: &str) -> Value {
@@ -709,20 +632,13 @@ pub(crate) fn read_events(
         .resolve_instance_path(dir)
         .ok_or_else(|| ToolSourceError::InvalidInput(format!("Instance '{dir}' not found")))?;
     let events_path = path.join("events.jsonl");
-    let offset = parse_events_offset(args);
-    let events_limit = parse_events_limit(args);
-    let types = parse_events_types(args);
-    let agent_id = parse_events_agent_id(args);
+    let filter = params::EventsFilter::from_args(args);
 
     let mut filtered_count: u64 = 0;
     let mut returned: usize = 0;
     let mut events: Vec<Value> = Vec::new();
 
     if let Ok(file) = std::fs::File::open(&events_path) {
-        let types_set: Option<HashSet<&str>> = types
-            .as_ref()
-            .map(|v| v.iter().map(|s| s.as_str()).collect());
-
         let reader = std::io::BufReader::new(file);
         use std::io::BufRead as _;
         for line in reader.lines() {
@@ -736,27 +652,20 @@ pub(crate) fn read_events(
                 Err(_) => continue,
             };
 
-            if let Some(set) = &types_set {
-                if !event_matches_types(&val, set) {
-                    continue;
-                }
-            }
-            if let Some(aid) = &agent_id {
-                if !event_matches_agent_id(&val, aid) {
-                    continue;
-                }
+            if !filter.matches(&val) {
+                continue;
             }
 
             filtered_count += 1;
-            if filtered_count > offset && (returned as u64) < events_limit {
+            if filtered_count > filter.offset && (returned as u64) < filter.events_limit {
                 events.push(val);
                 returned += 1;
             }
         }
     }
 
-    let next_offset = if offset + (returned as u64) < filtered_count {
-        Some(offset + returned as u64)
+    let next_offset = if filter.offset + (returned as u64) < filtered_count {
+        Some(filter.offset + returned as u64)
     } else {
         None
     };
@@ -764,67 +673,14 @@ pub(crate) fn read_events(
     Ok(ToolCallContent::Text(
         serde_json::to_string_pretty(&json!({
             "instance_dir": dir,
-            "offset": offset,
-            "events_limit": events_limit,
+            "offset": filter.offset,
+            "events_limit": filter.events_limit,
             "total_matching": filtered_count,
             "next_offset": next_offset,
             "events": events,
         }))
         .unwrap_or_default(),
     ))
-}
-
-fn parse_events_offset(args: &Value) -> u64 {
-    args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0)
-}
-
-fn parse_events_limit(args: &Value) -> u64 {
-    let raw = args
-        .get("events_limit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(DEFAULT_EVENTS_LIMIT);
-    raw.clamp(1, MAX_EVENTS_LIMIT)
-}
-
-fn parse_events_types(args: &Value) -> Option<Vec<String>> {
-    let v = args.get("types")?;
-    if v.is_null() {
-        return None;
-    }
-    let arr = v.as_array()?;
-    let out: Vec<String> = arr
-        .iter()
-        .filter_map(|t| t.as_str().map(|s| s.to_string()))
-        .collect();
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
-}
-
-fn parse_events_agent_id(args: &Value) -> Option<String> {
-    let v = args.get("agent_id")?;
-    if v.is_null() {
-        return None;
-    }
-    v.as_str().map(|s| s.to_string())
-}
-
-fn event_matches_types(event: &Value, types: &HashSet<&str>) -> bool {
-    event
-        .get("type")
-        .and_then(|t| t.as_str())
-        .map(|t| types.contains(t))
-        .unwrap_or(false)
-}
-
-fn event_matches_agent_id(event: &Value, agent_id: &str) -> bool {
-    event
-        .get("agent_id")
-        .and_then(|a| a.as_str())
-        .map(|s| s == agent_id)
-        .unwrap_or(false)
 }
 
 // ── Source ──────────────────────────────────────────────────────────────────
@@ -927,168 +783,7 @@ mod tests {
         rt.block_on(f)
     }
 
-    // -- start helpers --
-
-    #[test]
-    fn concurrency_default_when_missing() {
-        let args = json!({});
-        assert_eq!(parse_concurrency(&args).unwrap(), DEFAULT_CONCURRENCY);
-    }
-
-    #[test]
-    fn concurrency_explicit_value() {
-        assert_eq!(parse_concurrency(&json!({"concurrency": 8})).unwrap(), 8);
-    }
-
-    #[test]
-    fn concurrency_at_bounds() {
-        assert_eq!(parse_concurrency(&json!({"concurrency": 1})).unwrap(), 1);
-        assert_eq!(parse_concurrency(&json!({"concurrency": 64})).unwrap(), 64);
-    }
-
-    #[test]
-    fn concurrency_rejects_zero() {
-        assert!(parse_concurrency(&json!({"concurrency": 0})).is_err());
-    }
-
-    #[test]
-    fn concurrency_rejects_over_max() {
-        assert!(parse_concurrency(&json!({"concurrency": 65})).is_err());
-    }
-
-    #[test]
-    fn concurrency_rejects_non_integer() {
-        assert!(parse_concurrency(&json!({"concurrency": "fast"})).is_err());
-        assert!(parse_concurrency(&json!({"concurrency": 4.5})).is_err());
-        assert!(parse_concurrency(&json!({"concurrency": -1})).is_err());
-    }
-
-    #[test]
-    fn extract_user_args_missing() {
-        let args = json!({});
-        assert!(extract_user_args(&args).is_none());
-    }
-
-    #[test]
-    fn extract_user_args_null_treated_as_missing() {
-        let args = json!({"args": null});
-        assert!(extract_user_args(&args).is_none());
-    }
-
-    #[test]
-    fn extract_user_args_object() {
-        let args = json!({"args": {"topic": "rust", "n": 5}});
-        let v = extract_user_args(&args).unwrap();
-        assert_eq!(v["topic"], "rust");
-        assert_eq!(v["n"], 5);
-    }
-
-    #[test]
-    fn inject_no_args_returns_source_unchanged() {
-        let src = "function main() report({ok=true}) end";
-        assert_eq!(inject_args_globals(src, None), src);
-    }
-
-    #[test]
-    fn inject_prepends_global_assignment() {
-        let src = "function main() report({ok=true}) end";
-        let args = json!({"topic": "rust"});
-        let out = inject_args_globals(src, Some(&args));
-        assert!(out.starts_with("_G._args = {topic = \"rust\"}\n"));
-        assert!(out.ends_with(src));
-    }
-
-    // -- list helpers --
-
-    #[test]
-    fn list_limit_default_when_missing() {
-        assert_eq!(parse_list_instances_limit(&json!({})).unwrap(), 20);
-    }
-
-    #[test]
-    fn list_limit_explicit_value() {
-        assert_eq!(parse_list_instances_limit(&json!({"limit": 50})).unwrap(), 50);
-    }
-
-    #[test]
-    fn list_limit_at_bounds() {
-        assert_eq!(parse_list_instances_limit(&json!({"limit": 1})).unwrap(), 1);
-        assert_eq!(parse_list_instances_limit(&json!({"limit": 100})).unwrap(), 100);
-    }
-
-    #[test]
-    fn list_limit_rejects_zero() {
-        assert!(parse_list_instances_limit(&json!({"limit": 0})).is_err());
-    }
-
-    #[test]
-    fn list_limit_rejects_over_max() {
-        assert!(parse_list_instances_limit(&json!({"limit": 101})).is_err());
-    }
-
-    #[test]
-    fn list_limit_rejects_non_integer() {
-        assert!(parse_list_instances_limit(&json!({"limit": "fast"})).is_err());
-        assert!(parse_list_instances_limit(&json!({"limit": 4.5})).is_err());
-        assert!(parse_list_instances_limit(&json!({"limit": -1})).is_err());
-    }
-
-    #[test]
-    fn list_limit_null_treated_as_default() {
-        assert_eq!(parse_list_instances_limit(&json!({"limit": null})).unwrap(), 20);
-    }
-
-    #[test]
-    fn list_cursor_missing_returns_none() {
-        assert!(parse_list_instances_cursor(&json!({})).is_none());
-    }
-
-    #[test]
-    fn list_cursor_null_returns_none() {
-        assert!(parse_list_instances_cursor(&json!({"cursor": null})).is_none());
-    }
-
-    #[test]
-    fn list_cursor_empty_string_returns_none() {
-        assert!(parse_list_instances_cursor(&json!({"cursor": ""})).is_none());
-    }
-
-    #[test]
-    fn list_cursor_nonempty_returns_some() {
-        assert_eq!(
-            parse_list_instances_cursor(&json!({"cursor": "abc"})).unwrap(),
-            "abc"
-        );
-    }
-
-    #[test]
-    fn list_status_filter_missing_returns_none() {
-        assert!(parse_list_instances_status_filter(&json!({})).unwrap().is_none());
-    }
-
-    #[test]
-    fn list_status_filter_null_returns_none() {
-        assert!(parse_list_instances_status_filter(&json!({"status_filter": null})).unwrap().is_none());
-    }
-
-    #[test]
-    fn list_status_filter_terminal_lowercased() {
-        let f = parse_list_instances_status_filter(&json!({"status_filter": "FAILED"}))
-            .unwrap()
-            .unwrap();
-        assert_eq!(f, "failed");
-    }
-
-    #[test]
-    fn list_status_filter_rejects_unknown() {
-        assert!(parse_list_instances_status_filter(&json!({"status_filter": "running"})).is_err());
-    }
-
-    #[test]
-    fn list_status_filter_rejects_non_string() {
-        assert!(parse_list_instances_status_filter(&json!({"status_filter": 5})).is_err());
-    }
-
+    // -- list helpers tests moved to luft_service::params --
     fn sample_checkpoint(run_id: &str, status: &str, created_at: u64) -> Value {
         json!({
             "run_id": run_id,
@@ -1166,90 +861,7 @@ mod tests {
         assert!(out.is_empty());
     }
 
-    // -- events helpers --
-
-    #[test]
-    fn events_offset_default_zero() {
-        assert_eq!(parse_events_offset(&json!({})), 0);
-    }
-
-    #[test]
-    fn events_offset_explicit() {
-        assert_eq!(parse_events_offset(&json!({"offset": 7})), 7);
-    }
-
-    #[test]
-    fn events_limit_default_50() {
-        assert_eq!(parse_events_limit(&json!({})), 50);
-    }
-
-    #[test]
-    fn events_limit_clamps_above_max() {
-        assert_eq!(parse_events_limit(&json!({"events_limit": 10_000})), 500);
-    }
-
-    #[test]
-    fn events_limit_clamps_below_min() {
-        assert_eq!(parse_events_limit(&json!({"events_limit": 0})), 1);
-    }
-
-    #[test]
-    fn events_types_missing_is_none() {
-        assert!(parse_events_types(&json!({})).is_none());
-    }
-
-    #[test]
-    fn events_types_null_is_none() {
-        assert!(parse_events_types(&json!({"types": null})).is_none());
-    }
-
-    #[test]
-    fn events_types_empty_array_is_none() {
-        assert!(parse_events_types(&json!({"types": []})).is_none());
-    }
-
-    #[test]
-    fn events_types_collects_strings() {
-        let t = parse_events_types(&json!({"types": ["a", "b"]})).unwrap();
-        assert_eq!(t, vec!["a".to_string(), "b".to_string()]);
-    }
-
-    #[test]
-    fn events_agent_id_missing_is_none() {
-        assert!(parse_events_agent_id(&json!({})).is_none());
-    }
-
-    #[test]
-    fn events_agent_id_null_is_none() {
-        assert!(parse_events_agent_id(&json!({"agent_id": null})).is_none());
-    }
-
-    #[test]
-    fn events_agent_id_returns_some() {
-        assert_eq!(
-            parse_events_agent_id(&json!({"agent_id": "aid"})).unwrap(),
-            "aid"
-        );
-    }
-
-    fn ev(value: Value) -> Value {
-        value
-    }
-
-    #[test]
-    fn event_matches_types_filters_by_set() {
-        let mut set = HashSet::new();
-        set.insert("run_done");
-        assert!(event_matches_types(&ev(json!({"type": "run_done"})), &set));
-        assert!(!event_matches_types(&ev(json!({"type": "agent_started"})), &set));
-    }
-
-    #[test]
-    fn event_matches_agent_id_compares_strictly() {
-        assert!(event_matches_agent_id(&ev(json!({"agent_id": "a"})), "a"));
-        assert!(!event_matches_agent_id(&ev(json!({"agent_id": "b"})), "a"));
-        assert!(!event_matches_agent_id(&ev(json!({"type": "x"})), "a"));
-    }
+    // -- events helpers tests moved to luft_service::params --
 
     // -- status handler --
 
