@@ -4,7 +4,7 @@ mod event_bridge;
 mod instance;
 mod runtime;
 mod service;
-mod structured_output;
+mod workflow_validate_schema;
 mod tool_events;
 mod tool_files;
 mod tool_list;
@@ -19,7 +19,7 @@ pub use instance::{
     build_instance_meta, write_instance_artifacts, AgentSummary, EventStats, InstanceMeta,
     PhaseSpan, ReportRef, WorkflowRef,
 };
-pub use structured_output::StructuredOutputTool;
+pub use workflow_validate_schema::WorkflowValidateSchemaTool;
 pub use tool_events::WorkflowEventsTool;
 pub use tool_files::WorkflowFilesTool;
 pub use tool_list::WorkflowListTool;

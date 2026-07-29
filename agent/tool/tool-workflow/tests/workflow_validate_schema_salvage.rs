@@ -1,6 +1,6 @@
-//! Integration test: structured_output salvage.
+//! Integration test: workflow_validate_schema salvage.
 //!
-//! When a workflow agent captures `structured_output` but then crashes on a
+//! When a workflow agent captures `workflow_validate_schema` but then crashes on a
 //! follow-up LLM call, the backend should salvage the captured output rather
 //! than reporting a hard failure. This test verifies the contract at the
 //! workflow level using a mock backend that simulates the scenario.
@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 
 /// Backend that simulates the salvage scenario:
 /// - First N calls succeed with structured output
-/// - Call N+1 fails (simulating post-structured_output LLM crash)
+/// - Call N+1 fails (simulating post-workflow_validate_schema LLM crash)
 struct SalvageBackend {
     outputs: Arc<Mutex<Vec<Value>>>,
 }
@@ -40,7 +40,7 @@ impl AgentBackend for SalvageBackend {
         let outputs = self.outputs.lock().unwrap();
         let agent_id = task.agent_id;
 
-        // Simulate: structured_output was captured, then agent.run() failed.
+        // Simulate: workflow_validate_schema was captured, then agent.run() failed.
         // Backend salvages: returns Ok with captured structured output.
         let output = outputs
             .iter()
@@ -87,7 +87,7 @@ impl AgentBackend for FailingBackend {
 
     async fn run(&self, task: AgentTask, _ctx: RunContext) -> Result<AgentResult, BackendError> {
         Err(BackendError::Execution(format!(
-            "agent {} failed: LLM timed out after structured_output",
+            "agent {} failed: LLM timed out after workflow_validate_schema",
             task.agent_id
         )))
     }
@@ -145,7 +145,7 @@ async fn salvage_backend_produces_structured_output_in_workflow() {
     assert_eq!(
         result_val.get("changed").and_then(|v| v.as_bool()),
         Some(true),
-        "salvaged structured_output should contain changed=true"
+        "salvaged workflow_validate_schema should contain changed=true"
     );
 }
 
@@ -183,6 +183,6 @@ async fn failing_backend_causes_workflow_failure() {
     let outcome = result.unwrap();
     assert!(
         outcome.result.is_err(),
-        "workflow should fail when backend has no structured_output to salvage"
+        "workflow should fail when backend has no workflow_validate_schema to salvage"
     );
 }

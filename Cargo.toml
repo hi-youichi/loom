@@ -139,3 +139,5 @@ luft-service = { path = "../luft/crates/luft-service" }
 luft-runtime = { path = "../luft/crates/luft-runtime" }
 luft-storage = { path = "../luft/crates/luft-storage" }
 luft-planner = { path = "../luft/crates/luft-planner" }
+luft-adapters = { path = "../luft/crates/luft-adapters" }
+luft-skills = { path = "../luft/crates/luft-skills" }

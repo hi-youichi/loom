@@ -13,7 +13,7 @@ use agent::agent::{Agent, AgentConfig, AgentEvent as LoomAgentEvent};
 use tool_core::Tool;
 
 use crate::event_bridge::map_loom_event_to_delta;
-use crate::structured_output::StructuredOutputTool;
+use crate::workflow_validate_schema::WorkflowValidateSchemaTool;
 
 pub struct LoomAgentBackend {
     config_template: AgentConfig,
@@ -35,7 +35,7 @@ impl AgentBackend for LoomAgentBackend {
         AgentCapabilities {
             streaming: true,
             mcp_injection: true,
-            structured_output: true,
+            workflow_validate_schema: true,
             models: vec![],
         }
     }
@@ -62,7 +62,7 @@ impl AgentBackend for LoomAgentBackend {
         let output_slot = Arc::new(Mutex::new(None::<Value>));
 
         if let Some(ref schema) = task.output_schema {
-            let tool: Arc<dyn Tool> = Arc::new(StructuredOutputTool::new(
+            let tool: Arc<dyn Tool> = Arc::new(WorkflowValidateSchemaTool::new(
                 schema.clone(),
                 output_slot.clone(),
             ));
@@ -199,17 +199,20 @@ impl AgentBackend for LoomAgentBackend {
 
 /// Decide the final `output` value after an agent run.
 ///
-/// - Ok + slot filled  → slot value (structured_output takes priority)
-/// - Ok + slot empty    → agent reply text
-/// - Err + slot filled  → slot value (salvage: agent crashed *after* capturing structured output)
-/// - Err + slot empty   → propagate error
+    /// - Ok + slot filled  → slot value (structured_output takes priority)
+    /// - Ok + slot empty    → agent reply text wrapped in `_agent_fallback_text` envelope
+    /// - Err + slot filled  → slot value (salvage: agent crashed *after* capturing structured output)
+    /// - Err + slot empty   → propagate error
 fn finalize_output(
     run_result: Result<agent::agent::AgentResult, agent::agent::AgentError>,
     slot_output: Option<Value>,
 ) -> Result<Value, BackendError> {
     match (run_result, slot_output) {
         (Ok(_result), Some(slot)) => Ok(slot),
-        (Ok(result), None) => Ok(Value::String(result.reply)),
+        (Ok(result), None) => Ok(serde_json::json!({
+            "_agent_fallback_text": true,
+            "text": result.reply,
+        })),
         (Err(e), Some(slot)) => {
             tracing::warn!(
                 target: "workflow::backend",
@@ -240,14 +243,17 @@ mod tests {
     }
 
     #[test]
-    fn finalize_ok_without_slot_uses_reply() {
+    fn finalize_ok_without_slot_uses_fallback_envelope() {
         let result = LoomAgentResult {
             reply: "plain text reply".into(),
             reasoning: None,
         };
 
         let output = finalize_output(Ok(result), None).unwrap();
-        assert_eq!(output, Value::String("plain text reply".to_string()));
+        assert_eq!(
+            output,
+            json!({ "_agent_fallback_text": true, "text": "plain text reply" })
+        );
     }
 
     #[test]
