@@ -1,84 +1,81 @@
 # Loom
 
-Loom 是一个本地优先的 AI Agent 运行环境。它让开发者在 CLI、IDE（ACP）和消息 Bot 中运行 Agent，并将工具调用、会话、记忆、技能和工作流留在可控的项目上下文中。
+Loom is a local-first AI Agent runtime. It lets developers run agents in the CLI, IDE (ACP), and messaging bots, while keeping tool calls, sessions, memory, skills, and workflows within a controllable project context.
 
-Loom 的目标不是替代代码审查或让 Agent 在无人监管下修改系统，而是让它能持续、可解释地完成真实项目任务。
+Loom's goal is not to replace code review or let agents modify systems unattended, but to enable them to complete real project tasks continuously and interpretably.
 
-> 当前版本仍在演进。工作流、浏览器扩展和任务模式包含 Experimental 能力；`evolve` 尚未实现。详见[产品文档](docs/prd/README.md)。
+> The current version is still evolving. Workflows, browser extension, and task modes include experimental capabilities; `evolve` is not yet implemented.
 
-## 5 分钟开始
+## Quick Start
 
-### 1. 准备模型配置
+### 1. Configure Your Model
 
-复制示例环境文件并填入你的模型凭据：
+Copy the example environment file and fill in your model credentials:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-也可以在用户配置目录（默认 `~/.loom/`，可由 `LOOM_HOME` 覆盖）中创建 `config.toml`。项目根目录中的 `.env` 会覆盖该配置中的环境变量。
+You can also create a `config.toml` in the user config directory (default `~/.loom/`, overridable via `LOOM_HOME`). The `.env` in the project root takes precedence over that config.
 
-### 2. 在项目目录运行 Agent
+### 2. Run an Agent in Your Project
 
 ```powershell
-# 运行默认 ReAct Agent
-cargo run -p cli -- -m "概览这个仓库，并列出测试入口"
+# Run the default ReAct agent
+cargo run -p cli -- -m "Survey this repo and list test entry points"
 
-# 明确指定 Agent 可工作的目录
-cargo run -p cli -- --working-folder . "定位失败的测试并说明原因"
+# Explicitly specify the agent's working directory
+cargo run -p cli -- --working-folder . "Find failing tests and explain why"
 
-# 在同一会话中继续
-cargo run -p cli -- --session-id bug-123 "现在修复它，并运行相关测试"
+# Continue in the same session
+cargo run -p cli -- --session-id bug-123 "Now fix it and run the relevant tests"
 ```
 
-首次运行前请检查 Agent 的有效工作目录、模型和工具权限。对修改型任务，可使用 `--worktree` 在隔离的 Git worktree 中运行。
+Before the first run, verify the agent's effective working directory, model, and tool permissions. For modification tasks, use `--worktree` to run in an isolated Git worktree.
 
-## Loom 能做什么
+## What Loom Can Do
 
-| 能力 | 用途 |
+| Capability | Use Case |
 | --- | --- |
-| 本地 Agent | 使用 ReAct、DUP、ToT 或 GoT 完成多步骤任务。 |
-| 模型与工具 | 配置多个提供商、模型层级、MCP、文件、Shell、Web 等能力。 |
-| 持续上下文 | 使用会话、checkpoint、记忆和技能延续项目工作。 |
-| 工作流 | 以 Lua 编排多 Agent 任务，查看实例摘要、事件、取消与恢复。 |
-| 多入口 | 从 CLI 使用，或通过 ACP 接入兼容 IDE；另有 Telegram 多 Bot。 |
+| Local Agents | Complete multi-step tasks using ReAct, DUP, ToT, or GoT. |
+| Models & Tools | Configure multiple providers, model tiers, MCP, file, shell, web, and more. |
+| Persistent Context | Continue project work across sessions with checkpoints, memory, and skills. |
+| Workflows | Orchestrate multi-agent tasks in Lua; inspect instance summaries, events, cancel and resume. |
+| Multiple Entry Points | Use from CLI, or connect via ACP to compatible IDEs; also supports Telegram multi-bot. |
 
-## 常用命令
+## Common Commands
 
 ```text
-loom -m "任务"                         # 发起单次任务
-loom -i -m "任务"                      # 进入连续交互会话
-loom --session-id <id> "继续任务"       # 继续会话
-loom session list                       # 查看会话
-loom models                             # 查看可用模型
-loom tool list                          # 查看工具
-loom mcp list                           # 管理 MCP 服务
-loom skills list / loom memory list     # 管理可复用上下文
-loom acp                                # 作为 ACP server 启动
+loom -m "task"                         # Start a one-shot task
+loom -i -m "task"                      # Enter an interactive session
+loom --session-id <id> "continue task" # Resume a session
+loom session list                       # List sessions
+loom models                             # List available models
+loom tool list                          # List tools
+loom mcp list                           # Manage MCP services
+loom skills list / loom memory list     # Manage reusable context
+loom acp                                # Start as an ACP server
 ```
 
-完整操作请见 [CLI 使用指南](docs/guides/cli.md)。
+For full usage, see the [CLI Guide](docs/guides/cli.md).
 
-## 文档
+## Documentation
 
-- [文档总览](docs/README.md)
-- [CLI 使用指南](docs/guides/cli.md)
-- [IDE / ACP 集成](docs/guides/acp-ide.md)
-- [`.loom/` 与配置参考](docs/reference/loom-directory-and-config.md)
-- [工作流指南](docs/guides/workflows.md)
-- [安全与隐私](docs/guides/security-and-privacy.md)
-- [故障排查](docs/guides/troubleshooting.md)
-- [产品 PRD](docs/prd/README.md)
+- [CLI Guide](docs/guides/cli.md)
+- [IDE / ACP Integration](docs/guides/acp-ide.md)
+- [Workflow Guide](docs/guides/workflows.md)
+- [Security & Privacy](docs/guides/security-and-privacy.md)
+- [Troubleshooting](docs/guides/troubleshooting.md)
 
-## 开发
+## Development
 
 ```powershell
 cargo build -p cli
 cargo test -p cli
 ```
 
-Loom 是 Rust workspace；crate 与实验模块的实现细节应从各模块的 `Cargo.toml`、源码和 `docs/design/` 查阅。用户体验和范围以 `docs/` 下的指南与 PRD 为准。
+Loom is a Rust workspace; crate and experimental module details can be found in each module's `Cargo.toml`, source code, and `docs/design/`. User experience and scope are defined by the guides under `docs/`.
 
-## 许可证
+## License
 
 MIT
