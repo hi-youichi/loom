@@ -5887,7 +5887,9 @@ dependencies = [
 
 [[package]]
 name = "luft"
-version = "0.4.2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b8c18f72310b053eaf86c5ad401bbe362364b8a74c5e9489d14a1e288bd6f3e"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5907,7 +5909,9 @@ dependencies = [
 
 [[package]]
 name = "luft-adapters"
-version = "0.4.2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ebfe02ea9dbf94604dac52c2602f10e119f103787a563d258982da64f1176c2a"
 dependencies = [
  "agent-client-protocol 0.14.0",
  "anyhow",
@@ -5925,7 +5929,9 @@ dependencies = [
 
 [[package]]
 name = "luft-core"
-version = "0.4.2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c337244c36ba3d339df1037f0bfa395a4ffd93218cb5dfd44161d88baeae9ca"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5947,7 +5953,9 @@ dependencies = [
 
 [[package]]
 name = "luft-planner"
-version = "0.4.2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbbf8d48ef253db2cb29a446dacfd4e70e336e6a3f03adbdc75f24f90770c9b8"
 dependencies = [
  "anyhow",
  "luft-core",
@@ -5965,7 +5973,9 @@ dependencies = [
 
 [[package]]
 name = "luft-runtime"
-version = "0.4.2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d594bfe337843983a7af97868a6aac4dcbfa4e7d6ff713b893e28f6ceef9ce2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5986,7 +5996,9 @@ dependencies = [
 
 [[package]]
 name = "luft-service"
-version = "0.4.2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08cc765a276f971211512c3f1b9f30491bc5f211ea7ae7d9e18f882d30ffdfeb"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6006,7 +6018,9 @@ dependencies = [
 
 [[package]]
 name = "luft-skills"
-version = "0.4.2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "768eea3f66faf1284609778a44f9e1690cdf08de64b71dc88c19b31ca6d45786"
 dependencies = [
  "const_format",
  "luft-core",
@@ -6014,7 +6028,9 @@ dependencies = [
 
 [[package]]
 name = "luft-storage"
-version = "0.4.2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00a5bcc653fc41e166150475c8539a02098c740c5af9c6bafde48a046f9e47f1"
 dependencies = [
  "anyhow",
  "chrono",

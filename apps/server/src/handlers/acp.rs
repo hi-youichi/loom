@@ -16,7 +16,7 @@ use axum::{
 use futures::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 
-use crate::acp_hub::{AcpHub, EventCursor, SessionOwner};
+use crate::acp_hub::SessionOwner;
 use crate::state::SharedState;
 
 /// Max ACP WS message / frame size.

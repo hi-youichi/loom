@@ -118,7 +118,6 @@ struct HubInner {
     agent: Arc<loom_acp::LoomAcpAgent>,
     recipient: Arc<Mutex<Option<mpsc::Sender<SessionNotification>>>>,
     replay: Arc<Mutex<VecDeque<CursorNotification>>>,
-    next_cursor: Arc<std::sync::atomic::AtomicU64>,
     lease_cancel: Option<oneshot::Sender<()>>,
     /// Owner of the current connection.
     owner: SessionOwner,
@@ -185,12 +184,10 @@ impl AcpHub {
             let (events_tx, mut events_rx) = mpsc::channel::<SessionNotification>(256);
             let recipient = Arc::new(Mutex::new(None::<mpsc::Sender<SessionNotification>>));
             let replay = Arc::new(Mutex::new(VecDeque::<CursorNotification>::new()));
-            let next_cursor =
-                Arc::new(std::sync::atomic::AtomicU64::new(1));
 
             let recipient_for_task = recipient.clone();
             let replay_for_task = replay.clone();
-            let cursor_for_task = next_cursor.clone();
+            let cursor_for_task = Arc::new(std::sync::atomic::AtomicU64::new(1));
             let cap = self.config.replay_capacity;
             tokio::spawn(async move {
                 while let Some(event) = events_rx.recv().await {
@@ -218,7 +215,6 @@ impl AcpHub {
                 agent: Arc::new(agent),
                 recipient,
                 replay,
-                next_cursor,
                 lease_cancel: None,
                 owner: owner.clone(),
                 attached_at: Instant::now(),

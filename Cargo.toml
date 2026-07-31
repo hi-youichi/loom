@@ -131,13 +131,3 @@ incremental = true
 opt-level = 0
 
 debug = 2
-
-[patch.crates-io]
-luft = { path = "../luft/crates/luft" }
-luft-core = { path = "../luft/crates/luft-core" }
-luft-service = { path = "../luft/crates/luft-service" }
-luft-runtime = { path = "../luft/crates/luft-runtime" }
-luft-storage = { path = "../luft/crates/luft-storage" }
-luft-planner = { path = "../luft/crates/luft-planner" }
-luft-adapters = { path = "../luft/crates/luft-adapters" }
-luft-skills = { path = "../luft/crates/luft-skills" }
