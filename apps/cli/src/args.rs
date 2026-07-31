@@ -771,12 +771,22 @@ pub(crate) struct AcpArgs {
     #[arg(long)]
     pub(crate) show_log_dir: bool,
 
+    /// Run in daemon mode (background, no stdio). Used internally by `loom acp start`.
+    #[arg(long, hide = true)]
+    pub(crate) daemon: bool,
+
     #[command(subcommand)]
     pub(crate) cmd: Option<AcpCmd>,
 }
 
 #[derive(clap::Subcommand, Debug, Clone)]
 pub(crate) enum AcpCmd {
+    /// Start the ACP server as a background daemon process.
+    Start,
+    /// Stop the running ACP daemon process.
+    Stop,
+    /// Restart the ACP daemon process.
+    Restart,
     /// Send SIGHUP to the running ACP process (read PID from `~/.loom/acp`). Unix only.
     Reload,
 }

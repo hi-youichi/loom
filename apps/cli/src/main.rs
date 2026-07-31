@@ -81,6 +81,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             loom_acp::server::run_reload();
             return Ok(());
         }
+        if let Some(AcpCmd::Start) = acp_args.cmd {
+            loom_acp::server::run_start();
+            return Ok(());
+        }
+        if let Some(AcpCmd::Stop) = acp_args.cmd {
+            loom_acp::server::run_stop();
+            return Ok(());
+        }
+        if let Some(AcpCmd::Restart) = acp_args.cmd {
+            loom_acp::server::run_restart();
+            return Ok(());
+        }
 
         let log_config = loom_acp::logging::LogConfig {
             level: args.log_level.clone().unwrap_or_else(|| "info".to_string()),
@@ -89,7 +101,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             format: args.log_format.parse().unwrap_or_default(),
         };
 
-        if let Err(e) = loom_acp::server::run_server(log_config).await {
+        if let Err(e) = loom_acp::server::run_server(log_config, acp_args.daemon).await {
             eprintln!("loom acp: {e}");
             std::process::exit(1);
         }

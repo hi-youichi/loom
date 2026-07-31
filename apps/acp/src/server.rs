@@ -94,16 +94,188 @@ pub fn run_reload() {
 }
 
 // ---------------------------------------------------------------------------
+// Start / Stop / Restart subcommands
+// ---------------------------------------------------------------------------
+
+/// Read the PID from the PID file. Returns `None` if file doesn't exist
+/// or is unreadable / unparseable.
+fn read_stored_pid() -> Option<u32> {
+    let path = acp_pid_path()?;
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+}
+
+/// Check whether a daemon is currently running (PID file exists and process is alive).
+fn is_daemon_running() -> Option<u32> {
+    let pid = read_stored_pid()?;
+    if is_pid_alive(pid) {
+        Some(pid)
+    } else {
+        None
+    }
+}
+
+/// Start the ACP server as a background daemon.
+///
+/// Spawns `loom acp --daemon` as a detached child process. The daemon
+/// writes its own PID file on startup and waits for termination signals.
+pub fn run_start() {
+    if let Some(pid) = is_daemon_running() {
+        eprintln!("loom acp start: already running (pid {})", pid);
+        std::process::exit(1);
+    }
+
+    if let Some(p) = acp_pid_path() {
+        let _ = std::fs::remove_file(&p);
+    }
+
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("loom acp start: cannot determine executable path: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let mut cmd = std::process::Command::new(&exe);
+    cmd.arg("acp").arg("--daemon");
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(std::process::Stdio::null());
+    cmd.stderr(std::process::Stdio::null());
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0000_0008 | 0x0000_0200);
+    }
+
+    let child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("loom acp start: failed to spawn daemon: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let spawned_pid = child.id();
+    let pid_path = acp_pid_path();
+
+    for _ in 0..50 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        if let Some(ref p) = pid_path {
+            if let Ok(content) = std::fs::read_to_string(p) {
+                if let Ok(stored) = content.trim().parse::<u32>() {
+                    println!("loom acp started (pid {})", stored);
+                    return;
+                }
+            }
+        }
+    }
+
+    println!("loom acp started (pid {})", spawned_pid);
+}
+
+/// Stop the running ACP daemon.
+///
+/// Reads the PID file and sends SIGTERM (Unix) or taskkill (Windows).
+/// Waits up to 10 seconds for the process to exit, then cleans up the PID file.
+pub fn run_stop() {
+    let pid = match is_daemon_running() {
+        Some(p) => p,
+        None => {
+            if let Some(p) = acp_pid_path() {
+                let _ = std::fs::remove_file(&p);
+            }
+            eprintln!("loom acp stop: not running");
+            std::process::exit(0);
+        }
+    };
+
+    #[cfg(unix)]
+    {
+        let result = unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
+        if result != 0 {
+            eprintln!(
+                "loom acp stop: failed to send SIGTERM to pid {}: {}",
+                pid,
+                std::io::Error::last_os_error()
+            );
+            std::process::exit(1);
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        let result = std::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        if !matches!(result, Ok(s) if s.success()) {
+            eprintln!("loom acp stop: failed to kill pid {}", pid);
+            std::process::exit(1);
+        }
+    }
+
+    for _ in 0..100 {
+        if !is_pid_alive(pid) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    if is_pid_alive(pid) {
+        eprintln!(
+            "loom acp stop: process {} did not exit within 10 seconds",
+            pid
+        );
+        std::process::exit(1);
+    }
+
+    if let Some(p) = acp_pid_path() {
+        let _ = std::fs::remove_file(&p);
+    }
+
+    println!("loom acp stopped (pid {})", pid);
+}
+
+/// Restart the ACP daemon: stop if running, then start.
+pub fn run_restart() {
+    if is_daemon_running().is_some() {
+        run_stop();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    } else if let Some(p) = acp_pid_path() {
+        let _ = std::fs::remove_file(&p);
+    }
+    run_start();
+}
+
+// ---------------------------------------------------------------------------
 // Server entrypoint
 // ---------------------------------------------------------------------------
 
-/// Run the ACP stdio server.
+/// Run the ACP server.
 ///
 /// Sets up panic hook, loads config silently, initializes logging, writes PID
 /// file, then runs [`run_stdio_loop`] until stdin closes or SIGHUP is received
-/// (unix only).
+/// (unix only). When `daemon` is true, skips the stdio loop and instead waits
+/// for a termination signal (used by `loom acp start`).
 pub async fn run_server(
     log_config: LogConfig,
+    daemon: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Panic hook — log and print before the default handler aborts.
     let default_hook = std::panic::take_hook();
@@ -132,6 +304,42 @@ pub async fn run_server(
 
     // PID file guard — removed on drop (normal exit).
     let _pid_guard = write_pid_file(&acp_log_dir());
+
+    if daemon {
+        tracing::info!("ACP daemon mode: waiting for termination signal");
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{signal, SignalKind};
+            let mut sighup = signal(SignalKind::hangup())?;
+            let mut sigterm = signal(SignalKind::terminate())?;
+            let mut sigint = signal(SignalKind::interrupt())?;
+            let mut sigusr1 = signal(SignalKind::user_defined1())?;
+            tokio::select! {
+                _ = sighup.recv() => {
+                    tracing::info!("SIGHUP received, exiting for reload");
+                    std::process::exit(RELOAD_EXIT_CODE);
+                }
+                _ = sigterm.recv() => {
+                    tracing::info!("SIGTERM received, daemon shutting down");
+                    std::process::exit(0);
+                }
+                _ = sigint.recv() => {
+                    tracing::info!("SIGINT received, daemon shutting down");
+                    std::process::exit(0);
+                }
+                _ = sigusr1.recv() => {
+                    tracing::info!("SIGUSR1 received, exiting for restart");
+                    std::process::exit(RESTART_EXIT_CODE);
+                }
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            tokio::signal::ctrl_c().await?;
+            tracing::info!("Ctrl+C received, daemon shutting down");
+            return Ok(());
+        }
+    }
 
     // Run stdio loop, with full signal FSM (Hermes `gateway/run.py:80-95`):
     //
