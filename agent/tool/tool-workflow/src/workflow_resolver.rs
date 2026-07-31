@@ -1,9 +1,20 @@
 use std::path::{Path, PathBuf};
 
 pub fn resolve_workflow(name: &str, working_folder: &Path) -> Result<PathBuf, String> {
+    tracing::debug!(
+        target: "workflow::resolver",
+        name = %name,
+        working_folder = %working_folder.display(),
+        "resolving workflow file",
+    );
     if name.ends_with(".lua") && Path::new(name).is_absolute() {
         let p = PathBuf::from(name);
         if p.is_file() {
+            tracing::debug!(
+                target: "workflow::resolver",
+                resolved = %p.display(),
+                "resolved via absolute path",
+            );
             return Ok(p);
         }
     }
@@ -24,9 +35,20 @@ pub fn resolve_workflow(name: &str, working_folder: &Path) -> Result<PathBuf, St
 
     for candidate in &candidates {
         if candidate.is_file() {
+            tracing::debug!(
+                target: "workflow::resolver",
+                resolved = %candidate.display(),
+                "resolved via search path",
+            );
             return Ok(candidate.clone());
         }
     }
+
+    tracing::debug!(
+        target: "workflow::resolver",
+        name = %name,
+        "workflow not found in any search path",
+    );
 
     Err(format!(
         "Workflow '{}' not found. Searched: {}",

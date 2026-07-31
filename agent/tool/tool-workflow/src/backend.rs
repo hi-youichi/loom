@@ -41,16 +41,37 @@ impl AgentBackend for LoomAgentBackend {
     }
 
     async fn run(&self, task: AgentTask, ctx: RunContext) -> Result<AgentResult, BackendError> {
+        tracing::info!(
+            target: "workflow::backend",
+            agent_id = %task.agent_id,
+            workdir = %task.workdir.display(),
+            has_output_schema = task.output_schema.is_some(),
+            has_allowlist = task.allowlist.is_some(),
+            "agent task starting",
+        );
+
         let mut config = self.config_template.clone();
 
         let thread_id = task.thread_id.clone();
         if thread_id.is_some() {
             config.thread_id = thread_id.clone();
             config.resume_mode = true;
+            tracing::debug!(
+                target: "workflow::backend",
+                agent_id = %task.agent_id,
+                thread_id = ?thread_id,
+                "resuming from prior thread",
+            );
         }
 
         if let Some(ref model) = task.model {
             config.model = Some(model.clone());
+            tracing::debug!(
+                target: "workflow::backend",
+                agent_id = %task.agent_id,
+                model = %model,
+                "using overridden model",
+            );
         }
 
         config.working_folder = Some(
@@ -62,6 +83,11 @@ impl AgentBackend for LoomAgentBackend {
         let output_slot = Arc::new(Mutex::new(None::<Value>));
 
         if let Some(ref schema) = task.output_schema {
+            tracing::debug!(
+                target: "workflow::backend",
+                agent_id = %task.agent_id,
+                "injecting workflow_validate_schema tool with output schema",
+            );
             let tool: Arc<dyn Tool> = Arc::new(WorkflowValidateSchemaTool::new(
                 schema.clone(),
                 output_slot.clone(),
@@ -86,12 +112,38 @@ impl AgentBackend for LoomAgentBackend {
                     Some(allowlist.deny.clone())
                 },
             };
+            tracing::debug!(
+                target: "workflow::backend",
+                agent_id = %task.agent_id,
+                allow = ?allowlist.allow_commands,
+                deny = ?allowlist.deny,
+                "applying builtin tool filter",
+            );
             config.builtin_tool_filter = Some(filter);
         }
 
+        tracing::debug!(
+            target: "workflow::backend",
+            agent_id = %task.agent_id,
+            "building agent from config",
+        );
         let agent = Agent::from_config(config)
             .await
-            .map_err(|e| BackendError::Execution(format!("agent build failed: {e}")))?;
+            .map_err(|e| {
+                tracing::error!(
+                    target: "workflow::backend",
+                    agent_id = %task.agent_id,
+                    error = %e,
+                    "agent build failed",
+                );
+                BackendError::Execution(format!("agent build failed: {e}"))
+            })?;
+
+        tracing::info!(
+            target: "workflow::backend",
+            agent_id = %task.agent_id,
+            "agent built successfully, starting run",
+        );
 
         let tokens = Arc::new(Mutex::new(TokenUsage::default()));
         let event_sender = ctx.events.clone();
@@ -179,6 +231,16 @@ impl AgentBackend for LoomAgentBackend {
         let output = finalize_output(run, slot_output)?;
 
         let tokens_used = *tokens.lock().unwrap();
+
+        tracing::info!(
+            target: "workflow::backend",
+            agent_id = %task.agent_id,
+            input_tokens = tokens_used.input,
+            output_tokens = tokens_used.output,
+            cache_read_tokens = tokens_used.cache_read,
+            has_structured_output = output.get("_agent_fallback_text").is_none(),
+            "agent task completed",
+        );
 
         Ok(AgentResult {
             agent_id: task.agent_id,

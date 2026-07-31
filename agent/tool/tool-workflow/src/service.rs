@@ -37,6 +37,11 @@ pub(crate) async fn start_workflow(
 ) -> Result<ToolCallContent, ToolSourceError> {
     let depth = ctx.map(|c| c.depth).unwrap_or(0);
     if depth >= 3 {
+        tracing::warn!(
+            target: "workflow::service",
+            depth,
+            "workflow nesting depth exceeded (max 3)",
+        );
         return Err(ToolSourceError::ToolError(
             "Workflow nesting depth exceeded (max 3).".to_string(),
         ));
@@ -52,6 +57,10 @@ pub(crate) async fn start_workflow(
 
     // Validate mutual exclusion: resume vs script/workflow
     if resume_from_id.is_some() && (script.is_some() || workflow.is_some()) {
+        tracing::warn!(
+            target: "workflow::service",
+            "start_workflow rejected: resume_from_id mutually exclusive with script/workflow",
+        );
         return Err(ToolSourceError::InvalidInput(
             "`resume_from_id` is mutually exclusive with `script` and `workflow`.".into(),
         ));
@@ -59,12 +68,22 @@ pub(crate) async fn start_workflow(
 
     let (lua_source, display_name) = match (script, workflow, resume_from_id) {
         (_, _, Some(id)) => {
-            // Resume: luft reads script + history from the prior instance's checkpoint.
-            // No script source needs to be loaded here.
             validate_instance_dir_name(id)?;
+            tracing::info!(
+                target: "workflow::service",
+                resume_from_id = %id,
+                "starting workflow in resume mode",
+            );
             (String::new(), format!("resumed:{id}"))
         }
-        (Some(s), _, None) => (s.to_string(), "inline script".to_string()),
+        (Some(s), _, None) => {
+            tracing::info!(
+                target: "workflow::service",
+                source_len = s.len(),
+                "starting workflow from inline script",
+            );
+            (s.to_string(), "inline script".to_string())
+        }
         (None, Some(w), None) => {
             let working_folder = runtime.working_folder();
             let path =
@@ -77,9 +96,21 @@ pub(crate) async fn start_workflow(
                 .or_else(|| path.file_name())
                 .map(|name| name.to_string_lossy().to_string())
                 .unwrap_or_else(|| "workflow".to_string());
+            tracing::info!(
+                target: "workflow::service",
+                workflow = %w,
+                path = %path.display(),
+                display_name = %display_name,
+                source_len = source.len(),
+                "starting workflow from file",
+            );
             (source, display_name)
         }
         (None, None, None) => {
+            tracing::warn!(
+                target: "workflow::service",
+                "start_workflow rejected: no script, workflow, or resume_from_id provided",
+            );
             return Err(ToolSourceError::InvalidInput(
                 "Provide one of: `script`, `workflow`, or `resume_from_id`.".to_string(),
             ));
@@ -94,6 +125,12 @@ pub(crate) async fn start_workflow(
 
     let base_dir = runtime.instances_root();
     if let Err(e) = std::fs::create_dir_all(&base_dir) {
+        tracing::error!(
+            target: "workflow::service",
+            base_dir = %base_dir.display(),
+            error = %e,
+            "failed to create instances directory",
+        );
         return Err(ToolSourceError::ToolError(format!(
             "Failed to create instances directory: {e}"
         )));
@@ -102,28 +139,62 @@ pub(crate) async fn start_workflow(
     let config = runtime.config_template.clone();
     let backend = LoomAgentBackend::new(config);
 
+    tracing::debug!(
+        target: "workflow::service",
+        base_dir = %base_dir.display(),
+        concurrency,
+        has_user_args = user_args.is_some(),
+        "building Luft engine",
+    );
     let luft = LuftBuilder::new()
         .backend(backend)
         .base_dir(&base_dir)
         .concurrency(concurrency)
         .build()
         .map_err(|e| {
+            tracing::error!(
+                target: "workflow::service",
+                error = %e,
+                "Luft engine build failed",
+            );
             ToolSourceError::ToolError(format!("Workflow engine build failed: {e}"))
         })?;
 
     let run_handle = if let Some(id) = resume_from_id {
         luft.start_resume(id)
             .await
-            .map_err(|e| ToolSourceError::ToolError(format!("Failed to resume workflow: {e}")))?
+            .map_err(|e| {
+                tracing::error!(
+                    target: "workflow::service",
+                    resume_from_id = %id,
+                    error = %e,
+                    "failed to resume workflow",
+                );
+                ToolSourceError::ToolError(format!("Failed to resume workflow: {e}"))
+            })?
     } else {
         luft.start_script(&lua_source)
             .await
-            .map_err(|e| ToolSourceError::ToolError(format!("Failed to start workflow: {e}")))?
+            .map_err(|e| {
+                tracing::error!(
+                    target: "workflow::service",
+                    error = %e,
+                    "failed to start workflow",
+                );
+                ToolSourceError::ToolError(format!("Failed to start workflow: {e}"))
+            })?
     };
 
     let run_dir_name = run_handle.run_dir_name().to_string();
     let is_inline_script = script.is_some();
     let workflow_arg_owned = workflow.map(|s| s.to_string());
+
+    tracing::info!(
+        target: "workflow::service",
+        instance_dir = %run_dir_name,
+        is_inline_script,
+        "workflow started successfully",
+    );
 
     let sender = ctx.and_then(|c| c.any_stream_event_sender.clone());
     // Workflow cancel orchestration: the runtime owns an in-memory
@@ -201,8 +272,18 @@ async fn background_finalize(
     let mut done_rx = run_handle.subscribe();
 
     let mut cancelled = false;
+    tracing::debug!(
+        target: "workflow::service",
+        instance_dir = %run_dir_name,
+        "background_finalize: waiting for workflow completion",
+    );
     let cancel_handled = tokio::select! {
         _ = &mut cancel_rx => {
+            tracing::info!(
+                target: "workflow::service",
+                instance_dir = %run_dir_name,
+                "background_finalize: cancellation signalled",
+            );
             run_handle.cancel();
             cancelled = true;
             true
@@ -276,6 +357,14 @@ async fn background_finalize(
 
     let final_status: &'static str = final_status.unwrap_or("unknown");
 
+    tracing::info!(
+        target: "workflow::service",
+        instance_dir = %run_dir_name,
+        final_status,
+        cancelled,
+        "background_finalize: workflow reached terminal state",
+    );
+
     if let Err(e) = runtime
         .finalize(
             &run_dir_name,
@@ -287,6 +376,12 @@ async fn background_finalize(
         )
         .await
     {
+        tracing::error!(
+            target: "workflow::service",
+            instance_dir = %run_dir_name,
+            error = ?e,
+            "finalize failed, writing minimal failed instance",
+        );
         runtime.write_minimal_failed_instance(
             &run_dir_name,
             &display_name,
@@ -300,7 +395,7 @@ async fn background_finalize(
 // ── Status ──────────────────────────────────────────────────────────────────
 
 pub(crate) async fn read_status(
-    runtime: &WorkflowRuntime,
+    runtime: &Arc<WorkflowRuntime>,
     args: &Value,
 ) -> Result<ToolCallContent, ToolSourceError> {
     let dir = args
@@ -310,6 +405,12 @@ pub(crate) async fn read_status(
             ToolSourceError::InvalidInput("'instance' is required for workflow_status.".into())
         })?;
     validate_instance_dir_name(dir)?;
+
+    tracing::debug!(
+        target: "workflow::service",
+        instance = %dir,
+        "read_status: resolving instance path",
+    );
 
     let new_path = runtime.instances_root().join(dir);
     let legacy_path = runtime.runs_root().join(dir);
@@ -417,18 +518,34 @@ pub(crate) fn cancel_workflow(
         .to_string();
     validate_instance_dir_name(&dir)?;
 
+    tracing::info!(
+        target: "workflow::service",
+        instance = %dir,
+        "cancel_workflow: attempting cancellation",
+    );
+
     // Determine an outcome tag. If the runtime registry knows about the
     // instance, cancellation is in-flight (`cancelling`); the runtime's
     // finalize loop will mark the checkpoint as `cancelled` once the
     // agent returns Cancelled. If the registry does not know about it, the
     // run is unknown / terminal — we surface that so the LLM can react.
     let result = if runtime.cancel_run(&dir) {
+        tracing::info!(
+            target: "workflow::service",
+            instance = %dir,
+            "cancel_workflow: cancellation signalled",
+        );
         json!({
             "instance_dir": dir,
             "result": "cancelling",
             "note": "Cancellation has been signalled; poll workflow_status to observe the terminal state.",
         })
     } else {
+        tracing::debug!(
+            target: "workflow::service",
+            instance = %dir,
+            "cancel_workflow: instance not found or already terminal",
+        );
         json!({
             "instance_dir": dir,
             "result": "not_found_or_terminal",
@@ -451,6 +568,14 @@ pub(crate) fn list_instances(
     let cursor = params::parse_cursor(args);
     let status_filter = params::parse_status_filter(args)
         .map_err(ToolSourceError::InvalidInput)?;
+
+    tracing::debug!(
+        target: "workflow::service",
+        limit,
+        has_cursor = cursor.is_some(),
+        status_filter = ?status_filter,
+        "list_instances: scanning instance directories",
+    );
 
     let mut entries: Vec<Value> = Vec::new();
     collect_instances_under(&runtime.instances_root(), &mut entries);
@@ -634,6 +759,16 @@ pub(crate) fn read_events(
     let events_path = path.join("events.jsonl");
     let filter = params::EventsFilter::from_args(args);
 
+    tracing::debug!(
+        target: "workflow::service",
+        instance = %dir,
+        events_path = %events_path.display(),
+        has_type_filter = filter.types.as_ref().is_some_and(|t| !t.is_empty()),
+        offset = filter.offset,
+        events_limit = filter.events_limit,
+        "read_events: reading event stream",
+    );
+
     let mut filtered_count: u64 = 0;
     let mut returned: usize = 0;
     let mut events: Vec<Value> = Vec::new();
@@ -700,6 +835,13 @@ pub(crate) fn read_source(
         .resolve_instance_path(dir)
         .ok_or_else(|| ToolSourceError::InvalidInput(format!("Instance '{dir}' not found")))?;
 
+    tracing::debug!(
+        target: "workflow::service",
+        instance = %dir,
+        resolved_path = %resolved.display(),
+        "read_source: reading workflow.lua",
+    );
+
     let source = std::fs::read_to_string(resolved.join("workflow.lua")).map_err(|e| {
         ToolSourceError::ToolError(format!("Failed to read workflow source: {e}"))
     })?;
@@ -729,6 +871,11 @@ pub(crate) fn list_workflow_files(
     runtime: &WorkflowRuntime,
 ) -> Result<ToolCallContent, ToolSourceError> {
     let root = runtime.workflows_dir();
+    tracing::debug!(
+        target: "workflow::service",
+        workflows_dir = %root.display(),
+        "list_workflow_files: scanning for .lua files",
+    );
     let mut workflows = Vec::new();
     if let Ok(entries) = std::fs::read_dir(root) {
         for entry in entries.flatten() {

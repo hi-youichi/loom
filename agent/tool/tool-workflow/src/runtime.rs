@@ -37,7 +37,12 @@ impl WorkflowRuntime {
         self.active_runs
             .lock()
             .expect("active_runs mutex poisoned")
-            .insert(dir_name, token.clone());
+            .insert(dir_name.clone(), token.clone());
+        tracing::debug!(
+            target: "workflow::runtime",
+            instance_dir = %dir_name,
+            "registered run in active_runs registry",
+        );
         token
     }
 
@@ -50,8 +55,18 @@ impl WorkflowRuntime {
             .cloned()
         {
             token.cancel();
+            tracing::debug!(
+                target: "workflow::runtime",
+                instance_dir = %dir_name,
+                "cancel_run: token fired",
+            );
             true
         } else {
+            tracing::debug!(
+                target: "workflow::runtime",
+                instance_dir = %dir_name,
+                "cancel_run: not found in registry",
+            );
             false
         }
     }
@@ -61,6 +76,11 @@ impl WorkflowRuntime {
             .lock()
             .expect("active_runs mutex poisoned")
             .remove(dir_name);
+        tracing::debug!(
+            target: "workflow::runtime",
+            instance_dir = %dir_name,
+            "unregistered run from active_runs registry",
+        );
     }
 
     pub(crate) fn working_folder(&self) -> PathBuf {
@@ -122,10 +142,17 @@ impl WorkflowRuntime {
     ) -> Result<(), ToolSourceError> {
         let instance_dir = self.loom_instance_dir(run_dir_name);
 
+        tracing::debug!(
+            target: "workflow::runtime",
+            instance_dir = %instance_dir.display(),
+            final_status,
+            "finalize: reading checkpoint.json",
+        );
+
         let checkpoint_path = instance_dir.join("checkpoint.json");
         let mut last_err = String::new();
         let mut bytes = None;
-        for _ in 0..10 {
+        for attempt in 0..10 {
             match tokio::fs::read(&checkpoint_path).await {
                 Ok(b) if !b.is_empty() => {
                     bytes = Some(b);
@@ -133,6 +160,13 @@ impl WorkflowRuntime {
                 }
                 Ok(_) => last_err = "workflow state is empty".into(),
                 Err(e) => last_err = e.to_string(),
+            }
+            if attempt == 0 {
+                tracing::warn!(
+                    target: "workflow::runtime",
+                    checkpoint_path = %checkpoint_path.display(),
+                    "finalize: checkpoint not ready, retrying (up to 10x 200ms)",
+                );
             }
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
@@ -193,8 +227,24 @@ impl WorkflowRuntime {
         }
 
         write_instance_artifacts(&instance_dir, &meta, final_report, &raw_agent_outputs).map_err(
-            |e| ToolSourceError::ToolError(format!("failed to write instance artifacts: {e}")),
+            |e| {
+                tracing::error!(
+                    target: "workflow::runtime",
+                    instance_dir = %instance_dir.display(),
+                    error = %e,
+                    "finalize: failed to write instance artifacts",
+                );
+                ToolSourceError::ToolError(format!("failed to write instance artifacts: {e}"))
+            },
         )?;
+
+        tracing::info!(
+            target: "workflow::runtime",
+            instance_dir = %instance_dir.display(),
+            status = %meta.status,
+            agent_count = meta.agents.len(),
+            "finalize: instance artifacts written successfully",
+        );
 
         Ok(())
     }
@@ -207,8 +257,19 @@ impl WorkflowRuntime {
         workflow_arg: Option<&str>,
         error_msg: &str,
     ) {
+        tracing::error!(
+            target: "workflow::runtime",
+            instance_dir = run_dir_name,
+            error = error_msg,
+            "writing minimal failed instance",
+        );
         let instance_dir = self.loom_instance_dir(run_dir_name);
         if std::fs::create_dir_all(&instance_dir).is_err() {
+            tracing::error!(
+                target: "workflow::runtime",
+                instance_dir = %instance_dir.display(),
+                "write_minimal_failed_instance: could not create directory",
+            );
             return;
         }
         let workflow_ref = WorkflowRef {
@@ -240,10 +301,6 @@ impl WorkflowRuntime {
         if let Ok(json) = serde_json::to_string_pretty(&meta) {
             let _ = std::fs::write(instance_dir.join("instance.json"), json);
         }
-        eprintln!(
-            "warning: workflow {} failed during finalize: {}",
-            run_dir_name, error_msg
-        );
     }
 
     pub(crate) async fn rebuild_summary(

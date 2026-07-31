@@ -46,11 +46,20 @@ impl Tool for WorkflowValidateSchemaTool {
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         if let Err(msg) = validate_against_schema(&args, &self.schema) {
+            tracing::warn!(
+                target: "workflow::validate_schema",
+                error = %msg,
+                "schema validation failed",
+            );
             return Ok(ToolCallContent::Text(format!(
                 "Schema validation failed: {msg}. Please fix and retry."
             )));
         }
 
+        tracing::debug!(
+            target: "workflow::validate_schema",
+            "schema validation passed, storing result",
+        );
         *self.output_slot.lock().unwrap() = Some(args);
         Ok(ToolCallContent::Text("Result submitted.".to_string()))
     }
