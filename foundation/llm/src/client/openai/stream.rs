@@ -404,7 +404,7 @@ mod tests {
             }),
             r#type: None,
         }];
-        acc.process_tool_calls_delta(&chunks);
+        acc.process_tool_calls_delta(&chunks, &CountingSink::new(), "test");
         let r = acc.finish();
         assert_eq!(r.tool_calls.len(), 1);
         assert_eq!(r.tool_calls[0].name, "n");
@@ -422,7 +422,7 @@ mod tests {
             }),
             r#type: None,
         }];
-        acc.process_tool_calls_delta(&chunks);
+        acc.process_tool_calls_delta(&chunks, &CountingSink::new(), "test");
         let r = acc.finish();
         assert_eq!(r.tool_calls[0].id.as_deref(), Some("call-1"));
         assert_eq!(r.tool_calls[0].name, "fn");

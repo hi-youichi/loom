@@ -221,7 +221,12 @@ async fn invoke_does_not_retry_non_retryable_400_errors() {
         .await
         .err()
         .unwrap();
-    assert!(err.to_string().contains("OpenAI API error"));
+    // 新架构：400 → 结构化 Provider 错误（不可重试），不再走 InvokeFailed 字符串。
+    assert!(!err.is_retryable());
+    match &err {
+        crate::error::LlmError::Provider(pe) => assert!(pe.message.contains("role 'tool'")),
+        other => panic!("expected Provider error, got {other:?}"),
+    }
     assert_eq!(server.await.unwrap(), 1);
 }
 

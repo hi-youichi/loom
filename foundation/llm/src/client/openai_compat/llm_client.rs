@@ -18,10 +18,13 @@ use crate::traits::{LlmClient, LlmResponse, LlmUsage, MessageChunk, StreamSink, 
 use super::audit::AuditCtx;
 use super::request::{ChatCompletionRequest, ChatCompletionResponse, ModelsResponse};
 use super::retry::{
-    backoff_for_attempt as compat_backoff, format_api_error_body, is_retryable_status_for,
-    COMPAT_RETRY_MAX_RETRIES,
+    backoff_for_attempt as compat_backoff, COMPAT_RETRY_MAX_RETRIES,
 };
 use super::ChatOpenAICompat;
+
+use crate::error::decide::decide;
+use crate::error::provider::parser_for;
+use model_spec_core::error::RetryPolicy;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -73,7 +76,7 @@ impl ToolCallStreamForwarder {
             pending.name.push_str(&name);
         }
         if let Some(ref arguments) = arguments {
-            pending.arguments.push_str(&arguments);
+            pending.arguments.push_str(arguments);
         }
 
         if !pending.started && !pending.name.is_empty() {
@@ -180,21 +183,27 @@ impl ChatOpenAICompat {
             return Ok(res);
         }
 
-        // --- Phase 2: read error body, classify ---
+        // --- Phase 2: read error body, classify with unified parser ---
+        let headers = res.headers().clone();
         let body_bytes = res.bytes().await.unwrap_or_default();
-        let error_msg = format_api_error_body(&body_bytes);
+        let parser = parser_for(&self.base_url);
+        let err = decide(parser.as_ref(), status.as_u16(), &headers, &body_bytes);
 
-        if !is_retryable_status_for(status, &self.base_url, &error_msg) {
-            let msg =
-                format!("{log_prefix} API error {status}: {error_msg} (trace_id: {trace_id})");
-            return Err(self.audit_error(ctx, status.as_u16(), msg));
+        if !err.is_retryable() {
+            self.record_error(ctx, status.as_u16(), err.message.clone());
+            return Err(LlmError::Provider(Box::new(err)));
         }
 
         // --- Phase 3: retry on retryable status ---
+        let mut current_policy = err.retry_policy;
         for attempt in 0..COMPAT_RETRY_MAX_RETRIES {
-            let delay = compat_backoff(attempt);
+            let delay = match current_policy {
+                RetryPolicy::RetryAfter(ms) => std::time::Duration::from_millis(ms),
+                _ => compat_backoff(attempt),
+            };
             tracing::warn!(
                 status = %status,
+                kind = ?err.kind,
                 attempt = attempt + 1,
                 max_retries = COMPAT_RETRY_MAX_RETRIES,
                 delay_secs = delay.as_secs_f64(),
@@ -226,23 +235,26 @@ impl ChatOpenAICompat {
                 return Ok(retry_res);
             }
 
+            let retry_headers = retry_res.headers().clone();
             let retry_bytes = retry_res.bytes().await.unwrap_or_default();
-            let retry_msg = format_api_error_body(&retry_bytes);
+            let retry_err = decide(
+                parser.as_ref(),
+                retry_status.as_u16(),
+                &retry_headers,
+                &retry_bytes,
+            );
 
-            if !is_retryable_status_for(retry_status, &self.base_url, &retry_msg) {
-                let msg = format!(
-                    "{log_prefix} API error {retry_status}: {retry_msg} (trace_id: {trace_id})"
-                );
-                return Err(self.audit_error(ctx, retry_status.as_u16(), msg));
+            if !retry_err.is_retryable() {
+                self.record_error(ctx, retry_status.as_u16(), retry_err.message.clone());
+                return Err(LlmError::Provider(Box::new(retry_err)));
             }
 
             if attempt == COMPAT_RETRY_MAX_RETRIES - 1 {
-                let msg = format!(
-                    "{log_prefix} API error {retry_status}: {retry_msg} \
-                     (trace_id: {trace_id}) (after {COMPAT_RETRY_MAX_RETRIES} retries)"
-                );
-                return Err(self.audit_error(ctx, retry_status.as_u16(), msg));
+                self.record_error(ctx, retry_status.as_u16(), retry_err.message.clone());
+                return Err(LlmError::Provider(Box::new(retry_err)));
             }
+
+            current_policy = retry_err.retry_policy;
         }
 
         unreachable!("retry loop always returns on last iteration")
@@ -426,6 +438,20 @@ impl LlmClient for ChatOpenAICompat {
                 if data == "[DONE]" {
                     break 'sse;
                 }
+
+                // SSE 流内错误（HTTP 200 后经 data 事件下发）：接入统一解析器。
+                if data.starts_with('{') {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(data) {
+                        if v.get("error").is_some() && v.get("choices").is_none() {
+                            let parser = parser_for(&self.base_url);
+                            let mut err = parser.parse(0, &[], data.as_bytes());
+                            err.partial_tokens = sent_any_content;
+                            self.record_error(&ctx, 200, err.message.clone());
+                            return Err(LlmError::Provider(Box::new(err)));
+                        }
+                    }
+                }
+
                 let mut stream_chunk: super::stream::StreamChunk = match serde_json::from_str(data)
                 {
                     Ok(c) => c,

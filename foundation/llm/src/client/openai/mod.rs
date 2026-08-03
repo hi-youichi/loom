@@ -10,6 +10,7 @@ mod tests;
 
 use async_openai::{
     config::OpenAIConfig,
+    error::OpenAIError,
     types::chat::{ChatCompletionMessageToolCalls, CompletionUsage, CreateChatCompletionRequest},
     Client,
 };
@@ -33,6 +34,46 @@ use crate::tool::ToolSpec;
 use crate::traits::{LlmClient, LlmResponse, LlmUsage, StreamSink};
 
 use crate::traits::ToolChoiceMode;
+use model_spec_core::error::{ProviderError, RetryPolicy};
+
+/// async_openai 错误的分类结果。
+enum ApiErrorClass {
+    /// 不可重试的结构化错误（立即返回）。
+    Final(ProviderError),
+    /// 可重试的结构化错误（进入重试循环）。
+    Retryable(ProviderError),
+    /// 非 ApiError（网络/传输错误，走网络重试判定）。
+    Network,
+}
+
+/// 将 async_openai 的 API 错误接入统一解析器。
+///
+/// `OpenAIError::ApiError` 不含 HTTP 状态码（async_openai 0.32），
+/// 因此以 status=0 + 结构化字段构造 JSON body 交给统一解析器分类。
+fn openai_api_error_to_class(e: &OpenAIError) -> ApiErrorClass {
+    let OpenAIError::ApiError(api_err) = e else {
+        return ApiErrorClass::Network;
+    };
+    let body = serde_json::json!({
+        "error": {
+            "message": api_err.message,
+            "type": api_err.r#type,
+            "code": api_err.code,
+        }
+    });
+    let parser = crate::error::provider::parser_for("openai");
+    let err = parser.parse(0, &[], body.to_string().as_bytes());
+    if err.is_retryable() {
+        ApiErrorClass::Retryable(err)
+    } else {
+        ApiErrorClass::Final(err)
+    }
+}
+
+/// 包装为 `LlmError::Provider`（Box 化，避免 `LlmError` 变大）。
+fn into_provider_err(err: ProviderError) -> LlmError {
+    LlmError::Provider(Box::new(err))
+}
 
 pub(super) fn completion_usage_to_llm(u: &CompletionUsage) -> LlmUsage {
     use crate::traits::{CompletionTokensDetails, PromptTokensDetails};
@@ -304,50 +345,102 @@ impl LlmClient for ChatOpenAI {
             let request = self.build_request(messages, false)?;
             match self.client.chat().create(request).await {
                 Ok(response) => break response,
-                Err(e) => {
-                    let error_message = e.to_string();
-                    let classifier = LlmErrorClassifierConfig::openai();
-                    let retryable = classifier
-                        .classify_network_error(&error_message)
-                        .is_retryable();
-                    if retryable && attempt < TRANSIENT_HTTP_MAX_RETRIES {
-                        let delay = retry_backoff_for_attempt(attempt);
+                Err(e) => match openai_api_error_to_class(&e) {
+                    ApiErrorClass::Final(provider_err) => {
+                        let duration_ms = audit_start.elapsed().as_millis() as u64;
+                        self.record_audit(
+                            &trace_id,
+                            "chat",
+                            &url,
+                            duration_ms,
+                            0,
+                            audit_request.clone(),
+                            None,
+                            Some(provider_err.to_string()),
+                        );
+                        return Err(into_provider_err(provider_err));
+                    }
+                    ApiErrorClass::Retryable(provider_err) => {
+                        if attempt < TRANSIENT_HTTP_MAX_RETRIES {
+                            let delay = match provider_err.retry_policy {
+                                RetryPolicy::RetryAfter(ms) => {
+                                    std::time::Duration::from_millis(ms)
+                                }
+                                _ => retry_backoff_for_attempt(attempt),
+                            };
+                            tracing::warn!(
+                                url = %url,
+                                kind = ?provider_err.kind,
+                                attempt = attempt + 1,
+                                max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                                delay_secs = delay.as_secs_f64(),
+                                error = %provider_err.message,
+                                "OpenAI API request failed, retrying"
+                            );
+                            
+                            tokio::time::sleep(delay).await;
+                            attempt += 1;
+                            continue;
+                        }
+                        let duration_ms = audit_start.elapsed().as_millis() as u64;
+                        self.record_audit(
+                            &trace_id,
+                            "chat",
+                            &url,
+                            duration_ms,
+                            0,
+                            audit_request.clone(),
+                            None,
+                            Some(provider_err.to_string()),
+                        );
+                        return Err(into_provider_err(provider_err));
+                    }
+                    ApiErrorClass::Network => {
+                        let error_message = e.to_string();
+                        let classifier = LlmErrorClassifierConfig::openai();
+                        let retryable = classifier
+                            .classify_network_error(&error_message)
+                            .is_retryable();
+                        if retryable && attempt < TRANSIENT_HTTP_MAX_RETRIES {
+                            let delay = retry_backoff_for_attempt(attempt);
+                            tracing::warn!(
+                                url = %url,
+                                attempt = attempt + 1,
+                                max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                                delay_secs = delay.as_secs_f64(),
+                                error = %error_message,
+                                "OpenAI API request failed, retrying"
+                            );
+                            
+                            tokio::time::sleep(delay).await;
+                            attempt += 1;
+                            continue;
+                        }
+
                         tracing::warn!(
                             url = %url,
                             attempt = attempt + 1,
-                            max_retries = TRANSIENT_HTTP_MAX_RETRIES,
-                            delay_secs = delay.as_secs_f64(),
+                            retryable = retryable,
                             error = %error_message,
-                            "OpenAI API request failed, retrying"
+                            "OpenAI API request failed without retry"
                         );
-                        attempt += 1;
-                        tokio::time::sleep(delay).await;
-                        continue;
+                        let duration_ms = audit_start.elapsed().as_millis() as u64;
+                        self.record_audit(
+                            &trace_id,
+                            "chat",
+                            &url,
+                            duration_ms,
+                            0,
+                            audit_request.clone(),
+                            None,
+                            Some(error_message.clone()),
+                        );
+                        return Err(LlmError::InvokeFailed(format!(
+                            "OpenAI API error: {} (trace_id: {})",
+                            error_message, trace_id
+                        )));
                     }
-
-                    tracing::warn!(
-                        url = %url,
-                        attempt = attempt + 1,
-                        retryable = retryable,
-                        error = %error_message,
-                        "OpenAI API request failed without retry"
-                    );
-                    let duration_ms = audit_start.elapsed().as_millis() as u64;
-                    self.record_audit(
-                        &trace_id,
-                        "chat",
-                        &url,
-                        duration_ms,
-                        0,
-                        audit_request.clone(),
-                        None,
-                        Some(error_message.clone()),
-                    );
-                    return Err(LlmError::InvokeFailed(format!(
-                        "OpenAI API error: {} (trace_id: {})",
-                        error_message, trace_id
-                    )));
-                }
+                },
             }
         };
 
@@ -481,50 +574,102 @@ impl LlmClient for ChatOpenAI {
             let request = self.build_request(messages, true)?;
             match self.client.chat().create_stream(request).await {
                 Ok(stream) => break stream,
-                Err(e) => {
-                    let error_message = e.to_string();
-                    let classifier = LlmErrorClassifierConfig::openai();
-                    let retryable = classifier
-                        .classify_network_error(&error_message)
-                        .is_retryable();
-                    if retryable && attempt < TRANSIENT_HTTP_MAX_RETRIES {
-                        let delay = retry_backoff_for_attempt(attempt);
+                Err(e) => match openai_api_error_to_class(&e) {
+                    ApiErrorClass::Final(provider_err) => {
+                        let duration_ms = audit_start.elapsed().as_millis() as u64;
+                        self.record_audit(
+                            &trace_id,
+                            "chat_stream",
+                            &url,
+                            duration_ms,
+                            0,
+                            audit_request.clone(),
+                            None,
+                            Some(provider_err.to_string()),
+                        );
+                        return Err(into_provider_err(provider_err));
+                    }
+                    ApiErrorClass::Retryable(provider_err) => {
+                        if attempt < TRANSIENT_HTTP_MAX_RETRIES {
+                            let delay = match provider_err.retry_policy {
+                                RetryPolicy::RetryAfter(ms) => {
+                                    std::time::Duration::from_millis(ms)
+                                }
+                                _ => retry_backoff_for_attempt(attempt),
+                            };
+                            tracing::warn!(
+                                url = %url,
+                                kind = ?provider_err.kind,
+                                attempt = attempt + 1,
+                                max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                                delay_secs = delay.as_secs_f64(),
+                                error = %provider_err.message,
+                                "OpenAI stream request failed, retrying"
+                            );
+                            
+                            tokio::time::sleep(delay).await;
+                            attempt += 1;
+                            continue;
+                        }
+                        let duration_ms = audit_start.elapsed().as_millis() as u64;
+                        self.record_audit(
+                            &trace_id,
+                            "chat_stream",
+                            &url,
+                            duration_ms,
+                            0,
+                            audit_request.clone(),
+                            None,
+                            Some(provider_err.to_string()),
+                        );
+                        return Err(into_provider_err(provider_err));
+                    }
+                    ApiErrorClass::Network => {
+                        let error_message = e.to_string();
+                        let classifier = LlmErrorClassifierConfig::openai();
+                        let retryable = classifier
+                            .classify_network_error(&error_message)
+                            .is_retryable();
+                        if retryable && attempt < TRANSIENT_HTTP_MAX_RETRIES {
+                            let delay = retry_backoff_for_attempt(attempt);
+                            tracing::warn!(
+                                url = %url,
+                                attempt = attempt + 1,
+                                max_retries = TRANSIENT_HTTP_MAX_RETRIES,
+                                delay_secs = delay.as_secs_f64(),
+                                error = %error_message,
+                                "OpenAI stream request failed, retrying"
+                            );
+                            
+                            tokio::time::sleep(delay).await;
+                            attempt += 1;
+                            continue;
+                        }
+
                         tracing::warn!(
                             url = %url,
                             attempt = attempt + 1,
-                            max_retries = TRANSIENT_HTTP_MAX_RETRIES,
-                            delay_secs = delay.as_secs_f64(),
+                            retryable = retryable,
                             error = %error_message,
-                            "OpenAI stream request failed, retrying"
+                            "OpenAI stream request failed without retry"
                         );
-                        attempt += 1;
-                        tokio::time::sleep(delay).await;
-                        continue;
+                        let duration_ms = audit_start.elapsed().as_millis() as u64;
+                        self.record_audit(
+                            &trace_id,
+                            "chat_stream",
+                            &url,
+                            duration_ms,
+                            0,
+                            audit_request.clone(),
+                            None,
+                            Some(error_message.clone()),
+                        );
+                        return Err(LlmError::InvokeFailed(format!(
+                            "OpenAI stream error: {} (trace_id: {})",
+                            error_message, trace_id
+                        )));
                     }
-
-                    tracing::warn!(
-                        url = %url,
-                        attempt = attempt + 1,
-                        retryable = retryable,
-                        error = %error_message,
-                        "OpenAI stream request failed without retry"
-                    );
-                    let duration_ms = audit_start.elapsed().as_millis() as u64;
-                    self.record_audit(
-                        &trace_id,
-                        "chat_stream",
-                        &url,
-                        duration_ms,
-                        0,
-                        audit_request.clone(),
-                        None,
-                        Some(error_message.clone()),
-                    );
-                    return Err(LlmError::InvokeFailed(format!(
-                        "OpenAI stream error: {} (trace_id: {})",
-                        error_message, trace_id
-                    )));
-                }
+                },
             }
         };
 

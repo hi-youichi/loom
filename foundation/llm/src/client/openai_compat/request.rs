@@ -430,6 +430,19 @@ pub(super) fn build_request(
     req
 }
 
+
+fn audio_format_from_media_type(media_type: &str) -> &str {
+    match media_type {
+        "audio/mpeg" => "mp3",
+        "audio/wav" => "wav",
+        "audio/mp4" => "m4a",
+        _ => media_type
+            .rsplit_once('/')
+            .map(|(_, f)| f)
+            .unwrap_or(media_type),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -512,14 +525,3 @@ mod tests {
     }
 }
 
-fn audio_format_from_media_type(media_type: &str) -> &str {
-    match media_type {
-        "audio/mpeg" => "mp3",
-        "audio/wav" => "wav",
-        "audio/mp4" => "m4a",
-        _ => media_type
-            .rsplit_once('/')
-            .map(|(_, f)| f)
-            .unwrap_or(media_type),
-    }
-}

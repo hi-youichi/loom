@@ -8,12 +8,13 @@
 //! - **JSON parser**: [`parse_provider`], [`parse_model`], [`parse_all_providers`]
 //! - **HTTP resolver**: [`ModelsDevResolver`], [`HttpClient`], [`ReqwestHttpClient`]
 
-pub mod bundled_providers;
 pub mod cost;
 pub mod limit;
 pub mod model;
 pub mod parser;
 pub mod provider;
+#[cfg(feature = "resolver")]
+pub mod bundled_providers;
 #[cfg(feature = "resolver")]
 pub mod resolver;
 #[cfg(feature = "resolver")]

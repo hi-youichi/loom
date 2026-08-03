@@ -351,17 +351,7 @@ mod tests {
     use super::ReactBuildConfig;
 
     fn with_env(key: &str, value: Option<&str>, f: impl FnOnce()) {
-        let prev = std::env::var(key).ok();
-        match value {
-            Some(v) => std::env::set_var(key, v),
-            None => std::env::remove_var(key),
-        }
-        f();
-        if let Some(p) = prev {
-            std::env::set_var(key, p);
-        } else {
-            std::env::remove_var(key);
-        }
+        crate::test_support::with_env(key, value, f);
     }
 
     #[test]

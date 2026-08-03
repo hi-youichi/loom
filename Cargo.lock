@@ -1473,7 +1473,7 @@ version = "3.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "519bd3116aeeb42d5372c29d982d16d0170d3d4a5ed85fc7dd91642ffff3c67c"
 dependencies = [
- "darling 0.23.0",
+ "darling 0.20.11",
  "ident_case",
  "prettyplease",
  "proc-macro2",
@@ -4382,7 +4382,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "system-configuration 0.7.0",
  "tokio",
  "tower-service",
@@ -5887,9 +5887,9 @@ dependencies = [
 
 [[package]]
 name = "luft"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b8c18f72310b053eaf86c5ad401bbe362364b8a74c5e9489d14a1e288bd6f3e"
+checksum = "ae58862b93f47ba22749de737a48adbe66f99b014b171f61ac0f06c9fa094460"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5909,9 +5909,9 @@ dependencies = [
 
 [[package]]
 name = "luft-adapters"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebfe02ea9dbf94604dac52c2602f10e119f103787a563d258982da64f1176c2a"
+checksum = "b5299c1bafbcb54d3685082ff87d138082c9964894e3e4c2d2306d3bfc9fd1f8"
 dependencies = [
  "agent-client-protocol 0.14.0",
  "anyhow",
@@ -5929,9 +5929,9 @@ dependencies = [
 
 [[package]]
 name = "luft-core"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c337244c36ba3d339df1037f0bfa395a4ffd93218cb5dfd44161d88baeae9ca"
+checksum = "5cb11a50d6e5782c6b5f0b969ef92720bdd3b7046177aee3839feb5cf1b84c12"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5953,9 +5953,9 @@ dependencies = [
 
 [[package]]
 name = "luft-planner"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbbf8d48ef253db2cb29a446dacfd4e70e336e6a3f03adbdc75f24f90770c9b8"
+checksum = "b5d8a7c460fe05f91c7300604b38b7d340094bfa3ae02edd54642132a8feadaf"
 dependencies = [
  "anyhow",
  "luft-core",
@@ -5973,9 +5973,9 @@ dependencies = [
 
 [[package]]
 name = "luft-runtime"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d594bfe337843983a7af97868a6aac4dcbfa4e7d6ff713b893e28f6ceef9ce2"
+checksum = "5f52f6b9f8ebca5d48976bd4a0df02f290880296d0946ebc4b851241244c01c3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5996,9 +5996,9 @@ dependencies = [
 
 [[package]]
 name = "luft-service"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08cc765a276f971211512c3f1b9f30491bc5f211ea7ae7d9e18f882d30ffdfeb"
+checksum = "4ced65195ef888bedd8dd191c1b3988852874e62b25f948f41ff5f6480356716"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6018,9 +6018,9 @@ dependencies = [
 
 [[package]]
 name = "luft-skills"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "768eea3f66faf1284609778a44f9e1690cdf08de64b71dc88c19b31ca6d45786"
+checksum = "b57f1de6d765878cb77df0a7903c540da1f48f8ea2dfd439d02a0454cdc2f497"
 dependencies = [
  "const_format",
  "luft-core",
@@ -6028,9 +6028,9 @@ dependencies = [
 
 [[package]]
 name = "luft-storage"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00a5bcc653fc41e166150475c8539a02098c740c5af9c6bafde48a046f9e47f1"
+checksum = "2052795b55c98e665eb53a7438bf54a8b1905148e14ea54e0e771465c5524488"
 dependencies = [
  "anyhow",
  "chrono",
@@ -7176,7 +7176,7 @@ version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
- "heck 0.5.0",
+ "heck 0.4.1",
  "itertools 0.14.0",
  "log",
  "multimap",
@@ -7255,7 +7255,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls 0.23.40",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -7292,7 +7292,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.59.0",
 ]
@@ -8681,7 +8681,7 @@ version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1c97747dbf44bb1ca44a561ece23508e99cb592e862f22222dcf42f51d1e451"
 dependencies = [
- "heck 0.5.0",
+ "heck 0.4.1",
  "proc-macro2",
  "quote",
  "syn 2.0.117",

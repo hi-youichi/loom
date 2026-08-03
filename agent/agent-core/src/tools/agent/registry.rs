@@ -486,7 +486,7 @@ mod tests {
         // Insert MAX_TERMINAL_ENTRIES + 2 completed agents.
         for i in 0..(MAX_TERMINAL_ENTRIES + 2) {
             let id = format!("a{i}");
-            reg.register(id.clone().into(), "dev".into(), "t1".into(), None);
+            reg.register(id.clone(), "dev".into(), "t1".into(), None);
             reg.complete(&id, "done".into(), AgentCompletionStats::default());
             // Small delay to ensure distinct timestamps for eviction ordering.
             std::thread::sleep(std::time::Duration::from_millis(2));
@@ -507,7 +507,7 @@ mod tests {
         // Fill with terminal entries up to the cap.
         for i in 0..MAX_TERMINAL_ENTRIES {
             let id = format!("c{i}");
-            reg.register(id.clone().into(), "dev".into(), "t1".into(), None);
+            reg.register(id.clone(), "dev".into(), "t1".into(), None);
             reg.complete(&id, "done".into(), AgentCompletionStats::default());
             std::thread::sleep(std::time::Duration::from_millis(2));
         }

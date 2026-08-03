@@ -307,11 +307,10 @@ pub(crate) async fn resolve_title_provider(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::Mutex;
 
     fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
+        crate::test_support::env_lock()
     }
 
     fn restore_env(key: &str, old: Option<String>) {

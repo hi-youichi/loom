@@ -1,3 +1,4 @@
+pub mod error;
 pub mod models_dev;
 pub mod registry;
 pub mod tier;

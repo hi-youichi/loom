@@ -22,6 +22,9 @@ pub mod subagent_display;
 pub mod tool_output_normalizer;
 pub mod tools;
 
+#[cfg(test)]
+mod test_support;
+
 pub use runner_error::RunnerError;
 
 // Agent types

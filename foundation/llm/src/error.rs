@@ -4,11 +4,16 @@
 //! - `LlmError`: LLM-specific error type (invoke failures, empty responses, cancellation)
 //! - Re-exports of `GraphError` and `Interrupt` from `loom-graph-core` for backward compatibility
 //! - `From<LlmError> for GraphError` conversion for seamless `?` propagation
+//! - `ProviderError` structured error classification (types live in `model-spec-core::error`)
+
+pub mod decide;
+pub mod provider;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub use loom_graph_core::{GraphError, Interrupt};
+pub use model_spec_core::error::ProviderError;
 
 /// LLM client error type.
 ///
@@ -20,6 +25,10 @@ pub enum LlmError {
     /// LLM invocation failed (network error, API error, parse failure, etc.).
     #[error("LLM invoke failed: {0}")]
     InvokeFailed(String),
+
+    /// Structured provider error with classification and retry decision.
+    #[error("{0}")]
+    Provider(Box<ProviderError>),
 
     /// LLM returned empty response after all retries exhausted.
     #[error("LLM returned empty response after {retries} retries")]
@@ -33,10 +42,11 @@ pub enum LlmError {
 impl LlmError {
     /// Returns true if this error is retryable.
     pub fn is_retryable(&self) -> bool {
-        matches!(
-            self,
-            LlmError::InvokeFailed(_) | LlmError::EmptyResponse { .. }
-        )
+        match self {
+            LlmError::InvokeFailed(_) | LlmError::EmptyResponse { .. } => true,
+            LlmError::Provider(e) => e.is_retryable(),
+            LlmError::Cancelled => false,
+        }
     }
 }
 
@@ -48,6 +58,7 @@ impl From<LlmError> for GraphError {
     fn from(e: LlmError) -> Self {
         match e {
             LlmError::InvokeFailed(msg) => GraphError::ExecutionFailed(msg),
+            LlmError::Provider(e) => GraphError::ExecutionFailed(e.user_message),
             LlmError::EmptyResponse { retries } => GraphError::ExecutionFailed(format!(
                 "LLM returned empty response after {retries} retries"
             )),

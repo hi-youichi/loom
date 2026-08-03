@@ -1,53 +1,17 @@
-//! OpenAI Error Classification Strategy
+//! OpenAI 传输层网络错误重试判定。
 //!
-//! Standard OpenAI API uses HTTP status codes for retry decisions.
-//! No business error codes are used.
+//! 收敛说明：业务码 / HTTP 状态分类已迁移至 [`crate::error::provider`]。
+//! 本模块仅实现网络错误判定（连接/超时/TLS），供 async_openai 路径使用。
 
-use super::{ApiErrorParser, HttpRetryPolicy};
+use super::HttpRetryPolicy;
 
 pub struct OpenAiRetryPolicy;
 
-impl HttpRetryPolicy for OpenAiRetryPolicy {
-    fn is_retryable_status(&self, status: u16, _error_body: &str) -> bool {
-        matches!(status, 429 | 500..=504 | 524 | 598 | 599)
-    }
-}
-
-pub struct OpenAiApiParser;
-
-impl ApiErrorParser for OpenAiApiParser {
-    fn extract_error_code(&self, _message: &str) -> Option<String> {
-        None
-    }
-
-    fn is_retryable_code(&self, _code: &str) -> bool {
-        false
-    }
-}
+impl HttpRetryPolicy for OpenAiRetryPolicy {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn retryable_status_codes() {
-        let policy = OpenAiRetryPolicy;
-        assert!(policy.is_retryable_status(429, ""));
-        assert!(policy.is_retryable_status(500, ""));
-        assert!(policy.is_retryable_status(502, ""));
-        assert!(policy.is_retryable_status(503, ""));
-        assert!(policy.is_retryable_status(504, ""));
-        assert!(policy.is_retryable_status(524, ""));
-    }
-
-    #[test]
-    fn non_retryable_status_codes() {
-        let policy = OpenAiRetryPolicy;
-        assert!(!policy.is_retryable_status(400, "Bad request"));
-        assert!(!policy.is_retryable_status(401, "Unauthorized"));
-        assert!(!policy.is_retryable_status(403, "Forbidden"));
-        assert!(!policy.is_retryable_status(404, "Not found"));
-    }
 
     #[test]
     fn network_errors_are_retryable() {
@@ -57,5 +21,12 @@ mod tests {
         assert!(policy.is_retryable_network_error("broken pipe"));
         assert!(policy.is_retryable_network_error("unexpected eof while reading"));
         assert!(policy.is_retryable_network_error("tls handshake failed"));
+    }
+
+    #[test]
+    fn non_network_errors_are_not_retryable() {
+        let policy = OpenAiRetryPolicy;
+        assert!(!policy.is_retryable_network_error("invalid api key"));
+        assert!(!policy.is_retryable_network_error("rate limit reached"));
     }
 }
