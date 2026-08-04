@@ -31,7 +31,8 @@ impl AgentBackend for SalvageBackend {
         AgentCapabilities {
             streaming: false,
             mcp_injection: false,
-            structured_output: true,
+            workflow_validate_schema: true,
+            session_resume: false,
             models: vec![],
         }
     }
@@ -62,7 +63,7 @@ impl AgentBackend for SalvageBackend {
             tokens_used: TokenUsage::default(),
             artifacts: vec![],
             logs: LogRef::default(),
-            thread_id: task.thread_id.clone(),
+            session_id: task.session_id.clone(),
         })
     }
 

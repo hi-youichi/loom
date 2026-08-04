@@ -36,6 +36,7 @@ impl AgentBackend for LoomAgentBackend {
             streaming: true,
             mcp_injection: true,
             workflow_validate_schema: true,
+            session_resume: true,
             models: vec![],
         }
     }
@@ -52,15 +53,15 @@ impl AgentBackend for LoomAgentBackend {
 
         let mut config = self.config_template.clone();
 
-        let thread_id = task.thread_id.clone();
-        if thread_id.is_some() {
-            config.thread_id = thread_id.clone();
+        let session_id = task.session_id.clone();
+        if session_id.is_some() {
+            config.thread_id = session_id.clone();
             config.resume_mode = true;
             tracing::debug!(
                 target: "workflow::backend",
                 agent_id = %task.agent_id,
-                thread_id = ?thread_id,
-                "resuming from prior thread",
+                session_id = ?session_id,
+                "resuming from prior session",
             );
         }
 
@@ -221,7 +222,7 @@ impl AgentBackend for LoomAgentBackend {
                     tokens_used: *tokens.lock().unwrap(),
                     artifacts: vec![],
                     logs: LogRef::default(),
-                    thread_id,
+                    session_id,
                 });
             }
         };
@@ -250,7 +251,7 @@ impl AgentBackend for LoomAgentBackend {
             tokens_used,
             artifacts: vec![],
             logs: LogRef::default(),
-            thread_id,
+            session_id,
         })
     }
 

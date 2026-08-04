@@ -62,7 +62,8 @@ impl AgentBackend for CountingBackend {
         AgentCapabilities {
             streaming: true,
             mcp_injection: false,
-            structured_output: false,
+            workflow_validate_schema: false,
+            session_resume: true,
             models: vec![],
         }
     }
@@ -76,7 +77,7 @@ impl AgentBackend for CountingBackend {
             agent_id: task.agent_id,
             status: AgentStatus::Ok,
             output: self.canned.clone(),
-            thread_id: task.thread_id.clone(),
+            session_id: task.session_id.clone(),
             findings: vec![],
             tokens_used: TokenUsage::default(),
             artifacts: vec![],

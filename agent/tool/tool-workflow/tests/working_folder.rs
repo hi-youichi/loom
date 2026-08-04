@@ -28,7 +28,8 @@ impl AgentBackend for CapturingBackend {
         AgentCapabilities {
             streaming: true,
             mcp_injection: false,
-            structured_output: false,
+            workflow_validate_schema: false,
+            session_resume: false,
             models: vec![],
         }
     }
@@ -46,7 +47,7 @@ impl AgentBackend for CapturingBackend {
             tokens_used: TokenUsage::default(),
             artifacts: vec![],
             logs: LogRef::default(),
-            thread_id: task.thread_id.clone(),
+            session_id: task.session_id.clone(),
         })
     }
 
