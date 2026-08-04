@@ -20,7 +20,7 @@ checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
 tool-core = { path = "../../agent/tool/tool-core" }
 tool-basic = { path = "../../agent/tool/tool-basic" }
 tool-workflow = { path = "../../agent/tool/tool-workflow" }
-model-spec-core = { path = "../../foundation/model-spec-core", features = ["tier"] }
+model-spec-core = { path = "../../foundation/model-spec-core" }
 stream-event = { path = "../../foundation/stream-event" }
 
 loom-curator = { path = "../../experimental/curator" }

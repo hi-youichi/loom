@@ -77,7 +77,7 @@ futures-util = "0.3"
 
 env-config = { path = "../../foundation/config", package = "config" }
 
-model-spec-core = { path = "../../foundation/model-spec-core", features = ["tier"] }
+model-spec-core = { path = "../../foundation/model-spec-core" }
 
 async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
 

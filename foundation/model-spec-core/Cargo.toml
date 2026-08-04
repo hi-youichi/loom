@@ -10,7 +10,7 @@ description = "Shared model/provider spec types, parsers, and resolvers for Loom
 path = "src/lib.rs"
 
 [features]
-default = []
+default = ["tier"]
 resolver = [
     "dep:loom-http-retry",
     "dep:reqwest",

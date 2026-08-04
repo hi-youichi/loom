@@ -13,11 +13,8 @@ pub mod limit;
 pub mod model;
 pub mod parser;
 pub mod provider;
-#[cfg(feature = "resolver")]
 pub mod bundled_providers;
-#[cfg(feature = "resolver")]
 pub mod resolver;
-#[cfg(feature = "resolver")]
 pub mod yaml_provider;
 
 pub use cost::{Cost, CostTier, CostTierInfo};
@@ -33,7 +30,6 @@ pub use parser::{
 };
 pub use provider::Provider;
 
-#[cfg(feature = "resolver")]
 pub use resolver::{
     HttpClient, ModelsDevResolver, ReqwestHttpClient, DEFAULT_MODELS_DEV_URL,
 };
