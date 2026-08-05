@@ -531,4 +531,40 @@ mod tests {
         assert_eq!(entry.id, "openai/gpt-4o");
         assert_eq!(entry.name, "gpt-4o");
     }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_list_all_models_includes_bundled_provider() {
+        let registry = ModelRegistry::new();
+        let providers = vec![ProviderConfig {
+            name: "huoshan-coding-plan".to_string(),
+            base_url: Some("https://api.modelgate.dev/v1".to_string()),
+            api_key: Some("test-key".to_string()),
+            provider_type: Some("openai_compat".to_string()),
+            fetch_models: false,
+            declared_models: vec![],
+            ..Default::default()
+        }];
+        let models = registry.list_all_models(&providers).await;
+
+        let huoshan_models: Vec<_> = models
+            .iter()
+            .filter(|m| m.provider == "huoshan-coding-plan")
+            .collect();
+
+        assert!(
+            !huoshan_models.is_empty(),
+            "huoshan-coding-plan models should be listed. All models: {:?}",
+            models.iter().map(|m| &m.id).collect::<Vec<_>>()
+        );
+
+        let has_deepseek = huoshan_models
+            .iter()
+            .any(|m| m.name == "deepseek-v4-flash-260425");
+        assert!(has_deepseek, "deepseek-v4-flash-260425 should be in the list");
+
+        let has_doubao = huoshan_models
+            .iter()
+            .any(|m| m.name == "doubao-seed-2-1-pro-260628");
+        assert!(has_doubao, "doubao-seed-2-1-pro-260628 should be in the list");
+    }
 }

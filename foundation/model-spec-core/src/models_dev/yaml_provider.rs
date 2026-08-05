@@ -463,16 +463,15 @@ models:
     }
 
     #[test]
-    fn plugin_resolver_loads_huoshan() {
-        let resolver = crate::resolver::plugin::default_providers_dir();
-        let plugins = load_yaml_plugins(&resolver);
-        let huoshan = plugins.iter().find(|p| p.provider.id == "huoshan-coding-plan");
-        assert!(huoshan.is_some(), "huoshan-coding-plan.yaml not found in {:?}", resolver);
+    fn bundled_provider_loads_huoshan() {
+        let providers = crate::models_dev::bundled_providers::load_bundled_providers();
+        let huoshan = providers.get("huoshan-coding-plan");
+        assert!(huoshan.is_some(), "huoshan-coding-plan not found in bundled providers");
 
-        if let Some(plugin) = huoshan {
-            assert!(!plugin.models.is_empty());
-            println!("huoshan-coding-plan: {} models", plugin.models.len());
-            for id in plugin.models.keys() {
+        if let Some(provider) = huoshan {
+            assert!(!provider.models.is_empty());
+            println!("huoshan-coding-plan: {} models", provider.models.len());
+            for id in provider.models.keys() {
                 println!("  - {id}");
             }
         }
