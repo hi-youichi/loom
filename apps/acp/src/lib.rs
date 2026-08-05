@@ -30,7 +30,7 @@
 //!          | stdin (JSON-RPC Request/Notification)              | stdout (JSON-RPC Response/Notification)
 //!          v                                                    |
 //! +-------------------------------------------------------------------------------+
-//! |  loom-acp process                                                             |
+//! |  loom acp process                                                               |
 //! |  +-------------------------------------------------------------------------+  |
 //! |  |  Transport   run_stdio_loop() / AgentSideConnection                    |  |
 //! |  |  - read stdin -> parse JSON-RPC -> dispatch to Agent                    |  |
@@ -65,7 +65,7 @@
 //! ### Diagram 2: Request/response flow (single prompt turn)
 //!
 //! ```text
-//!   IDE                    loom-acp Transport              LoomAcpAgent              Loom
+//!   IDE                    loom acp Transport              LoomAcpAgent              Loom
 //!    |                            |                              |                     |
 //!    |  initialize                |                              |                     |
 //!    |--------------------------->|  Agent::initialize()         |                     |
@@ -158,8 +158,8 @@
 //!
 //! ## Entrypoint and configuration
 //!
-//! - **Binary**: `cargo build -p loom-acp` produces the `loom-acp` executable; it does not parse subcommands; all parameters come from `session/new`.
-//! - **IDE config**: Set command to `loom-acp` (or full path), args empty; working directory optional.
+//! - **Binary**: `loom acp` runs the ACP server; all parameters come from `session/new`.
+//! - **IDE config**: Set command to `loom acp` (or full path); working directory optional.
 //! - **Protocol params**: working directory, MCP, etc. are provided by ACP's `session/new` request.
 //!
 //! ## Errors and cancellation

@@ -6,9 +6,9 @@
 //! ## Transport (stdio)
 //!
 //! - Only **stdio** is implemented: newline-delimited JSON-RPC 2.0, one complete JSON per line (Request/Response/Notification).
-//! - Flow: Client -> stdin -> loom-acp; loom-acp -> stdout -> Client. **stderr is for logs only**; no JSON-RPC on stderr.
+//! - Flow: Client -> stdin -> loom acp; loom acp -> stdout -> Client. **stderr is for logs only**; no JSON-RPC on stderr.
 //! - Use `agent_client_protocol::AgentSideConnection::new(agent, stdin, stdout, spawn)` to drive the I/O loop.
-//! - **Entrypoint**: Currently a separate loom-acp binary; if sharing a binary with loom later, stdin detection can switch mode.
+//! - **Entrypoint**: Runs via `loom acp` subcommand on the same binary as the CLI.
 //!
 //! ## initialize (capability negotiation)
 //!

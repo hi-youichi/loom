@@ -3,7 +3,7 @@
 //! Spawns `run_review()` in a dedicated OS thread with its own tokio runtime,
 //! so the ACP prompt returns immediately while review proceeds in the background.
 //! This replaces the CLI path's external subprocess spawn (`loom review session`),
-//! which is a no-op under `loom-acp` (the binary has no such subcommand).
+//! which is a no-op under the ACP server (`loom acp` has no review subcommand).
 
 use std::path::PathBuf;
 
