@@ -11,7 +11,7 @@ models:
     limit:
       context: 262144
       input: 262144
-      output: 262144
+      output: 131072
     reasoning: true
     tool_call: true
     structured_output: true
@@ -27,6 +27,7 @@ models:
     family: "deepseek-v4"
     limit:
       context: 1048576
+      input: 1048576
       output: 393216
     reasoning: true
     tool_call: true
