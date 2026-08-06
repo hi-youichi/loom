@@ -3,6 +3,8 @@
 mod session;
 mod session_http;
 
+use std::time::Duration;
+
 use serde_json::Value;
 
 use tool_core::{ToolCallContent, ToolOutputHint, ToolOutputStrategy, ToolSourceError, ToolSpec};
@@ -16,7 +18,11 @@ pub use session_http::McpHttpSession;
 /// server URL is http(s). Implements `ToolSource` via rmcp `list_tools` and `call_tool`.
 pub struct McpToolSource {
     client: McpClient,
+    tool_timeout: Duration,
 }
+
+/// Default timeout for one MCP tool call.
+pub const DEFAULT_TOOL_TIMEOUT: Duration = Duration::from_secs(60);
 
 enum McpClient {
     Stdio(McpSession),
@@ -34,6 +40,7 @@ impl McpToolSource {
             McpSession::new(command, args, None::<Vec<(String, String)>>, stderr_verbose).await?;
         Ok(Self {
             client: McpClient::Stdio(session),
+            tool_timeout: DEFAULT_TOOL_TIMEOUT,
         })
     }
 
@@ -47,6 +54,7 @@ impl McpToolSource {
         let session = McpSession::new(command, args, Some(env), stderr_verbose).await?;
         Ok(Self {
             client: McpClient::Stdio(session),
+            tool_timeout: DEFAULT_TOOL_TIMEOUT,
         })
     }
 
@@ -58,6 +66,35 @@ impl McpToolSource {
         let session = McpHttpSession::new(url, headers).await?;
         Ok(Self {
             client: McpClient::Http(session),
+            tool_timeout: DEFAULT_TOOL_TIMEOUT,
+        })
+    }
+
+    /// Like [`Self::new_with_env`], with an explicit per-tool-call timeout.
+    pub async fn new_with_env_and_tool_timeout(
+        command: impl Into<String>,
+        args: Vec<String>,
+        env: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+        stderr_verbose: bool,
+        tool_timeout: Duration,
+    ) -> Result<Self, McpSessionError> {
+        let session = McpSession::new(command, args, Some(env), stderr_verbose).await?;
+        Ok(Self {
+            client: McpClient::Stdio(session),
+            tool_timeout,
+        })
+    }
+
+    /// Like [`Self::new_http`], with an explicit per-tool-call timeout.
+    pub async fn new_http_with_tool_timeout(
+        url: impl Into<String>,
+        headers: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+        tool_timeout: Duration,
+    ) -> Result<Self, ToolSourceError> {
+        let session = McpHttpSession::new(url, headers).await?;
+        Ok(Self {
+            client: McpClient::Http(session),
+            tool_timeout,
         })
     }
 
@@ -89,10 +126,20 @@ impl McpToolSource {
         name: &str,
         arguments: Value,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let result = match &self.client {
-            McpClient::Stdio(s) => s.call_tool(name, arguments).await?,
-            McpClient::Http(s) => s.call_tool(name, arguments).await?,
+        let call = async {
+            match &self.client {
+                McpClient::Stdio(s) => s.call_tool(name, arguments).await,
+                McpClient::Http(s) => s.call_tool(name, arguments).await,
+            }
         };
+        let result = tokio::time::timeout(self.tool_timeout, call)
+            .await
+            .map_err(|_| {
+                ToolSourceError::Transport(format!(
+                    "MCP tool `{name}` timed out after {} seconds",
+                    self.tool_timeout.as_secs_f64()
+                ))
+            })??;
         if result.is_error.unwrap_or(false) {
             let msg = extract_text(&result.content);
             return Err(ToolSourceError::Transport(
