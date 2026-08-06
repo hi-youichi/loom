@@ -40,6 +40,7 @@ fn cmd_to_runcmd(cmd: &Command) -> RunCmd {
         Command::Task(_) => unreachable!("task handled in main"),
 
         Command::Acp(_) => unreachable!("acp handled in main"),
+        Command::Server(_) => unreachable!("server handled in main"),
     }
 }
 

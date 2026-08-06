@@ -28,6 +28,7 @@ memory-v2 = { path = "../../experimental/memory-v2" }
 model-spec-core = { path = "../../foundation/model-spec-core" }
 checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
 loom-acp = { package = "acp", path = "../acp" }
+loom_server = { package = "loom-server-core", path = "../server" }
 
 stream-event = { path = "../../foundation/stream-event" }
 config = { path = "../../foundation/config", features = ["tracing-init"] }

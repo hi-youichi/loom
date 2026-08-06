@@ -1,14 +1,10 @@
 [package]
-name = "loom-server"
+name = "loom-server-core"
 version.workspace = true
 edition.workspace = true
 description = "Loom HTTP+SSE server: serves loom as an opencode-compatible kernel (External mode)"
 license.workspace = true
 authors.workspace = true
-
-[[bin]]
-name = "loom-server"
-path = "src/main.rs"
 
 [lib]
 name = "loom_server"

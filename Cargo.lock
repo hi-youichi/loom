@@ -44,7 +44,6 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "uuid",
- "which 7.0.3",
  "wiremock",
 ]
 
@@ -1764,6 +1763,7 @@ dependencies = [
  "loom-curator",
  "loom-graph-core",
  "loom-llm",
+ "loom-server-core",
  "memory-v2",
  "minus",
  "model-spec-core",
@@ -5785,7 +5785,7 @@ name = "loom-pty-protocol"
 version = "0.5.0"
 
 [[package]]
-name = "loom-server"
+name = "loom-server-core"
 version = "0.5.0"
 dependencies = [
  "acp",

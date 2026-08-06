@@ -81,6 +81,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    if let Some(Cmd::Server(server_options)) = &args.cmd {
+        loom_server::runtime::run(server_options.clone()).await?;
+        return Ok(());
+    }
+
     // Preserve shell environment variables BEFORE config.toml is loaded.
     // This allows us to distinguish between shell-set and config.toml-set LOG_FILE.
     let shell_env = preserve_shell_env();

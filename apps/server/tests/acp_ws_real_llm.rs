@@ -7,7 +7,7 @@
 //!
 //! Run manually:
 //! ```sh
-//! cargo test -p loom-server --test acp_ws_real_llm -- --ignored --nocapture
+//! cargo test -p loom-server-core --test acp_ws_real_llm -- --ignored --nocapture
 //! ```
 
 #![cfg(test)]

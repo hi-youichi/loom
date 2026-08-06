@@ -146,7 +146,7 @@ async fn relay_loop(
 /// Run the stdio↔WebSocket bridge with auto-reconnect.
 ///
 /// 1. Probe the target URL — if loom-server is already running, use it.
-/// 2. If not running, spawn `loom-server serve` as a detached child.
+/// 2. If not running, spawn `loom server` as a detached child.
 /// 3. Connect WebSocket and relay.
 /// 4. On disconnect, re-probe / re-spawn and reconnect (exponential back-off).
 /// 5. Exit only when stdin (IDE) or stdout closes.
@@ -393,45 +393,20 @@ async fn probe_server(client: &reqwest::Client, health_url: &str) -> bool {
     resp.status().is_success()
 }
 
-/// Resolve the `loom-server` binary path.
-///
-/// Priority: `LOOM_SERVER_BIN` env var → sibling of `current_exe()` → `PATH`.
-fn resolve_server_binary() -> Option<std::path::PathBuf> {
-    if let Ok(path) = std::env::var("LOOM_SERVER_BIN") {
-        let p = std::path::PathBuf::from(path);
-        if p.exists() {
-            return Some(p);
-        }
-    }
-
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let candidate = dir.join("loom-server");
-            if candidate.exists() {
-                return Some(candidate);
-            }
-            #[cfg(target_os = "windows")]
-            {
-                let candidate = dir.join("loom-server.exe");
-                if candidate.exists() {
-                    return Some(candidate);
-                }
-            }
-        }
-    }
-
-    which::which("loom-server").ok()
+/// Resolve the current `loom` executable.
+fn resolve_loom_binary() -> BridgeResult<std::path::PathBuf> {
+    std::env::current_exe()
+        .map_err(|error| format!("failed to resolve current loom executable: {error}").into())
 }
 
-/// Spawn `loom-server serve --host <host> --port <port>` as a detached child.
+/// Spawn `loom server --host <host> --port <port>` as a detached child.
 fn spawn_server(host: &str, port: u16) -> BridgeResult<std::process::Child> {
-    let bin = resolve_server_binary()
-        .ok_or_else(|| "loom-server binary not found (set LOOM_SERVER_BIN to override)".to_string())?;
+    let bin = resolve_loom_binary()?;
 
-    tracing::info!(bin = %bin.display(), host, port, "spawning loom-server");
+    tracing::info!(bin = %bin.display(), host, port, "spawning loom server");
 
     let mut cmd = std::process::Command::new(&bin);
-    cmd.args(["serve", "--host", host, "--port", &port.to_string()])
+    cmd.args(["server", "--host", host, "--port", &port.to_string()])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -452,9 +427,9 @@ fn spawn_server(host: &str, port: u16) -> BridgeResult<std::process::Child> {
 
     let child = cmd
         .spawn()
-        .map_err(|e| format!("failed to spawn loom-server: {e}"))?;
+        .map_err(|e| format!("failed to spawn loom server: {e}"))?;
 
-    tracing::info!(pid = child.id(), "loom-server spawned successfully");
+    tracing::info!(pid = child.id(), "loom server spawned successfully");
     Ok(child)
 }
 
@@ -611,23 +586,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn ensure_server_ready_times_out_when_binary_missing() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        drop(listener);
-
-        let ws_url = format!("ws://{addr}/acp");
-        let cancel = tokio_util::sync::CancellationToken::new();
-        let client = probe_client();
-
-        std::env::set_var("LOOM_SERVER_BIN", "/nonexistent/loom-server-test");
-        let result = ensure_server_ready(&ws_url, &cancel, &client).await;
-        std::env::remove_var("LOOM_SERVER_BIN");
-
-        assert!(
-            result.is_err(),
-            "should fail when server binary is not found"
-        );
+    #[test]
+    fn resolve_loom_binary_returns_current_executable() {
+        assert!(resolve_loom_binary().unwrap().is_file());
     }
 }

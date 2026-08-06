@@ -168,6 +168,9 @@ pub(crate) enum Command {
 
     /// Run as ACP (Agent Client Protocol) server for IDE integration
     Acp(AcpArgs),
+
+    /// Run the Loom HTTP and ACP WebSocket server
+    Server(loom_server::runtime::ServerOptions),
 }
 
 #[derive(clap::Args, Debug, Clone)]
