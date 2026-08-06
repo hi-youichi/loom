@@ -34,7 +34,7 @@ use std::sync::Arc;
 use clap::Parser;
 use tokio::sync::Notify;
 
-use args::{AcpCmd, Args, Command as Cmd, GotArgs};
+use args::{Args, Command as Cmd, GotArgs};
 use bootstrap::{init_logging, preserve_shell_env, print_config_report};
 use display_limits::max_reply_len;
 use run_flow::{
@@ -67,41 +67,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ACP path: must branch before any stdout output (config report, logging).
     // The ACP protocol uses stdout for JSON-RPC; any extra output corrupts it.
     if let Some(Cmd::Acp(acp_args)) = &args.cmd {
-        if acp_args.show_log_dir {
-            match loom_acp::server::acp_log_dir() {
-                Some(p) => println!("{}", p.display()),
-                None => {
-                    eprintln!("loom acp: could not determine log directory");
-                    std::process::exit(1);
-                }
-            }
-            return Ok(());
-        }
-        if let Some(AcpCmd::Reload) = acp_args.cmd {
-            loom_acp::server::run_reload();
-            return Ok(());
-        }
-        if let Some(AcpCmd::Start) = acp_args.cmd {
-            loom_acp::server::run_start();
-            return Ok(());
-        }
-        if let Some(AcpCmd::Stop) = acp_args.cmd {
-            loom_acp::server::run_stop();
-            return Ok(());
-        }
-        if let Some(AcpCmd::Restart) = acp_args.cmd {
-            loom_acp::server::run_restart();
-            return Ok(());
-        }
-
         let log_config = loom_acp::logging::LogConfig {
             level: args.log_level.clone().unwrap_or_else(|| "info".to_string()),
             file: args.log_file.clone(),
             rotate: config::tracing_init::LogRotate::from_str_or_daily(&args.log_rotate),
             format: args.log_format.parse().unwrap_or_default(),
         };
-
-        if let Err(e) = loom_acp::server::run_server(log_config, acp_args.daemon).await {
+        loom_acp::set_log_config(log_config);
+        if let Err(e) = loom_acp::ws_bridge::run_ws_bridge(acp_args.url.clone()).await {
             eprintln!("loom acp: {e}");
             std::process::exit(1);
         }

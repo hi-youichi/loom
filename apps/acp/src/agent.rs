@@ -15,6 +15,7 @@ use agent_client_protocol::schema::v1::{
     AgentCapabilities, McpCapabilities, PromptCapabilities, SessionCapabilities,
     SessionListCapabilities, SessionResumeCapabilities,
 };
+use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::schema::v1::{
     AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
     ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
@@ -393,7 +394,16 @@ impl LoomAcpAgent {
             .prompt_capabilities(prompts)
             .session_capabilities(session);
 
-        let response = InitializeResponse::new(args.protocol_version)
+        let protocol_version = if args.protocol_version >= ProtocolVersion::V1 {
+            args.protocol_version
+        } else {
+            tracing::warn!(
+                client_version = ?args.protocol_version,
+                "Client requested protocol version < V1, upgrading to V1"
+            );
+            ProtocolVersion::V1
+        };
+        let response = InitializeResponse::new(protocol_version)
             .agent_info(agent_client_protocol::schema::v1::Implementation::new(
                 "loom",
                 env!("CARGO_PKG_VERSION"),
@@ -749,6 +759,7 @@ impl LoomAcpAgent {
             .sessions
             .get(&key)
             .ok_or_else(|| agent_client_protocol::Error::new(-32602, "unknown session"))?;
+
         let cancellation = self
             .sessions
             .begin_prompt(&key)
@@ -758,6 +769,11 @@ impl LoomAcpAgent {
                     "a prompt is already in progress for this session",
                 )
             })?;
+
+        // RAII guard: ensures finish_prompt is called even if the future is
+        // dropped (e.g., WS disconnect cancels the task mid-prompt).
+        let _prompt_guard =
+            crate::session::PromptGuard::new(&self.sessions, &key, cancellation.generation());
 
         let user_content =
             content_blocks_to_user_content(args.prompt.as_slice()).map_err(|_| {
@@ -1520,7 +1536,7 @@ impl LoomAcpAgent {
                     let title = latest_summary.filter(|s| !s.trim().is_empty()).or_else(|| {
                         Some(format!(
                             "Session {}",
-                            &session_id[..8.min(session_id.len())]
+                            session_id.chars().take(8).collect::<String>()
                         ))
                     });
 

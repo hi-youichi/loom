@@ -125,6 +125,14 @@ struct HubInner {
     attached_at: Instant,
     /// Wall-clock time when the last lease was dropped (for idle TTL).
     last_detach_at: Option<Instant>,
+    /// Monotonic generation counter — each `attach_with` increments it.
+    /// `note_detach` only clears recipient when the generation matches,
+    /// preventing stale detach calls from killing a newer connection.
+    generation: u64,
+    /// Handle to the idle TTL sweeper task.  Replaced on each `attach_with`
+    /// so that only one sweeper is active at a time (preventing
+    /// accumulation across reconnections).
+    ttl_sweeper: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Default for AcpHub {
@@ -151,6 +159,7 @@ impl AcpHub {
             Arc<loom_acp::LoomAcpAgent>,
             mpsc::Receiver<SessionNotification>,
             oneshot::Receiver<()>,
+            u64,
         ),
         String,
     > {
@@ -174,6 +183,7 @@ impl AcpHub {
             Arc<loom_acp::LoomAcpAgent>,
             mpsc::Receiver<SessionNotification>,
             oneshot::Receiver<()>,
+            u64,
         ),
         String,
     > {
@@ -219,6 +229,8 @@ impl AcpHub {
                 owner: owner.clone(),
                 attached_at: Instant::now(),
                 last_detach_at: None,
+                generation: 0,
+                ttl_sweeper: None,
             });
         }
 
@@ -254,6 +266,8 @@ impl AcpHub {
         inner.owner = owner.clone();
         inner.attached_at = Instant::now();
         inner.last_detach_at = None;
+        inner.generation += 1;
+        let generation = inner.generation;
 
         let (tx, rx) = mpsc::channel(256);
 
@@ -288,12 +302,16 @@ impl AcpHub {
             }
         }
 
-        // Spawn idle TTL sweeper if configured.
+        // Spawn idle TTL sweeper if configured.  Abort the previous sweeper
+        // (from an earlier attach) so only one is active per hub at a time.
         if self.config.idle_ttl_secs > 0 {
+            if let Some(prev) = inner.ttl_sweeper.take() {
+                prev.abort();
+            }
             let agent = inner.agent.clone();
             let ttl = std::time::Duration::from_secs(self.config.idle_ttl_secs);
             let recipient = inner.recipient.clone();
-            tokio::spawn(async move {
+            let sweeper = tokio::spawn(async move {
                 loop {
                     tokio::time::sleep(ttl).await;
                     let alive = recipient.lock().await.is_some();
@@ -304,6 +322,7 @@ impl AcpHub {
                     }
                 }
             });
+            inner.ttl_sweeper = Some(sweeper);
         }
 
         tracing::info!(
@@ -313,7 +332,7 @@ impl AcpHub {
             "AcpHub attached"
         );
 
-        Ok((inner.agent.clone(), rx, lease))
+        Ok((inner.agent.clone(), rx, lease, generation))
     }
 
     /// Get a snapshot of hub metrics.
@@ -321,14 +340,22 @@ impl AcpHub {
         self.stats.lock().await.clone()
     }
 
-    /// Mark the current connection as detached (for idle TTL tracking).
-    pub async fn note_detach(&self) {
+    /// Mark the connection identified by `generation` as detached.
+    ///
+    /// Only clears the notification recipient when `generation` matches the
+    /// current connection — a stale detach from an older connection is a no-op
+    /// (besides incrementing the disconnect counter), preventing it from
+    /// killing the newer connection's notification delivery.
+    pub async fn note_detach(&self, generation: u64) {
         let mut guard = self.inner.lock().await;
         if let Some(inner) = guard.as_mut() {
-            inner.last_detach_at = Some(Instant::now());
-            *inner.recipient.lock().await = None;
-            self.stats.lock().await.total_disconnects += 1;
-            tracing::info!("AcpHub detached");
+            let is_current = inner.generation == generation;
+            if is_current {
+                inner.last_detach_at = Some(Instant::now());
+                *inner.recipient.lock().await = None;
+                self.stats.lock().await.total_disconnects += 1;
+            }
+            tracing::info!(generation, is_current, "AcpHub detached");
         }
     }
 }
@@ -340,8 +367,8 @@ mod tests {
     #[tokio::test]
     async fn reconnect_keeps_the_same_agent_and_session_store() {
         let hub = AcpHub::default();
-        let (first, _first_updates, first_lease) = hub.attach().await.expect("first attach");
-        let (second, _second_updates, _second_lease) = hub.attach().await.expect("second attach");
+        let (first, _first_updates, first_lease, _gen1) = hub.attach().await.expect("first attach");
+        let (second, _second_updates, _second_lease, _gen2) = hub.attach().await.expect("second attach");
         assert!(Arc::ptr_eq(&first, &second));
         assert!(first_lease.await.is_ok());
     }
@@ -365,9 +392,9 @@ mod tests {
             disconnect_policy: DisconnectPolicy::Cancel,
             ..AcpHubConfig::default()
         });
-        let (_agent, _rx, _lease) = hub.attach().await.expect("attach");
+        let (_agent, _rx, _lease, _gen) = hub.attach().await.expect("attach");
         // Reconnect with cancel policy should not panic.
-        let (_agent2, _rx2, _lease2) = hub.attach().await.expect("reconnect");
+        let (_agent2, _rx2, _lease2, _gen2) = hub.attach().await.expect("reconnect");
     }
 
     #[tokio::test]
@@ -378,5 +405,24 @@ mod tests {
         let s = hub.stats().await;
         assert_eq!(s.total_connections, 2);
         assert_eq!(s.total_reconnects, 1);
+    }
+
+    #[tokio::test]
+    async fn note_detach_with_stale_generation_does_not_clear_new_recipient() {
+        let hub = AcpHub::default();
+        // First connection
+        let (_, _, _, gen1) = hub.attach().await.expect("first attach");
+        // Second connection (reconnect) — should get gen2
+        let (_, _, _, gen2) = hub.attach().await.expect("second attach");
+        assert_ne!(gen1, gen2);
+        // Stale detach from first connection — should NOT clear recipient
+        // and should NOT increment total_disconnects (Bug 10 fix).
+        hub.note_detach(gen1).await;
+        let s = hub.stats().await;
+        assert_eq!(s.total_disconnects, 0, "stale detach should not increment total_disconnects");
+        // Now detach the current generation
+        hub.note_detach(gen2).await;
+        let s = hub.stats().await;
+        assert_eq!(s.total_disconnects, 1);
     }
 }

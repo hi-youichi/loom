@@ -9,6 +9,7 @@ dependencies = [
  "agent",
  "agent-client-protocol 0.15.1",
  "async-trait",
+ "axum",
  "checkpoint",
  "checkpoint-sqlite-store",
  "chrono",
@@ -23,6 +24,7 @@ dependencies = [
  "loom-llm",
  "loom-util",
  "model-spec-core",
+ "reqwest 0.12.28",
  "rusqlite",
  "serde",
  "serde_json",
@@ -33,6 +35,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "tokio-tungstenite",
  "tokio-util",
  "tool-basic",
  "tool-core",
@@ -41,6 +44,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "uuid",
+ "which 7.0.3",
  "wiremock",
 ]
 

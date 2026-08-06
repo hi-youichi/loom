@@ -767,26 +767,8 @@ pub(crate) enum TaskCommand {
 /// Arguments for the `acp` subcommand.
 #[derive(clap::Args, Debug, Clone)]
 pub(crate) struct AcpArgs {
-    /// Print the log (and PID) file directory and exit.
-    #[arg(long)]
-    pub(crate) show_log_dir: bool,
-
-    /// Run in daemon mode (background, no stdio). Used internally by `loom acp start`.
-    #[arg(long, hide = true)]
-    pub(crate) daemon: bool,
-
-    #[command(subcommand)]
-    pub(crate) cmd: Option<AcpCmd>,
-}
-
-#[derive(clap::Subcommand, Debug, Clone)]
-pub(crate) enum AcpCmd {
-    /// Start the ACP server as a background daemon process.
-    Start,
-    /// Stop the running ACP daemon process.
-    Stop,
-    /// Restart the ACP daemon process.
-    Restart,
-    /// Send SIGHUP to the running ACP process (read PID from `~/.loom/acp`). Unix only.
-    Reload,
+    /// WebSocket endpoint URL (default: ws://127.0.0.1:3030/acp).
+    #[arg(value_name = "URL", num_args = 0..=1,
+          default_missing_value = "ws://127.0.0.1:3030/acp")]
+    pub(crate) url: Option<String>,
 }

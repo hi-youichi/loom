@@ -227,13 +227,17 @@ impl SessionStore {
     }
 
     /// Mark the current generation as cancelled and trigger its runtime token.
+    ///
+    /// Also clears `current_turn` so that `begin_prompt` can succeed for the
+    /// next prompt on this session.
     pub fn cancel_current_generation(&self, session_id: &SessionId) {
         if let Some(entry) = recover_read(&self.inner).get(session_id) {
             entry.cancelled.store(true, Ordering::SeqCst);
-            if let Ok(current_turn) = entry.cancellation.current_turn.read() {
+            if let Ok(mut current_turn) = entry.cancellation.current_turn.write() {
                 if let Some(turn) = current_turn.as_ref() {
                     turn.cancellation.cancel();
                 }
+                *current_turn = None;
             }
         }
     }
@@ -242,11 +246,12 @@ impl SessionStore {
         let inner = recover_read(&self.inner);
         for (session_id, entry) in inner.iter() {
             entry.cancelled.store(true, Ordering::SeqCst);
-            if let Ok(current_turn) = entry.cancellation.current_turn.read() {
+            if let Ok(mut current_turn) = entry.cancellation.current_turn.write() {
                 if let Some(turn) = current_turn.as_ref() {
                     turn.cancellation.cancel();
                     tracing::info!(session_id = %session_id, "cancelled active generation on connection close");
                 }
+                *current_turn = None;
             }
         }
     }
@@ -380,5 +385,68 @@ mod tests {
         assert!(store.begin_prompt(&id).is_none());
         store.finish_prompt(&id, first.generation());
         assert!(store.begin_prompt(&id).is_some());
+    }
+
+    #[test]
+    fn cancel_clears_current_turn() {
+        let store = SessionStore::new();
+        let id = store.create(None);
+        let _ = store.begin_prompt(&id).expect("prompt");
+        assert!(store.begin_prompt(&id).is_none(), "should block while active");
+        store.cancel_current_generation(&id);
+        assert!(
+            store.begin_prompt(&id).is_some(),
+            "should allow new prompt after cancel clears current_turn"
+        );
+    }
+
+    #[test]
+    fn cancel_all_clears_current_turn() {
+        let store = SessionStore::new();
+        let id1 = store.create(None);
+        let id2 = store.create(None);
+        let _ = store.begin_prompt(&id1).expect("prompt 1");
+        let _ = store.begin_prompt(&id2).expect("prompt 2");
+        store.cancel_all_generations();
+        assert!(store.begin_prompt(&id1).is_some(), "id1 should be free after cancel_all");
+        assert!(store.begin_prompt(&id2).is_some(), "id2 should be free after cancel_all");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Prompt guard — RAII cleanup for cancelled prompts
+// ---------------------------------------------------------------------------
+
+/// RAII guard that calls [`SessionStore::finish_prompt`] on drop.
+///
+/// When the prompt future is dropped mid-execution (e.g., the WebSocket
+/// connection drops while a prompt is in flight), Rust's cancellation
+/// semantics mean code after the last `.await` is never reached.  This guard
+/// ensures `finish_prompt` is called regardless, preventing the session from
+/// being permanently blocked.
+pub(crate) struct PromptGuard<'a> {
+    sessions: &'a SessionStore,
+    session_id: &'a SessionId,
+    generation: u64,
+}
+
+impl<'a> PromptGuard<'a> {
+    pub(crate) fn new(
+        sessions: &'a SessionStore,
+        session_id: &'a SessionId,
+        generation: u64,
+    ) -> Self {
+        Self {
+            sessions,
+            session_id,
+            generation,
+        }
+    }
+}
+
+impl Drop for PromptGuard<'_> {
+    fn drop(&mut self) {
+        self.sessions
+            .finish_prompt(self.session_id, self.generation);
     }
 }

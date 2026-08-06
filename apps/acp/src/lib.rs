@@ -1,186 +1,197 @@
 //! # Loom ACP — Run Loom as an ACP Agent
 //!
-//! This crate implements the **Agent side** of the [Agent Client Protocol (ACP)](https://agentclientprotocol.com):
-//! started by IDEs (Zed, JetBrains, etc.) as a subprocess, it communicates over **stdio** via JSON-RPC,
-//! maps ACP requests (`initialize`, `session/new`, `session/prompt`, etc.) to [loom]'s
-//! `run_agent_with_options`, and streams progress and tool calls back via `session/update` notifications.
+//! This crate implements the **Agent side** of the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
+//! IDEs (Zed, JetBrains, Neovim, etc.) launch `loom acp` as a subprocess; the process
+//! connects to a local **loom-server** via WebSocket and relays JSON-RPC between the IDE's
+//! stdio and the server's WebSocket endpoint.
 //!
 //! ## Design principles
 //!
+//! - **Transport-only bridge**: `loom acp` is a thin stdio↔WebSocket relay — all agent logic
+//!   runs on loom-server.
 //! - **Reuse**: Do not reimplement ReAct/ToT/GoT; only the ACP ↔ Loom adapter layer.
-//! - **Session consistency**: ACP `session_id` maps 1:1 to Loom `thread_id` for multi-turn and checkpointer consistency.
-//! - **Single process, stdio**: Same as the existing CLI; no extra server or port.
-//! - **Trusted**: Use `session/request_permission` before tool execution for user confirmation (ACP Trusted design).
+//! - **Session consistency**: ACP `session_id` maps 1:1 to Loom `thread_id` for multi-turn
+//!   and checkpointer consistency.
+//! - **Auto-spawn**: If loom-server is not running, the bridge spawns it automatically.
+//! - **Auto-reconnect**: On WebSocket disconnect, the bridge retries with exponential
+//!   back-off; stdin/stdout channels persist across reconnections.
 //!
-//! ## Architecture layers
-//!
-//! - **Transport**: `run_stdio_loop()` uses `agent_client_protocol::AgentSideConnection` for the JSON-RPC loop on stdin/stdout; stderr is for logs only.
-//! - **Agent**: [`LoomAcpAgent`] implements ACP's `Agent` trait and forwards protocol requests to session, content parsing, and Loom execution.
-//! - **Session**: [`SessionStore`] maintains session_id ↔ thread_id, working_directory, and per-session cancel flag.
-//! - **Content**: [`content_blocks_to_message`] turns ACP ContentBlock list into a single user message string.
-//! - **Stream bridge**: [`stream_bridge`] converts Loom's [`loom::TypedAnyStreamEvent`] into ACP SessionUpdate and sends them.
-//!
-//! ### Diagram 1: Process and protocol layers
+//! ## Architecture overview
 //!
 //! ```text
-//! +-------------------------------------------------------------------------------+
-//! |  IDE (Zed / JetBrains / Neovim ...)              [Client]                    |
-//! +-------------------------------------------------------------------------------+
-//!          |                                                    ^
-//!          | stdin (JSON-RPC Request/Notification)              | stdout (JSON-RPC Response/Notification)
-//!          v                                                    |
-//! +-------------------------------------------------------------------------------+
-//! |  loom acp process                                                               |
-//! |  +-------------------------------------------------------------------------+  |
-//! |  |  Transport   run_stdio_loop() / AgentSideConnection                    |  |
-//! |  |  - read stdin -> parse JSON-RPC -> dispatch to Agent                    |  |
-//! |  |  - Agent return/notifications -> serialize -> write stdout               |  |
-//! |  +-------------------------------------------------------------------------+  |
-//! |         |                                                      ^             |
-//! |         v                                                      |             |
-//! |  +-------------------------------------------------------------------------+  |
-//! |  |  Agent   LoomAcpAgent (impl Agent)                                      |  |
-//! |  |  - initialize / authenticate / new_session / prompt / cancel           |  |
-//! |  +-------------------------------------------------------------------------+  |
-//! |         |           |              |                    |                    |  |
-//! |         v           v              v                    v                    |  |
-//! |  +----------+ +----------+ +----------------+ +------------------+           |  |
-//! |  | Session  | | Content  | | StreamBridge   | | (connection      | ----------+  |
-//! |  | Store    | | Parser   | | TypedAnyStreamEvent | | session/update   |             |
-//! |  |          | |          | | -> StreamUpdate| | request_permission|             |
-//! |  +----------+ +----------+ +----------------+ +------------------+             |
-//! |         |           |              |                                              |
-//! |         +-----------+--------------+                                              |
-//! |                     |                                                             |
-//! |                     v                                                             |
-//! |  +-------------------------------------------------------------------------+     |
-//! |  |  Loom   loom::run_agent_with_options / build_react_config              |     |
-//! |  |  - RunOptions, RunCmd, on_event(TypedAnyStreamEvent) -> reply                 |     |
-//! |  +-------------------------------------------------------------------------+     |
-//! |         |  Tools MCP(new_session/config) / local; graph execution -> StreamBridge  |
-//! |         |  When permission needed: connection request_permission -> execute or deny |
-//! +-------------------------------------------------------------------------------+
+//! ┌──────────────────────────────────────────────────────────────────────────────┐
+//! │                          IDE (Zed / JetBrains / Neovim)                        │
+//! └──────────────────────┬───────────────────────────────────┬─────────────────────┘
+//!                        │ stdin (JSON-RPC requests)         │ stdout (JSON-RPC responses)
+//!                        ▼                                   ▲
+//! ┌───────────────────────────────────────────────────────────────────────────────┐
+//! │                         loom acp (this crate)                                 │
+//! │                                                                               │
+//! │  ┌─────────────────────────────────────────────────────────────────────────┐  │
+//! │  │  ws_bridge.rs — stdio↔WebSocket relay                                    │  │
+//! │  │                                                                          │  │
+//! │  │  stdin reader ──► unbounded channel ──┐                                 │  │
+//! │  │                                        ├──► relay_loop ──► WebSocket ──► │  │
+//! │  │  stdout writer ◄── std mpsc channel ◄──┘    (cancel-aware)               │  │
+//! │  │                                                                          │  │
+//! │  │  Auto-spawn: probe /global/health ──► spawn loom-server if not running   │  │
+//! │  │  Auto-reconnect: exponential back-off (500ms → 10s max)                  │  │
+//! │  └─────────────────────────────────────────────────────────────────────────┘  │
+//! └───────────────────────────────────┬───────────────────────────────────────────┘
+//!                                     │ WebSocket (ws://127.0.0.1:3030/acp)
+//!                                     ▼
+//! ┌───────────────────────────────────────────────────────────────────────────────┐
+//! │                         loom-server                                           │
+//! │                                                                               │
+//! │  ┌─────────────────────────────────────────────────────────────────────────┐  │
+//! │  │  handlers/acp.rs — WebSocket accept + per-connection task                │  │
+//! │  │  acp_hub.rs — spawn run_agent_connection() per connection                │  │
+//! │  └───────────────────────────────┬─────────────────────────────────────────┘  │
+//! │                                  ▼                                             │
+//! │  ┌─────────────────────────────────────────────────────────────────────────┐  │
+//! │  │  stdio_loop.rs — run_agent_connection()                                  │  │
+//! │  │  Drives ACP JSON-RPC dispatch over any Lines transport.                  │  │
+//! │  │  Spawns notification drain task (SessionNotification → client).          │  │
+//! │  └───────────────────────────────┬─────────────────────────────────────────┘  │
+//! │                                  ▼                                             │
+//! │  ┌─────────────────────────────────────────────────────────────────────────┐  │
+//! │  │  agent.rs — LoomAcpAgent (impl Agent)                                    │  │
+//! │  │  initialize / authenticate / new_session / prompt / cancel /             │  │
+//! │  │  fork_session / load_session / list_sessions /                           │  │
+//! │  │  set_session_config_option / set_session_mode                            │  │
+//! │  └──────┬───────────┬──────────────┬────────────────┬────────────────────────┘  │
+//! │         ▼           ▼              ▼                ▼                            │
+//! │  ┌──────────┐ ┌───────────┐ ┌─────────────┐ ┌──────────────────┐                │
+//! │  │ session  │ │ content   │ │ stream_     │ │ tools            │                │
+//! │  │ .rs      │ │ .rs       │ │ bridge.rs   │ │ (fs/terminal)    │                │
+//! │  │          │ │           │ │             │ │                  │                │
+//! │  │ Session  │ │ ContentBlk│ │ Loom event  │ │ ReadTextFile     │                │
+//! │  │ Store    │ │ → message │ │ → ACP Update│ │ WriteTextFile    │                │
+//! │  │ Cancel   │ │           │ │ Token usage │ │ ClientBridge     │                │
+//! │  └──────────┘ └───────────┘ └─────────────┘ └──────────────────┘                │
+//! │         │           │              │                                           │
+//! │         └───────────┴──────────────┘                                           │
+//! │                     ▼                                                          │
+//! │  ┌─────────────────────────────────────────────────────────────────────────┐  │
+//! │  │  Loom core — run_agent_from_config / build_react_config                 │  │
+//! │  │  ReAct graph execution, MCP tools, checkpoint persistence               │  │
+//! │  └─────────────────────────────────────────────────────────────────────────┘  │
+//! └───────────────────────────────────────────────────────────────────────────────┘
 //! ```
 //!
-//! ### Diagram 2: Request/response flow (single prompt turn)
+//! ## Entrypoint
+//!
+//! ```sh
+//! loom acp                          # connect to ws://127.0.0.1:3030/acp
+//! loom acp ws://host:port/acp       # custom URL
+//! ```
+//!
+//! All ACP protocol parameters (working directory, MCP servers, etc.) come from
+//! the IDE's `session/new` request — no CLI flags needed beyond the URL.
+//!
+//! ## Request/response flow (single prompt turn)
 //!
 //! ```text
-//!   IDE                    loom acp Transport              LoomAcpAgent              Loom
-//!    |                            |                              |                     |
-//!    |  initialize                |                              |                     |
-//!    |--------------------------->|  Agent::initialize()         |                     |
-//!    |                            |----------------------------->|                     |
-//!    |                            |<-----------------------------| InitializeResponse |
-//!    |<---------------------------|                              |                     |
-//!    |  session/new               |                              |                     |
-//!    |--------------------------->|  Agent::new_session()        |                     |
-//!    |                            |----------------------------->| SessionStore::create|
-//!    |                            |<-----------------------------| NewSessionResponse |
-//!    |<---------------------------|                              |                     |
-//!    |  session/prompt            |                              |                     |
-//!    |--------------------------->|  Agent::prompt()              |                     |
-//!    |                            |----------------------------->| content_blocks_to_  |
-//!    |                            |                              |   message()         |
-//!    |                            |                              | SessionStore::get() |
-//!    |                            |                              | run_agent_with_     |
-//!    |                            |                              |   options() ------->|
-//!    |                            |                              |  (on tool call)     |
-//!    |                            |  session/update(tool_call) --->| request_permission->| (to IDE)
-//!    |                            |<-- permission outcome -------| execute/deny        |
-//!    |                            |  session/update(tool_call_   |                    |
-//!    |                            |   update) ------------------>| (to IDE)            |
-//!    |                            |                              |<--- reply           |
-//!    |                            |  (on_event: StreamBridge)     |  session/update --->| (to IDE)
-//!    |<------------------------------------------ ... ---------------------------------|
-//!    |                            |<-----------------------------| PromptResponse     |
-//!    |<---------------------------|                              |                     |
+//!   IDE                ws_bridge              loom-server               LoomAcpAgent           Loom
+//!    │                    │                       │                          │                    │
+//!    │── initialize ─────►│ relay ──► WS ───────►│ run_agent_connection ──►│ initialize()        │
+//!    │◄─── response ──────│◄── WS ◄──────────────│◄────────────────────────│                    │
+//!    │                    │                       │                          │                    │
+//!    │── session/new ────►│ relay ──► WS ───────►│ ──────────────────────►│ SessionStore::create│
+//!    │◄─── response ──────│◄── WS ◄──────────────│◄────────────────────────│                    │
+//!    │                    │                       │                          │                    │
+//!    │── session/prompt ─►│ relay ──► WS ───────►│ ──────────────────────►│ resolve model       │
+//!    │                    │                       │                          │ content→message     │
+//!    │                    │                       │                          │ run_agent ─────────►│
+//!    │                    │                       │                          │                    │
+//!    │   session/update   │◄── WS ◄──────────────│◄── SessionNotifier ◄────│ ◄── stream events   │
+//!    │◄── (agent_chunk) ──│                       │                          │                    │
+//!    │   session/update   │◄── WS ◄──────────────│◄── SessionNotifier ◄────│ ◄── tool calls      │
+//!    │◄── (tool_call) ────│                       │                          │                    │
+//!    │                    │                       │                          │                    │
+//!    │                    │                       │                          │ ◄── reply           │
+//!    │◄── prompt resp ────│◄── WS ◄──────────────│◄────────────────────────│ PromptResponse      │
 //! ```
 //!
-//! ### Diagram 3: Module and type dependencies
+//! ## Module dependency map
 //!
 //! ```text
-//!                     +----------+
-//!                     |  lib.rs  |  run_stdio_loop()
-//!                     +----+-----+
-//!                          |
-//!          +---------------+---------------+
-//!          v               v               v
-//!    +----------+   +-----------+   +---------------+
-//!    | agent.rs |   | session.rs|   | content.rs    |
-//!    | LoomAcp  |   | SessionStore   | content_blocks_to_message
-//!    | Agent    |   | SessionId  |   | ContentBlockLike
-//!    +----+-----+   | SessionEntry   | ContentError  |
-//!          |        +-----------+   +---------------+
-//!          |                |
-//!          |                |        +-------------------+
-//!          |                |        | stream_bridge.rs  |
-//!          +----------------+--------+ loom_event_to_   |
-//!          |                |        |   updates()      |
-//!          v                v        | StreamUpdate     |
-//!    +------------------------------------------------------------------+
-//!    |  loom crate   RunOptions, RunCmd, TypedAnyStreamEvent, build_react_config
-//!    |  tools from MCP (new_session) / config                           |
-//!    +------------------------------------------------------------------+
+//!                          ┌──────────────┐
+//!                          │   lib.rs     │  set_log_config / get_log_config
+//!                          └──────┬───────┘
+//!                                 │
+//!          ┌──────────────────────┼──────────────────────┐
+//!          ▼                      ▼                      ▼
+//!   ┌─────────────┐      ┌───────────────┐      ┌──────────────┐
+//!   │ ws_bridge   │      │ stdio_loop    │      │ agent        │
+//!   │ (client     │      │ run_agent_    │      │ LoomAcpAgent │
+//!   │  side)      │      │  connection   │      │ (server side)│
+//!   └─────────────┘      └───────┬───────┘      └──────┬───────┘
+//!                                 │                     │
+//!                    ┌────────────┼────────────┐        │
+//!                    ▼            ▼            ▼        │
+//!              ┌──────────┐ ┌──────────┐ ┌──────────┐   │
+//!              │ session  │ │ content  │ │ stream_  │   │
+//!              │ Store    │ │ parser   │ │ bridge   │   │
+//!              └──────────┘ └──────────┘ └──────────┘   │
+//!                    │                                   │
+//!                    ▼                                   ▼
+//!              ┌──────────────────────────────────────────┐
+//!              │  Loom core (agent crate)                  │
+//!              │  run_agent_from_config / build_react_config│
+//!              └──────────────────────────────────────────┘
 //! ```
 //!
-//! ### Diagram 4: session/update data flow
+//! ## Cancellation
 //!
-//! ```text
-//!   Loom graph                on_event callback           stream_bridge           connection
-//!   (StreamEvent)                  |                         |                        |
-//!        |                          |                         |                        |
-//!        | TypedAnyStreamEvent           |                         |                        |
-//!        |------------------------->| loom_event_to_updates() |                        |
-//!        |                          |------------------------>|                        |
-//!        |                          |                         | Vec<StreamUpdate>      |
-//!        |                          |<------------------------|                        |
-//!        |                          |  for each update       |                        |
-//!        |                          |------------------------------------------------->| session/update
-//!        |                          |                         |                        | (notification
-//!        |                          |                         |                        |  to IDE)
-//! ```
+//! - **User cancel**: IDE sends `session/cancel` → `SessionStore::cancel_current_generation()`
+//!   → increments generation counter → active turn's `RunCancellation` token fires →
+//!   `run_agent` returns `RunCompletion::Cancelled` → prompt returns `StopReason::Cancelled`.
+//! - **WS disconnect**: The `_prompt_guard` RAII drops on task cancellation, calling
+//!   `finish_prompt()` to release the per-session prompt lock.
+//! - **Process exit**: `ws_bridge` installs SIGINT/SIGTERM handlers via `CancellationToken`;
+//!   the relay loop closes the WebSocket and drains stdout before exiting.
 //!
-//! ### Diagram 5: Tool call and request_permission
+//! ## Session lifecycle
 //!
-//! ```text
-//!   Loom Act node             loom-acp                  connection              IDE / user
-//!   (decides to call tool)         |                         |                        |
-//!        |                     | session/update          |                        |
-//!        |                     | (tool_call, Pending)   |------------------------>|
-//!        |                     | request_permission      |------------------------>|
-//!        |                     |                         |<-- Allow/Deny/Cancelled-|
-//!        |                     |<------------------------|                        |
-//!        | execute tool or     |                         |                        |
-//!        | write denial        | session/update          |                        |
-//!        |-------------------->| (tool_call_update,     |------------------------>|
-//!        |                     |  Running->Success/Fail) |                        |
-//! ```
-//!
-//! ## Entrypoint and configuration
-//!
-//! - **Binary**: `loom acp` runs the ACP server; all parameters come from `session/new`.
-//! - **IDE config**: Set command to `loom acp` (or full path); working directory optional.
-//! - **Protocol params**: working directory, MCP, etc. are provided by ACP's `session/new` request.
-//!
-//! ## Errors and cancellation
-//!
-//! - Invalid session_id -> JSON-RPC invalid_params ("unknown session"); content_blocks parse failure -> invalid_params.
-//! - run_agent internal error -> server error, message contains brief reason.
-//! - **After session/cancel we must return PromptResponse(StopReason::Cancelled)**, not Finished.
-//! - If Loom has no interruptible run_agent API yet: check cancel flag on next poll or node entry and return Cancelled, or add an extension point.
-//!
-//! Protocol and feature details are in the [`protocol`] module.
+//! | Phase | Handler | Key actions |
+//! |-------|---------|-------------|
+//! | `initialize` | `agent::initialize` | Negotiate protocol version, save client capabilities |
+//! | `session/new` | `agent::new_session` | Create `SessionEntry`, store MCP servers, trigger curator |
+//! | `session/prompt` | `agent::prompt` | Resolve model, run agent graph, stream updates |
+//! | `session/cancel` | `agent::cancel` | Increment generation, fire cancellation token |
+//! | `session/fork` | `agent::fork_session` | Clone config + MCP, new session ID |
+//! | `session/load` | `agent::load_session` | Restore from checkpoint, replay history |
+//! | `session/list` | `agent::list_sessions` | Query SQLite checkpoints |
+//! | `set_config_option` | `agent::set_session_config_option` | Update model/mode/effort, persist |
+//! | `set_mode` | `agent::set_session_mode` | Switch agent profile (ask/dev/default) |
 //!
 //! ## Module overview
 //!
-//! | Module | Responsibility |
-//! |--------|----------------|
-//! | [`agent`] | [`LoomAcpAgent`]: ACP Agent implementation, calls loom in prompt |
-//! | [`session`] | [`SessionStore`]: session table and cancel flag |
-//! | [`content`] | Parse ContentBlock into user message string |
-//! | [`stream_bridge`] | Loom stream events -> ACP SessionUpdate |
-//! | [`protocol`] | Protocol and Loom mapping summary (initialize/prompt/update/cancel, etc.) |
-//! | [`logging`] | Log initialization at startup, with optional working_folder from ACP session |
+//! | Module | Lines | Responsibility |
+//! |--------|-------|---------------|
+//! | [`agent`] | ~2200 | [`LoomAcpAgent`]: ACP Agent trait impl, model resolution, prompt dispatch |
+//! | [`ws_bridge`] | ~520 | Stdio↔WebSocket relay with auto-spawn and auto-reconnect |
+//! | [`stdio_loop`] | ~250 | `run_agent_connection()`: generic ACP dispatch loop |
+//! | [`stream_bridge`] | ~1400 | Loom `TypedAnyStreamEvent` → ACP `SessionUpdate`, token usage tracking |
+//! | [`session`] | ~450 | `SessionStore`, `SessionEntry`, cancellation state, prompt guard |
+//! | [`content`] | ~640 | ACP `ContentBlock` → Loom `UserContent` conversion |
+//! | [`connection`]) | ~75 | Per-connection state: capabilities, notification channel, bridge |
+//! | [`tools`] | ~670 | FS tools (read/write text file), client bridge, terminal executor |
+//! | [`review_runner`] | ~690 | Background curator review (memory + skills) |
+//! | [`high_freq_usage`] | ~540 | Throttled token usage notifications |
+//! | [`client_methods`] | ~230 | ACP reverse-RPC wrappers (fs/terminal) |
+//! | [`terminal`]) | ~440 | Terminal session manager (unused — ACP terminal disabled) |
+//! | [`session_config_store`] | ~220 | Persistent session config (SQLite) |
+//! | [`client_capabilities`] | ~470 | Parse and query client capabilities from `initialize` |
+//! | [`mcp_convert`] | ~210 | Convert ACP MCP server defs → Loom MCP config |
+//! | [`agent_registry`] | ~75 | Agent profile registry (modes: ask, default, dev, etc.) |
+//! | [`goal_runner`] | ~70 | `/goal` command handler |
+//! | [`logging`] | ~160 | Log initialization with working-directory-aware file paths |
+//! | [`protocol`]) | ~130 | Protocol version and feature mapping reference |
+//! | [`last_model`] | ~30 | Persist last-used model across sessions |
+//!
+//! [ACP]: https://agentclientprotocol.com
 
 use std::sync::OnceLock;
 
@@ -197,19 +208,18 @@ pub mod logging;
 pub mod mcp_convert;
 pub mod protocol;
 pub mod review_runner;
-pub mod server;
 pub mod session;
 pub mod session_config_store;
 pub mod stdio_loop;
 pub mod stream_bridge;
 pub mod terminal;
 pub mod tools;
-
+pub mod ws_bridge;
 pub use agent::{LoomAcpAgent, ModelOption, ModelProvider};
 pub use content::{content_blocks_to_message, ContentBlockLike, ContentError};
 pub use high_freq_usage::{HighFreqUsageTracker, UsageUpdateInfo};
 pub use session::{SessionConfig, SessionEntry, SessionId, SessionStore};
-pub use stdio_loop::{run_agent_connection, run_stdio_loop, StdioLoopResult};
+pub use stdio_loop::run_agent_connection;
 pub use stream_bridge::{
     loom_event_to_updates, stream_update_to_session_notification, StreamUpdate,
 };

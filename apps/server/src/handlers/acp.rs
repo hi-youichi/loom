@@ -51,12 +51,26 @@ fn origin_allowed(headers: &HeaderMap) -> bool {
             .map(str::trim)
             .any(|allowed| allowed == origin);
     }
-    origin.starts_with("http://localhost:")
-        || origin.starts_with("https://localhost:")
-        || origin.starts_with("http://127.0.0.1:")
-        || origin.starts_with("https://127.0.0.1:")
-        || origin.starts_with("http://[::1]:")
-        || origin.starts_with("https://[::1]:")
+    is_localhost_origin(origin)
+}
+
+/// Check whether `origin` is a localhost / 127.0.0.1 / [::1] URL with a
+/// valid port number.  Uses `rsplit_once` on the host:port boundary so that
+/// `http://127.0.0.1:3000` is correctly recognized while
+/// `http://localhost:3000.evil.com` is rejected (the port segment is not a
+/// valid u16).
+fn is_localhost_origin(origin: &str) -> bool {
+    let rest = match origin
+        .strip_prefix("http://")
+        .or_else(|| origin.strip_prefix("https://"))
+    {
+        Some(r) => r,
+        None => return false,
+    };
+    let (host, port_str) = rest.rsplit_once(':').unwrap_or((rest, ""));
+    let port = port_str.split('/').next().unwrap_or(port_str);
+    let port_ok = port.is_empty() || port.parse::<u16>().is_ok();
+    port_ok && matches!(host, "localhost" | "127.0.0.1" | "[::1]")
 }
 
 /// Extract the session owner from the Authorization header.
@@ -71,7 +85,11 @@ fn extract_owner(headers: &HeaderMap) -> SessionOwner {
     let token = auth_header.strip_prefix("Bearer ").unwrap_or(auth_header);
     if let Ok(expected) = std::env::var("LOOM_AUTH_TOKEN") {
         if token == expected {
-            return SessionOwner::from_bearer(format!("token-{}", &token[..token.len().min(8)]));
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            token.hash(&mut hasher);
+            return SessionOwner::from_bearer(format!("token-{:016x}", hasher.finish()));
         }
         tracing::warn!("ACP WS bearer token mismatch");
     }
@@ -81,6 +99,12 @@ fn extract_owner(headers: &HeaderMap) -> SessionOwner {
 /// Handle a single WebSocket connection.
 async fn handle_socket(state: SharedState, owner: SessionOwner, socket: WebSocket) {
     let (ws_sink, ws_stream) = socket.split();
+
+    // Signal fired when the incoming reader task exits (WS closed / errored).
+    // This lets the `shutdown` future resolve even without a lease cancel —
+    // fixing the idle-disconnect hang where `connect_with` would otherwise
+    // wait forever for the foreground (lease) to complete.
+    let (ws_closed_tx, ws_closed_rx) = tokio::sync::oneshot::channel();
 
     // --- Incoming stream: WS text frames → io::Result<String> ---
     let (text_tx, text_rx) = mpsc::channel::<std::io::Result<String>>(64);
@@ -112,6 +136,8 @@ async fn handle_socket(state: SharedState, owner: SessionOwner, socket: WebSocke
                 }
             }
         }
+        // Signal that the WS has closed so `shutdown` can resolve.
+        let _ = ws_closed_tx.send(());
     });
     let incoming = tokio_stream::wrappers::ReceiverStream::new(text_rx);
 
@@ -123,8 +149,8 @@ async fn handle_socket(state: SharedState, owner: SessionOwner, socket: WebSocke
     let transport = agent_client_protocol::Lines::new(outgoing, incoming);
 
     // --- Attach to AcpHub ---
-    let (agent, notification_rx, lease) = match state.acp_hub.attach_with(owner.clone(), None).await {
-        Ok(triple) => triple,
+    let (agent, notification_rx, lease, generation) = match state.acp_hub.attach_with(owner.clone(), None).await {
+        Ok(tuple) => tuple,
         Err(e) => {
             tracing::error!(error = %e, principal = %owner.principal, "AcpHub attach failed");
             return;
@@ -139,9 +165,16 @@ async fn handle_socket(state: SharedState, owner: SessionOwner, socket: WebSocke
     // reader task already silently continues on Ping/Pong frames.
 
     // --- Run ACP dispatch ---
+    // The shutdown future resolves when EITHER the lease is cancelled (new
+    // connection takes over) OR the WS incoming stream ends (client
+    // disconnected). Without the ws_closed branch, an idle WS disconnect
+    // would hang forever because `run_until` waits for the foreground.
     let hub_clone = state.acp_hub.clone();
     let shutdown = async move {
-        let _ = lease.await;
+        tokio::select! {
+            _ = lease => {},
+            _ = ws_closed_rx => {},
+        }
     };
     if let Err(e) = loom_acp::stdio_loop::run_agent_connection(
         agent,
@@ -161,7 +194,7 @@ async fn handle_socket(state: SharedState, owner: SessionOwner, socket: WebSocke
     }
 
     // Mark detachment for idle TTL tracking.
-    hub_clone.note_detach().await;
+    hub_clone.note_detach(generation).await;
 
     // Log connection stats.
     let stats = hub_clone.stats().await;
