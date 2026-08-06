@@ -1,4 +1,6 @@
+use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::tools::{AgentCancelTool, AgentGetTool, AgentTool, GitWorktreeTool, ThreadGetTool};
 use loom_graph_core::GraphError;
@@ -9,7 +11,8 @@ use skill::SkillUsageStore;
 use tool_basic::powershell::PowerShellTool;
 use tool_basic::{
     bash::BashTool, batch::BatchTool, exa::ExaCodesearchTool, exa::ExaWebsearchTool,
-    mcp::McpToolSource, register_file_tools, register_mcp_tools, web::WebFetcherTool,
+    mcp::{McpToolSource, DEFAULT_TOOL_TIMEOUT}, register_file_tools, register_mcp_tools,
+    web::WebFetcherTool,
 };
 use tool_core::{ArcTool, ToolRegistryLocked, YamlSpecError};
 use tool_experimental::{register_file_memory_tool_guarded, register_task_tools};
@@ -21,6 +24,114 @@ use super::super::config::ReactBuildConfig;
 
 fn to_agent_error(e: impl std::fmt::Display) -> GraphError {
     GraphError::ExecutionFailed(e.to_string())
+}
+
+const DEFAULT_MCP_STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+const OPTIONAL_MCP_STARTUP_GRACE: Duration = Duration::from_secs(1);
+
+struct McpStartupResult {
+    name: String,
+    required: bool,
+    result: Result<(), String>,
+}
+
+async fn start_mcp_server(
+    server: McpServerDef,
+    aggregate: Arc<ToolRegistryLocked>,
+    mcp_verbose: bool,
+) -> McpStartupResult {
+    let name = server.name().to_string();
+    let required = server.required();
+    let startup_timeout = server.startup_timeout_sec().map(Duration::from_secs)
+        .unwrap_or(DEFAULT_MCP_STARTUP_TIMEOUT);
+    let tool_timeout = server.tool_timeout_sec().map(Duration::from_secs)
+        .unwrap_or(DEFAULT_TOOL_TIMEOUT);
+    tracing::debug!(
+        mcp_server = %name,
+        required,
+        startup_timeout_secs = startup_timeout.as_secs(),
+        tool_timeout_secs = tool_timeout.as_secs(),
+        "starting MCP server"
+    );
+    let result = tokio::time::timeout(startup_timeout, async {
+        let mcp = match server {
+            McpServerDef::Stdio { command, args, env, .. } => {
+                McpToolSource::new_with_env_and_tool_timeout(
+                    command, args, env, mcp_verbose, tool_timeout,
+                ).await.map_err(|error| error.to_string())?
+            }
+            McpServerDef::Http { url, headers, .. } => {
+                McpToolSource::new_http_with_tool_timeout(url, headers, tool_timeout)
+                    .await.map_err(|error| error.to_string())?
+            }
+        };
+        register_mcp_tools(aggregate.as_ref(), Arc::new(mcp))
+            .await
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|_| format!("startup timed out after {} seconds", startup_timeout.as_secs()))
+    .and_then(|result| result);
+    McpStartupResult { name, required, result }
+}
+
+async fn start_configured_mcp_servers(
+    servers: &[McpServerDef],
+    aggregate: Arc<ToolRegistryLocked>,
+    mcp_verbose: bool,
+) -> Result<(), GraphError> {
+    let mut pending_required: HashSet<String> = servers.iter()
+        .filter(|server| server.required())
+        .map(|server| server.name().to_string())
+        .collect();
+    if servers.is_empty() { return Ok(()); }
+
+    let (result_tx, mut result_rx) = tokio::sync::mpsc::unbounded_channel();
+    for server in servers.iter().cloned() {
+        let aggregate = Arc::clone(&aggregate);
+        let result_tx = result_tx.clone();
+        tokio::spawn(async move {
+            let startup_result = start_mcp_server(server, aggregate, mcp_verbose).await;
+            match &startup_result.result {
+                Ok(()) => tracing::info!(
+                    mcp_server = %startup_result.name,
+                    required = startup_result.required,
+                    "MCP server ready"
+                ),
+                Err(error) => tracing::warn!(
+                    mcp_server = %startup_result.name,
+                    required = startup_result.required,
+                    %error,
+                    "MCP server failed to start"
+                ),
+            }
+            let _ = result_tx.send(startup_result);
+        });
+    }
+    drop(result_tx);
+
+    let deadline = tokio::time::Instant::now() + OPTIONAL_MCP_STARTUP_GRACE;
+    while let Some(result) = tokio::time::timeout_at(deadline, result_rx.recv()).await.ok().flatten() {
+        if result.required {
+            pending_required.remove(&result.name);
+            if let Err(error) = result.result {
+                return Err(to_agent_error(format!("required MCP server `{}` failed to start: {error}", result.name)));
+            }
+        }
+    }
+
+    while !pending_required.is_empty() {
+        let Some(result) = result_rx.recv().await else {
+            return Err(to_agent_error("MCP startup tasks ended before required servers completed"));
+        };
+        if result.required {
+            pending_required.remove(&result.name);
+            if let Err(error) = result.result {
+                return Err(to_agent_error(format!("required MCP server `{}` failed to start: {error}", result.name)));
+            }
+        }
+    }
+    Ok(())
 }
 
 pub(crate) async fn build_tool_source(
@@ -129,72 +240,7 @@ pub(crate) async fn build_tool_source(
     )))));
 
     if let Some(ref servers) = config.mcp_servers {
-        for def in servers {
-            match def {
-                McpServerDef::Stdio {
-                    name,
-                    command,
-                    args,
-                    env,
-                } => {
-                    tracing::debug!(name = %name, "starting MCP stdio server");
-                    let command = command.clone();
-                    let args = args.clone();
-                    let env_vec: Vec<(String, String)> =
-                        env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-                    let mcp_verbose = config.mcp_verbose;
-                    match McpToolSource::new_with_env(command, args, env_vec, mcp_verbose).await {
-                        Ok(mcp) => {
-                            if let Err(e) =
-                                register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
-                            {
-                                tracing::warn!(
-                                    name = %name,
-                                    "mcp server registered but list/call may fail: {}",
-                                    e
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                name = %name,
-                                "mcp server failed to start, skipping: {}",
-                                e
-                            );
-                        }
-                    }
-                }
-                McpServerDef::Http {
-                    name,
-                    url,
-                    headers,
-                    oauth: _,
-                    ..
-                } => {
-                    let headers_iter = headers.iter().map(|(k, v)| (k.as_str(), v.as_str()));
-                    match McpToolSource::new_http(url.clone(), headers_iter).await {
-                        Ok(mcp) => {
-                            if let Err(e) =
-                                register_mcp_tools(aggregate.as_ref(), Arc::new(mcp)).await
-                            {
-                                tracing::warn!(
-                                    name = %name,
-                                    "mcp server (HTTP) registered but list/call may fail: {}",
-                                    e
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                name = %name,
-                                "mcp server (HTTP) failed to connect, skipping: {}",
-                                e
-                            );
-                        }
-                    }
-                }
-            }
-        }
+        start_configured_mcp_servers(servers, Arc::clone(&aggregate), config.mcp_verbose).await?;
     }
     if let Some(ref token) = config.github_token {
         let use_http = config
@@ -296,6 +342,60 @@ async fn apply_registry_config(
         aggregate.set_dry_run(true).await;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod mcp_startup_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    async fn unresponsive_http_server() -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _connection = listener.accept().await;
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        });
+        format!("http://{address}/mcp")
+    }
+
+    fn http_server(name: &str, url: String, required: bool, startup_timeout_sec: u64) -> McpServerDef {
+        McpServerDef::Http {
+            name: name.to_string(),
+            url,
+            headers: HashMap::new(),
+            oauth: None,
+            required,
+            startup_timeout_sec: Some(startup_timeout_sec),
+            tool_timeout_sec: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn optional_unresponsive_server_does_not_block_tool_source_build() {
+        let server = http_server("slow", unresponsive_http_server().await, false, 5);
+        let aggregate = Arc::new(ToolRegistryLocked::new());
+        let started = tokio::time::Instant::now();
+
+        start_configured_mcp_servers(&[server], aggregate, false)
+            .await
+            .unwrap();
+
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[tokio::test]
+    async fn required_unresponsive_server_fails_after_its_startup_timeout() {
+        let server = http_server("required", unresponsive_http_server().await, true, 1);
+        let aggregate = Arc::new(ToolRegistryLocked::new());
+
+        let error = start_configured_mcp_servers(&[server], aggregate, false)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("required MCP server `required` failed to start"));
+        assert!(error.to_string().contains("startup timed out"), "{error}");
+    }
 }
 
 /// Pre-load provider + models.dev catalog and register the `LlmTool`.

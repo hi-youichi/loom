@@ -43,6 +43,15 @@ pub struct McpServerEntry {
     pub headers: HashMap<String, String>,
     #[serde(default)]
     pub oauth: Option<OAuthConfig>,
+    /// Whether Loom must fail the run when this server cannot start.
+    #[serde(default)]
+    pub required: bool,
+    /// Maximum time allowed for the initial MCP handshake and tool discovery.
+    #[serde(default)]
+    pub startup_timeout_sec: Option<u64>,
+    /// Maximum time allowed for a single MCP tool call.
+    #[serde(default)]
+    pub tool_timeout_sec: Option<u64>,
 }
 
 /// OAuth configuration for an MCP HTTP server.
@@ -67,12 +76,18 @@ pub enum McpServerDef {
         command: String,
         args: Vec<String>,
         env: HashMap<String, String>,
+        required: bool,
+        startup_timeout_sec: Option<u64>,
+        tool_timeout_sec: Option<u64>,
     },
     Http {
         name: String,
         url: String,
         headers: HashMap<String, String>,
         oauth: Option<OAuthConfig>,
+        required: bool,
+        startup_timeout_sec: Option<u64>,
+        tool_timeout_sec: Option<u64>,
     },
 }
 
@@ -82,6 +97,39 @@ impl McpServerDef {
         match self {
             McpServerDef::Stdio { name, .. } => name,
             McpServerDef::Http { name, .. } => name,
+        }
+    }
+
+    /// Whether startup failure should fail the enclosing run.
+    pub fn required(&self) -> bool {
+        match self {
+            McpServerDef::Stdio { required, .. } | McpServerDef::Http { required, .. } => *required,
+        }
+    }
+
+    /// Configured startup timeout, in seconds.
+    pub fn startup_timeout_sec(&self) -> Option<u64> {
+        match self {
+            McpServerDef::Stdio {
+                startup_timeout_sec,
+                ..
+            }
+            | McpServerDef::Http {
+                startup_timeout_sec,
+                ..
+            } => *startup_timeout_sec,
+        }
+    }
+
+    /// Configured per-tool-call timeout, in seconds.
+    pub fn tool_timeout_sec(&self) -> Option<u64> {
+        match self {
+            McpServerDef::Stdio {
+                tool_timeout_sec, ..
+            }
+            | McpServerDef::Http {
+                tool_timeout_sec, ..
+            } => *tool_timeout_sec,
         }
     }
 }
@@ -112,6 +160,9 @@ pub fn parse_mcp_config(content: &str) -> Result<Vec<McpServerDef>, McpConfigErr
                 url: url.clone(),
                 headers: entry.headers,
                 oauth: entry.oauth,
+                required: entry.required,
+                startup_timeout_sec: entry.startup_timeout_sec,
+                tool_timeout_sec: entry.tool_timeout_sec,
             }
         } else if let Some(ref cmd) = entry.command {
             if cmd.is_empty() {
@@ -125,6 +176,9 @@ pub fn parse_mcp_config(content: &str) -> Result<Vec<McpServerDef>, McpConfigErr
                 command: cmd.clone(),
                 args: entry.args,
                 env: entry.env,
+                required: entry.required,
+                startup_timeout_sec: entry.startup_timeout_sec,
+                tool_timeout_sec: entry.tool_timeout_sec,
             }
         } else {
             return Err(McpConfigError::InvalidEntry {
@@ -290,6 +344,7 @@ mod tests {
                 command,
                 args,
                 env,
+                ..
             } => {
                 assert_eq!(name, "fs");
                 assert_eq!(command, "npx");
@@ -327,6 +382,7 @@ mod tests {
                 command,
                 args,
                 env,
+                ..
             } => {
                 assert_eq!(name, "enabled");
                 assert_eq!(command, "node");
@@ -408,6 +464,26 @@ mod tests {
             }
             McpServerDef::Stdio { .. } => panic!("expected Http"),
         }
+    }
+
+    #[test]
+    fn parse_startup_settings() {
+        let json = r#"{
+            "mcpServers": {
+                "required-server": {
+                    "url": "https://mcp.example.com/mcp",
+                    "required": true,
+                    "startup_timeout_sec": 12,
+                    "tool_timeout_sec": 45
+                }
+            }
+        }"#;
+
+        let list = parse_mcp_config(json).unwrap();
+        assert_eq!(list.len(), 1);
+        assert!(list[0].required());
+        assert_eq!(list[0].startup_timeout_sec(), Some(12));
+        assert_eq!(list[0].tool_timeout_sec(), Some(45));
     }
 
     #[test]

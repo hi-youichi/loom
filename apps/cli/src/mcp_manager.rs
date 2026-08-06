@@ -151,6 +151,9 @@ impl McpManager {
                 disabled: args.disabled,
                 headers: HashMap::new(),
                 oauth: None,
+                required: false,
+                startup_timeout_sec: None,
+                tool_timeout_sec: None,
             })
         } else if let Some(url) = &args.url {
             Ok(McpServerEntry {
@@ -161,6 +164,9 @@ impl McpManager {
                 disabled: args.disabled,
                 headers: HashMap::new(),
                 oauth: None,
+                required: false,
+                startup_timeout_sec: None,
+                tool_timeout_sec: None,
             })
         } else {
             Err(McpConfigError::InvalidEntry {
@@ -206,6 +212,9 @@ impl McpManager {
             disabled,
             headers: existing.headers.clone(),
             oauth: existing.oauth.clone(),
+            required: existing.required,
+            startup_timeout_sec: existing.startup_timeout_sec,
+            tool_timeout_sec: existing.tool_timeout_sec,
         })
     }
 

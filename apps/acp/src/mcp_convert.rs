@@ -38,6 +38,9 @@ fn stdio_to_def(s: &McpServerStdio) -> McpServerDef {
         command: s.command.to_string_lossy().into_owned(),
         args: s.args.clone(),
         env: env_vars_to_map(&s.env),
+        required: false,
+        startup_timeout_sec: None,
+        tool_timeout_sec: None,
     }
 }
 
@@ -47,6 +50,9 @@ fn http_to_def(s: &McpServerHttp) -> McpServerDef {
         url: s.url.clone(),
         headers: http_headers_to_map(&s.headers),
         oauth: None,
+        required: false,
+        startup_timeout_sec: None,
+        tool_timeout_sec: None,
     }
 }
 
@@ -57,6 +63,9 @@ fn sse_to_def(s: &McpServerSse) -> McpServerDef {
         url: s.url.clone(),
         headers: http_headers_to_map(&s.headers),
         oauth: None,
+        required: false,
+        startup_timeout_sec: None,
+        tool_timeout_sec: None,
     }
 }
 

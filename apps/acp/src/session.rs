@@ -346,6 +346,9 @@ mod tests {
             url: "https://example.com/mcp".into(),
             headers: std::collections::HashMap::new(),
             oauth: None,
+            required: false,
+            startup_timeout_sec: None,
+            tool_timeout_sec: None,
         }];
         store.update_mcp_servers(&id, servers);
 
