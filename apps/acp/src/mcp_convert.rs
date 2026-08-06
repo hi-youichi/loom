@@ -102,6 +102,7 @@ mod tests {
                 command,
                 args,
                 env,
+                ..
             } => {
                 assert_eq!(name, "my-server");
                 assert_eq!(command, "/usr/bin/node");
@@ -132,6 +133,7 @@ mod tests {
                 command,
                 args,
                 env,
+                ..
             } => {
                 assert_eq!(name, "fs");
                 assert_eq!(command, "npx");
@@ -159,6 +161,7 @@ mod tests {
                 url,
                 headers,
                 oauth,
+                ..
             } => {
                 assert_eq!(name, "remote");
                 assert_eq!(url, "https://mcp.example.com/api");
