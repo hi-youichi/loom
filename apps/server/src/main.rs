@@ -78,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         tokio::spawn(async move {
             use tokio::signal::unix::{signal, SignalKind};
-            let mut sighup = match signal(SignalKind::sighup()) {
+            let mut sighup = match signal(SignalKind::hangup()) {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::warn!("failed to install SIGHUP handler: {e}");

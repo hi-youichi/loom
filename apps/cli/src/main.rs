@@ -38,8 +38,7 @@ use args::{AcpCmd, Args, Command as Cmd, GotArgs};
 use bootstrap::{init_logging, preserve_shell_env, print_config_report};
 use display_limits::max_reply_len;
 use run_flow::{
-    build_run_options, output_config, resolve_user_message, run_interactive_mode,
-    run_single_turn_mode,
+    build_run_options, output_config, resolve_user_message, run_single_turn_mode,
 };
 use skill_usage_cmd::handle_skill_usage_command;
 use subcommands::{
@@ -243,10 +242,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut opts = build_run_options(&args, message.clone().unwrap_or_default(), got_adaptive);
     opts.cancellation = Some(run_cancellation);
     let output = output_config(&args);
-    let reply_len = max_reply_len();
+let reply_len = max_reply_len();
 
     if args.interactive {
-        run_interactive_mode(&mut opts, &cmd, message, reply_len, &output, force_quit).await?;
+        #[cfg(feature = "tui")]
+        {
+            // TUI interactive mode — starts the inline TUI application
+            let mut app = cli::tui::App::new()?;
+            app.run().await?;
+            return Ok(());
+        }
+        #[cfg(not(feature = "tui"))]
+        {
+            // Fallback to REPL mode when TUI feature is not enabled
+            run_flow::run_interactive_mode(&mut opts, &cmd, message, reply_len, &output, force_quit).await?;
+        }
     } else {
         run_single_turn_mode(&mut opts, &cmd, reply_len, &output).await?;
     }

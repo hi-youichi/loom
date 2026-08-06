@@ -16,6 +16,9 @@ pub mod server_transport;
 pub mod session;
 pub mod tool_cmd;
 
+#[cfg(feature = "tui")]
+pub mod tui;
+
 pub use model_cmd::{list_all_models, list_provider_models};
 pub use run::{
     cli_list_models, cli_list_tools, cli_show_tool, print_reply_timestamp,

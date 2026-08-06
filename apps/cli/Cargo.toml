@@ -14,6 +14,10 @@ path = "src/lib.rs"
 name = "loom"
 path = "src/main.rs"
 
+[features]
+default = []
+tui = ["crossterm", "crossterm/event-stream", "ratatui"]
+
 [dependencies]
 agent = { path = "../../agent/agent-core" }
 loom-llm = { path = "../../foundation/llm" }
@@ -52,6 +56,10 @@ tokio-util = { version = "0.7", features = ["rt"] }
 async-trait = { workspace = true }
 ctrlc = "3"
 termsize = "0.1"
+crossterm = { version = "0.29", optional = true, features = ["event-stream", "bracketed-paste"] }
+ratatui = { version = "0.29", optional = true, features = ["crossterm"] }
+libc = "0.2"
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 unicode-width = "0.2"
 chrono-humanize = "0.2"

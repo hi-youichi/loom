@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
 /// Metadata attached to streamed messages.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct StreamMetadata {
     /// Loom node id that produced the message.
     pub loom_node: String,
