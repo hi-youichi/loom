@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use luft_core::contract::backend::{
@@ -14,6 +15,8 @@ use tool_core::Tool;
 
 use crate::event_bridge::map_loom_event_to_delta;
 use crate::workflow_validate_schema::WorkflowValidateSchemaTool;
+
+const POST_SUBMISSION_GRACE: Duration = Duration::from_secs(10);
 
 pub struct LoomAgentBackend {
     config_template: AgentConfig,
@@ -82,6 +85,7 @@ impl AgentBackend for LoomAgentBackend {
         );
 
         let output_slot = Arc::new(Mutex::new(None::<Value>));
+        let submit_notify = Arc::new(tokio::sync::Notify::new());
 
         if let Some(ref schema) = task.output_schema {
             tracing::debug!(
@@ -92,6 +96,7 @@ impl AgentBackend for LoomAgentBackend {
             let tool: Arc<dyn Tool> = Arc::new(WorkflowValidateSchemaTool::new(
                 schema.clone(),
                 output_slot.clone(),
+                submit_notify.clone(),
             ));
             let mut tools: Vec<Arc<dyn Tool>> = vec![tool];
             if let Some(ref existing) = config.extra_tools {
@@ -128,17 +133,15 @@ impl AgentBackend for LoomAgentBackend {
             agent_id = %task.agent_id,
             "building agent from config",
         );
-        let agent = Agent::from_config(config)
-            .await
-            .map_err(|e| {
-                tracing::error!(
-                    target: "workflow::backend",
-                    agent_id = %task.agent_id,
-                    error = %e,
-                    "agent build failed",
-                );
-                BackendError::Execution(format!("agent build failed: {e}"))
-            })?;
+        let agent = Agent::from_config(config).await.map_err(|e| {
+            tracing::error!(
+                target: "workflow::backend",
+                agent_id = %task.agent_id,
+                error = %e,
+                "agent build failed",
+            );
+            BackendError::Execution(format!("agent build failed: {e}"))
+        })?;
 
         tracing::info!(
             target: "workflow::backend",
@@ -156,74 +159,133 @@ impl AgentBackend for LoomAgentBackend {
         let callback = {
             let tokens = tokens.clone();
             let event_sender = event_sender.clone();
-            move |ev: LoomAgentEvent| {
-                match &ev {
-                    LoomAgentEvent::Usage {
-                        input,
-                        output,
-                        cache_read,
-                        ..
-                    } => {
-                        let mut t = tokens.lock().unwrap();
-                        t.input += *input as u64;
-                        t.output += *output as u64;
-                        if let Some(ct) = cache_read {
-                            t.cache_read += *ct as u64;
-                        }
+            move |ev: LoomAgentEvent| match &ev {
+                LoomAgentEvent::Usage {
+                    input,
+                    output,
+                    cache_read,
+                    ..
+                } => {
+                    let mut t = tokens.lock().unwrap();
+                    t.input += *input as u64;
+                    t.output += *output as u64;
+                    if let Some(ct) = cache_read {
+                        t.cache_read += *ct as u64;
                     }
-                    _ => {
-                        if let Some(delta) = map_loom_event_to_delta(&ev) {
-                            let _ = event_sender.send(LuftAgentEvent::AgentProgress {
-                                run_id,
-                                agent_id,
-                                delta,
-                            });
-                        }
+                }
+                _ => {
+                    if let Some(delta) = map_loom_event_to_delta(&ev) {
+                        let _ = event_sender.send(LuftAgentEvent::AgentProgress {
+                            run_id,
+                            agent_id,
+                            delta,
+                        });
                     }
                 }
             }
         };
 
-        let run_handle = tokio::spawn(async move {
-            agent.run(&prompt, callback).await
-        });
+        let mut run_handle = tokio::spawn(async move { agent.run(&prompt, callback).await });
 
-        let run = tokio::select! {
-            result = run_handle => match result {
-                Ok(r) => r,
-                Err(join_err) => {
-                    let msg = if join_err.is_panic() {
-                        let panic = join_err.into_panic();
-                        if let Some(s) = panic.downcast_ref::<&str>() {
-                            s.to_string()
-                        } else if let Some(s) = panic.downcast_ref::<String>() {
-                            s.clone()
-                        } else {
-                            "unknown panic payload".to_string()
+        let has_schema = task.output_schema.is_some();
+        let run = loop {
+            tokio::select! {
+                biased;
+                _ = ctx.cancel.cancelled() => {
+                    run_handle.abort();
+                    return Ok(AgentResult {
+                        agent_id: task.agent_id,
+                        status: AgentStatus::Cancelled,
+                        output: Value::Null,
+                        findings: vec![],
+                        tokens_used: *tokens.lock().unwrap(),
+                        artifacts: vec![],
+                        logs: LogRef::default(),
+                        session_id,
+                    });
+                }
+                result = &mut run_handle => {
+                    break match result {
+                        Ok(r) => r,
+                        Err(join_err) => {
+                            let msg = if join_err.is_panic() {
+                                let panic = join_err.into_panic();
+                                if let Some(s) = panic.downcast_ref::<&str>() {
+                                    s.to_string()
+                                } else if let Some(s) = panic.downcast_ref::<String>() {
+                                    s.clone()
+                                } else {
+                                    "unknown panic payload".to_string()
+                                }
+                            } else {
+                                "task was cancelled".to_string()
+                            };
+                            tracing::error!(
+                                target: "workflow::backend",
+                                agent_id = %task.agent_id,
+                                msg = %msg,
+                                "agent task panicked; converting to AgentError"
+                            );
+                            Err(agent::agent::AgentError::Run(format!("agent panicked: {msg}")))
                         }
-                    } else {
-                        "task was cancelled".to_string()
                     };
-                    tracing::error!(
+                }
+                _ = submit_notify.notified(), if has_schema => {
+                    tracing::debug!(
                         target: "workflow::backend",
                         agent_id = %task.agent_id,
-                        msg = %msg,
-                        "agent task panicked; converting to AgentError"
+                        grace_secs = POST_SUBMISSION_GRACE.as_secs(),
+                        "workflow_validate_schema captured, entering grace period",
                     );
-                    Err(agent::agent::AgentError::Run(format!("agent panicked: {msg}")))
+                    tokio::select! {
+                        biased;
+                        _ = ctx.cancel.cancelled() => {
+                            run_handle.abort();
+                            return Ok(AgentResult {
+                                agent_id: task.agent_id,
+                                status: AgentStatus::Cancelled,
+                                output: Value::Null,
+                                findings: vec![],
+                                tokens_used: *tokens.lock().unwrap(),
+                                artifacts: vec![],
+                                logs: LogRef::default(),
+                                session_id,
+                            });
+                        }
+                        result = &mut run_handle => {
+                            break match result {
+                                Ok(r) => r,
+                                Err(join_err) => {
+                                    let msg = if join_err.is_panic() {
+                                        let panic = join_err.into_panic();
+                                        if let Some(s) = panic.downcast_ref::<&str>() {
+                                            s.to_string()
+                                        } else if let Some(s) = panic.downcast_ref::<String>() {
+                                            s.clone()
+                                        } else {
+                                            "unknown panic payload".to_string()
+                                        }
+                                    } else {
+                                        "task was cancelled".to_string()
+                                    };
+                                    Err(agent::agent::AgentError::Run(format!("agent panicked: {msg}")))
+                                }
+                            };
+                        }
+                        _ = tokio::time::sleep(POST_SUBMISSION_GRACE) => {
+                            tracing::warn!(
+                                target: "workflow::backend",
+                                agent_id = %task.agent_id,
+                                "agent did not stop after workflow_validate_schema, aborting",
+                            );
+                            run_handle.abort();
+                            let _ = (&mut run_handle).await;
+                            break Err(agent::agent::AgentError::Run(
+                                "agent aborted: did not stop after workflow_validate_schema".to_string(),
+                            ));
+                        }
+                    }
                 }
-            },
-            _ = ctx.cancel.cancelled() => {
-                return Ok(AgentResult {
-                    agent_id: task.agent_id,
-                    status: AgentStatus::Cancelled,
-                    output: Value::Null,
-                    findings: vec![],
-                    tokens_used: *tokens.lock().unwrap(),
-                    artifacts: vec![],
-                    logs: LogRef::default(),
-                    session_id,
-                });
             }
         };
 
@@ -262,10 +324,10 @@ impl AgentBackend for LoomAgentBackend {
 
 /// Decide the final `output` value after an agent run.
 ///
-    /// - Ok + slot filled  → slot value (structured_output takes priority)
-    /// - Ok + slot empty    → agent reply text wrapped in `_agent_fallback_text` envelope
-    /// - Err + slot filled  → slot value (salvage: agent crashed *after* capturing structured output)
-    /// - Err + slot empty   → propagate error
+/// - Ok + slot filled  → slot value (structured_output takes priority)
+/// - Ok + slot empty    → agent reply text wrapped in `_agent_fallback_text` envelope
+/// - Err + slot filled  → slot value (salvage: agent crashed *after* capturing structured output)
+/// - Err + slot empty   → propagate error
 fn finalize_output(
     run_result: Result<agent::agent::AgentResult, agent::agent::AgentError>,
     slot_output: Option<Value>,

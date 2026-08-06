@@ -10,13 +10,19 @@ use tool_core::{
 pub struct WorkflowValidateSchemaTool {
     schema: Value,
     output_slot: Arc<Mutex<Option<Value>>>,
+    submit_notify: Arc<tokio::sync::Notify>,
 }
 
 impl WorkflowValidateSchemaTool {
-    pub fn new(schema: Value, output_slot: Arc<Mutex<Option<Value>>>) -> Self {
+    pub fn new(
+        schema: Value,
+        output_slot: Arc<Mutex<Option<Value>>>,
+        submit_notify: Arc<tokio::sync::Notify>,
+    ) -> Self {
         Self {
             schema,
             output_slot,
+            submit_notify,
         }
     }
 }
@@ -28,14 +34,16 @@ impl Tool for WorkflowValidateSchemaTool {
     }
 
     fn spec(&self) -> ToolSpec {
+        let input_schema = wrap_in_result_envelope(&self.schema);
         ToolSpec {
             name: "workflow_validate_schema".to_string(),
             description: Some(
                 "Submit your final structured result. \
-                 You MUST call this tool to complete the task."
+                 You MUST call this tool to complete the task. \
+                 Pass your result as {\"result\": <your JSON value>}."
                     .to_string(),
             ),
-            input_schema: self.schema.clone(),
+            input_schema,
             output_hint: Some(ToolOutputHint::preferred(ToolOutputStrategy::Inline)),
         }
     }
@@ -45,7 +53,9 @@ impl Tool for WorkflowValidateSchemaTool {
         args: Value,
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        if let Err(msg) = validate_against_schema(&args, &self.schema) {
+        let inner = extract_result(&args);
+
+        if let Err(msg) = validate_against_schema(inner, &self.schema) {
             tracing::warn!(
                 target: "workflow::validate_schema",
                 error = %msg,
@@ -60,9 +70,33 @@ impl Tool for WorkflowValidateSchemaTool {
             target: "workflow::validate_schema",
             "schema validation passed, storing result",
         );
-        *self.output_slot.lock().unwrap() = Some(args);
+        *self.output_slot.lock().unwrap() = Some(inner.clone());
+        self.submit_notify.notify_one();
         Ok(ToolCallContent::Text("Result submitted.".to_string()))
     }
+}
+
+fn wrap_in_result_envelope(schema: &Value) -> Value {
+    if schema.as_object().is_none_or(|o| o.is_empty()) {
+        return serde_json::json!({
+            "type": "object",
+            "properties": {
+                "result": {}
+            },
+            "required": ["result"]
+        });
+    }
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "result": schema
+        },
+        "required": ["result"]
+    })
+}
+
+fn extract_result(args: &Value) -> &Value {
+    args.get("result").unwrap_or(args)
 }
 
 fn validate_against_schema(value: &Value, schema: &Value) -> Result<(), String> {
@@ -82,29 +116,34 @@ fn validate_against_schema(value: &Value, schema: &Value) -> Result<(), String> 
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
     use std::sync::{Arc, Mutex};
 
+    fn make_tool(schema: Value) -> (WorkflowValidateSchemaTool, Arc<Mutex<Option<Value>>>) {
+        let slot = Arc::new(Mutex::new(None));
+        let notify = Arc::new(tokio::sync::Notify::new());
+        let tool = WorkflowValidateSchemaTool::new(schema, slot.clone(), notify);
+        (tool, slot)
+    }
+
     #[tokio::test]
     async fn structured_output_valid_json() {
-        let slot = Arc::new(Mutex::new(None));
-        let tool = WorkflowValidateSchemaTool::new(
-            json!({
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string"},
-                    "count": {"type": "integer"}
-                },
-                "required": ["name"]
-            }),
-            slot.clone(),
-        );
+        let (tool, slot) = make_tool(json!({
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "count": {"type": "integer"}
+            },
+            "required": ["name"]
+        }));
 
-        let args = json!({"name": "test", "count": 42});
-        let result = tool.call(args.clone(), None).await.unwrap();
+        let payload = json!({"name": "test", "count": 42});
+        let args = json!({"result": payload});
+        let result = tool.call(args, None).await.unwrap();
 
         match result {
             ToolCallContent::Text(msg) => assert_eq!(msg, "Result submitted."),
@@ -112,24 +151,20 @@ mod tests {
         }
 
         let stored = slot.lock().unwrap().clone();
-        assert_eq!(stored, Some(args));
+        assert_eq!(stored, Some(payload));
     }
 
     #[tokio::test]
     async fn structured_output_invalid_json() {
-        let slot = Arc::new(Mutex::new(None));
-        let tool = WorkflowValidateSchemaTool::new(
-            json!({
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string"}
-                },
-                "required": ["name"]
-            }),
-            slot.clone(),
-        );
+        let (tool, slot) = make_tool(json!({
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"}
+            },
+            "required": ["name"]
+        }));
 
-        let args = json!({"count": 42});
+        let args = json!({"result": {"count": 42}});
         let result = tool.call(args, None).await.unwrap();
 
         match result {
@@ -144,26 +179,34 @@ mod tests {
 
     #[tokio::test]
     async fn structured_output_empty_schema_skips_validation() {
-        let slot = Arc::new(Mutex::new(None));
-        let tool = WorkflowValidateSchemaTool::new(json!({}), slot.clone());
+        let (tool, slot) = make_tool(json!({}));
 
-        let args = json!({"anything": true});
-        let result = tool.call(args.clone(), None).await.unwrap();
+        let payload = json!({"anything": true});
+        let args = json!({"result": payload});
+        let result = tool.call(args, None).await.unwrap();
 
         match result {
             ToolCallContent::Text(msg) => assert_eq!(msg, "Result submitted."),
             _ => panic!("expected Text"),
         }
-        assert_eq!(slot.lock().unwrap().clone(), Some(args));
+        assert_eq!(slot.lock().unwrap().clone(), Some(payload));
     }
 
     #[test]
     fn structured_output_spec() {
-        let tool = WorkflowValidateSchemaTool::new(json!({"type": "object"}), Arc::new(Mutex::new(None)));
+        let (tool, _) = make_tool(json!({"type": "object"}));
 
-assert_eq!(tool.name(), "workflow_validate_schema");
+        assert_eq!(tool.name(), "workflow_validate_schema");
         let spec = tool.spec();
         assert_eq!(spec.name, "workflow_validate_schema");
         assert!(spec.description.as_ref().unwrap().contains("MUST"));
+
+        let schema = &spec.input_schema;
+        assert_eq!(schema["type"], "object");
+        assert_eq!(schema["properties"]["result"]["type"], "object");
+        assert!(schema["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("result")));
     }
 }
