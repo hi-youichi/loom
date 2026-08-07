@@ -89,17 +89,16 @@ impl ModelRegistry {
         &self,
         providers: &[ProviderConfig],
     ) -> Result<Vec<ModelEntry>, TierError> {
-        if providers.is_empty() {
-            tracing::info!(
-                total_models = 0,
-                "Listed all available models from model spec (no providers configured)"
-            );
-            return Ok(Vec::new());
-        }
-
         let mut all_models = Vec::new();
         let mut seen_ids = HashSet::new();
         let mut need_spec_providers = false;
+
+        let bundled = load_bundled_providers();
+        let input_names: HashSet<String> = providers
+            .iter()
+            .map(|p| Self::normalize_provider_name(&p.name))
+            .collect();
+        let has_uncovered_bundled = bundled.keys().any(|k| !input_names.contains(k));
 
         for provider in providers {
             if provider.fetch_models {
@@ -141,31 +140,55 @@ impl ModelRegistry {
             need_spec_providers = true;
         }
 
-        if need_spec_providers {
+        if need_spec_providers || has_uncovered_bundled {
             let spec_providers = self.fetch_or_get_cached_spec_providers().await?;
-            for provider in providers {
-                if provider.fetch_models {
-                    continue;
-                }
-                let normalized = Self::normalize_provider_name(&provider.name);
-                let Some(spec_provider) = spec_providers.get(&normalized) else {
-                    tracing::warn!(
-                        provider = %provider.name,
-                        "Provider not found in model spec; skipping provider models"
-                    );
-                    continue;
-                };
 
-                for model_id in spec_provider.models.keys() {
-                    let mut entry = ModelEntry::from_provider_config(provider, model_id);
-                    if entry.base_url.is_none() {
-                        if let Some(ref api) = spec_provider.api {
-                            entry.base_url = Some(api.clone());
+            if need_spec_providers {
+                for provider in providers {
+                    if provider.fetch_models {
+                        continue;
+                    }
+                    let normalized = Self::normalize_provider_name(&provider.name);
+                    let Some(spec_provider) = spec_providers.get(&normalized) else {
+                        tracing::warn!(
+                            provider = %provider.name,
+                            "Provider not found in model spec; skipping provider models"
+                        );
+                        continue;
+                    };
+
+                    for model_id in spec_provider.models.keys() {
+                        let mut entry = ModelEntry::from_provider_config(provider, model_id);
+                        if entry.base_url.is_none() {
+                            if let Some(ref api) = spec_provider.api {
+                                entry.base_url = Some(api.clone());
+                            }
+                        }
+                        if entry.provider_type.is_none()
+                            && !entry.provider.eq_ignore_ascii_case("openai")
+                        {
+                            entry.provider_type = Some("openai_compat".to_string());
+                        }
+                        if seen_ids.insert(entry.id.clone()) {
+                            all_models.push(entry);
                         }
                     }
-                    if entry.provider_type.is_none()
-                        && !entry.provider.eq_ignore_ascii_case("openai")
-                    {
+                }
+            }
+
+            for (spec_name, _) in &bundled {
+                if input_names.contains(spec_name) {
+                    continue;
+                }
+                let Some(spec_provider) = spec_providers.get(spec_name) else {
+                    continue;
+                };
+                for model_id in spec_provider.models.keys() {
+                    let mut entry = ModelEntry::new(spec_name, model_id);
+                    if let Some(ref api) = spec_provider.api {
+                        entry.base_url = Some(api.clone());
+                    }
+                    if !spec_name.eq_ignore_ascii_case("openai") {
                         entry.provider_type = Some("openai_compat".to_string());
                     }
                     if seen_ids.insert(entry.id.clone()) {
@@ -306,16 +329,23 @@ impl ModelRegistry {
         Self::merge_yaml_plugins(&mut providers);
 
         // 3. 远程 API（只插入不存在的 key，最低优先级）
-        let fetched = crate::resolver::ModelsDevResolver::new()
+        match crate::resolver::ModelsDevResolver::new()
             .fetch_all_providers()
             .await
-            .map_err(|e| {
-                TierError::execution(format!("failed to fetch model spec providers: {e}"))
-            })?;
-        for (key, provider) in fetched {
-            providers
-                .entry(Self::normalize_provider_name(&key))
-                .or_insert(provider);
+        {
+            Ok(fetched) => {
+                for (key, provider) in fetched {
+                    providers
+                        .entry(Self::normalize_provider_name(&key))
+                        .or_insert(provider);
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "Failed to fetch model spec providers from remote; continuing with local data"
+                );
+            }
         }
 
         // 写入缓存（只缓存远程 API 部分，本地数据每次都实时合并）
@@ -495,10 +525,18 @@ mod tests {
     use super::*;
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_list_all_models_returns_empty_for_no_providers() {
+    async fn test_list_all_models_includes_bundled_without_user_config() {
         let registry = ModelRegistry::new();
         let models = registry.list_all_models(&[]).await;
-        assert!(models.is_empty());
+
+        let has_bundled = models
+            .iter()
+            .any(|m| m.provider == "huoshan-coding-plan");
+        assert!(
+            has_bundled,
+            "Bundled provider should appear even without user config. Models: {:?}",
+            models.iter().map(|m| &m.id).collect::<Vec<_>>()
+        );
     }
 
     #[test]
