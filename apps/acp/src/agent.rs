@@ -394,15 +394,7 @@ impl LoomAcpAgent {
             .prompt_capabilities(prompts)
             .session_capabilities(session);
 
-        let protocol_version = if args.protocol_version >= ProtocolVersion::V1 {
-            args.protocol_version
-        } else {
-            tracing::warn!(
-                client_version = ?args.protocol_version,
-                "Client requested protocol version < V1, upgrading to V1"
-            );
-            ProtocolVersion::V1
-        };
+        let protocol_version = ProtocolVersion::V1;
         let response = InitializeResponse::new(protocol_version)
             .agent_info(agent_client_protocol::schema::v1::Implementation::new(
                 "loom",
