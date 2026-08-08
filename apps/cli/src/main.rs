@@ -68,7 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The ACP protocol uses stdout for JSON-RPC; any extra output corrupts it.
     if let Some(Cmd::Acp(acp_args)) = &args.cmd {
         let log_config = loom_acp::logging::LogConfig {
-            level: args.log_level.clone().unwrap_or_else(|| "info".to_string()),
+            level: args.log_level.clone().unwrap_or_else(|| bootstrap::verbose_to_level(args.verbose).to_string()),
             file: args.log_file.clone(),
             rotate: config::tracing_init::LogRotate::from_str_or_daily(&args.log_rotate),
             format: args.log_format.parse().unwrap_or_default(),
@@ -82,7 +82,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if let Some(Cmd::Server(server_options)) = &args.cmd {
-        loom_server::runtime::run(server_options.clone()).await?;
+        let log_config = loom_server::logging::LogConfig {
+            level: args.log_level.clone().unwrap_or_else(|| {
+                bootstrap::verbose_to_level(args.verbose).to_string()
+            }),
+            file: args.log_file.clone(),
+            rotate: config::tracing_init::LogRotate::from_str_or_daily(&args.log_rotate),
+            format: args.log_format.parse().unwrap_or_default(),
+        };
+        loom_server::runtime::run(server_options.clone(), Some(log_config)).await?;
         return Ok(());
     }
 

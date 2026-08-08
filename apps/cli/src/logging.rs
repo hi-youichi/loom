@@ -1,12 +1,12 @@
 //! Logging initialization with file rotation support.
 //!
 //! Resolution order (after `config.toml` / `.env` are applied to the process environment):
-//! - `--log-level` overrides `RUST_LOG`; otherwise `RUST_LOG`, else `info`
-//! - `--log-file` overrides `LOG_FILE`; when neither is set, logs are dropped (stdout stays clean)
+//! - `--log-level` overrides `RUST_LOG`; otherwise `RUST_LOG`, else `[logging].level` (config.toml), else verbosity (`-v`/`-vv`/`-vvv`), else `off`
+//! - `--log-file` overrides `LOG_FILE`; default: `~/.loom/loom.log`
 //! - `--log-format`: `text` (default) or `json`
 //! - `--log-rotate`: Rotation strategy when writing to a file (none, daily, hourly, minutely)
 //!
-//! Default log location: `~/.loom/logs/cli/loom-cli.log`
+//! Default log location: `~/.loom/loom.log`
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -93,8 +93,8 @@ pub struct LogGuard {
 /// Priority:
 /// 1. `--log-file` CLI argument
 /// 2. `LOG_FILE` environment variable (only from shell, not from config.toml [env])
-/// 3. `config.toml` [logging.cli].path
-/// 4. `~/.loom/logs/cli/loom-cli.log`
+/// 3. `config.toml` [logging].path
+/// 4. `~/.loom/loom.log`
 pub fn resolve_cli_log_path(
     cli_file: Option<&Path>,
     working_folder: Option<&Path>,
@@ -112,22 +112,22 @@ pub fn resolve_cli_log_path(
     if let Some(path) = log_file_from_env {
         if logging_config
             .as_ref()
-            .and_then(|c| c.cli.path.as_ref())
+            .and_then(|c| c.path.as_ref())
             .is_none()
         {
             return Some(PathBuf::from(path));
         }
     }
 
-    // 3. config.toml [logging.cli].path
+    // 3. config.toml [logging].path
     if let Some(config) = logging_config {
-        if let Some(path) = &config.cli.path {
+        if let Some(path) = &config.path {
             return Some(path.clone());
         }
     }
 
-    // 4. Default: ~/.loom/logs/cli/loom-cli.log
-    Some(config::home::cli_logs_dir().join("loom-cli.log"))
+    // 4. Default: ~/.loom/loom.log
+    Some(config::home::default_log_file())
 }
 
 /// Initializes tracing with logging config from config.toml.
@@ -156,7 +156,7 @@ pub fn init_with_config(
     let rotate = if args.rotate != LogRotate::None {
         args.rotate
     } else if let Some(config) = logging_config {
-        config.cli.rotate()
+        config.rotate()
     } else {
         LogRotate::None
     };

@@ -18,7 +18,7 @@
 //!
 //!   - sqlite checkpointer lands under `<tmp>/thread/<sid>/...`
 //!   - PID file at   `<tmp>/acp/loom-acp.pid`
-//!   - default log at `<tmp>/logs/acp/loom-acp.log` (we override to `<tmp>/loom-acp.log`
+//!   - default log at `<tmp>/loom.log` (we override to `<tmp>/loom-acp.log`
 //!     via `--log-file` for determinism — see `AcpTestHarness::spawn`).
 //!
 //! All e2e tests that mutate `LOOM_HOME` MUST be marked `#[serial_test::serial]`
