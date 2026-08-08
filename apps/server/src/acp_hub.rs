@@ -255,9 +255,13 @@ impl AcpHub {
             let _ = previous.send(());
         }
 
-        // Apply disconnect policy for the outgoing connection.
-        if is_reconnect && self.config.disconnect_policy == DisconnectPolicy::Cancel {
-            tracing::info!("DisconnectPolicy::Cancel — cancelling active generations");
+        // Always cancel active generations on reconnect to prevent session lock.
+        // When a new WS connection takes over, any in-flight prompt from the old
+        // connection keeps the session locked via PromptGuard, preventing the new
+        // connection from starting a new prompt.  The DisconnectPolicy controls
+        // behavior on normal disconnect (no replacement) — not on reconnect.
+        if is_reconnect {
+            tracing::info!("Reconnect — cancelling active generations to prevent session lock");
             inner.agent.cancel_all();
         }
 
