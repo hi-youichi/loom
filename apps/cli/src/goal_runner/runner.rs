@@ -447,11 +447,12 @@ impl GoalRunner {
         );
         // Use cmd.exe on Windows, sh elsewhere.
         let result = if cfg!(windows) {
-            tokio::process::Command::new("cmd")
-                .args(["/C", cmd])
-                .current_dir(&self.working_dir)
-                .output()
-                .await
+            let mut c = tokio::process::Command::new("cmd");
+            c.args(["/C", cmd])
+                .current_dir(&self.working_dir);
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            c.creation_flags(CREATE_NO_WINDOW);
+            c.output().await
         } else {
             tokio::process::Command::new("sh")
                 .args(["-c", cmd])
@@ -524,13 +525,17 @@ impl GoalRunner {
 
 fn spawn_mcp_server(db: &TaskDb) -> Result<Child, GoalError> {
     let db_path = db.path();
-    let child = tokio::process::Command::new("task-mcp-server")
-        .arg("--db-path")
+    let mut cmd = tokio::process::Command::new("task-mcp-server");
+    cmd.arg("--db-path")
         .arg(db_path)
         .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .map_err(GoalError::Io)?;
+        .stdout(std::process::Stdio::piped());
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let child = cmd.spawn().map_err(GoalError::Io)?;
     Ok(child)
 }
 

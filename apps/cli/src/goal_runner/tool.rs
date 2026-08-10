@@ -55,6 +55,11 @@ impl CodingTool for ShellTool {
             .env("LOOM_GOAL_PROMPT", prompt)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
+        #[cfg(windows)]
+        {
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
 
         let mut child = cmd.spawn().map_err(|e| {
             ToolError::ExecutionFailed(format!("failed to spawn {}: {}", self.command, e))

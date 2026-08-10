@@ -33,10 +33,15 @@ type Result<T> = std::result::Result<T, GitWorktreeError>;
 
 /// Run a git command in the given directory, returning stdout.
 pub(crate) fn run_git(workdir: &Path, args: &[&str]) -> Result<std::process::Output> {
-    let output = std::process::Command::new("git")
-        .current_dir(workdir)
-        .args(args)
-        .output()
+    let mut git_cmd = std::process::Command::new("git");
+    git_cmd.current_dir(workdir).args(args);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        git_cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let output = git_cmd.output()
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 GitWorktreeError::GitNotFound

@@ -35,11 +35,18 @@ pub fn expand_inline_shell(content: &str, skill_dir: Option<&Path>) -> String {
         .replace_all(content, |caps: &regex::Captures| {
             let cmd = &caps[1];
             let cwd = skill_dir;
-            match std::process::Command::new(if cfg!(windows) { "cmd" } else { "sh" })
+            let mut shell_cmd = std::process::Command::new(if cfg!(windows) { "cmd" } else { "sh" });
+            shell_cmd
                 .arg(if cfg!(windows) { "/C" } else { "-c" })
                 .arg(cmd)
-                .current_dir(cwd.unwrap_or(std::path::Path::new(".")))
-                .output()
+                .current_dir(cwd.unwrap_or(std::path::Path::new(".")));
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                shell_cmd.creation_flags(CREATE_NO_WINDOW);
+            }
+            match shell_cmd.output()
             {
                 Ok(output) => {
                     let stdout = String::from_utf8_lossy(&output.stdout);

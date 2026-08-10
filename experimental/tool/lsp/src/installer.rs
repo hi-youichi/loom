@@ -135,9 +135,15 @@ impl LspInstaller {
             .find(|s| s.language == language)
             .ok_or_else(|| InstallerError::UnsupportedLanguage(language.to_string()))?;
 
-        let output = Command::new(&server.executable)
-            .args(&server.check_args)
-            .output();
+        let mut check_cmd = Command::new(&server.executable);
+        check_cmd.args(&server.check_args);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            check_cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        let output = check_cmd.output();
 
         match output {
             Ok(output) => {
