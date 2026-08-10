@@ -446,14 +446,16 @@ impl GoalRunner {
             crate::display::panel_format::format_panel_line("VERIFY", cmd,)
         );
         // Use cmd.exe on Windows, sh elsewhere.
-        let result = if cfg!(windows) {
+        #[cfg(windows)]
+        let result = {
             let mut c = tokio::process::Command::new("cmd");
-            c.args(["/C", cmd])
-                .current_dir(&self.working_dir);
+            c.args(["/C", cmd]).current_dir(&self.working_dir);
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
             c.creation_flags(CREATE_NO_WINDOW);
             c.output().await
-        } else {
+        };
+        #[cfg(not(windows))]
+        let result = {
             tokio::process::Command::new("sh")
                 .args(["-c", cmd])
                 .current_dir(&self.working_dir)
