@@ -5,16 +5,14 @@
 //!
 //! Each tool receives a connection-scoped mock bridge explicitly.
 //!
-//! These tests mutate the global client bridge (`set_client_bridge`), so they
-//! are marked `#[serial_test::serial]` to avoid races between parallel tests.
+//! No global bridge registry is used, so these tests may run in parallel.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use loom_acp::tools::{
-    set_client_bridge, ClientBridgeTrait, ReadTextFileTool, TerminalExitResult, TerminalOutput,
-    WriteTextFileTool,
+    ClientBridgeTrait, ReadTextFileTool, TerminalExitResult, TerminalOutput, WriteTextFileTool,
 };
 use serde_json::json;
 use tool_core::{Tool, ToolCallContent};
@@ -142,11 +140,9 @@ impl ClientBridgeTrait for MockBridge {
 // ============================================================================
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_write_new_file_returns_diff_with_no_old_text() {
     let bridge = Arc::new(MockBridge::new());
-    set_client_bridge(bridge.clone()).await;
-    let tool = WriteTextFileTool::new();
+    let tool = WriteTextFileTool::with_bridge(bridge.clone());
     let result = tool
         .call(
             json!({
@@ -179,11 +175,9 @@ async fn test_write_new_file_returns_diff_with_no_old_text() {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_write_existing_file_returns_diff_with_old_text() {
     let bridge = Arc::new(MockBridge::with_file("src/lib.rs", "fn old() {}\n"));
-    set_client_bridge(bridge.clone()).await;
-    let tool = WriteTextFileTool::new();
+    let tool = WriteTextFileTool::with_bridge(bridge.clone());
     let result = tool
         .call(
             json!({
@@ -210,14 +204,12 @@ async fn test_write_existing_file_returns_diff_with_old_text() {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_write_preserves_multiline_content() {
     let old = "line 1\nline 2\nline 3\n";
     let new = "line 1\nline 2 modified\nline 3\nline 4\n";
 
     let bridge = Arc::new(MockBridge::with_file("multi.txt", old));
-    set_client_bridge(bridge.clone()).await;
-    let tool = WriteTextFileTool::new();
+    let tool = WriteTextFileTool::with_bridge(bridge.clone());
     let result = tool
         .call(
             json!({
@@ -245,11 +237,9 @@ async fn test_write_preserves_multiline_content() {
 // ============================================================================
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_read_existing_file_returns_text_content() {
     let bridge = Arc::new(MockBridge::with_file("README.md", "# Hello\nWorld\n"));
-    set_client_bridge(bridge.clone()).await;
-    let tool = ReadTextFileTool::new();
+    let tool = ReadTextFileTool::with_bridge(bridge.clone());
     let result = tool
         .call(
             json!({
@@ -269,11 +259,9 @@ async fn test_read_existing_file_returns_text_content() {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_read_missing_file_returns_error() {
     let bridge = Arc::new(MockBridge::new());
-    set_client_bridge(bridge.clone()).await;
-    let tool = ReadTextFileTool::new();
+    let tool = ReadTextFileTool::with_bridge(bridge.clone());
     let result = tool
         .call(
             json!({
@@ -291,11 +279,9 @@ async fn test_read_missing_file_returns_error() {
 // ============================================================================
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_write_then_read_roundtrip() {
     let bridge = Arc::new(MockBridge::new());
-    set_client_bridge(bridge.clone()).await;
-    let write_tool = WriteTextFileTool::new();
+    let write_tool = WriteTextFileTool::with_bridge(bridge.clone());
     write_tool
         .call(
             json!({
@@ -307,7 +293,7 @@ async fn test_write_then_read_roundtrip() {
         .await
         .expect("write should succeed");
 
-    let read_tool = ReadTextFileTool::new();
+    let read_tool = ReadTextFileTool::with_bridge(bridge.clone());
     let result = read_tool
         .call(
             json!({
@@ -327,11 +313,9 @@ async fn test_write_then_read_roundtrip() {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_write_then_update_diff_chain() {
     let bridge = Arc::new(MockBridge::new());
-    set_client_bridge(bridge.clone()).await;
-    let tool = WriteTextFileTool::new();
+    let tool = WriteTextFileTool::with_bridge(bridge.clone());
 
     let r1 = tool
         .call(json!({"path": "chain.rs", "content": "v1"}), None)

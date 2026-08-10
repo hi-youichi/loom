@@ -107,6 +107,14 @@ impl TerminalManager {
             cmd.env(k, v);
         }
 
+        #[cfg(windows)]
+        {
+            #[allow(unused_imports)]
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
         let mut child = cmd
             .spawn()
             .map_err(|e| {
@@ -329,10 +337,15 @@ impl TerminalManager {
             }
             #[cfg(windows)]
             {
-                let _ = Command::new("taskkill")
-                    .args(["/PID", &pid.to_string(), "/F", "/T"])
-                    .output()
-                    .await;
+                let mut tk = Command::new("taskkill");
+                tk.args(["/PID", &pid.to_string(), "/F", "/T"]);
+                {
+                    #[allow(unused_imports)]
+                    use std::os::windows::process::CommandExt;
+                    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                    tk.creation_flags(CREATE_NO_WINDOW);
+                }
+                let _ = tk.output().await;
             }
         }
         entry.session.status = TerminalStatus::Killed;
@@ -364,10 +377,15 @@ impl TerminalManager {
             }
             #[cfg(windows)]
             {
-                let _ = Command::new("taskkill")
-                    .args(["/PID", &pid.to_string(), "/F", "/T"])
-                    .output()
-                    .await;
+                let mut tk = Command::new("taskkill");
+                tk.args(["/PID", &pid.to_string(), "/F", "/T"]);
+                {
+                    #[allow(unused_imports)]
+                    use std::os::windows::process::CommandExt;
+                    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                    tk.creation_flags(CREATE_NO_WINDOW);
+                }
+                let _ = tk.output().await;
             }
         }
         entry.child = None;

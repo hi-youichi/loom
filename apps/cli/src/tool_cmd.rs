@@ -59,6 +59,7 @@ pub async fn list_tools(opts: &RunOptions) -> Result<(), RunError> {
 
 /// Formats tools list for display.
 /// When `output_json` is true, prints a JSON array of tools; otherwise prints a table.
+#[allow(clippy::result_large_err)]
 pub fn format_tools_list(tools: &[ToolSpec], output_json: bool) -> Result<(), RunError> {
     if output_json {
         let list: Vec<ToolSpecOutput> = tools
@@ -159,6 +160,7 @@ struct ToolSpecOutput {
 }
 
 /// Formats tool show output from ToolShowResponse.
+#[allow(clippy::result_large_err)]
 pub fn format_tool_show_output(
     r: &ToolShowResponse,
     format: ToolShowFormat,

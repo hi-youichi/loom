@@ -195,8 +195,8 @@ pub fn build_instance_meta(
         .unwrap_or_else(|| summarise_event_types(events));
 
     // Report: prefer checkpoint's `report`.
-    let report = build_report_ref_from_checkpoint(checkpoint)
-        .unwrap_or_else(|| build_report_ref(events));
+    let report =
+        build_report_ref_from_checkpoint(checkpoint).unwrap_or_else(|| build_report_ref(events));
 
     let checkpoint_hash = sha256_hex(checkpoint_bytes);
 
@@ -235,12 +235,7 @@ fn build_agent_summaries_from_checkpoint(checkpoint: &Value) -> Option<Vec<Agent
                 .filter_map(|v| v.as_str().map(String::from))
                 .collect()
         })
-        .unwrap_or_else(|| {
-            results_map
-                .keys()
-                .cloned()
-                .collect()
-        });
+        .unwrap_or_else(|| results_map.keys().cloned().collect());
 
     let mut out = Vec::new();
     for agent_id in &ordered_ids {
@@ -259,33 +254,23 @@ fn build_agent_summaries_from_checkpoint(checkpoint: &Value) -> Option<Vec<Agent
             .and_then(|v| v.as_str())
             .map(normalise_agent_status)
             .unwrap_or_else(|| "unknown".to_string());
-        let tokens = entry
-            .get("tokens")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
+        let tokens = entry.get("tokens").and_then(|v| v.as_u64()).unwrap_or(0);
         let elapsed_ms = entry
             .get("elapsed_ms")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
-        let name = entry
-            .get("name")
-            .and_then(|v| v.as_str())
-            .map(String::from);
+        let name = entry.get("name").and_then(|v| v.as_str()).map(String::from);
         let description = entry
             .get("description")
             .and_then(|v| v.as_str())
             .map(String::from);
-        let role = entry
-            .get("role")
-            .and_then(|v| v.as_str())
-            .map(String::from);
+        let role = entry.get("role").and_then(|v| v.as_str()).map(String::from);
 
         let raw = entry
             .get("output")
             .map(value_to_raw_string)
             .unwrap_or_default();
-        let (output_type, _parsed, output_preview, output_size, _marker) =
-            classify_output(&raw);
+        let (output_type, _parsed, output_preview, output_size, _marker) = classify_output(&raw);
         let output_ref = if output_size > AGENT_OUTPUT_INLINE_LIMIT as u64 {
             Some(format!("agent-outputs/{agent_id}.txt"))
         } else {

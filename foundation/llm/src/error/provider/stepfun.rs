@@ -37,7 +37,8 @@ mod tests {
 
     #[test]
     fn maps_451_to_content_filter() {
-        let err = StepFunParser::new("stepfun").parse(451, &[], br#"{"error":{"message":"blocked"}}"#);
+        let err =
+            StepFunParser::new("stepfun").parse(451, &[], br#"{"error":{"message":"blocked"}}"#);
         assert_eq!(err.kind, ErrorKind::ContentFilter);
         assert!(!err.is_retryable());
     }

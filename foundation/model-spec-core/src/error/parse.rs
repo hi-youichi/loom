@@ -70,11 +70,15 @@ mod tests {
         ));
         assert!(matches!(
             default_retry_policy(ErrorKind::Billing),
-            RetryPolicy::NoRetry { action: UserAction::TopUp }
+            RetryPolicy::NoRetry {
+                action: UserAction::TopUp
+            }
         ));
         assert!(matches!(
             default_retry_policy(ErrorKind::AuthFailed),
-            RetryPolicy::NoRetry { action: UserAction::CheckApiKey }
+            RetryPolicy::NoRetry {
+                action: UserAction::CheckApiKey
+            }
         ));
     }
 

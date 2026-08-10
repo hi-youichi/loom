@@ -41,10 +41,7 @@ pub struct AgentKey {
 }
 
 impl AgentKey {
-    pub fn new(
-        agent_id: impl Into<String>,
-        working_folder: impl Into<String>,
-    ) -> Self {
+    pub fn new(agent_id: impl Into<String>, working_folder: impl Into<String>) -> Self {
         Self {
             agent_id: agent_id.into(),
             working_folder: working_folder.into(),

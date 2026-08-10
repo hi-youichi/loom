@@ -52,7 +52,10 @@ mod tests {
 
     #[test]
     fn auth_business_codes() {
-        let err = parse(401, br#"{"error":{"code":"1003","message":"token expired"}}"#);
+        let err = parse(
+            401,
+            br#"{"error":{"code":"1003","message":"token expired"}}"#,
+        );
         assert_eq!(err.kind, ErrorKind::AuthFailed);
     }
 
@@ -64,7 +67,10 @@ mod tests {
 
     #[test]
     fn quota_1310() {
-        let err = parse(429, br#"{"error":{"code":"1310","message":"weekly limit"}}"#);
+        let err = parse(
+            429,
+            br#"{"error":{"code":"1310","message":"weekly limit"}}"#,
+        );
         assert_eq!(err.kind, ErrorKind::QuotaExhausted);
         assert!(!err.is_retryable());
     }

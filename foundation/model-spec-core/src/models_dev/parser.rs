@@ -5,9 +5,8 @@ use serde_json::Value;
 use super::cost::{Cost, CostTier, CostTierInfo};
 use super::limit::{Modalities, ModalityType, ModelLimit};
 use super::model::{
-    Experimental, ExperimentalMode, ExperimentalProviderConfig, Interleaved,
-    InterleavedField, Model, ModelProviderConfig, ModelStatus, ProviderShape,
-    ReasoningEffort, ReasoningOption,
+    Experimental, ExperimentalMode, ExperimentalProviderConfig, Interleaved, InterleavedField,
+    Model, ModelProviderConfig, ModelStatus, ProviderShape, ReasoningEffort, ReasoningOption,
 };
 use super::provider::Provider;
 
@@ -168,9 +167,7 @@ pub fn parse_model(model_id: &str, value: &Value) -> Option<Model> {
 
     let experimental = value.get("experimental").and_then(parse_experimental);
 
-    let provider = value
-        .get("provider")
-        .and_then(parse_model_provider_config);
+    let provider = value.get("provider").and_then(parse_model_provider_config);
 
     Some(Model {
         id: model_id.to_string(),
@@ -376,16 +373,13 @@ fn parse_model_status(s: &str) -> Option<ModelStatus> {
 }
 
 fn parse_experimental(v: &Value) -> Option<Experimental> {
-    let modes = v
-        .get("modes")
-        .and_then(|v| v.as_object())
-        .map(|obj| {
-            obj.iter()
-                .filter_map(|(key, mode_val)| {
-                    parse_experimental_mode(mode_val).map(|m| (key.clone(), m))
-                })
-                .collect()
-        });
+    let modes = v.get("modes").and_then(|v| v.as_object()).map(|obj| {
+        obj.iter()
+            .filter_map(|(key, mode_val)| {
+                parse_experimental_mode(mode_val).map(|m| (key.clone(), m))
+            })
+            .collect()
+    });
     Some(Experimental { modes })
 }
 
@@ -402,14 +396,11 @@ fn parse_experimental_provider_config(v: &Value) -> Option<ExperimentalProviderC
         .get("body")
         .and_then(|v| v.as_object())
         .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect());
-    let headers = v
-        .get("headers")
-        .and_then(|v| v.as_object())
-        .map(|obj| {
-            obj.iter()
-                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                .collect()
-        });
+    let headers = v.get("headers").and_then(|v| v.as_object()).map(|obj| {
+        obj.iter()
+            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+            .collect()
+    });
     Some(ExperimentalProviderConfig { body, headers })
 }
 
@@ -428,14 +419,11 @@ fn parse_model_provider_config(v: &Value) -> Option<ModelProviderConfig> {
         .get("body")
         .and_then(|v| v.as_object())
         .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect());
-    let headers = v
-        .get("headers")
-        .and_then(|v| v.as_object())
-        .map(|obj| {
-            obj.iter()
-                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                .collect()
-        });
+    let headers = v.get("headers").and_then(|v| v.as_object()).map(|obj| {
+        obj.iter()
+            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+            .collect()
+    });
     Some(ModelProviderConfig {
         npm,
         api,

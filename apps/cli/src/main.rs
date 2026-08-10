@@ -81,6 +81,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    if args.acp {
+        if args.cmd.is_some() {
+            eprintln!(
+                "loom: --acp cannot be combined with a subcommand; pass the prompt as a message"
+            );
+            std::process::exit(2);
+        }
+        let message = resolve_user_message(&args);
+        let cwd = args
+            .working_folder
+            .clone()
+            .unwrap_or(std::env::current_dir()?);
+        let options = loom_acp::cli_client::CliAcpOptions {
+            url: args.acp_url.clone(),
+            cwd,
+            session_id: args.session_id.clone(),
+            message,
+            json_output: args.json,
+            pretty: args.pretty,
+        };
+        if let Err(error) = loom_acp::cli_client::run(options).await {
+            eprintln!("loom --acp: {error}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
     if let Some(Cmd::Server(server_options)) = &args.cmd {
         loom_server::runtime::run(server_options.clone()).await?;
         return Ok(());

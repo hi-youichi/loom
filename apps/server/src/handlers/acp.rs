@@ -149,8 +149,8 @@ async fn handle_socket(state: SharedState, owner: SessionOwner, socket: WebSocke
     let transport = agent_client_protocol::Lines::new(outgoing, incoming);
 
     // --- Attach to AcpHub ---
-    let (agent, notification_rx, lease, generation) = match state.acp_hub.attach_with(owner.clone(), None).await {
-        Ok(tuple) => tuple,
+    let lease = match state.acp_hub.attach_with(owner.clone(), None).await {
+        Ok(lease) => lease,
         Err(e) => {
             tracing::error!(error = %e, principal = %owner.principal, "AcpHub attach failed");
             return;
@@ -165,20 +165,17 @@ async fn handle_socket(state: SharedState, owner: SessionOwner, socket: WebSocke
     // reader task already silently continues on Ping/Pong frames.
 
     // --- Run ACP dispatch ---
-    // The shutdown future resolves when EITHER the lease is cancelled (new
-    // connection takes over) OR the WS incoming stream ends (client
-    // disconnected). Without the ws_closed branch, an idle WS disconnect
-    // would hang forever because `run_until` waits for the foreground.
+    // Each WebSocket owns an independent ACP connection. Shutdown follows only
+    // this socket; opening another connection never cancels it.
     let hub_clone = state.acp_hub.clone();
+    let connection_id = lease.connection.id.clone();
     let shutdown = async move {
-        tokio::select! {
-            _ = lease => {},
-            _ = ws_closed_rx => {},
-        }
+        let _ = ws_closed_rx.await;
     };
     if let Err(e) = loom_acp::stdio_loop::run_agent_connection(
-        agent,
-        notification_rx,
+        lease.runtime,
+        lease.connection,
+        lease.outbound_rx,
         transport,
         shutdown,
     )
@@ -193,8 +190,7 @@ async fn handle_socket(state: SharedState, owner: SessionOwner, socket: WebSocke
         }
     }
 
-    // Mark detachment for idle TTL tracking.
-    hub_clone.note_detach(generation).await;
+    hub_clone.close_connection(&connection_id).await;
 
     // Log connection stats.
     let stats = hub_clone.stats().await;

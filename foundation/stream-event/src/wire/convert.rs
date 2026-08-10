@@ -148,7 +148,10 @@ where
         StreamEvent::ToolInputStart { call_id, name } => ProtocolEvent::Custom {
             value: json!({ "type": "tool_input_start", "call_id": call_id, "name": name }),
         },
-        StreamEvent::ToolInputDelta { call_id, arguments_delta } => ProtocolEvent::Custom {
+        StreamEvent::ToolInputDelta {
+            call_id,
+            arguments_delta,
+        } => ProtocolEvent::Custom {
             value: json!({ "type": "tool_input_delta", "call_id": call_id, "arguments_delta": arguments_delta }),
         },
         StreamEvent::ToolInputEnd { call_id, arguments } => ProtocolEvent::Custom {
@@ -332,7 +335,10 @@ where
         StreamEvent::ToolInputStart { call_id, name } => json!({
             "ToolInputStart": { "call_id": call_id, "name": name }
         }),
-        StreamEvent::ToolInputDelta { call_id, arguments_delta } => json!({
+        StreamEvent::ToolInputDelta {
+            call_id,
+            arguments_delta,
+        } => json!({
             "ToolInputDelta": { "call_id": call_id, "arguments_delta": arguments_delta }
         }),
         StreamEvent::ToolInputEnd { call_id, arguments } => json!({

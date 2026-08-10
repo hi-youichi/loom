@@ -7,9 +7,9 @@ use super::yaml_provider::YamlPluginFile;
 ///
 /// Bundled providers are embedded at compile time via `include_str!`
 /// and serve as the highest-priority data source (not user-overridable).
-const BUNDLED_PROVIDER_YAMLS: &[&str] = &[
-    include_str!("../../bundled-providers/huoshan-coding-plan.yaml"),
-];
+const BUNDLED_PROVIDER_YAMLS: &[&str] = &[include_str!(
+    "../../bundled-providers/huoshan-coding-plan.yaml"
+)];
 
 /// Load all bundled providers embedded at compile time.
 ///
@@ -45,7 +45,10 @@ mod tests {
     #[test]
     fn test_load_bundled_providers() {
         let providers = load_bundled_providers();
-        assert!(!providers.is_empty(), "should have at least one bundled provider");
+        assert!(
+            !providers.is_empty(),
+            "should have at least one bundled provider"
+        );
 
         let huoshan = providers.get("huoshan-coding-plan");
         assert!(huoshan.is_some(), "huoshan-coding-plan should be bundled");

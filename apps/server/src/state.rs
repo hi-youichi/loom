@@ -897,6 +897,19 @@ fn new_state_with_store(
     persist_config: bool,
     store: Option<Arc<dyn StoreTrait + Send + Sync>>,
 ) -> SharedState {
+    new_state_with_store_and_acp_hub(persist_config, store, None)
+}
+
+#[cfg(feature = "test-support")]
+pub fn new_server_state_with_acp_hub(acp_hub: Arc<crate::acp_hub::AcpHub>) -> SharedState {
+    new_state_with_store_and_acp_hub(true, None, Some(acp_hub))
+}
+
+fn new_state_with_store_and_acp_hub(
+    persist_config: bool,
+    store: Option<Arc<dyn StoreTrait + Send + Sync>>,
+    acp_hub: Option<Arc<crate::acp_hub::AcpHub>>,
+) -> SharedState {
     let (event_tx, _) = broadcast::channel(1024);
     let (v2_event_tx, _) = broadcast::channel(1024);
     let v2_file_log = if persist_config {
@@ -908,7 +921,7 @@ fn new_state_with_store(
         None
     };
     let state = Arc::new(AppState {
-        acp_hub: Arc::new(crate::acp_hub::AcpHub::default()),
+        acp_hub: acp_hub.unwrap_or_else(|| Arc::new(crate::acp_hub::AcpHub::default())),
         sessions: RwLock::new(HashMap::new()),
         messages: RwLock::new(HashMap::new()),
         parts: RwLock::new(HashMap::new()),

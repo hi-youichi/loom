@@ -30,6 +30,21 @@ enum McpClient {
 }
 
 impl McpToolSource {
+    /// Gracefully closes an owned MCP session. HTTP sources are connection
+    /// pools owned by reqwest and do not need an explicit shutdown hook.
+    pub async fn shutdown(&self) {
+        if let McpClient::Stdio(session) = &self.client {
+            session.shutdown().await;
+        }
+    }
+
+    pub async fn is_closed(&self) -> bool {
+        match &self.client {
+            McpClient::Stdio(session) => session.is_closed().await,
+            McpClient::Http(_) => false,
+        }
+    }
+
     /// Creates a new McpToolSource by spawning the MCP server and initializing via rmcp.
     pub async fn new(
         command: impl Into<String>,

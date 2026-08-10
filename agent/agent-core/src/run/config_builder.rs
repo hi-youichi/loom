@@ -75,6 +75,7 @@ pub fn build_react_config(
 
     let mut base = ReactBuildConfig::from_env();
     base.goal_mode = effective_opts.goal_mode;
+    base.acp_mcp_sources = effective_opts.acp_mcp_sources.clone();
     base.dry_run = effective_opts.dry_run;
     {
         let model = effective_opts.model.as_deref();

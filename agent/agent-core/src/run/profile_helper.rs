@@ -54,6 +54,7 @@ mod tests {
             worktree: false,
             goal_mode: false,
             acp_mcp_servers: None,
+            acp_mcp_sources: None,
             effort: None,
             tier: None,
         };
@@ -102,6 +103,7 @@ mod tests {
             worktree: false,
             goal_mode: false,
             acp_mcp_servers: None,
+            acp_mcp_sources: None,
             effort: None,
             tier: None,
         };
@@ -155,6 +157,7 @@ mod tests {
             worktree: false,
             goal_mode: false,
             acp_mcp_servers: None,
+            acp_mcp_sources: None,
             effort: None,
             tier: None,
         };
@@ -209,6 +212,7 @@ mod tests {
             worktree: false,
             goal_mode: false,
             acp_mcp_servers: None,
+            acp_mcp_sources: None,
             effort: None,
             tier: None,
         };

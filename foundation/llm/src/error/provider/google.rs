@@ -109,14 +109,20 @@ mod tests {
 
     #[test]
     fn maps_grpc_status_resource_exhausted() {
-        let err = parse(429, br#"{"error":{"code":429,"message":"quota","status":"RESOURCE_EXHAUSTED"}}"#);
+        let err = parse(
+            429,
+            br#"{"error":{"code":429,"message":"quota","status":"RESOURCE_EXHAUSTED"}}"#,
+        );
         assert_eq!(err.kind, ErrorKind::RateLimited);
         assert!(err.is_retryable());
     }
 
     #[test]
     fn maps_grpc_status_permission_denied() {
-        let err = parse(403, br#"{"error":{"code":403,"message":"denied","status":"PERMISSION_DENIED"}}"#);
+        let err = parse(
+            403,
+            br#"{"error":{"code":403,"message":"denied","status":"PERMISSION_DENIED"}}"#,
+        );
         assert_eq!(err.kind, ErrorKind::Permission);
     }
 

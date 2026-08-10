@@ -104,6 +104,8 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
                 worktree: false,
                 goal_mode: false,
                 acp_mcp_servers: None,
+
+                acp_mcp_sources: None,
                 debug_llm: false,
                 effort: None,
                 tier: None,
@@ -244,6 +246,8 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
                 worktree: false,
                 goal_mode: false,
                 acp_mcp_servers: None,
+
+                acp_mcp_sources: None,
                 debug_llm: false,
                 effort: None,
                 tier: None,

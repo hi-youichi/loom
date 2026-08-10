@@ -18,7 +18,12 @@ pub fn decide(
 ) -> ProviderError {
     let flat_headers = headers
         .iter()
-        .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or_default().to_string()))
+        .map(|(k, v)| {
+            (
+                k.as_str().to_string(),
+                v.to_str().unwrap_or_default().to_string(),
+            )
+        })
         .collect::<Vec<_>>();
 
     let mut err = parser.parse(status, &flat_headers, body);
@@ -116,7 +121,12 @@ mod tests {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert("retry-after", "5".parse().unwrap());
         // 401 → AuthFailed（不可重试）
-        let err = decide(&parser, 401, &headers, br#"{"error":{"message":"bad key","type":"invalid_request_error"}}"#);
+        let err = decide(
+            &parser,
+            401,
+            &headers,
+            br#"{"error":{"message":"bad key","type":"invalid_request_error"}}"#,
+        );
         assert!(matches!(
             err.retry_policy,
             RetryPolicy::NoRetry { action: _ }

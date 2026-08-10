@@ -10,10 +10,15 @@ authors.workspace = true
 name = "loom_server"
 path = "src/lib.rs"
 
+[[bin]]
+name = "acp-test-server"
+path = "src/bin/acp_test_server.rs"
+required-features = ["test-support"]
+
 [features]
 # Exposes deterministic LLM injection for the server's black-box integration
 # suite. Production routes never select this path.
-test-support = []
+test-support = ["loom-acp/test-support"]
 
 [dependencies]
 agent = { path = "../../agent/agent-core" }

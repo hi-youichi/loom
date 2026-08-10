@@ -10,16 +10,16 @@ use crate::support::http_retry::{
 use crate::support::thinking::{
     collect_thinking_tags, strip_thinking_tags, ThinkingSegment, ThinkingTagParser,
 };
-use crate::support::tool_call_accumulator::{fallback_call_id, RawToolCallDelta, ToolCallAccumulator};
+use crate::support::tool_call_accumulator::{
+    fallback_call_id, RawToolCallDelta, ToolCallAccumulator,
+};
 use crate::support::uuid6::uuid6;
 use crate::tool::ToolCall;
 use crate::traits::{LlmClient, LlmResponse, LlmUsage, MessageChunk, StreamSink, ToolCallChunk};
 
 use super::audit::AuditCtx;
 use super::request::{ChatCompletionRequest, ChatCompletionResponse, ModelsResponse};
-use super::retry::{
-    backoff_for_attempt as compat_backoff, COMPAT_RETRY_MAX_RETRIES,
-};
+use super::retry::{backoff_for_attempt as compat_backoff, COMPAT_RETRY_MAX_RETRIES};
 use super::ChatOpenAICompat;
 
 use crate::error::decide::decide;
@@ -67,7 +67,10 @@ impl ToolCallStreamForwarder {
         node_id: &str,
     ) {
         let pending = self.calls.entry(index).or_insert_with(|| PendingToolCall {
-            call_id: id.clone().filter(|v| !v.is_empty()).unwrap_or_else(|| fallback_call_id(index)),
+            call_id: id
+                .clone()
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| fallback_call_id(index)),
             ..Default::default()
         });
         // Keep the id chosen for the first visible event. A provider may send
@@ -82,7 +85,10 @@ impl ToolCallStreamForwarder {
         if !pending.started && !pending.name.is_empty() {
             pending.started = true;
             let _ = sink.try_send_tool_call(
-                ToolCallChunk::Started { call_id: pending.call_id.clone(), name: pending.name.clone() },
+                ToolCallChunk::Started {
+                    call_id: pending.call_id.clone(),
+                    name: pending.name.clone(),
+                },
                 node_id,
             );
             if !pending.arguments.is_empty() {
@@ -100,7 +106,10 @@ impl ToolCallStreamForwarder {
             // OpenCode protocol has no tool-name delta event.
             if let Some(arguments) = arguments {
                 let _ = sink.try_send_tool_call(
-                    ToolCallChunk::Delta { call_id: pending.call_id.clone(), arguments_delta: arguments },
+                    ToolCallChunk::Delta {
+                        call_id: pending.call_id.clone(),
+                        arguments_delta: arguments,
+                    },
                     node_id,
                 );
             }
@@ -110,7 +119,10 @@ impl ToolCallStreamForwarder {
     fn finish(self, sink: &dyn StreamSink, node_id: &str) {
         for pending in self.calls.into_values().filter(|pending| pending.started) {
             let _ = sink.try_send_tool_call(
-                ToolCallChunk::Ended { call_id: pending.call_id, arguments: pending.arguments },
+                ToolCallChunk::Ended {
+                    call_id: pending.call_id,
+                    arguments: pending.arguments,
+                },
                 node_id,
             );
         }

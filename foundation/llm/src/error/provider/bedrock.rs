@@ -102,16 +102,23 @@ mod tests {
 
     #[test]
     fn throttling_from_header() {
-        let headers = vec![("x-amzn-errortype".to_string(), "ThrottlingException".to_string())];
-        let err = BedrockParser::new("amazon-bedrock").parse(429, &headers, br#"{"message":"rate"}"#);
+        let headers = vec![(
+            "x-amzn-errortype".to_string(),
+            "ThrottlingException".to_string(),
+        )];
+        let err =
+            BedrockParser::new("amazon-bedrock").parse(429, &headers, br#"{"message":"rate"}"#);
         assert_eq!(err.kind, ErrorKind::RateLimited);
         assert!(err.is_retryable());
     }
 
     #[test]
     fn validation_from_body_type() {
-        let err = BedrockParser::new("amazon-bedrock")
-            .parse(400, &[], br#"{"__type":"ValidationException","message":"bad"}"#);
+        let err = BedrockParser::new("amazon-bedrock").parse(
+            400,
+            &[],
+            br#"{"__type":"ValidationException","message":"bad"}"#,
+        );
         assert_eq!(err.kind, ErrorKind::BadRequest);
     }
 }

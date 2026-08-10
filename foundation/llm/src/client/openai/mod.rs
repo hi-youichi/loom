@@ -363,9 +363,7 @@ impl LlmClient for ChatOpenAI {
                     ApiErrorClass::Retryable(provider_err) => {
                         if attempt < TRANSIENT_HTTP_MAX_RETRIES {
                             let delay = match provider_err.retry_policy {
-                                RetryPolicy::RetryAfter(ms) => {
-                                    std::time::Duration::from_millis(ms)
-                                }
+                                RetryPolicy::RetryAfter(ms) => std::time::Duration::from_millis(ms),
                                 _ => retry_backoff_for_attempt(attempt),
                             };
                             tracing::warn!(
@@ -377,7 +375,7 @@ impl LlmClient for ChatOpenAI {
                                 error = %provider_err.message,
                                 "OpenAI API request failed, retrying"
                             );
-                            
+
                             tokio::time::sleep(delay).await;
                             attempt += 1;
                             continue;
@@ -411,7 +409,7 @@ impl LlmClient for ChatOpenAI {
                                 error = %error_message,
                                 "OpenAI API request failed, retrying"
                             );
-                            
+
                             tokio::time::sleep(delay).await;
                             attempt += 1;
                             continue;
@@ -592,9 +590,7 @@ impl LlmClient for ChatOpenAI {
                     ApiErrorClass::Retryable(provider_err) => {
                         if attempt < TRANSIENT_HTTP_MAX_RETRIES {
                             let delay = match provider_err.retry_policy {
-                                RetryPolicy::RetryAfter(ms) => {
-                                    std::time::Duration::from_millis(ms)
-                                }
+                                RetryPolicy::RetryAfter(ms) => std::time::Duration::from_millis(ms),
                                 _ => retry_backoff_for_attempt(attempt),
                             };
                             tracing::warn!(
@@ -606,7 +602,7 @@ impl LlmClient for ChatOpenAI {
                                 error = %provider_err.message,
                                 "OpenAI stream request failed, retrying"
                             );
-                            
+
                             tokio::time::sleep(delay).await;
                             attempt += 1;
                             continue;
@@ -640,7 +636,7 @@ impl LlmClient for ChatOpenAI {
                                 error = %error_message,
                                 "OpenAI stream request failed, retrying"
                             );
-                            
+
                             tokio::time::sleep(delay).await;
                             attempt += 1;
                             continue;

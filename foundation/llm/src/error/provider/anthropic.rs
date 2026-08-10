@@ -116,14 +116,20 @@ mod tests {
 
     #[test]
     fn maps_529_to_overloaded() {
-        let err = parse(529, br#"{"type":"error","error":{"type":"overloaded_error","message":"overloaded"}}"#);
+        let err = parse(
+            529,
+            br#"{"type":"error","error":{"type":"overloaded_error","message":"overloaded"}}"#,
+        );
         assert_eq!(err.kind, ErrorKind::Overloaded);
         assert!(matches!(err.retry_policy, RetryPolicy::Retry));
     }
 
     #[test]
     fn maps_402_to_billing() {
-        let err = parse(402, br#"{"type":"error","error":{"type":"billing_error","message":"bill"}}"#);
+        let err = parse(
+            402,
+            br#"{"type":"error","error":{"type":"billing_error","message":"bill"}}"#,
+        );
         assert_eq!(err.kind, ErrorKind::Billing);
         assert!(!err.is_retryable());
     }

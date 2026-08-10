@@ -8,22 +8,26 @@ use crate::client_capabilities::ClientCapabilitiesInfo;
 use crate::content::content_blocks_to_user_content;
 use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::session_config_store::SessionConfigStore;
+use crate::session_repository::SessionRepository;
 use crate::stream_bridge::SessionNotifier;
-use crate::tools::create_acp_tools;
+use crate::tools::{create_acp_tools, ClientBridgeTrait, NoOpClientBridge};
 use agent::state::ReActState;
 use agent_client_protocol::schema::v1::{
     AgentCapabilities, McpCapabilities, PromptCapabilities, SessionCapabilities,
-    SessionListCapabilities, SessionResumeCapabilities,
+    SessionCloseCapabilities, SessionDeleteCapabilities, SessionListCapabilities,
+    SessionResumeCapabilities,
 };
-use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::schema::v1::{
-    AuthenticateRequest, AuthenticateResponse, CancelNotification, ForkSessionRequest,
+    AuthenticateRequest, AuthenticateResponse, CancelNotification, CloseSessionRequest,
+    CloseSessionResponse, DeleteSessionRequest, DeleteSessionResponse, ForkSessionRequest,
     ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
     ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
-    NewSessionResponse, PromptRequest, PromptResponse, SessionConfigOptionValue, SessionId,
-    SessionNotification, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
-    SetSessionModeRequest, SetSessionModeResponse, StopReason, Usage,
+    NewSessionResponse, PromptRequest, PromptResponse, ResumeSessionRequest, ResumeSessionResponse,
+    SessionConfigOptionValue, SessionId, SessionNotification, SetSessionConfigOptionRequest,
+    SetSessionConfigOptionResponse, SetSessionModeRequest, SetSessionModeResponse, StopReason,
+    Usage,
 };
+use agent_client_protocol::schema::ProtocolVersion;
 use checkpoint::{Checkpointer, JsonSerializer, RunnableConfig};
 use checkpoint_sqlite_store::SqliteSaver;
 use tool_basic::bash::LocalCommandExecutor;
@@ -38,6 +42,24 @@ use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
+
+fn canonicalize_existing_directory(
+    path: &std::path::Path,
+) -> agent_client_protocol::Result<PathBuf> {
+    if !path.is_absolute() {
+        return Err(agent_client_protocol::Error::invalid_params()
+            .data("cwd must be an existing absolute directory"));
+    }
+    let canonical = std::fs::canonicalize(path).map_err(|_| {
+        agent_client_protocol::Error::invalid_params()
+            .data("cwd must be an existing absolute directory")
+    })?;
+    if !canonical.is_dir() {
+        return Err(agent_client_protocol::Error::invalid_params()
+            .data("cwd must be an existing absolute directory"));
+    }
+    Ok(canonical)
+}
 
 #[async_trait::async_trait]
 pub trait ModelProvider: Send + Sync {
@@ -104,8 +126,8 @@ pub struct LoomAcpAgent {
     pub(crate) sessions: SessionStore,
     pub(crate) agent_registry: AgentRegistry,
     pub(crate) config_store: SessionConfigStore,
+    pub(crate) session_repository: SessionRepository,
     pub(crate) session_update_tx: Option<mpsc::Sender<SessionNotification>>,
-    pub(crate) client_capabilities: std::sync::RwLock<ClientCapabilitiesInfo>,
     pub(crate) model_provider: Arc<dyn ModelProvider>,
 }
 
@@ -126,15 +148,19 @@ impl LoomAcpAgent {
         let db_path = checkpoint_sqlite_store::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
             .map_err(|e| format!("session config store init failed: {e}"))?;
+        let session_repository = SessionRepository::new(&db_path)
+            .map_err(|e| format!("session repository init failed: {e}"))?;
 
-        Ok(Self {
+        let agent = Self {
             sessions: SessionStore::new(),
             agent_registry: AgentRegistry::new(),
             config_store,
+            session_repository,
             session_update_tx: None,
-            client_capabilities: std::sync::RwLock::new(ClientCapabilitiesInfo::default()),
             model_provider: Arc::new(RealModelProvider),
-        })
+        };
+        agent.restore_session_metadata()?;
+        Ok(agent)
     }
 
     pub fn with_session_update_tx(
@@ -143,15 +169,19 @@ impl LoomAcpAgent {
         let db_path = checkpoint_sqlite_store::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
             .map_err(|e| format!("session config store init failed: {e}"))?;
+        let session_repository = SessionRepository::new(&db_path)
+            .map_err(|e| format!("session repository init failed: {e}"))?;
 
-        Ok(Self {
+        let agent = Self {
             sessions: SessionStore::new(),
             agent_registry: AgentRegistry::new(),
             config_store,
+            session_repository,
             session_update_tx: Some(tx),
-            client_capabilities: std::sync::RwLock::new(ClientCapabilitiesInfo::default()),
             model_provider: Arc::new(RealModelProvider),
-        })
+        };
+        agent.restore_session_metadata()?;
+        Ok(agent)
     }
 
     pub fn with_model_provider(mut self, provider: Arc<dyn ModelProvider>) -> Self {
@@ -163,6 +193,25 @@ impl LoomAcpAgent {
     #[inline]
     pub fn sessions(&self) -> &SessionStore {
         &self.sessions
+    }
+
+    fn restore_session_metadata(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        for metadata in self.session_repository.list()? {
+            let session_id = OurSessionId::new(metadata.session_id);
+            self.sessions.create_with_owner(
+                session_id.clone(),
+                Some(metadata.cwd),
+                metadata.thread_id,
+                metadata.owner_principal,
+            );
+            if metadata.lifecycle == "closed" {
+                self.sessions.close(&session_id);
+            } else {
+                // A process-local running turn cannot survive restart.
+                self.sessions.reopen(&session_id);
+            }
+        }
+        Ok(())
     }
 
     /// Fetch available models from all configured providers.
@@ -358,9 +407,6 @@ impl LoomAcpAgent {
         tracing::info!(protocol_version = ?args.protocol_version, "initialize called");
         let caps_json = serde_json::to_value(&args.client_capabilities).ok();
         let caps = ClientCapabilitiesInfo::from_json(caps_json);
-        if let Ok(mut guard) = self.client_capabilities.write() {
-            *guard = caps.clone();
-        }
         tracing::info!(
             terminal = caps.supports_terminal(),
             fs_read = caps.can_read_text_file(),
@@ -384,9 +430,14 @@ impl LoomAcpAgent {
             .image(true)
             .audio(true)
             .embedded_context(true);
+        // Only advertise methods registered in `stdio_loop`. Resume/close/delete
+        // are added to this response in the same change that registers their
+        // handlers.
         let session = SessionCapabilities::new()
             .list(SessionListCapabilities::new())
-            .resume(SessionResumeCapabilities::new());
+            .delete(SessionDeleteCapabilities::new())
+            .resume(SessionResumeCapabilities::new())
+            .close(SessionCloseCapabilities::new());
 
         let agent_caps = AgentCapabilities::new()
             .load_session(true)
@@ -418,13 +469,39 @@ impl LoomAcpAgent {
         &self,
         args: NewSessionRequest,
     ) -> agent_client_protocol::Result<NewSessionResponse> {
-        tracing::debug!(cwd = ?args.cwd, "new_session called");
-        // Logging is initialized at startup; this is a no-op if already initialized
-        crate::logging::init_logging(Some(&args.cwd));
+        self.new_session_for_owner(args, "local-anonymous").await
+    }
 
-        let working_directory = Some(args.cwd.clone());
-        let our_id = self.sessions.create(working_directory);
+    pub async fn new_session_for_owner(
+        &self,
+        args: NewSessionRequest,
+        owner_principal: &str,
+    ) -> agent_client_protocol::Result<NewSessionResponse> {
+        tracing::debug!(cwd = ?args.cwd, "new_session called");
+        let canonical_cwd = canonicalize_existing_directory(&args.cwd)?;
+        // Logging is initialized at startup; this is a no-op if already initialized
+        crate::logging::init_logging(Some(&canonical_cwd));
+
+        let working_directory = Some(canonical_cwd);
+        let our_id = self
+            .sessions
+            .create_owned(working_directory, owner_principal);
         let session_id = SessionId::new(our_id.as_str().to_string());
+        let entry = self.sessions.get(&our_id).ok_or_else(|| {
+            agent_client_protocol::Error::internal_error().data("session missing after creation")
+        })?;
+        let cwd = entry.working_directory.as_ref().ok_or_else(|| {
+            agent_client_protocol::Error::internal_error()
+                .data("session cwd missing after creation")
+        })?;
+        if let Err(error) =
+            self.session_repository
+                .insert(our_id.as_str(), &entry.thread_id, owner_principal, cwd)
+        {
+            self.sessions.delete(&our_id);
+            return Err(agent_client_protocol::Error::internal_error()
+                .data(format!("failed to persist session metadata: {error}")));
+        }
         tracing::debug!(session_id = %session_id, "session created");
 
         // Store MCP servers from ACP session/new request
@@ -656,18 +733,45 @@ impl LoomAcpAgent {
         args: ForkSessionRequest,
     ) -> agent_client_protocol::Result<ForkSessionResponse> {
         tracing::debug!(session_id = %args.session_id, cwd = ?args.cwd, "fork_session called");
+        let canonical_cwd = canonicalize_existing_directory(&args.cwd)?;
         // Logging is initialized at startup; this is a no-op if already initialized
-        crate::logging::init_logging(Some(&args.cwd));
+        crate::logging::init_logging(Some(&canonical_cwd));
 
         let source_key = OurSessionId::new(args.session_id.to_string());
         let source_entry = self
             .sessions
             .get(&source_key)
             .ok_or_else(|| agent_client_protocol::Error::new(-32602, "unknown session"))?;
+        if source_entry.working_directory.as_ref() != Some(&canonical_cwd) {
+            return Err(agent_client_protocol::Error::invalid_params()
+                .data("cwd does not match the session working directory"));
+        }
 
         // Create new session with the same working directory and config
-        let new_our_id = self.sessions.create(source_entry.working_directory.clone());
+        let new_our_id = self.sessions.create_owned(
+            source_entry.working_directory.clone(),
+            source_entry.owner_principal.clone(),
+        );
         let new_session_id = SessionId::new(new_our_id.as_str().to_string());
+        let new_entry = self.sessions.get(&new_our_id).ok_or_else(|| {
+            agent_client_protocol::Error::internal_error()
+                .data("forked session missing after creation")
+        })?;
+        self.session_repository
+            .insert(
+                new_our_id.as_str(),
+                &new_entry.thread_id,
+                &new_entry.owner_principal,
+                new_entry.working_directory.as_ref().ok_or_else(|| {
+                    agent_client_protocol::Error::internal_error()
+                        .data("forked session cwd missing")
+                })?,
+            )
+            .map_err(|error| {
+                self.sessions.delete(&new_our_id);
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to persist forked session: {error}"))
+            })?;
 
         // Copy source session config (model, mode) to the new session
         self.sessions.update_session_config(&new_our_id, |c| {
@@ -745,6 +849,21 @@ impl LoomAcpAgent {
         &self,
         args: PromptRequest,
     ) -> agent_client_protocol::Result<PromptResponse> {
+        self.prompt_with_capabilities(
+            args,
+            ClientCapabilitiesInfo::default(),
+            Arc::new(NoOpClientBridge),
+        )
+        .await
+    }
+
+    /// Execute a prompt using capabilities from the caller's transport.
+    pub async fn prompt_with_capabilities(
+        &self,
+        args: PromptRequest,
+        client_capabilities: ClientCapabilitiesInfo,
+        client_bridge: Arc<dyn ClientBridgeTrait>,
+    ) -> agent_client_protocol::Result<PromptResponse> {
         tracing::debug!(session_id = %args.session_id, prompt_blocks = args.prompt.len(), "prompt called");
         let key = OurSessionId::new(args.session_id.to_string());
         let entry = self
@@ -752,15 +871,12 @@ impl LoomAcpAgent {
             .get(&key)
             .ok_or_else(|| agent_client_protocol::Error::new(-32602, "unknown session"))?;
 
-        let cancellation = self
-            .sessions
-            .begin_prompt(&key)
-            .ok_or_else(|| {
-                agent_client_protocol::Error::new(
-                    -32000,
-                    "a prompt is already in progress for this session",
-                )
-            })?;
+        let cancellation = self.sessions.begin_prompt(&key).ok_or_else(|| {
+            agent_client_protocol::Error::new(
+                -32010,
+                "a prompt is already in progress for this session",
+            )
+        })?;
 
         // RAII guard: ensures finish_prompt is called even if the future is
         // dropped (e.g., WS disconnect cancels the task mid-prompt).
@@ -786,10 +902,10 @@ impl LoomAcpAgent {
                             goal = %description,
                             "Goal mode activated via /goal command"
                         );
-                        let working_folder = entry
-                            .working_directory
-                            .clone()
-                            .unwrap_or_else(|| PathBuf::from(agent::run::DEFAULT_WORKING_FOLDER));
+                        let working_folder = entry.working_directory.clone().ok_or_else(|| {
+                            agent_client_protocol::Error::internal_error()
+                                .data("ACP session has no working directory")
+                        })?;
 
                         let resolved_goal = self
                             .resolve_model_with_tier_awareness(&entry.session_config)
@@ -903,10 +1019,10 @@ impl LoomAcpAgent {
             "User prompt"
         );
 
-        let working_folder = entry
-            .working_directory
-            .clone()
-            .unwrap_or_else(|| PathBuf::from(agent::run::DEFAULT_WORKING_FOLDER));
+        let working_folder = entry.working_directory.clone().ok_or_else(|| {
+            agent_client_protocol::Error::internal_error()
+                .data("ACP session has no working directory")
+        })?;
 
         let resolved = self
             .resolve_model_with_tier_awareness(&entry.session_config)
@@ -942,15 +1058,20 @@ impl LoomAcpAgent {
             any_stream_event_sender: None,
             acp_session_id: Some(args.session_id.to_string()),
             bash_executor: {
-                tracing::info!("Using local bash executor (ACP terminal disabled)");
-                Some(Arc::new(LocalCommandExecutor) as Arc<dyn tool_basic::bash::CommandExecutor>)
+                if client_capabilities.supports_terminal() {
+                    tracing::info!("Using ACP client terminal executor");
+                    Some(Arc::new(crate::tools::AcpBridgeCommandExecutor::new(
+                        client_bridge.clone(),
+                    ))
+                        as Arc<dyn tool_basic::bash::CommandExecutor>)
+                } else {
+                    tracing::info!("Using local bash executor (ACP terminal unavailable)");
+                    Some(Arc::new(LocalCommandExecutor)
+                        as Arc<dyn tool_basic::bash::CommandExecutor>)
+                }
             },
             extra_tools: {
-                let caps = self
-                    .client_capabilities
-                    .read()
-                    .unwrap_or_else(|e| e.into_inner());
-                let tools = create_acp_tools(&caps);
+                let tools = create_acp_tools(&client_capabilities, client_bridge.clone());
                 if tools.is_empty() {
                     None
                 } else {
@@ -972,6 +1093,19 @@ impl LoomAcpAgent {
                 None
             } else {
                 Some(entry.mcp_servers.clone())
+            },
+            acp_mcp_sources: if entry.mcp_servers.is_empty() {
+                None
+            } else {
+                Some(
+                    entry
+                        .mcp_runtime
+                        .ensure_sources(&entry.mcp_servers)
+                        .await
+                        .map_err(|error| {
+                            agent_client_protocol::Error::internal_error().data(error)
+                        })?,
+                )
             },
             effort: resolved.effort,
             tier: resolved.tier,
@@ -1076,14 +1210,31 @@ impl LoomAcpAgent {
         &self,
         args: LoadSessionRequest,
     ) -> agent_client_protocol::Result<LoadSessionResponse> {
+        self.load_session_for_owner(args, "local-anonymous").await
+    }
+
+    pub async fn load_session_for_owner(
+        &self,
+        args: LoadSessionRequest,
+        owner_principal: &str,
+    ) -> agent_client_protocol::Result<LoadSessionResponse> {
         tracing::info!(session_id = %args.session_id, cwd = ?args.cwd, "load_session started");
+        let canonical_cwd = canonicalize_existing_directory(&args.cwd)?;
         // Logging is initialized at startup; this is a no-op if already initialized
-        crate::logging::init_logging(Some(&args.cwd));
+        crate::logging::init_logging(Some(&canonical_cwd));
         let session_id = args.session_id.clone();
         let our_session_id = OurSessionId::new(session_id.to_string());
-        let working_directory = Some(args.cwd.clone());
-
         let entry = if let Some(existing) = self.sessions.get(&our_session_id) {
+            if existing.owner_principal != owner_principal {
+                return Err(agent_client_protocol::Error::new(
+                    -32000,
+                    "session not available for this principal",
+                ));
+            }
+            if existing.working_directory.as_ref() != Some(&canonical_cwd) {
+                return Err(agent_client_protocol::Error::invalid_params()
+                    .data("cwd does not match the session working directory"));
+            }
             tracing::info!(
                 session_id = %session_id,
                 thread_id = %existing.thread_id,
@@ -1091,16 +1242,34 @@ impl LoomAcpAgent {
             );
             existing
         } else {
-            let thread_id = session_id.to_string();
+            let metadata = self
+                .session_repository
+                .get(our_session_id.as_str())
+                .map_err(|error| {
+                    agent_client_protocol::Error::internal_error()
+                        .data(format!("failed to read session metadata: {error}"))
+                })?
+                .ok_or_else(|| agent_client_protocol::Error::new(-32002, "session not found"))?;
+            if metadata.owner_principal != owner_principal {
+                return Err(agent_client_protocol::Error::new(
+                    -32000,
+                    "session not available for this principal",
+                ));
+            }
+            if metadata.cwd != canonical_cwd {
+                return Err(agent_client_protocol::Error::invalid_params()
+                    .data("cwd does not match the session working directory"));
+            }
             tracing::info!(
                 session_id = %session_id,
-                thread_id = %thread_id,
-                "Creating new session entry for load"
+                thread_id = %metadata.thread_id,
+                "Restoring session entry from durable metadata"
             );
-            self.sessions.create_with_id(
+            self.sessions.create_with_owner(
                 our_session_id.clone(),
-                working_directory,
-                thread_id.clone(),
+                Some(metadata.cwd),
+                metadata.thread_id,
+                metadata.owner_principal,
             );
             let default_mode = self.agent_registry.default_mode_id();
             self.sessions.update_session_config(&our_session_id, |c| {
@@ -1183,8 +1352,6 @@ impl LoomAcpAgent {
                 if let Some(ref tx) = self.session_update_tx {
                     let notifier = SessionNotifier::new(tx.clone(), session_id.clone());
                     notifier.send_history(&state.messages).await;
-                    tokio::task::yield_now().await;
-                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 } else {
                     tracing::warn!(
                         session_id = %session_id,
@@ -1290,7 +1457,105 @@ impl LoomAcpAgent {
         });
         let response: LoadSessionResponse = serde_json::from_value(json)
             .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
+        self.sessions.reopen(&our_session_id);
+        self.session_repository
+            .set_lifecycle(our_session_id.as_str(), "idle")
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to persist session lifecycle: {error}"))
+            })?;
         Ok(response)
+    }
+
+    pub async fn resume_session_for_owner(
+        &self,
+        args: ResumeSessionRequest,
+        owner_principal: &str,
+    ) -> agent_client_protocol::Result<ResumeSessionResponse> {
+        let canonical_cwd = canonicalize_existing_directory(&args.cwd)?;
+        let session_id = args.session_id.clone();
+        let key = OurSessionId::new(session_id.to_string());
+        let entry = self
+            .sessions
+            .get(&key)
+            .ok_or_else(|| agent_client_protocol::Error::new(-32002, "session not found"))?;
+        if entry.owner_principal != owner_principal {
+            return Err(agent_client_protocol::Error::new(
+                -32000,
+                "session not available for this principal",
+            ));
+        }
+        if entry.working_directory.as_ref() != Some(&canonical_cwd) {
+            return Err(agent_client_protocol::Error::invalid_params()
+                .data("cwd does not match the session working directory"));
+        }
+        if !args.mcp_servers.is_empty() {
+            self.sessions
+                .update_mcp_servers(&key, crate::mcp_convert::acp_mcp_to_loom(&args.mcp_servers));
+        }
+        self.sessions.reopen(&key);
+        self.session_repository
+            .set_lifecycle(key.as_str(), "idle")
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to persist session lifecycle: {error}"))
+            })?;
+        let mode = if entry.session_config.current_agent.is_empty() {
+            self.agent_registry.default_mode_id().to_string()
+        } else {
+            entry.session_config.current_agent
+        };
+        Ok(ResumeSessionResponse::new().modes(self.agent_registry.to_session_mode_state(&mode)))
+    }
+
+    pub async fn close_session_for_owner(
+        &self,
+        args: CloseSessionRequest,
+        owner_principal: &str,
+    ) -> agent_client_protocol::Result<CloseSessionResponse> {
+        let key = OurSessionId::new(args.session_id.to_string());
+        let Some(entry) = self.sessions.get(&key) else {
+            return Ok(CloseSessionResponse::new());
+        };
+        if entry.owner_principal != owner_principal {
+            return Err(agent_client_protocol::Error::new(
+                -32000,
+                "session not available for this principal",
+            ));
+        }
+        self.sessions.close(&key);
+        self.session_repository
+            .set_lifecycle(key.as_str(), "closed")
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to persist session lifecycle: {error}"))
+            })?;
+        Ok(CloseSessionResponse::new())
+    }
+
+    pub async fn delete_session_for_owner(
+        &self,
+        args: DeleteSessionRequest,
+        owner_principal: &str,
+    ) -> agent_client_protocol::Result<DeleteSessionResponse> {
+        let key = OurSessionId::new(args.session_id.to_string());
+        let Some(entry) = self.sessions.get(&key) else {
+            return Ok(DeleteSessionResponse::new());
+        };
+        if entry.owner_principal != owner_principal {
+            return Err(agent_client_protocol::Error::new(
+                -32000,
+                "session not available for this principal",
+            ));
+        }
+        self.session_repository
+            .delete_all(key.as_str(), &entry.thread_id)
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to delete session data: {error}"))
+            })?;
+        self.sessions.delete(&key);
+        Ok(DeleteSessionResponse::new())
     }
 
     pub async fn list_sessions(
@@ -1386,6 +1651,42 @@ impl LoomAcpAgent {
 
         serde_json::from_value(response_json)
             .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
+    }
+
+    /// List only durable sessions owned by the authenticated ACP principal.
+    /// Metadata is the source of truth so a newly-created session is visible
+    /// even before its first checkpoint is written.
+    pub async fn list_sessions_for_owner(
+        &self,
+        args: ListSessionsRequest,
+        owner_principal: &str,
+    ) -> agent_client_protocol::Result<ListSessionsResponse> {
+        let cwd_filter = match args.cwd {
+            Some(cwd) => Some(canonicalize_existing_directory(&cwd)?),
+            None => None,
+        };
+        let sessions = self
+            .session_repository
+            .list_for_owner(owner_principal)
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to list session metadata: {error}"))
+            })?
+            .into_iter()
+            .filter(|metadata| {
+                cwd_filter
+                    .as_ref()
+                    .map(|cwd| &metadata.cwd == cwd)
+                    .unwrap_or(true)
+            })
+            .map(|metadata| {
+                agent_client_protocol::schema::v1::SessionInfo::new(
+                    metadata.session_id,
+                    metadata.cwd,
+                )
+            })
+            .collect();
+        Ok(ListSessionsResponse::new(sessions))
     }
 }
 
@@ -2222,5 +2523,19 @@ mod tests {
         );
         let resp = agent.initialize(req).await.expect("initialize");
         assert_prompt_caps(&resp);
+    }
+
+    #[tokio::test]
+    async fn initialize_advertises_registered_session_lifecycle_methods() {
+        let agent = LoomAcpAgent::new().expect("agent");
+        let resp = agent
+            .initialize(InitializeRequest::new(1.into()))
+            .await
+            .expect("initialize");
+        let session = resp.agent_capabilities.session_capabilities;
+        assert!(session.list.is_some());
+        assert!(session.resume.is_some());
+        assert!(session.close.is_some());
+        assert!(session.delete.is_some());
     }
 }

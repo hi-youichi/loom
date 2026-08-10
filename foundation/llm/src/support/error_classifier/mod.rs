@@ -80,9 +80,7 @@ mod tests {
         assert!(config
             .classify_network_error("Connection reset by peer")
             .is_retryable());
-        assert!(config
-            .classify_network_error("broken pipe")
-            .is_retryable());
+        assert!(config.classify_network_error("broken pipe").is_retryable());
     }
 
     #[test]

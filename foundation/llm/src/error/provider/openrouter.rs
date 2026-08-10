@@ -75,8 +75,7 @@ impl ProviderErrorParser for OpenRouterParser {
                     if let Some(k) = kind_from_error_type(&ty) {
                         err.kind = k;
                         err.retry_policy = model_spec_core::error::default_retry_policy(k);
-                        err.user_message =
-                            model_spec_core::error::default_user_message(k);
+                        err.user_message = model_spec_core::error::default_user_message(k);
                         err.code = Some(ty);
                     }
                 }

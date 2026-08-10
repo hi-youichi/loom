@@ -21,11 +21,11 @@ impl MiniMaxParser {
 
 fn kind_from_business_code(code: &str) -> Option<ErrorKind> {
     Some(match code {
-        "1001" | "1033" | "1024" => ErrorKind::Server,      // 超时/系统/内部
-        "1002" | "1041" => ErrorKind::RateLimited,          // 频率/连接数限制
-        "1004" => ErrorKind::AuthFailed,                    // 未授权/Token 不匹配
-        "1008" => ErrorKind::Billing,                       // 余额不足
-        "1026" | "1027" => ErrorKind::ContentFilter,        // 涉敏
+        "1001" | "1033" | "1024" => ErrorKind::Server, // 超时/系统/内部
+        "1002" | "1041" => ErrorKind::RateLimited,     // 频率/连接数限制
+        "1004" => ErrorKind::AuthFailed,               // 未授权/Token 不匹配
+        "1008" => ErrorKind::Billing,                  // 余额不足
+        "1026" | "1027" => ErrorKind::ContentFilter,   // 涉敏
         "1039" | "1042" | "2013" | "2049" => ErrorKind::BadRequest, // 参数/Token/URL
         _ => return None,
     })

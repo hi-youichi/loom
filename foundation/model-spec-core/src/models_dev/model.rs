@@ -52,7 +52,9 @@ pub enum ReasoningOption {
     Toggle,
 
     #[serde(rename = "effort")]
-    Effort { values: Vec<Option<ReasoningEffort>> },
+    Effort {
+        values: Vec<Option<ReasoningEffort>>,
+    },
 
     #[serde(rename = "budget_tokens")]
     BudgetTokens {
@@ -71,9 +73,7 @@ pub enum ReasoningOption {
 pub enum Interleaved {
     Simple,
 
-    Field {
-        field: InterleavedField,
-    },
+    Field { field: InterleavedField },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

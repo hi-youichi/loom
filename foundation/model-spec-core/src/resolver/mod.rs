@@ -6,14 +6,14 @@ mod config_model;
 mod config_override;
 pub mod plugin;
 
+pub use crate::models_dev::resolver::{
+    HttpClient, ModelsDevResolver, ReqwestHttpClient, DEFAULT_MODELS_DEV_URL,
+};
 pub use cached::CachedResolver;
 pub use composite::CompositeResolver;
 pub use config_model::{ConfigModelEntry, ConfigProviderEntry};
 pub use config_override::ConfigOverride;
 pub use plugin::PluginModelResolver;
-pub use crate::models_dev::resolver::{
-    HttpClient, ModelsDevResolver, ReqwestHttpClient, DEFAULT_MODELS_DEV_URL,
-};
 
 use std::sync::Arc;
 

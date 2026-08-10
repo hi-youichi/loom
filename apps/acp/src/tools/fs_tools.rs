@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tool_core::Tool;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
-use super::{create_tool_spec, get_session_bridge, ClientBridgeTrait};
+use super::{create_tool_spec, ClientBridgeTrait};
 
 // ============================================================================
 // ReadTextFile Tool
@@ -32,12 +32,18 @@ struct ReadTextFileArgs {
 /// This tool uses the ACP client's `read_text_file` method, which can access
 /// files in the IDE's workspace, including unsaved buffer contents that haven't
 /// been written to disk yet.
-pub struct ReadTextFileTool;
+pub struct ReadTextFileTool {
+    bridge: Arc<dyn ClientBridgeTrait>,
+}
 
 impl ReadTextFileTool {
     /// Create a new ReadTextFileTool.
     pub fn new() -> Self {
-        Self
+        Self::with_bridge(Arc::new(super::NoOpClientBridge))
+    }
+
+    pub fn with_bridge(bridge: Arc<dyn ClientBridgeTrait>) -> Self {
+        Self { bridge }
     }
 }
 
@@ -85,20 +91,13 @@ impl Tool for ReadTextFileTool {
     async fn call(
         &self,
         args: Value,
-        ctx: Option<&ToolCallContext>,
+        _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         let args: ReadTextFileArgs = serde_json::from_value(args)
             .map_err(|e| ToolSourceError::InvalidInput(format!("Invalid arguments: {}", e)))?;
 
-        let session_id = ctx
-            .and_then(|c| c.acp_session_id.as_deref())
-            .ok_or_else(|| ToolSourceError::Transport("no session_id in tool context".to_string()))?;
-
-        let bridge: Arc<dyn ClientBridgeTrait> = get_session_bridge(session_id).await.map_err(|e| {
-            ToolSourceError::Transport(format!("Failed to get client bridge: {}", e))
-        })?;
-
-        let content = bridge
+        let content = self
+            .bridge
             .read_text_file(&args.path, args.line, args.limit)
             .await
             .map_err(|e| ToolSourceError::Transport(format!("Failed to read file: {}", e)))?;
@@ -125,12 +124,18 @@ struct WriteTextFileArgs {
 /// This tool uses the ACP client's `write_text_file` method, which can write
 /// files in the IDE's workspace. The IDE may prompt the user for confirmation
 /// before actually writing the file.
-pub struct WriteTextFileTool;
+pub struct WriteTextFileTool {
+    bridge: Arc<dyn ClientBridgeTrait>,
+}
 
 impl WriteTextFileTool {
     /// Create a new WriteTextFileTool.
     pub fn new() -> Self {
-        Self
+        Self::with_bridge(Arc::new(super::NoOpClientBridge))
+    }
+
+    pub fn with_bridge(bridge: Arc<dyn ClientBridgeTrait>) -> Self {
+        Self { bridge }
     }
 }
 
@@ -172,24 +177,20 @@ impl Tool for WriteTextFileTool {
     async fn call(
         &self,
         args: Value,
-        ctx: Option<&ToolCallContext>,
+        _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
         let args: WriteTextFileArgs = serde_json::from_value(args)
             .map_err(|e| ToolSourceError::InvalidInput(format!("Invalid arguments: {}", e)))?;
 
-        let session_id = ctx
-            .and_then(|c| c.acp_session_id.as_deref())
-            .ok_or_else(|| ToolSourceError::Transport("no session_id in tool context".to_string()))?;
-
-        let bridge: Arc<dyn ClientBridgeTrait> = get_session_bridge(session_id).await.map_err(|e| {
-            ToolSourceError::Transport(format!("Failed to get client bridge: {}", e))
-        })?;
-
         // Read old content if file exists
-        let old_content = bridge.read_text_file(&args.path, None, None).await.ok();
+        let old_content = self
+            .bridge
+            .read_text_file(&args.path, None, None)
+            .await
+            .ok();
 
         // Write new content
-        bridge
+        self.bridge
             .write_text_file(&args.path, &args.content)
             .await
             .map_err(|e| ToolSourceError::Transport(format!("Failed to write file: {}", e)))?;

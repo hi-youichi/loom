@@ -60,6 +60,7 @@ pub struct ReactBuildConfig {
     pub tot_config: TotRunnerConfig,
     pub got_config: GotRunnerConfig,
     pub mcp_servers: Option<Vec<McpServerDef>>,
+    pub acp_mcp_sources: Option<Vec<(String, Arc<tool_basic::McpToolSource>)>>,
     pub skill_registry: Option<Arc<SkillRegistry>>,
     pub max_sub_agent_depth: Option<u32>,
     /// Curator-LLM-pass recursion limit (Hermes parity, `agent/curator.py`
@@ -150,6 +151,7 @@ impl Default for ReactBuildConfig {
             tot_config: TotRunnerConfig::default(),
             got_config: GotRunnerConfig::default(),
             mcp_servers: None,
+            acp_mcp_sources: None,
             skill_registry: None,
             max_sub_agent_depth: None,
             curator_max_iterations: Some(9999),
@@ -239,6 +241,7 @@ impl ReactBuildConfig {
                     .unwrap_or(false),
             },
             mcp_servers: None,
+            acp_mcp_sources: None,
             skill_registry: None,
             max_sub_agent_depth: std::env::var("MAX_SUB_AGENT_DEPTH")
                 .ok()

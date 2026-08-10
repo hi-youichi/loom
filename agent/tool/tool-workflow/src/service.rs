@@ -88,9 +88,8 @@ pub(crate) async fn start_workflow(
             let working_folder = runtime.working_folder();
             let path =
                 resolve_workflow(w, &working_folder).map_err(ToolSourceError::InvalidInput)?;
-            let source = std::fs::read_to_string(&path).map_err(|e| {
-                ToolSourceError::ToolError(format!("Failed to read workflow: {e}"))
-            })?;
+            let source = std::fs::read_to_string(&path)
+                .map_err(|e| ToolSourceError::ToolError(format!("Failed to read workflow: {e}")))?;
             let display_name = path
                 .file_stem()
                 .or_else(|| path.file_name())
@@ -161,28 +160,24 @@ pub(crate) async fn start_workflow(
         })?;
 
     let run_handle = if let Some(id) = resume_from_id {
-        luft.start_resume(id)
-            .await
-            .map_err(|e| {
-                tracing::error!(
-                    target: "workflow::service",
-                    resume_from_id = %id,
-                    error = %e,
-                    "failed to resume workflow",
-                );
-                ToolSourceError::ToolError(format!("Failed to resume workflow: {e}"))
-            })?
+        luft.start_resume(id).await.map_err(|e| {
+            tracing::error!(
+                target: "workflow::service",
+                resume_from_id = %id,
+                error = %e,
+                "failed to resume workflow",
+            );
+            ToolSourceError::ToolError(format!("Failed to resume workflow: {e}"))
+        })?
     } else {
-        luft.start_script(&lua_source)
-            .await
-            .map_err(|e| {
-                tracing::error!(
-                    target: "workflow::service",
-                    error = %e,
-                    "failed to start workflow",
-                );
-                ToolSourceError::ToolError(format!("Failed to start workflow: {e}"))
-            })?
+        luft.start_script(&lua_source).await.map_err(|e| {
+            tracing::error!(
+                target: "workflow::service",
+                error = %e,
+                "failed to start workflow",
+            );
+            ToolSourceError::ToolError(format!("Failed to start workflow: {e}"))
+        })?
     };
 
     let run_dir_name = run_handle.run_dir_name().to_string();
@@ -430,9 +425,8 @@ pub(crate) async fn read_status(
         let raw = std::fs::read_to_string(&instance_json_path).map_err(|e| {
             ToolSourceError::ToolError(format!("Failed to read instance summary: {e}"))
         })?;
-        let value: Value = serde_json::from_str(&raw).map_err(|e| {
-            ToolSourceError::ToolError(format!("Invalid instance summary: {e}"))
-        })?;
+        let value: Value = serde_json::from_str(&raw)
+            .map_err(|e| ToolSourceError::ToolError(format!("Invalid instance summary: {e}")))?;
         let sanitized = sanitize_instance_for_public(value);
         return Ok(ToolCallContent::Text(
             serde_json::to_string_pretty(&sanitized).unwrap_or_default(),
@@ -563,11 +557,9 @@ pub(crate) fn list_instances(
     runtime: &WorkflowRuntime,
     args: &Value,
 ) -> Result<ToolCallContent, ToolSourceError> {
-    let limit = params::parse_list_limit(args)
-        .map_err(ToolSourceError::InvalidInput)? as usize;
+    let limit = params::parse_list_limit(args).map_err(ToolSourceError::InvalidInput)? as usize;
     let cursor = params::parse_cursor(args);
-    let status_filter = params::parse_status_filter(args)
-        .map_err(ToolSourceError::InvalidInput)?;
+    let status_filter = params::parse_status_filter(args).map_err(ToolSourceError::InvalidInput)?;
 
     tracing::debug!(
         target: "workflow::service",
@@ -842,9 +834,8 @@ pub(crate) fn read_source(
         "read_source: reading workflow.lua",
     );
 
-    let source = std::fs::read_to_string(resolved.join("workflow.lua")).map_err(|e| {
-        ToolSourceError::ToolError(format!("Failed to read workflow source: {e}"))
-    })?;
+    let source = std::fs::read_to_string(resolved.join("workflow.lua"))
+        .map_err(|e| ToolSourceError::ToolError(format!("Failed to read workflow source: {e}")))?;
 
     let (preview, truncated) = if source.len() > DEFAULT_SOURCE_PREVIEW_LIMIT {
         (
@@ -944,11 +935,7 @@ mod tests {
 
     #[test]
     fn list_entry_from_checkpoint_skips_non_terminal() {
-        assert!(build_entry_from_checkpoint(
-            &sample_checkpoint("r", "running", 1),
-            "r"
-        )
-        .is_none());
+        assert!(build_entry_from_checkpoint(&sample_checkpoint("r", "running", 1), "r").is_none());
     }
 
     #[test]
@@ -1198,11 +1185,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let wf_dir = tmp.path().join(".loom").join("workflows");
         std::fs::create_dir_all(&wf_dir).unwrap();
-        std::fs::write(
-            wf_dir.join("alpha.lua"),
-            "-- alpha\nfunction main() end\n",
-        )
-        .unwrap();
+        std::fs::write(wf_dir.join("alpha.lua"), "-- alpha\nfunction main() end\n").unwrap();
         std::fs::write(
             wf_dir.join("beta.lua"),
             "\n\n-- beta\nfunction main() end\n",

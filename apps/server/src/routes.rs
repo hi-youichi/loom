@@ -315,6 +315,7 @@ pub fn build_router(state: SharedState) -> Router {
         // ─── Health (P0.2, P0.3) ────────────────────────────────
         .route("/api/health", get(handlers::health::get_api_health))
         .route("/global/health", get(handlers::health::get_global_health))
+        .route("/metrics", get(handlers::health::get_acp_metrics))
         .route(
             "/api/permission/saved",
             get(handlers::health::get_permission_saved),

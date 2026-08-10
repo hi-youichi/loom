@@ -145,10 +145,17 @@ impl StreamAccumulator {
         for tc in tool_calls {
             let name = tc.function.as_ref().and_then(|f| f.name.clone());
             let arguments = tc.function.as_ref().and_then(|f| f.arguments.clone());
-            let live = self.live_tool_calls.entry(tc.index).or_insert_with(|| LiveToolCall {
-                call_id: tc.id.clone().filter(|id| !id.is_empty()).unwrap_or_else(|| fallback_call_id(tc.index)),
-                ..Default::default()
-            });
+            let live = self
+                .live_tool_calls
+                .entry(tc.index)
+                .or_insert_with(|| LiveToolCall {
+                    call_id: tc
+                        .id
+                        .clone()
+                        .filter(|id| !id.is_empty())
+                        .unwrap_or_else(|| fallback_call_id(tc.index)),
+                    ..Default::default()
+                });
             // The first visible id is immutable for the lifetime of the
             // call; see ToolCallAccumulator's late-id fallback rule.
             if let Some(ref name) = name {
@@ -160,19 +167,28 @@ impl StreamAccumulator {
             if !live.started && !live.name.is_empty() {
                 live.started = true;
                 let _ = sink.try_send_tool_call(
-                    ToolCallChunk::Started { call_id: live.call_id.clone(), name: live.name.clone() },
+                    ToolCallChunk::Started {
+                        call_id: live.call_id.clone(),
+                        name: live.name.clone(),
+                    },
                     node_id,
                 );
                 if !live.arguments.is_empty() {
                     let _ = sink.try_send_tool_call(
-                        ToolCallChunk::Delta { call_id: live.call_id.clone(), arguments_delta: live.arguments.clone() },
+                        ToolCallChunk::Delta {
+                            call_id: live.call_id.clone(),
+                            arguments_delta: live.arguments.clone(),
+                        },
                         node_id,
                     );
                 }
             } else if live.started {
                 if let Some(arguments) = arguments.clone() {
                     let _ = sink.try_send_tool_call(
-                        ToolCallChunk::Delta { call_id: live.call_id.clone(), arguments_delta: arguments },
+                        ToolCallChunk::Delta {
+                            call_id: live.call_id.clone(),
+                            arguments_delta: arguments,
+                        },
                         node_id,
                     );
                 }
@@ -211,7 +227,10 @@ impl StreamAccumulator {
     pub fn finish_tool_inputs(&mut self, sink: &dyn StreamSink, node_id: &str) {
         for call in self.live_tool_calls.values().filter(|call| call.started) {
             let _ = sink.try_send_tool_call(
-                ToolCallChunk::Ended { call_id: call.call_id.clone(), arguments: call.arguments.clone() },
+                ToolCallChunk::Ended {
+                    call_id: call.call_id.clone(),
+                    arguments: call.arguments.clone(),
+                },
                 node_id,
             );
         }

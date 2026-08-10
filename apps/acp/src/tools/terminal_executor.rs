@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio_util::sync::CancellationToken;
 
 use async_trait::async_trait;
 use tool_basic::bash::CommandExecutor;
@@ -164,17 +165,27 @@ impl CommandExecutor for TerminalCommandExecutor {
     }
 }
 
-pub struct AcpBridgeCommandExecutor;
+pub struct AcpBridgeCommandExecutor {
+    bridge: Arc<dyn crate::tools::ClientBridgeTrait>,
+}
+
+async fn cancellation_signal(token: Option<CancellationToken>) {
+    if let Some(token) = token {
+        token.cancelled().await;
+    } else {
+        std::future::pending::<()>().await;
+    }
+}
 
 impl Default for AcpBridgeCommandExecutor {
     fn default() -> Self {
-        Self::new()
+        Self::new(Arc::new(crate::tools::NoOpClientBridge))
     }
 }
 
 impl AcpBridgeCommandExecutor {
-    pub fn new() -> Self {
-        Self
+    pub fn new(bridge: Arc<dyn crate::tools::ClientBridgeTrait>) -> Self {
+        Self { bridge }
     }
 }
 
@@ -194,14 +205,9 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
     ) -> Result<ToolCallContent, ToolSourceError> {
         let session_id = ctx
             .and_then(|c| c.acp_session_id.as_deref())
-            .unwrap_or("default");
-
-        if session_id == "default" {
-            warn!(
-                "using fallback session_id='default'. \
-                 acp_session_id not set in ToolCallContext — check RunOptions propagation chain"
-            );
-        }
+            .ok_or_else(|| {
+                ToolSourceError::Transport("acp_session_id not set in ToolCallContext".to_string())
+            })?;
 
         let (shell, args) = if cfg!(windows) {
             let wrapped = format!(
@@ -229,16 +235,13 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
             "bash execute called"
         );
 
-        let bridge = crate::tools::get_session_bridge(session_id).await.map_err(|e| {
-            error!(error = %e, "failed to get client bridge");
-            ToolSourceError::Transport(e)
-        })?;
-
-        info!("client bridge acquired");
-
         let cwd = working_dir.map(|p| p.display().to_string());
+        let cancellation = ctx
+            .and_then(|context| context.run_cancellation.as_ref())
+            .map(|cancellation| cancellation.token());
 
-        let terminal_id = bridge
+        let terminal_id = self
+            .bridge
             .terminal_create(session_id, &shell, args, env, cwd, None)
             .await
             .map_err(|e| {
@@ -248,10 +251,20 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
 
         info!(terminal_id = %terminal_id, "terminal created via bridge");
 
+        if cancellation
+            .as_ref()
+            .map(CancellationToken::is_cancelled)
+            .unwrap_or(false)
+        {
+            let _ = self.bridge.terminal_kill(session_id, &terminal_id).await;
+            let _ = self.bridge.terminal_release(session_id, &terminal_id).await;
+            return Err(ToolSourceError::Transport("Command cancelled".into()));
+        }
+
         if let Some(timeout) = timeout_ms {
             info!(terminal_id = %terminal_id, timeout_ms = timeout, "waiting for exit with timeout");
             tokio::select! {
-                result = bridge.terminal_wait_for_exit(session_id, &terminal_id) => {
+                result = self.bridge.terminal_wait_for_exit(session_id, &terminal_id) => {
                     match &result {
                         Ok(exit_result) => {
                             info!(terminal_id = %terminal_id, exit_code = ?exit_result.exit_code, signal = ?exit_result.signal, "process exited before timeout");
@@ -264,31 +277,60 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
                 }
                 _ = tokio::time::sleep(Duration::from_millis(timeout)) => {
                     warn!(terminal_id = %terminal_id, timeout_ms = timeout, "command timed out, killing");
-                    let _ = bridge.terminal_kill(session_id, &terminal_id).await;
-                    let _ = bridge.terminal_release(session_id, &terminal_id).await;
+                    let _ = self.bridge.terminal_kill(session_id, &terminal_id).await;
+                    let _ = self.bridge.terminal_release(session_id, &terminal_id).await;
                     return Err(ToolSourceError::Transport("Command timed out".into()));
+                }
+                _ = cancellation_signal(cancellation.clone()) => {
+                    warn!(terminal_id = %terminal_id, "command cancelled, killing terminal");
+                    let _ = self.bridge.terminal_kill(session_id, &terminal_id).await;
+                    let _ = self.bridge.terminal_release(session_id, &terminal_id).await;
+                    return Err(ToolSourceError::Transport("Command cancelled".into()));
                 }
             }
         } else {
             info!(terminal_id = %terminal_id, "waiting for exit (no timeout)");
-            let exit_result = bridge
-                .terminal_wait_for_exit(session_id, &terminal_id)
-                .await
-                .map_err(|e| {
-                    error!(terminal_id = %terminal_id, error = %e, "wait_for_exit failed");
-                    ToolSourceError::Transport(format!("terminal wait: {}", e))
-                })?;
+            let exit_result = tokio::select! {
+                result = self.bridge.terminal_wait_for_exit(session_id, &terminal_id) => result,
+                _ = cancellation_signal(cancellation.clone()) => {
+                    warn!(terminal_id = %terminal_id, "command cancelled, killing terminal");
+                    let _ = self.bridge.terminal_kill(session_id, &terminal_id).await;
+                    let _ = self.bridge.terminal_release(session_id, &terminal_id).await;
+                    return Err(ToolSourceError::Transport("Command cancelled".into()));
+                }
+            }
+            .map_err(|e| {
+                error!(terminal_id = %terminal_id, error = %e, "wait_for_exit failed");
+                ToolSourceError::Transport(format!("terminal wait: {}", e))
+            });
+            let exit_result = match exit_result {
+                Ok(result) => result,
+                Err(error) => {
+                    let _ = self.bridge.terminal_kill(session_id, &terminal_id).await;
+                    let _ = self.bridge.terminal_release(session_id, &terminal_id).await;
+                    return Err(error);
+                }
+            };
             info!(terminal_id = %terminal_id, exit_code = ?exit_result.exit_code, signal = ?exit_result.signal, "wait_for_exit completed");
         }
 
         info!(terminal_id = %terminal_id, "fetching terminal output");
-        let output = bridge
+        let output = self
+            .bridge
             .terminal_output(session_id, &terminal_id)
             .await
             .map_err(|e| {
                 error!(terminal_id = %terminal_id, error = %e, "terminal_output failed");
                 ToolSourceError::Transport(format!("terminal output: {}", e))
-            })?;
+            });
+        let output = match output {
+            Ok(output) => output,
+            Err(error) => {
+                let _ = self.bridge.terminal_kill(session_id, &terminal_id).await;
+                let _ = self.bridge.terminal_release(session_id, &terminal_id).await;
+                return Err(error);
+            }
+        };
 
         info!(
             terminal_id = %terminal_id,
@@ -297,7 +339,7 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
             "terminal output retrieved"
         );
 
-        let _ = bridge.terminal_release(session_id, &terminal_id).await;
+        let _ = self.bridge.terminal_release(session_id, &terminal_id).await;
         info!(terminal_id = %terminal_id, "terminal released");
 
         if output.output.is_empty() {
@@ -307,5 +349,119 @@ impl CommandExecutor for AcpBridgeCommandExecutor {
             info!(terminal_id = %terminal_id, output_len = output.output.len(), "bash execute completed");
             Ok(ToolCallContent::text(output.output))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::{ClientBridgeTrait, TerminalExitResult, TerminalOutput};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tokio::sync::Notify;
+    use tool_core::ToolCallContext;
+
+    struct CancellationBridge {
+        created: Arc<Notify>,
+        killed: AtomicUsize,
+        released: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl ClientBridgeTrait for CancellationBridge {
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        async fn read_text_file(
+            &self,
+            _path: &str,
+            _line: Option<u32>,
+            _limit: Option<u32>,
+        ) -> Result<String, String> {
+            Err("unused".into())
+        }
+
+        async fn write_text_file(&self, _path: &str, _content: &str) -> Result<(), String> {
+            Err("unused".into())
+        }
+
+        async fn terminal_create(
+            &self,
+            _session_id: &str,
+            _command: &str,
+            _args: Vec<String>,
+            _env: Vec<(String, String)>,
+            _cwd: Option<String>,
+            _output_byte_limit: Option<u64>,
+        ) -> Result<String, String> {
+            self.created.notify_one();
+            Ok("terminal-cancel-test".into())
+        }
+
+        async fn terminal_output(
+            &self,
+            _session_id: &str,
+            _terminal_id: &str,
+        ) -> Result<TerminalOutput, String> {
+            Err("unexpected output request".into())
+        }
+
+        async fn terminal_wait_for_exit(
+            &self,
+            _session_id: &str,
+            _terminal_id: &str,
+        ) -> Result<TerminalExitResult, String> {
+            std::future::pending().await
+        }
+
+        async fn terminal_kill(&self, _session_id: &str, _terminal_id: &str) -> Result<(), String> {
+            self.killed.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+
+        async fn terminal_release(
+            &self,
+            _session_id: &str,
+            _terminal_id: &str,
+        ) -> Result<(), String> {
+            self.released.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn cancellation_kills_and_releases_waiting_terminal() {
+        let bridge = Arc::new(CancellationBridge {
+            created: Arc::new(Notify::new()),
+            killed: AtomicUsize::new(0),
+            released: AtomicUsize::new(0),
+        });
+        let cancellation = tool_core::active_operation::RunCancellation::new(1);
+        let context = ToolCallContext {
+            acp_session_id: Some("session-cancel-test".into()),
+            run_cancellation: Some(cancellation.clone()),
+            ..Default::default()
+        };
+        let executor = AcpBridgeCommandExecutor::new(bridge.clone());
+        let task = tokio::spawn(async move {
+            executor
+                .execute("echo test", None, None, Vec::new(), Some(&context))
+                .await
+        });
+
+        bridge.created.notified().await;
+        cancellation.cancel();
+        let result = tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("cancellation should finish the executor")
+            .expect("executor task should not panic");
+
+        assert!(result
+            .expect_err("cancelled command must fail")
+            .to_string()
+            .contains("cancelled"));
+        assert_eq!(bridge.killed.load(Ordering::Relaxed), 1);
+        assert_eq!(bridge.released.load(Ordering::Relaxed), 1);
     }
 }

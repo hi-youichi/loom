@@ -71,10 +71,16 @@ impl StreamSink for BlockTrackerSink {
 
     fn try_send_tool_call(&self, chunk: ToolCallChunk, _node_id: &str) -> Option<Instant> {
         let event = match chunk {
-            ToolCallChunk::Started { call_id, name } => StreamEvent::ToolInputStart { call_id, name },
-            ToolCallChunk::Delta { call_id, arguments_delta } => {
-                StreamEvent::ToolInputDelta { call_id, arguments_delta }
+            ToolCallChunk::Started { call_id, name } => {
+                StreamEvent::ToolInputStart { call_id, name }
             }
+            ToolCallChunk::Delta {
+                call_id,
+                arguments_delta,
+            } => StreamEvent::ToolInputDelta {
+                call_id,
+                arguments_delta,
+            },
             ToolCallChunk::Ended { call_id, arguments } => {
                 StreamEvent::ToolInputEnd { call_id, arguments }
             }

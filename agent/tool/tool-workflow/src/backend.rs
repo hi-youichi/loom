@@ -188,6 +188,7 @@ impl AgentBackend for LoomAgentBackend {
         let mut run_handle = tokio::spawn(async move { agent.run(&prompt, callback).await });
 
         let has_schema = task.output_schema.is_some();
+        #[allow(clippy::never_loop)]
         let run = loop {
             tokio::select! {
                 biased;

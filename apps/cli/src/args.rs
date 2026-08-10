@@ -70,6 +70,15 @@ pub(crate) struct Args {
     #[arg(short, long)]
     pub(crate) interactive: bool,
 
+    /// Use ACP as a client over WebSocket instead of running the agent locally.
+    /// This is the CLI-facing ACP client; `loom acp` remains the IDE stdio bridge.
+    #[arg(long)]
+    pub(crate) acp: bool,
+
+    /// ACP WebSocket endpoint used by `--acp`.
+    #[arg(long, env = "LOOM_ACP_URL", default_value = "ws://127.0.0.1:3030/acp")]
+    pub(crate) acp_url: String,
+
     /// Output all data as JSON (stream events + reply for agent run; JSON array for tool list; JSON for tool show)
     #[arg(long, global = true)]
     pub(crate) json: bool,

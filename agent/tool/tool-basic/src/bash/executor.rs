@@ -109,6 +109,13 @@ async fn run_shell_command(
     if let Some(dir) = workdir {
         cmd.current_dir(dir);
     }
+    #[cfg(windows)]
+    {
+        #[allow(unused_imports)]
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
     run_spawned_shell_command(cmd, workdir, timeout_ms, ctx).await
 }
 

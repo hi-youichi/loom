@@ -10,8 +10,12 @@ use skill::SkillUsageStore;
 #[cfg(windows)]
 use tool_basic::powershell::PowerShellTool;
 use tool_basic::{
-    bash::BashTool, batch::BatchTool, exa::ExaCodesearchTool, exa::ExaWebsearchTool,
-    mcp::{McpToolSource, DEFAULT_TOOL_TIMEOUT}, register_file_tools, register_mcp_tools,
+    bash::BashTool,
+    batch::BatchTool,
+    exa::ExaCodesearchTool,
+    exa::ExaWebsearchTool,
+    mcp::{DEFAULT_TOOL_TIMEOUT, McpToolSource},
+    register_file_tools, register_mcp_tools,
     web::WebFetcherTool,
 };
 use tool_core::{ArcTool, ToolRegistryLocked, YamlSpecError};
@@ -42,9 +46,13 @@ async fn start_mcp_server(
 ) -> McpStartupResult {
     let name = server.name().to_string();
     let required = server.required();
-    let startup_timeout = server.startup_timeout_sec().map(Duration::from_secs)
+    let startup_timeout = server
+        .startup_timeout_sec()
+        .map(Duration::from_secs)
         .unwrap_or(DEFAULT_MCP_STARTUP_TIMEOUT);
-    let tool_timeout = server.tool_timeout_sec().map(Duration::from_secs)
+    let tool_timeout = server
+        .tool_timeout_sec()
+        .map(Duration::from_secs)
         .unwrap_or(DEFAULT_TOOL_TIMEOUT);
     tracing::debug!(
         mcp_server = %name,
@@ -55,14 +63,21 @@ async fn start_mcp_server(
     );
     let result = tokio::time::timeout(startup_timeout, async {
         let mcp = match server {
-            McpServerDef::Stdio { command, args, env, .. } => {
-                McpToolSource::new_with_env_and_tool_timeout(
-                    command, args, env, mcp_verbose, tool_timeout,
-                ).await.map_err(|error| error.to_string())?
-            }
+            McpServerDef::Stdio {
+                command, args, env, ..
+            } => McpToolSource::new_with_env_and_tool_timeout(
+                command,
+                args,
+                env,
+                mcp_verbose,
+                tool_timeout,
+            )
+            .await
+            .map_err(|error| error.to_string())?,
             McpServerDef::Http { url, headers, .. } => {
                 McpToolSource::new_http_with_tool_timeout(url, headers, tool_timeout)
-                    .await.map_err(|error| error.to_string())?
+                    .await
+                    .map_err(|error| error.to_string())?
             }
         };
         register_mcp_tools(aggregate.as_ref(), Arc::new(mcp))
@@ -70,9 +85,18 @@ async fn start_mcp_server(
             .map_err(|error| error.to_string())
     })
     .await
-    .map_err(|_| format!("startup timed out after {} seconds", startup_timeout.as_secs()))
+    .map_err(|_| {
+        format!(
+            "startup timed out after {} seconds",
+            startup_timeout.as_secs()
+        )
+    })
     .and_then(|result| result);
-    McpStartupResult { name, required, result }
+    McpStartupResult {
+        name,
+        required,
+        result,
+    }
 }
 
 async fn start_configured_mcp_servers(
@@ -80,11 +104,14 @@ async fn start_configured_mcp_servers(
     aggregate: Arc<ToolRegistryLocked>,
     mcp_verbose: bool,
 ) -> Result<(), GraphError> {
-    let mut pending_required: HashSet<String> = servers.iter()
+    let mut pending_required: HashSet<String> = servers
+        .iter()
         .filter(|server| server.required())
         .map(|server| server.name().to_string())
         .collect();
-    if servers.is_empty() { return Ok(()); }
+    if servers.is_empty() {
+        return Ok(());
+    }
 
     let (result_tx, mut result_rx) = tokio::sync::mpsc::unbounded_channel();
     for server in servers.iter().cloned() {
@@ -111,23 +138,35 @@ async fn start_configured_mcp_servers(
     drop(result_tx);
 
     let deadline = tokio::time::Instant::now() + OPTIONAL_MCP_STARTUP_GRACE;
-    while let Some(result) = tokio::time::timeout_at(deadline, result_rx.recv()).await.ok().flatten() {
+    while let Some(result) = tokio::time::timeout_at(deadline, result_rx.recv())
+        .await
+        .ok()
+        .flatten()
+    {
         if result.required {
             pending_required.remove(&result.name);
             if let Err(error) = result.result {
-                return Err(to_agent_error(format!("required MCP server `{}` failed to start: {error}", result.name)));
+                return Err(to_agent_error(format!(
+                    "required MCP server `{}` failed to start: {error}",
+                    result.name
+                )));
             }
         }
     }
 
     while !pending_required.is_empty() {
         let Some(result) = result_rx.recv().await else {
-            return Err(to_agent_error("MCP startup tasks ended before required servers completed"));
+            return Err(to_agent_error(
+                "MCP startup tasks ended before required servers completed",
+            ));
         };
         if result.required {
             pending_required.remove(&result.name);
             if let Err(error) = result.result {
-                return Err(to_agent_error(format!("required MCP server `{}` failed to start: {error}", result.name)));
+                return Err(to_agent_error(format!(
+                    "required MCP server `{}` failed to start: {error}",
+                    result.name
+                )));
             }
         }
     }
@@ -239,8 +278,27 @@ pub(crate) async fn build_tool_source(
         lsp_manager,
     )))));
 
+    let reused_names: HashSet<String> = config
+        .acp_mcp_sources
+        .as_ref()
+        .map(|sources| sources.iter().map(|(name, _)| name.clone()).collect())
+        .unwrap_or_default();
     if let Some(ref servers) = config.mcp_servers {
-        start_configured_mcp_servers(servers, Arc::clone(&aggregate), config.mcp_verbose).await?;
+        let uncached: Vec<_> = servers
+            .iter()
+            .filter(|server| !reused_names.contains(server.name()))
+            .cloned()
+            .collect();
+        start_configured_mcp_servers(&uncached, Arc::clone(&aggregate), config.mcp_verbose).await?;
+    }
+    if let Some(ref sources) = config.acp_mcp_sources {
+        for (_, source) in sources {
+            register_mcp_tools(aggregate.as_ref(), Arc::clone(source))
+                .await
+                .map_err(|error| {
+                    to_agent_error(format!("cached MCP registration failed: {error}"))
+                })?;
+        }
     }
     if let Some(ref token) = config.github_token {
         let use_http = config
@@ -359,7 +417,12 @@ mod mcp_startup_tests {
         format!("http://{address}/mcp")
     }
 
-    fn http_server(name: &str, url: String, required: bool, startup_timeout_sec: u64) -> McpServerDef {
+    fn http_server(
+        name: &str,
+        url: String,
+        required: bool,
+        startup_timeout_sec: u64,
+    ) -> McpServerDef {
         McpServerDef::Http {
             name: name.to_string(),
             url,
@@ -393,7 +456,11 @@ mod mcp_startup_tests {
             .await
             .unwrap_err();
 
-        assert!(error.to_string().contains("required MCP server `required` failed to start"));
+        assert!(
+            error
+                .to_string()
+                .contains("required MCP server `required` failed to start")
+        );
         assert!(error.to_string().contains("startup timed out"), "{error}");
     }
 }

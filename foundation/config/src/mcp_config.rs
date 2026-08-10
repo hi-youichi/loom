@@ -55,7 +55,7 @@ pub struct McpServerEntry {
 }
 
 /// OAuth configuration for an MCP HTTP server.
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct OAuthConfig {
     /// Enable OAuth for this server.
     #[serde(default)]
@@ -69,7 +69,7 @@ pub struct OAuthConfig {
 }
 
 /// Parsed definition for one MCP server: stdio (spawn process) or HTTP (remote URL).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum McpServerDef {
     Stdio {
         name: String,

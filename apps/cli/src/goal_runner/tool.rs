@@ -259,6 +259,8 @@ impl CodingTool for LoomTool {
             worktree: false,
             goal_mode: true,
             acp_mcp_servers: None,
+
+            acp_mcp_sources: None,
             effort: self.effort.clone(),
             tier: self.tier.clone(),
         };

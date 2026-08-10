@@ -207,7 +207,7 @@ pub fn publish_durable(
         }
     }
     let mut logs = state.v2_session_events.write();
-    let log = logs.entry(session_id.clone()).or_insert_with(VecDeque::new);
+    let log = logs.entry(session_id.clone()).or_default();
     if log.len() == V2_LOG_CAP {
         log.pop_front();
     }

@@ -176,7 +176,7 @@ impl ModelRegistry {
                 }
             }
 
-            for (spec_name, _) in &bundled {
+            for spec_name in bundled.keys() {
                 if input_names.contains(spec_name) {
                     continue;
                 }
@@ -367,10 +367,7 @@ impl ModelRegistry {
         for plugin in load_yaml_plugins(&plugins_dir) {
             let (provider, models) = plugin.into_provider_and_models();
             let key = Self::normalize_provider_name(&provider.id);
-            let provider = SpecProvider {
-                models,
-                ..provider
-            };
+            let provider = SpecProvider { models, ..provider };
             providers.insert(key, provider);
         }
     }
@@ -529,9 +526,7 @@ mod tests {
         let registry = ModelRegistry::new();
         let models = registry.list_all_models(&[]).await;
 
-        let has_bundled = models
-            .iter()
-            .any(|m| m.provider == "huoshan-coding-plan");
+        let has_bundled = models.iter().any(|m| m.provider == "huoshan-coding-plan");
         assert!(
             has_bundled,
             "Bundled provider should appear even without user config. Models: {:?}",
@@ -598,11 +593,17 @@ mod tests {
         let has_deepseek = huoshan_models
             .iter()
             .any(|m| m.name == "deepseek-v4-flash-260425");
-        assert!(has_deepseek, "deepseek-v4-flash-260425 should be in the list");
+        assert!(
+            has_deepseek,
+            "deepseek-v4-flash-260425 should be in the list"
+        );
 
         let has_doubao = huoshan_models
             .iter()
             .any(|m| m.name == "doubao-seed-2-1-pro-260628");
-        assert!(has_doubao, "doubao-seed-2-1-pro-260628 should be in the list");
+        assert!(
+            has_doubao,
+            "doubao-seed-2-1-pro-260628 should be in the list"
+        );
     }
 }

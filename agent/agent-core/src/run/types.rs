@@ -75,6 +75,8 @@ pub struct RunOptions {
     pub worktree: bool,
     pub goal_mode: bool,
     pub acp_mcp_servers: Option<Vec<env_config::McpServerDef>>,
+    /// Already-connected ACP MCP sources reused for this session.
+    pub acp_mcp_sources: Option<Vec<(String, Arc<tool_basic::McpToolSource>)>>,
     pub effort: Option<String>,
     pub tier: Option<String>,
 }
@@ -127,6 +129,7 @@ impl Clone for RunOptions {
             worktree: self.worktree,
             goal_mode: self.goal_mode,
             acp_mcp_servers: self.acp_mcp_servers.clone(),
+            acp_mcp_sources: self.acp_mcp_sources.clone(),
             effort: self.effort.clone(),
             tier: self.tier.clone(),
         }

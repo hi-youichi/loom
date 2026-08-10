@@ -54,13 +54,13 @@ mod tests {
     #[test]
     fn dispatches_special_providers() {
         let cases: &[(&str, ErrorKind)] = &[
-            ("zhipuai", ErrorKind::AuthFailed),        // 1003 → AuthFailed
-            ("xiaomi", ErrorKind::ContentFilter),      // 421 → ContentFilter
-            ("stepfun", ErrorKind::ContentFilter),     // 451 → ContentFilter
-            ("minimax", ErrorKind::Billing),           // 1008 → Billing
-            ("anthropic", ErrorKind::Overloaded),      // 529 → Overloaded
-            ("google", ErrorKind::RateLimited),        // RESOURCE_EXHAUSTED → RateLimited
-            ("openrouter", ErrorKind::Billing),        // insufficient_quota → Billing
+            ("zhipuai", ErrorKind::AuthFailed),    // 1003 → AuthFailed
+            ("xiaomi", ErrorKind::ContentFilter),  // 421 → ContentFilter
+            ("stepfun", ErrorKind::ContentFilter), // 451 → ContentFilter
+            ("minimax", ErrorKind::Billing),       // 1008 → Billing
+            ("anthropic", ErrorKind::Overloaded),  // 529 → Overloaded
+            ("google", ErrorKind::RateLimited),    // RESOURCE_EXHAUSTED → RateLimited
+            ("openrouter", ErrorKind::Billing),    // insufficient_quota → Billing
         ];
         for (provider, expect) in cases {
             let parser = parser_for(provider);
@@ -78,7 +78,9 @@ mod tests {
                 ErrorKind::AuthFailed => br#"{"error":{"code":"1003"}}"#.as_slice(),
                 ErrorKind::ContentFilter if *provider == "xiaomi" => br#"{}"#.as_slice(),
                 ErrorKind::ContentFilter => br#"{}"#.as_slice(),
-                ErrorKind::Billing if *provider == "minimax" => br#"{"error":{"code":"1008"}}"#.as_slice(),
+                ErrorKind::Billing if *provider == "minimax" => {
+                    br#"{"error":{"code":"1008"}}"#.as_slice()
+                }
                 ErrorKind::Billing => {
                     br#"{"error":{"metadata":{"error_type":"insufficient_quota"}}}"#.as_slice()
                 }

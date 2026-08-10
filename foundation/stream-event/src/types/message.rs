@@ -20,9 +20,18 @@ pub struct MessageChunk {
 /// stable placeholder without waiting for the whole response to finish.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ToolCallChunk {
-    Started { call_id: String, name: String },
-    Delta { call_id: String, arguments_delta: String },
-    Ended { call_id: String, arguments: String },
+    Started {
+        call_id: String,
+        name: String,
+    },
+    Delta {
+        call_id: String,
+        arguments_delta: String,
+    },
+    Ended {
+        call_id: String,
+        arguments: String,
+    },
 }
 
 impl MessageChunk {
@@ -59,7 +68,11 @@ pub trait StreamSink: Send + Sync {
 
     /// Forward a tool-call increment. Implementations that only render text
     /// can ignore it; the default preserves backwards compatibility.
-    fn try_send_tool_call(&self, _chunk: ToolCallChunk, _node_id: &str) -> Option<std::time::Instant> {
+    fn try_send_tool_call(
+        &self,
+        _chunk: ToolCallChunk,
+        _node_id: &str,
+    ) -> Option<std::time::Instant> {
         None
     }
 }

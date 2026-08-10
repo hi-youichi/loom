@@ -93,7 +93,7 @@ impl ToolCallAccumulator {
                     ToolCall {
                         name,
                         arguments: sanitized_args,
-                id: Some(id),
+                        id: Some(id),
                     },
                 )
             })

@@ -6,9 +6,8 @@ use serde::Deserialize;
 use super::cost::Cost;
 use super::limit::{Modalities, ModalityType, ModelLimit};
 use super::model::{
-    Experimental, ExperimentalMode, ExperimentalProviderConfig, Interleaved,
-    InterleavedField, Model, ModelProviderConfig, ModelStatus, ProviderShape,
-    ReasoningEffort, ReasoningOption,
+    Experimental, ExperimentalMode, ExperimentalProviderConfig, Interleaved, InterleavedField,
+    Model, ModelProviderConfig, ModelStatus, ProviderShape, ReasoningEffort, ReasoningOption,
 };
 use super::provider::Provider;
 
@@ -117,7 +116,10 @@ pub struct YamlModalities {
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum YamlReasoningOption {
-    Simple { r#type: String, values: Option<Vec<Option<String>>> },
+    Simple {
+        r#type: String,
+        values: Option<Vec<Option<String>>>,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -228,23 +230,23 @@ impl YamlModelDef {
         let reasoning_options = self.reasoning_options.map(|opts| {
             opts.iter()
                 .filter_map(|o| match o {
-                    YamlReasoningOption::Simple { r#type, values } => {
-                        match r#type.as_str() {
-                            "toggle" => Some(ReasoningOption::Toggle),
-                            "effort" => {
-                                let vals = values.clone().unwrap_or_default()
-                                    .iter()
-                                    .map(|v| v.as_deref().and_then(parse_reasoning_effort))
-                                    .collect();
-                                Some(ReasoningOption::Effort { values: vals })
-                            }
-                            "budget_tokens" => Some(ReasoningOption::BudgetTokens {
-                                min: None,
-                                max: None,
-                            }),
-                            _ => None,
+                    YamlReasoningOption::Simple { r#type, values } => match r#type.as_str() {
+                        "toggle" => Some(ReasoningOption::Toggle),
+                        "effort" => {
+                            let vals = values
+                                .clone()
+                                .unwrap_or_default()
+                                .iter()
+                                .map(|v| v.as_deref().and_then(parse_reasoning_effort))
+                                .collect();
+                            Some(ReasoningOption::Effort { values: vals })
                         }
-                    }
+                        "budget_tokens" => Some(ReasoningOption::BudgetTokens {
+                            min: None,
+                            max: None,
+                        }),
+                        _ => None,
+                    },
                 })
                 .collect()
         });
@@ -262,10 +264,7 @@ impl YamlModelDef {
             YamlInterleaved::Simple(false) => None,
         });
 
-        let status = self
-            .status
-            .as_deref()
-            .and_then(parse_model_status);
+        let status = self.status.as_deref().and_then(parse_model_status);
 
         let model_provider = self.provider.map(|p| ModelProviderConfig {
             npm: None,
@@ -456,7 +455,7 @@ models:
         assert_eq!(model.structured_output, Some(true));
     }
 
-#[test]
+    #[test]
     fn load_yaml_plugins_does_not_crash() {
         let dir = std::env::current_dir().unwrap();
         let _plugins = load_yaml_plugins(&dir);
@@ -466,7 +465,10 @@ models:
     fn bundled_provider_loads_huoshan() {
         let providers = crate::models_dev::bundled_providers::load_bundled_providers();
         let huoshan = providers.get("huoshan-coding-plan");
-        assert!(huoshan.is_some(), "huoshan-coding-plan not found in bundled providers");
+        assert!(
+            huoshan.is_some(),
+            "huoshan-coding-plan not found in bundled providers"
+        );
 
         if let Some(provider) = huoshan {
             assert!(!provider.models.is_empty());

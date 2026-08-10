@@ -430,7 +430,6 @@ pub(super) fn build_request(
     req
 }
 
-
 fn audio_format_from_media_type(media_type: &str) -> &str {
     match media_type {
         "audio/mpeg" => "mp3",
@@ -524,4 +523,3 @@ mod tests {
         assert_eq!(json["content"], "I can help");
     }
 }
-

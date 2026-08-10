@@ -256,27 +256,44 @@ fn translate_v2_stream_event<S: Clone + Send + Sync + std::fmt::Debug + 'static>
             }
         }
         StreamEvent::ToolInputStart { call_id, name } => {
-            state.v2_started_tool_calls.write().insert((
-                assistant_msg_id.to_string(),
-                call_id.to_string(),
-            ));
-            let _ = publish_durable(state, "session.next.tool.input.started", json!({
-                "timestamp": now, "sessionID": session_id,
-                "assistantMessageID": assistant_msg_id, "callID": call_id, "name": name,
-            }), 1);
+            state
+                .v2_started_tool_calls
+                .write()
+                .insert((assistant_msg_id.to_string(), call_id.to_string()));
+            let _ = publish_durable(
+                state,
+                "session.next.tool.input.started",
+                json!({
+                    "timestamp": now, "sessionID": session_id,
+                    "assistantMessageID": assistant_msg_id, "callID": call_id, "name": name,
+                }),
+                1,
+            );
         }
-        StreamEvent::ToolInputDelta { call_id, arguments_delta } => {
-            publish_live(state, "session.next.tool.input.delta", json!({
-                "timestamp": now, "sessionID": session_id,
-                "assistantMessageID": assistant_msg_id, "callID": call_id,
-                "delta": arguments_delta,
-            }));
+        StreamEvent::ToolInputDelta {
+            call_id,
+            arguments_delta,
+        } => {
+            publish_live(
+                state,
+                "session.next.tool.input.delta",
+                json!({
+                    "timestamp": now, "sessionID": session_id,
+                    "assistantMessageID": assistant_msg_id, "callID": call_id,
+                    "delta": arguments_delta,
+                }),
+            );
         }
         StreamEvent::ToolInputEnd { call_id, arguments } => {
-            let _ = publish_durable(state, "session.next.tool.input.ended", json!({
-                "timestamp": now, "sessionID": session_id,
-                "assistantMessageID": assistant_msg_id, "callID": call_id, "text": arguments,
-            }), 1);
+            let _ = publish_durable(
+                state,
+                "session.next.tool.input.ended",
+                json!({
+                    "timestamp": now, "sessionID": session_id,
+                    "assistantMessageID": assistant_msg_id, "callID": call_id, "text": arguments,
+                }),
+                1,
+            );
         }
         StreamEvent::ToolCall {
             call_id,
@@ -292,20 +309,25 @@ fn translate_v2_stream_event<S: Clone + Send + Sync + std::fmt::Debug + 'static>
                 let input_text = serde_json::to_string(&input).unwrap_or_else(|_| "{}".to_string());
                 let base = json!({"timestamp": now, "sessionID": session_id,
                     "assistantMessageID": assistant_msg_id, "callID": call_id});
-                let started_live = state.v2_started_tool_calls.read().contains(&(
-                    assistant_msg_id.to_string(), call_id.to_string(),
-                ));
+                let started_live = state
+                    .v2_started_tool_calls
+                    .read()
+                    .contains(&(assistant_msg_id.to_string(), call_id.to_string()));
                 if !started_live {
                     let mut started = base.clone();
                     started["name"] = json!(name);
                     let _ = publish_durable(state, "session.next.tool.input.started", started, 1);
                     // Clients without native tool deltas retain the former
                     // complete-call fallback sequence.
-                    publish_live(state, "session.next.tool.input.delta", json!({
-                        "timestamp": now, "sessionID": session_id,
-                        "assistantMessageID": assistant_msg_id, "callID": call_id,
-                        "delta": &input_text,
-                    }));
+                    publish_live(
+                        state,
+                        "session.next.tool.input.delta",
+                        json!({
+                            "timestamp": now, "sessionID": session_id,
+                            "assistantMessageID": assistant_msg_id, "callID": call_id,
+                            "delta": &input_text,
+                        }),
+                    );
                     let mut ended = base.clone();
                     ended["text"] = json!(input_text);
                     let _ = publish_durable(state, "session.next.tool.input.ended", ended, 1);
@@ -522,7 +544,11 @@ fn translate_stream_event<S: Clone + Send + Sync + std::fmt::Debug + 'static>(
         }
         StreamEvent::ToolInputStart { call_id, name } => {
             create_or_update_tool_part(
-                state, assistant_msg_id, session_id, Some(call_id), name,
+                state,
+                assistant_msg_id,
+                session_id,
+                Some(call_id),
+                name,
                 ToolTransition::Create { input: json!({}) },
             );
         }
@@ -531,10 +557,14 @@ fn translate_stream_event<S: Clone + Send + Sync + std::fmt::Debug + 'static>(
             // start; the complete input is installed by ToolInputEnd.
         }
         StreamEvent::ToolInputEnd { call_id, arguments } => {
-            let input = serde_json::from_str(arguments)
-                .unwrap_or_else(|_| json!({"_raw_args": arguments}));
+            let input =
+                serde_json::from_str(arguments).unwrap_or_else(|_| json!({"_raw_args": arguments}));
             create_or_update_tool_part(
-                state, assistant_msg_id, session_id, Some(call_id), "tool",
+                state,
+                assistant_msg_id,
+                session_id,
+                Some(call_id),
+                "tool",
                 ToolTransition::UpdateInput { input },
             );
         }
@@ -2083,22 +2113,33 @@ mod tests {
                 call_id: "call_early".into(),
                 name: "read".into(),
             },
-            "sess", "msg", &state,
+            "sess",
+            "msg",
+            &state,
         );
         translate_stream_event(
             &StreamEvent::<TestState>::TextBlockStart { metadata: meta() },
-            "sess", "msg", &state,
+            "sess",
+            "msg",
+            &state,
         );
         translate_stream_event(
-            &StreamEvent::<TestState>::TextDelta { content: "after tool".into(), metadata: meta() },
-            "sess", "msg", &state,
+            &StreamEvent::<TestState>::TextDelta {
+                content: "after tool".into(),
+                metadata: meta(),
+            },
+            "sess",
+            "msg",
+            &state,
         );
         translate_stream_event(
             &StreamEvent::<TestState>::ToolInputEnd {
                 call_id: "call_early".into(),
                 arguments: r#"{"path":"README.md"}"#.into(),
             },
-            "sess", "msg", &state,
+            "sess",
+            "msg",
+            &state,
         );
         translate_stream_event(
             &StreamEvent::<TestState>::ToolCall {
@@ -2106,12 +2147,18 @@ mod tests {
                 name: "read".into(),
                 arguments: json!({"path":"README.md"}),
             },
-            "sess", "msg", &state,
+            "sess",
+            "msg",
+            &state,
         );
 
         let parts = state.parts.read();
         let parts = parts.get("msg").expect("parts");
-        assert_eq!(parts.len(), 2, "ToolCall must update the placeholder, not append another tool");
+        assert_eq!(
+            parts.len(),
+            2,
+            "ToolCall must update the placeholder, not append another tool"
+        );
         assert_eq!(parts[0].part_type, "tool");
         assert_eq!(parts[0].data["callID"], "call_early");
         assert_eq!(parts[0].data["state"]["input"], json!({"path":"README.md"}));

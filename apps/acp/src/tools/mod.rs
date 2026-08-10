@@ -11,7 +11,6 @@ mod fs_tools;
 mod terminal_executor;
 
 pub use client_bridge::{
-    get_session_bridge, remove_session_bridge, set_connection_for_session, set_session_bridge,
     AcpClientBridge, ClientBridgeTrait, NoOpClientBridge, TerminalExitResult, TerminalOutput,
 };
 pub use fs_tools::{ReadTextFileTool, WriteTextFileTool};
@@ -39,18 +38,21 @@ pub(crate) fn create_tool_spec(
 /// This function returns tools that the client supports based on capabilities.
 /// Tools that require capabilities the client doesn't have are not included.
 ///
-/// Note: Before using these tools, you must call `set_global_client_bridge()`
-/// to set up the client bridge for ACP communication.
-pub fn create_acp_tools(capabilities: &ClientCapabilitiesInfo) -> Vec<Box<dyn Tool>> {
+/// The bridge is injected per prompt/session, so tools never depend on a
+/// process-global client connection.
+pub fn create_acp_tools(
+    capabilities: &ClientCapabilitiesInfo,
+    bridge: std::sync::Arc<dyn ClientBridgeTrait>,
+) -> Vec<Box<dyn Tool>> {
     let mut tools: Vec<Box<dyn Tool>> = Vec::new();
 
     // File system tools
     if capabilities.can_read_text_file() {
-        tools.push(Box::new(ReadTextFileTool::new()));
+        tools.push(Box::new(ReadTextFileTool::with_bridge(bridge.clone())));
     }
 
     if capabilities.can_write_text_file() {
-        tools.push(Box::new(WriteTextFileTool::new()));
+        tools.push(Box::new(WriteTextFileTool::with_bridge(bridge)));
     }
 
     tools
@@ -65,7 +67,7 @@ mod tests {
     fn test_create_acp_tools_empty() {
         // Default capabilities should not create any tools
         let caps = ClientCapabilitiesInfo::default();
-        let tools = create_acp_tools(&caps);
+        let tools = create_acp_tools(&caps, std::sync::Arc::new(NoOpClientBridge));
         assert!(tools.is_empty());
     }
 
@@ -77,7 +79,7 @@ mod tests {
             }
         });
         let caps = ClientCapabilitiesInfo::from_json(Some(caps_json));
-        let tools = create_acp_tools(&caps);
+        let tools = create_acp_tools(&caps, std::sync::Arc::new(NoOpClientBridge));
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name(), "fs_read_text_file");
     }
@@ -91,7 +93,7 @@ mod tests {
             }
         });
         let caps = ClientCapabilitiesInfo::from_json(Some(caps_json));
-        let tools = create_acp_tools(&caps);
+        let tools = create_acp_tools(&caps, std::sync::Arc::new(NoOpClientBridge));
         assert_eq!(tools.len(), 2);
     }
 

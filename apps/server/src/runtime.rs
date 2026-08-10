@@ -59,7 +59,9 @@ pub async fn run(options: ServerOptions) -> Result<(), Box<dyn std::error::Error
                     default = cfg.default_provider.as_deref().unwrap_or("(none)"),
                     "SIGHUP reload OK"
                 ),
-                Err(error) => tracing::error!(%error, "SIGHUP reload FAILED — keeping previous config"),
+                Err(error) => {
+                    tracing::error!(%error, "SIGHUP reload FAILED — keeping previous config")
+                }
             }
         }
     });

@@ -38,7 +38,8 @@ mod tests {
 
     #[test]
     fn maps_421_to_content_filter() {
-        let err = XiaomiParser::new("xiaomi").parse(421, &[], br#"{"error":{"message":"blocked"}}"#);
+        let err =
+            XiaomiParser::new("xiaomi").parse(421, &[], br#"{"error":{"message":"blocked"}}"#);
         assert_eq!(err.kind, ErrorKind::ContentFilter);
         assert!(!err.is_retryable());
     }

@@ -90,6 +90,8 @@ pub(crate) fn build_run_options_for_prompt(
         worktree: false,
         goal_mode: false,
         acp_mcp_servers: None,
+
+        acp_mcp_sources: None,
         effort: None,
         tier: None,
     }

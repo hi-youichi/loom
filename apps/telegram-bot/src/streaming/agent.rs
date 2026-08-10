@@ -79,6 +79,8 @@ pub async fn run_loom_agent_streaming(
         worktree: false,
         goal_mode: false,
         acp_mcp_servers: None,
+
+        acp_mcp_sources: None,
         effort: None,
         tier: None,
     };

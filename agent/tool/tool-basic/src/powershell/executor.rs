@@ -20,11 +20,20 @@ static CACHED_SHELL: OnceLock<(&'static str, &'static str)> = OnceLock::new();
 
 fn detect_powershell() -> (&'static str, &'static str) {
     *CACHED_SHELL.get_or_init(|| {
-        let pwsh_ok = std::process::Command::new("pwsh")
+        let mut probe = std::process::Command::new("pwsh");
+        probe
             .args(["-NoProfile", "-NonInteractive", "-Command", "exit 0"])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        #[cfg(windows)]
+        {
+            #[allow(unused_imports)]
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            probe.creation_flags(CREATE_NO_WINDOW);
+        }
+        let pwsh_ok = probe
             .status()
             .map(|s| s.success())
             .unwrap_or(false);
@@ -131,6 +140,13 @@ async fn run_powershell_command(
     cmd.stdin(std::process::Stdio::piped());
     cmd.stdout(std::process::Stdio::from(stdout_file));
     cmd.stderr(std::process::Stdio::from(stderr_file));
+    #[cfg(windows)]
+    {
+        #[allow(unused_imports)]
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
 
     debug!(shell = %shell, command = %command, "spawning powershell command with file redirect");
 

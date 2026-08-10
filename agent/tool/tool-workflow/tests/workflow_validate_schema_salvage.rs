@@ -141,7 +141,9 @@ async fn salvage_backend_produces_structured_output_in_workflow() {
     let result = handle.join().await;
 
     let outcome = result.unwrap();
-    let report = outcome.result.expect("workflow should succeed with salvage");
+    let report = outcome
+        .result
+        .expect("workflow should succeed with salvage");
     let result_val = report.get("result").expect("report should contain result");
     assert_eq!(
         result_val.get("changed").and_then(|v| v.as_bool()),

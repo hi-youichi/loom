@@ -19,11 +19,7 @@ use futures::{SinkExt, StreamExt};
 use loom_server::{routes::build_router, state::new_state};
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
-use tokio_tungstenite::{
-    connect_async,
-    tungstenite::Message,
-    WebSocketStream, MaybeTlsStream,
-};
+use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
 type WsStream = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 
@@ -48,12 +44,7 @@ fn check_llm_env() -> Option<(String, String, String)> {
     Some((key, base, model))
 }
 
-async fn send_request(
-    socket: &mut WsStream,
-    id: u64,
-    method: &str,
-    params: Value,
-) -> Value {
+async fn send_request(socket: &mut WsStream, id: u64, method: &str, params: Value) -> Value {
     socket
         .send(Message::Text(
             json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}).to_string(),
@@ -167,15 +158,23 @@ async fn real_llm_prompt_returns_text_and_notifications() {
         }),
     )
     .await;
-    assert!(session.get("result").is_some(), "session/new failed: {session}");
+    assert!(
+        session.get("result").is_some(),
+        "session/new failed: {session}"
+    );
     let session_id = session["result"]["sessionId"]
         .as_str()
         .expect("sessionId")
         .to_owned();
 
     // Send prompt — ask a simple question
-    let (response, notifications) =
-        send_prompt_and_collect(&mut socket, 3, &session_id, "What is 2+3? Reply with just the number.").await;
+    let (response, notifications) = send_prompt_and_collect(
+        &mut socket,
+        3,
+        &session_id,
+        "What is 2+3? Reply with just the number.",
+    )
+    .await;
 
     // Verify PromptResponse
     assert!(

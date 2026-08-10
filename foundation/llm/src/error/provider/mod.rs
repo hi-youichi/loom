@@ -163,7 +163,14 @@ pub(crate) fn is_quota_429(message: &str, code: Option<&str>) -> bool {
         }
     }
     let haystack = format!("{message} {}", code.unwrap_or_default()).to_lowercase();
-    ["quota", "credit", "balance", "insufficient", "spend limit", "usage limit"]
-        .iter()
-        .any(|kw| haystack.contains(kw))
+    [
+        "quota",
+        "credit",
+        "balance",
+        "insufficient",
+        "spend limit",
+        "usage limit",
+    ]
+    .iter()
+    .any(|kw| haystack.contains(kw))
 }

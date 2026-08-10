@@ -10,11 +10,7 @@ use futures::{SinkExt, StreamExt};
 use loom_server::{routes::build_router, state::new_state};
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
-use tokio_tungstenite::{
-    connect_async,
-    tungstenite::Message,
-    WebSocketStream, MaybeTlsStream,
-};
+use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
 type WsStream = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 
@@ -30,12 +26,7 @@ async fn start_server() -> (String, tokio::task::JoinHandle<()>) {
     (format!("ws://{address}/acp"), task)
 }
 
-async fn send_request(
-    socket: &mut WsStream,
-    id: u64,
-    method: &str,
-    params: Value,
-) -> Value {
+async fn send_request(socket: &mut WsStream, id: u64, method: &str, params: Value) -> Value {
     socket
         .send(Message::Text(
             json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}).to_string(),
@@ -139,14 +130,15 @@ async fn binary_frame_is_rejected() {
     // We accept None (stream end) as a valid "rejected" signal.
     let mut rejected = false;
     for _ in 0..5 {
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(3),
-            socket.next(),
-        )
-        .await
-        {
-            Ok(None) => { rejected = true; break; }
-            Ok(Some(Ok(Message::Close(_)))) => { rejected = true; break; }
+        match tokio::time::timeout(std::time::Duration::from_secs(3), socket.next()).await {
+            Ok(None) => {
+                rejected = true;
+                break;
+            }
+            Ok(Some(Ok(Message::Close(_)))) => {
+                rejected = true;
+                break;
+            }
             Ok(Some(Ok(Message::Text(text)))) => {
                 if let Ok(frame) = serde_json::from_str::<Value>(&text) {
                     if frame.get("error").is_some() {
@@ -158,7 +150,10 @@ async fn binary_frame_is_rejected() {
             _ => {}
         }
     }
-    assert!(rejected, "expected error, close, or stream end after binary frame");
+    assert!(
+        rejected,
+        "expected error, close, or stream end after binary frame"
+    );
     let _ = socket.close(None).await;
     server.abort();
 }
@@ -177,12 +172,7 @@ async fn invalid_json_returns_error_or_closes() {
 
     let mut handled = false;
     for _ in 0..5 {
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(2),
-            socket.next(),
-        )
-        .await
-        {
+        match tokio::time::timeout(std::time::Duration::from_secs(2), socket.next()).await {
             Ok(Some(Ok(Message::Text(text)))) => {
                 if let Ok(frame) = serde_json::from_str::<Value>(&text) {
                     if frame.get("error").is_some() {
@@ -295,13 +285,7 @@ async fn two_sessions_get_different_ids() {
         "two new sessions must have distinct IDs"
     );
 
-    let listed = send_request(
-        &mut socket,
-        4,
-        "session/list",
-        json!({}),
-    )
-    .await;
+    let listed = send_request(&mut socket, 4, "session/list", json!({})).await;
     let session_ids = listed["result"]["sessions"]
         .as_array()
         .expect("sessions array");

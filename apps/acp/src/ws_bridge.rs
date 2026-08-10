@@ -22,6 +22,7 @@ use std::io::{BufRead, Write};
 use std::time::Duration;
 
 use futures::{SinkExt, StreamExt};
+#[cfg(unix)]
 use tokio::signal;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -48,7 +49,9 @@ const RECONNECT_MAX_BACKOFF: Duration = Duration::from_secs(10);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Build the WebSocket upgrade request with optional auth header.
-fn build_ws_request(ws_url: &str) -> BridgeResult<tokio_tungstenite::tungstenite::handshake::client::Request> {
+fn build_ws_request(
+    ws_url: &str,
+) -> BridgeResult<tokio_tungstenite::tungstenite::handshake::client::Request> {
     let mut request = ws_url
         .into_client_request()
         .map_err(|e| format!("invalid WebSocket URL {ws_url}: {e}"))?;
@@ -95,7 +98,7 @@ async fn relay_loop(
             line = stdin_rx.recv() => {
                 match line {
                     Some(text) => {
-                        if let Err(e) = ws.send(Message::Text(text.into())).await {
+                        if let Err(e) = ws.send(Message::Text(text)).await {
                             tracing::error!(error = %e, "WebSocket send error");
                             return RelayOutcome::WsDisconnected;
                         }
@@ -197,7 +200,7 @@ pub async fn run_ws_bridge(url: Option<String>) -> BridgeResult<()> {
     tokio::spawn(async move {
         #[cfg(unix)]
         {
-            use signal::unix::{SignalKind, signal};
+            use signal::unix::{signal, SignalKind};
             let mut sigint = signal(SignalKind::interrupt()).ok();
             let mut sigterm = signal(SignalKind::terminate()).ok();
             tokio::select! {
@@ -267,36 +270,36 @@ pub async fn run_ws_bridge(url: Option<String>) -> BridgeResult<()> {
             }
         };
 
-        let (mut ws, response) = match tokio::time::timeout(
-            CONNECT_TIMEOUT,
-            tokio_tungstenite::connect_async(request),
-        ).await {
-            Ok(Ok(c)) => c,
-            Ok(Err(e)) => {
-                tracing::error!(error = %e, url = %ws_url, "WebSocket connect failed");
-                tracing::info!(backoff = ?backoff, "retrying after back-off");
-                tokio::select! {
-                    _ = tokio::time::sleep(backoff) => {}
-                    _ = cancel.cancelled() => { break; }
+        let (mut ws, response) =
+            match tokio::time::timeout(CONNECT_TIMEOUT, tokio_tungstenite::connect_async(request))
+                .await
+            {
+                Ok(Ok(c)) => c,
+                Ok(Err(e)) => {
+                    tracing::error!(error = %e, url = %ws_url, "WebSocket connect failed");
+                    tracing::info!(backoff = ?backoff, "retrying after back-off");
+                    tokio::select! {
+                        _ = tokio::time::sleep(backoff) => {}
+                        _ = cancel.cancelled() => { break; }
+                    }
+                    backoff = (backoff * 2).min(RECONNECT_MAX_BACKOFF);
+                    continue;
                 }
-                backoff = (backoff * 2).min(RECONNECT_MAX_BACKOFF);
-                continue;
-            }
-            Err(_) => {
-                tracing::error!(
-                    timeout = ?CONNECT_TIMEOUT,
-                    url = %ws_url,
-                    "WebSocket connect timed out"
-                );
-                tracing::info!(backoff = ?backoff, "retrying after back-off");
-                tokio::select! {
-                    _ = tokio::time::sleep(backoff) => {}
-                    _ = cancel.cancelled() => { break; }
+                Err(_) => {
+                    tracing::error!(
+                        timeout = ?CONNECT_TIMEOUT,
+                        url = %ws_url,
+                        "WebSocket connect timed out"
+                    );
+                    tracing::info!(backoff = ?backoff, "retrying after back-off");
+                    tokio::select! {
+                        _ = tokio::time::sleep(backoff) => {}
+                        _ = cancel.cancelled() => { break; }
+                    }
+                    backoff = (backoff * 2).min(RECONNECT_MAX_BACKOFF);
+                    continue;
                 }
-                backoff = (backoff * 2).min(RECONNECT_MAX_BACKOFF);
-                continue;
-            }
-        };
+            };
 
         tracing::info!(status = %response.status(), "WebSocket connected, bridge active");
         backoff = RECONNECT_INITIAL_BACKOFF;
@@ -361,7 +364,11 @@ fn parse_host_port(ws_url: &str) -> Option<(String, u16)> {
 /// Derive the HTTP health-check URL from the WebSocket URL.
 fn health_url(ws_url: &str) -> Option<String> {
     let (host, port) = parse_host_port(ws_url)?;
-    let scheme = if ws_url.starts_with("wss://") { "https" } else { "http" };
+    let scheme = if ws_url.starts_with("wss://") {
+        "https"
+    } else {
+        "http"
+    };
     Some(format!("{scheme}://{host}:{port}/global/health"))
 }
 
@@ -376,9 +383,8 @@ fn probe_client() -> reqwest::Client {
         if !token.is_empty() {
             let value = format!("Bearer {token}");
             if let Ok(hv) = reqwest::header::HeaderValue::from_str(&value) {
-                builder = builder.default_headers(
-                    [(reqwest::header::AUTHORIZATION, hv)].into_iter().collect(),
-                );
+                builder = builder
+                    .default_headers([(reqwest::header::AUTHORIZATION, hv)].into_iter().collect());
             }
         }
     }
@@ -472,8 +478,8 @@ async fn ensure_server_ready(
     }
 
     tracing::info!("loom-server not detected, auto-spawning");
-    let (host, port) = parse_host_port(ws_url)
-        .ok_or_else(|| format!("cannot parse host:port from {ws_url}"))?;
+    let (host, port) =
+        parse_host_port(ws_url).ok_or_else(|| format!("cannot parse host:port from {ws_url}"))?;
     let child = spawn_server(&host, port)?;
 
     let deadline = tokio::time::Instant::now() + SERVER_READY_TIMEOUT;

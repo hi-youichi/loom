@@ -3,18 +3,18 @@
 //! Spawns MCP server process, performs initialize handshake automatically via rmcp,
 //! provides `list_tools` and `call_tool` for JSON-RPC calls.
 
-use std::process::Stdio;
-
 use rmcp::{transport::TokioChildProcess, ServiceExt};
 use serde_json::Value;
+use std::process::Stdio;
 use tokio::process::Command;
+use tokio::sync::Mutex;
 
 use tool_core::ToolSourceError;
 
 /// MCP session over stdio: spawns server process, performs initialize handshake
 /// via rmcp, provides `list_tools` and `call_tool`.
 pub struct McpSession {
-    client: rmcp::service::RunningService<rmcp::service::RoleClient, ()>,
+    client: Mutex<Option<rmcp::service::RunningService<rmcp::service::RoleClient, ()>>>,
 }
 
 #[cfg(target_os = "windows")]
@@ -56,6 +56,14 @@ impl McpSession {
                 cmd.env(k.into(), v.into());
             }
         }
+        // MCP stdio servers are background processes. On Windows, explicitly
+        // suppress the console window even when the configured command is
+        // wrapped through `cmd /C` (for example `npx`, `npm`, or a `.cmd` file).
+        #[cfg(target_os = "windows")]
+        {
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
         if !stderr_verbose {
             cmd.stderr(Stdio::null());
         }
@@ -66,12 +74,37 @@ impl McpSession {
             ().serve(transport)
                 .await
                 .map_err(|e| McpSessionError::Initialize(e.to_string()))?;
-        Ok(Self { client })
+        Ok(Self {
+            client: Mutex::new(Some(client)),
+        })
+    }
+
+    /// Gracefully closes the MCP client and its child process.
+    pub async fn shutdown(&self) {
+        let client = self.client.lock().await.take();
+        if let Some(client) = client {
+            if let Err(error) = client.cancel().await {
+                tracing::debug!(%error, "MCP client shutdown failed");
+            }
+        }
+    }
+
+    pub async fn is_closed(&self) -> bool {
+        self.client
+            .lock()
+            .await
+            .as_ref()
+            .map(|client| client.is_closed())
+            .unwrap_or(true)
     }
 
     /// Lists tools from the MCP server.
     pub async fn list_tools(&self) -> Result<Vec<rmcp::model::Tool>, ToolSourceError> {
         self.client
+            .lock()
+            .await
+            .as_ref()
+            .ok_or_else(|| ToolSourceError::Transport("MCP session is closed".into()))?
             .list_tools(Default::default())
             .await
             .map(|r| r.tools)
@@ -86,6 +119,10 @@ impl McpSession {
     ) -> Result<rmcp::model::CallToolResult, ToolSourceError> {
         let arguments = arguments.as_object().cloned();
         self.client
+            .lock()
+            .await
+            .as_ref()
+            .ok_or_else(|| ToolSourceError::Transport("MCP session is closed".into()))?
             .call_tool(rmcp::model::CallToolRequestParams {
                 name: name.to_string().into(),
                 arguments,
