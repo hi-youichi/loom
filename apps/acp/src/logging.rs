@@ -58,8 +58,8 @@ pub struct LogConfig {
 /// Priority:
 /// 1. CLI `file` argument
 /// 2. `LOGS_ACP` environment variable
-/// 3. `config.toml` [logging.acp].path
-/// 4. `~/.loom/logs/acp/loom-acp.log`
+/// 3. `config.toml` [logging].path
+/// 4. `~/.loom/loom.log`
 pub fn resolve_acp_log_path(
     cli_file: Option<&Path>,
     logging_config: Option<&LoggingSection>,
@@ -74,15 +74,15 @@ pub fn resolve_acp_log_path(
         return Some(PathBuf::from(env_val));
     }
 
-    // 3. config.toml [logging.acp].path
+    // 3. config.toml [logging].path
     if let Some(config) = logging_config {
-        if let Some(path) = &config.acp.path {
+        if let Some(path) = &config.path {
             return Some(path.clone());
         }
     }
 
-    // 4. Default: ~/.loom/logs/acp/loom-acp.log
-    Some(config::home::default_acp_log_file())
+    // 4. Default: ~/.loom/loom.log
+    Some(config::home::default_log_file())
 }
 
 /// Initialize logging at application startup.
@@ -118,7 +118,7 @@ pub fn init_logging(working_folder: Option<&Path>) {
     let rotate = if config.rotate != LogRotate::None {
         config.rotate
     } else if let Some(ref cfg) = logging_config {
-        cfg.acp.rotate()
+        cfg.rotate()
     } else {
         LogRotate::None
     };

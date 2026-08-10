@@ -44,6 +44,7 @@ parking_lot = "0.12"
 portable-pty = "0.8"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
 
 # PTY wire-protocol helpers (foundation/pty-protocol crate — filled in by W1).
 loom-pty-protocol = { path = "../../foundation/pty-protocol" }

@@ -152,6 +152,11 @@ pub struct LogsModuleConfig {
     /// Custom log directory for this module (overrides global `dir`).
     #[serde(default)]
     pub path: Option<PathBuf>,
+    /// Log level filter (tracing `EnvFilter` syntax, e.g. `"info"`, `"debug"`, `"loom=debug"`).
+    ///
+    /// Priority: `--log-level` > `RUST_LOG` (shell) > this > verbosity flags (`-v`…) > `off`.
+    #[serde(default)]
+    pub level: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -170,30 +175,42 @@ impl LogsModuleConfig {
 }
 
 /// `[logging]` section in config.toml.
+///
+/// Unified logging configuration shared by CLI and ACP.
+/// LLM audit logging has its own sub-section `[logging.llm]`.
+///
+/// ```toml
+/// [logging]
+/// level = "info"
+/// path = "~/.loom/loom.log"
+/// rotate = "daily"
+/// ```
 #[derive(serde::Deserialize, Clone, Debug, Default)]
 pub struct LoggingSection {
-    /// Global log directory. Default: `~/.loom/logs`.
+    /// Log level filter (tracing `EnvFilter` syntax, e.g. `"info"`, `"debug"`, `"loom=debug"`).
+    ///
+    /// Priority: `--log-level` > `RUST_LOG` (shell) > this > verbosity flags (`-v`…) > `off`.
     #[serde(default)]
-    pub dir: Option<PathBuf>,
-    /// CLI-specific logging settings.
+    pub level: Option<String>,
+    /// Log file path. Default: `~/.loom/loom.log`.
     #[serde(default)]
-    pub cli: LogsModuleConfig,
-    /// ACP-specific logging settings.
+    pub path: Option<PathBuf>,
+    /// Rotation strategy: `"none"` (default), `"daily"`, `"hourly"`.
     #[serde(default)]
-    pub acp: LogsModuleConfig,
+    pub rotate: Option<String>,
     /// LLM audit logging settings.
     #[serde(default)]
     pub llm: LogsModuleConfig,
 }
 
+#[cfg(feature = "tracing-init")]
 impl LoggingSection {
-    /// Returns the effective log directory, checking environment variable first.
-    pub fn dir(&self) -> PathBuf {
-        std::env::var("LOG_DIR")
-            .map(PathBuf::from)
-            .ok()
-            .or_else(|| self.dir.clone())
-            .unwrap_or_else(|| crate::home::loom_home().join("logs"))
+    /// Returns the resolved rotation strategy.
+    pub fn rotate(&self) -> crate::tracing_init::LogRotate {
+        self.rotate
+            .as_deref()
+            .and_then(crate::tracing_init::LogRotate::parse)
+            .unwrap_or(crate::tracing_init::LogRotate::None)
     }
 }
 

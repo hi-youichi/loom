@@ -4,6 +4,7 @@ use clap::Args as ClapArgs;
 use tokio::net::TcpListener;
 use tracing_subscriber::{fmt, EnvFilter};
 
+use crate::logging::{init_logging, LogConfig};
 use crate::{routes::build_router, state::new_server_state};
 
 #[derive(ClapArgs, Debug, Clone)]
@@ -25,13 +26,32 @@ pub struct ServerOptions {
     pub verbose: bool,
 }
 
-pub async fn run(options: ServerOptions) -> Result<(), Box<dyn std::error::Error>> {
-    let filter = if options.verbose {
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
-    } else {
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"))
+/// Run the HTTP + ACP-WebSocket server.
+///
+/// `log_config` — when `Some`, initializes file-based logging (level / file /
+/// rotate / format from the global CLI flags, merged with `config.toml
+/// [logging]`). When `None`, falls back to the legacy `--verbose` console
+/// behavior.
+pub async fn run(
+    options: ServerOptions,
+    log_config: Option<LogConfig>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let _log_guard = match log_config {
+        Some(config) => Some(init_logging(&config)),
+        // Fallback: legacy verbose-only console logging.
+        None => {
+            let filter = if options.verbose {
+                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
+            } else {
+                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"))
+            };
+            let _ = fmt()
+                .with_env_filter(filter)
+                .with_target(false)
+                .try_init();
+            None
+        }
     };
-    let _ = fmt().with_env_filter(filter).with_target(false).try_init();
 
     if let Some(directory) = &options.directory {
         std::env::set_current_dir(directory)?;

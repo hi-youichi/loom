@@ -22,26 +22,16 @@ pub fn logs_dir() -> PathBuf {
     loom_home().join("logs")
 }
 
-/// `{loom_home}/logs/cli/` — CLI log directory.
-pub fn cli_logs_dir() -> PathBuf {
-    logs_dir().join("cli")
-}
-
-/// `{loom_home}/logs/acp/` — ACP log directory.
-pub fn acp_logs_dir() -> PathBuf {
-    logs_dir().join("acp")
-}
-
 /// `{loom_home}/logs/llm/` — LLM audit log directory.
 pub fn llm_logs_dir() -> PathBuf {
     logs_dir().join("llm")
 }
 
-/// Default ACP log file path: `{logs_dir()}/acp/loom-acp.log`.
+/// Default unified log file path: `{loom_home}/loom.log`.
 ///
-/// Falls back to `~/.loom/logs/acp/loom-acp.log`.
-pub fn default_acp_log_file() -> PathBuf {
-    acp_logs_dir().join("loom-acp.log")
+/// Both CLI and ACP use this as the default log file.
+pub fn default_log_file() -> PathBuf {
+    loom_home().join("loom.log")
 }
 
 /// Returns the Loom home directory.
@@ -151,13 +141,13 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn default_acp_log_file_uses_loom_home() {
+    fn default_log_file_under_loom_home() {
         let _lock = CONFIG_TEST_LOCK.lock().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
         let test_home = PathBuf::from("/tmp/test-loom-home");
         std::env::set_var("LOOM_HOME", &test_home);
-        let expected = test_home.join("logs").join("acp").join("loom-acp.log");
-        assert_eq!(default_acp_log_file(), expected);
+        let expected = test_home.join("loom.log");
+        assert_eq!(default_log_file(), expected);
         match prev {
             Some(v) => std::env::set_var("LOOM_HOME", v),
             None => std::env::remove_var("LOOM_HOME"),
@@ -166,13 +156,13 @@ mod tests {
 
     #[test]
     #[cfg(windows)]
-    fn default_acp_log_file_uses_loom_home() {
+    fn default_log_file_under_loom_home() {
         let _lock = CONFIG_TEST_LOCK.lock().unwrap();
         let prev = std::env::var("LOOM_HOME").ok();
         let test_home = PathBuf::from("C:/tmp/test-loom-home");
         std::env::set_var("LOOM_HOME", &test_home);
-        let expected = test_home.join("logs").join("acp").join("loom-acp.log");
-        assert_eq!(default_acp_log_file(), expected);
+        let expected = test_home.join("loom.log");
+        assert_eq!(default_log_file(), expected);
         match prev {
             Some(v) => std::env::set_var("LOOM_HOME", v),
             None => std::env::remove_var("LOOM_HOME"),

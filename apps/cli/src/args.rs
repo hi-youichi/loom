@@ -117,18 +117,19 @@ pub(crate) struct Args {
     /// "auto" means use the model's default (don't send the parameter).
     /// Unknown values are forwarded and warned by the LLM client.
     #[arg(long, value_name = "LEVEL")]
-    pub(crate) effort: Option<String>,
+pub(crate) effort: Option<String>,
 
-    /// Log level (tracing EnvFilter syntax). Overrides RUST_LOG when set; default RUST_LOG or info.
+    /// Log level (tracing EnvFilter syntax). Overrides `RUST_LOG` and verbosity-based level.
+    /// Default: `off` (no logs); use `-v`/`-vv`/`-vvv` to enable error/warn/info respectively.
     #[arg(long, global = true, value_name = "LEVEL")]
     pub(crate) log_level: Option<String>,
 
-    /// Log file path. Overrides LOG_FILE when set; when neither is set, logs are dropped.
+    /// Log file path. Default: `~/.loom/loom.log`.
     #[arg(long, global = true, value_name = "PATH")]
     pub(crate) log_file: Option<PathBuf>,
 
-    /// Log rotation strategy: none, daily, hourly, minutely (requires --log-file)
-    #[arg(long, global = true, default_value = "daily", value_name = "STRATEGY")]
+    /// Log rotation strategy: none, daily, hourly, minutely
+    #[arg(long, global = true, default_value = "none", value_name = "STRATEGY")]
     pub(crate) log_rotate: String,
 
     /// Log output format: text (default) or json

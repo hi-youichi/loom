@@ -5,6 +5,25 @@ use crate::logging;
 
 use std::ffi::OsString;
 
+/// Map `-v`/`-vv`/`-vvv` to a tracing EnvFilter level.
+///
+/// | verbose | level  |
+/// |---------|--------|
+/// | 0       | `off`  |
+/// | 1       | `error`|
+/// | 2       | `warn` |
+/// | 3       | `info` |
+/// | 4+      | `debug`|
+pub(crate) fn verbose_to_level(verbose: u8) -> &'static str {
+    match verbose {
+        0 => "off",
+        1 => "error",
+        2 => "warn",
+        3 => "info",
+        _ => "debug",
+    }
+}
+
 /// Saves shell environment variables that config.toml might override.
 /// Call this BEFORE `print_config_report` / `load_and_apply`.
 pub(crate) fn preserve_shell_env() -> ShellEnv {
@@ -45,9 +64,13 @@ pub(crate) fn print_config_report(verbose: u8) {
 /// Resolution order:
 /// 1. CLI args (`--log-file`, `--log-level`, etc.)
 /// 2. Shell environment variables (`LOG_FILE`, `RUST_LOG`) — captured before config.toml loaded
-/// 3. config.toml `[logging.cli]` section
-/// 4. Defaults (`~/.loom/logs/cli/loom-cli.log`, no rotation)
+/// 3. config.toml `[logging]` section
+/// 4. `~/.loom/loom.log` (default), level from `-v`/`-vv`/`-vvv` (default: `off`)
 pub(crate) fn init_logging(args: &Args, shell_env: ShellEnv) -> logging::LogGuard {
+    // Load logging config from config.toml
+    let logging_config = config::load_full_config("loom").ok().map(|c| c.logging);
+
+    // Log level: --log-level > RUST_LOG (shell) > [logging].level > verbosity-based > off
     let log_level = args
         .log_level
         .clone()
@@ -56,22 +79,16 @@ pub(crate) fn init_logging(args: &Args, shell_env: ShellEnv) -> logging::LogGuar
                 .ok()
                 .filter(|s| !s.trim().is_empty())
         })
-        .unwrap_or_else(|| "info".to_string());
+        .or_else(|| {
+            logging_config
+                .as_ref()
+                .and_then(|c| c.level.clone())
+                .filter(|s| !s.trim().is_empty())
+        })
+        .unwrap_or_else(|| verbose_to_level(args.verbose).to_string());
 
-    // Load logging config from config.toml
-    let logging_config = config::load_full_config("loom").ok().map(|c| c.logging);
-
-    // Determine the effective log file path, considering:
-    // - If CLI --log-file was explicitly set, use it
-    // - If shell LOG_FILE was set before config.toml, use it
-    // - Otherwise use config.toml [logging.cli].path or default
-    eprintln!(
-        "DEBUG: args.log_file.is_some() = {}",
-        args.log_file.is_some()
-    );
-    eprintln!("DEBUG: shell_env.log_file = {:?}", shell_env.log_file);
+    // Determine the effective log file path
     let log_file_path = if args.log_file.is_some() {
-        // CLI --log-file was explicitly set
         args.log_file.clone()
     } else {
         logging::resolve_cli_log_path(
@@ -81,8 +98,6 @@ pub(crate) fn init_logging(args: &Args, shell_env: ShellEnv) -> logging::LogGuar
             shell_env.log_file.as_ref(),
         )
     };
-
-    eprintln!("DEBUG: log_file_path = {:?}", log_file_path);
 
     let log_args = logging::LogArgs::new(
         log_level,
