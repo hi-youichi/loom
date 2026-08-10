@@ -79,7 +79,7 @@ async fn call_text(tool: &WorkflowEventsTool, args: Value) -> Value {
 // Tests
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn events_default_limit_50() {
     let tmp = TempDir::new().unwrap();
     let tool = setup_instance(tmp.path(), "inst-1");
@@ -101,7 +101,7 @@ async fn events_default_limit_50() {
     tmp.close().unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn events_limit_clamped_to_500() {
     let tmp = TempDir::new().unwrap();
     let tool = setup_instance(tmp.path(), "inst-clamp");
@@ -122,7 +122,7 @@ async fn events_limit_clamped_to_500() {
     tmp.close().unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn events_offset_skips_matching() {
     let tmp = TempDir::new().unwrap();
     let tool = setup_instance(tmp.path(), "inst-offset");
@@ -143,7 +143,7 @@ async fn events_offset_skips_matching() {
     tmp.close().unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn events_type_filter_includes_only_matching() {
     let tmp = TempDir::new().unwrap();
     let tool = setup_instance(tmp.path(), "inst-types");
@@ -167,7 +167,7 @@ async fn events_type_filter_includes_only_matching() {
     tmp.close().unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn events_type_filter_with_multiple_types() {
     let tmp = TempDir::new().unwrap();
     let tool = setup_instance(tmp.path(), "inst-multi");
@@ -191,7 +191,7 @@ async fn events_type_filter_with_multiple_types() {
     tmp.close().unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn events_agent_filter_includes_only_matching_agent() {
     let tmp = TempDir::new().unwrap();
     let tool = setup_instance(tmp.path(), "inst-agent");
@@ -215,7 +215,7 @@ async fn events_agent_filter_includes_only_matching_agent() {
     tmp.close().unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn events_next_offset_null_on_last_page() {
     let tmp = TempDir::new().unwrap();
     let tool = setup_instance(tmp.path(), "inst-last");
@@ -238,7 +238,7 @@ async fn events_next_offset_null_on_last_page() {
     tmp.close().unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn events_next_offset_set_when_more_remain() {
     let tmp = TempDir::new().unwrap();
     let tool = setup_instance(tmp.path(), "inst-next");
@@ -259,7 +259,7 @@ async fn events_next_offset_set_when_more_remain() {
     tmp.close().unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn events_missing_instance_invalid_input() {
     let tmp = TempDir::new().unwrap();
     let tool = build_tool(tmp.path());
@@ -281,7 +281,7 @@ async fn events_missing_instance_invalid_input() {
     tmp.close().unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn events_missing_events_jsonl_returns_empty_array() {
     let tmp = TempDir::new().unwrap();
     let inst_path = tmp.path().join(".loom").join("instances").join("ghost");
@@ -306,7 +306,7 @@ async fn events_missing_events_jsonl_returns_empty_array() {
     tmp.close().unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn events_unparseable_line_skipped_silently() {
     let tmp = TempDir::new().unwrap();
     let mut body = synthetic_events_jsonl();

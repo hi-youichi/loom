@@ -43,16 +43,20 @@ fn parse_response(content: ToolCallContent) -> Value {
 
 fn write_checkpoint(dir: &std::path::Path, status: &str, created_at: u64) {
     fs::create_dir_all(dir).unwrap();
+    let dir_name = dir.file_name().unwrap().to_string_lossy().to_string();
     let payload = json!({
-        "run_id": format!("run-{}", dir.file_name().unwrap().to_string_lossy()),
+        "schema_version": 1,
+        "instance_id": format!("run-{}", dir_name),
+        "instance_dir": dir_name,
+        "workflow": {"kind": "file", "name": dir_name},
         "status": status,
         "created_at": created_at,
-        "updated_at": created_at + 1,
+        "completed_at": created_at + 1,
         "total_tokens": 100u64,
-        "agent_results": {"a": { "kind": "report" }},
+        "agent_count": 1u64,
     });
     let bytes = serde_json::to_vec(&payload).unwrap();
-    fs::write(dir.join("checkpoint.json"), bytes).unwrap();
+    fs::write(dir.join("instance.json"), bytes).unwrap();
 }
 
 fn write_instance(
@@ -105,7 +109,7 @@ fn instance_dirs(value: &Value) -> Vec<String> {
         .collect()
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn list_default_limit_is_20() {
     let tmp = tempdir().unwrap();
     seed_legacy(tmp.path(), 25, "completed");
@@ -127,7 +131,7 @@ async fn list_default_limit_is_20() {
     assert_eq!(instance_dirs(&v).len(), 20);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn list_limit_clamped_to_100() {
     let tmp = tempdir().unwrap();
     let tool = build_tool(tmp.path().to_path_buf());
@@ -146,7 +150,7 @@ async fn list_limit_clamped_to_100() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn list_cursor_returns_next_page() {
     let tmp = tempdir().unwrap();
     seed_legacy(tmp.path(), 30, "completed");
@@ -207,7 +211,7 @@ async fn list_cursor_returns_next_page() {
     assert_eq!(page3_dirs.last().unwrap(), "run_00");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn list_cursor_null_on_last_page() {
     let tmp = tempdir().unwrap();
     seed_legacy(tmp.path(), 5, "completed");
@@ -224,7 +228,7 @@ async fn list_cursor_null_on_last_page() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn list_status_filter_failed_excludes_completed() {
     let tmp = tempdir().unwrap();
     let runs = tmp.path().join(".luft").join("runs");
@@ -255,7 +259,7 @@ async fn list_status_filter_failed_excludes_completed() {
     assert_eq!(v["instances"].as_array().unwrap().len(), 2);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn list_status_filter_invalid_returns_invalid_input_error() {
     let tmp = tempdir().unwrap();
     let tool = build_tool(tmp.path().to_path_buf());
@@ -273,7 +277,7 @@ async fn list_status_filter_invalid_returns_invalid_input_error() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn list_legacy_luft_runs_without_internal_source_field() {
     let tmp = tempdir().unwrap();
     let legacy = tmp.path().join(".luft").join("runs");
@@ -289,7 +293,7 @@ async fn list_legacy_luft_runs_without_internal_source_field() {
     assert_eq!(instances[0]["workflow"]["name"], "legacy_run_01");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn list_current_instances_without_internal_source_field() {
     let tmp = tempdir().unwrap();
     let current = tmp.path().join(".loom").join("instances");
@@ -318,7 +322,7 @@ async fn list_current_instances_without_internal_source_field() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn list_invalid_cursor_returns_error() {
     let tmp = tempdir().unwrap();
     let tool = build_tool(tmp.path().to_path_buf());
@@ -336,8 +340,8 @@ async fn list_invalid_cursor_returns_error() {
     );
 }
 
-#[tokio::test]
-async fn list_skips_non_terminal_checkpoint_status() {
+#[tokio::test(flavor = "multi_thread")]
+async fn list_includes_all_instance_json_entries() {
     let tmp = tempdir().unwrap();
     let runs = tmp.path().join(".luft").join("runs");
     write_checkpoint(&runs.join("run_done"), "completed", 1_700_000_000);
@@ -351,14 +355,14 @@ async fn list_skips_non_terminal_checkpoint_status() {
 
     let dirs = instance_dirs(&v);
     assert_eq!(
-        dirs,
-        vec!["run_done"],
-        "only terminal checkpoints should appear; got {v}"
+        dirs.len(),
+        4,
+        "all instance.json entries should appear; got {v}"
     );
-    assert_eq!(v["count"], 1);
+    assert_eq!(v["count"], 4);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn list_empty_when_directory_missing() {
     let tmp = tempdir().unwrap();
     let tool = build_tool(tmp.path().to_path_buf());

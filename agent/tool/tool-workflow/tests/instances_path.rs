@@ -75,7 +75,7 @@ fn six_tool_names_and_input_schemas_match_constants() {
 
 #[test]
 fn workflow_list_walks_both_current_and_legacy_instance_dirs() {
-    let rt = tokio::runtime::Builder::new_current_thread()
+    let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .expect("tokio runtime");
@@ -96,16 +96,16 @@ fn workflow_list_walks_both_current_and_legacy_instance_dirs() {
             .expect("write workflow");
         std::fs::create_dir_all(&current_instance).expect("create current instance");
         std::fs::write(
-            current_instance.join("checkpoint.json"),
-            r#"{"run_id":"current","status":"completed","created_at":2}"#,
+            current_instance.join("instance.json"),
+            r#"{"instance_id":"current","status":"completed","created_at":2}"#,
         )
-        .expect("write current checkpoint");
+        .expect("write current instance");
         std::fs::create_dir_all(&old_instance).expect("create old instance");
         std::fs::write(
-            old_instance.join("checkpoint.json"),
-            r#"{"run_id":"old","status":"completed","created_at":1}"#,
+            old_instance.join("instance.json"),
+            r#"{"instance_id":"old","status":"completed","created_at":1}"#,
         )
-        .expect("write old checkpoint");
+        .expect("write old instance");
 
         let cfg = AgentConfig {
             working_folder: Some(temp.path().to_path_buf()),

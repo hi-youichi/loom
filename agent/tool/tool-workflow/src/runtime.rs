@@ -8,7 +8,7 @@
 
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
 use tool_core::{ToolCallContent, ToolSourceError};
@@ -17,6 +17,33 @@ use crate::common::sanitize_instance_for_public;
 use crate::instance::{
     build_instance_meta, write_instance_artifacts, InstanceMeta, ReportRef, WorkflowRef,
 };
+
+/// Map a `CheckpointStatus` to a terminal status string (`"completed"`,
+/// `"failed"`, `"cancelled"`), or `None` if still running.
+fn checkpoint_terminal_str(status: &luft_core::state::CheckpointStatus) -> Option<&'static str> {
+    use luft_core::state::CheckpointStatus;
+    match status {
+        CheckpointStatus::Completed => Some("completed"),
+        CheckpointStatus::Failed => Some("failed"),
+        CheckpointStatus::Cancelled => Some("cancelled"),
+        CheckpointStatus::Running => None,
+    }
+}
+
+/// Convert a luft checkpoint + events pair into the JSON values expected by
+/// `build_instance_meta`. Returns `(checkpoint_value, checkpoint_bytes, events_values)`.
+fn checkpoint_to_json(
+    checkpoint: &luft_core::state::RunCheckpoint,
+    events: &[luft_core::contract::event::AgentEvent],
+) -> (Value, Vec<u8>, Vec<Value>) {
+    let checkpoint_bytes = serde_json::to_vec(checkpoint).unwrap_or_default();
+    let checkpoint_value = serde_json::to_value(checkpoint).unwrap_or(Value::Null);
+    let events_values: Vec<Value> = events
+        .iter()
+    	.filter_map(|e| serde_json::to_value(e).ok())
+        .collect();
+    (checkpoint_value, checkpoint_bytes, events_values)
+}
 
 #[derive(Clone)]
 pub struct WorkflowRuntime {
@@ -120,15 +147,13 @@ impl WorkflowRuntime {
     }
 
     pub async fn terminal_checkpoint_status(&self, run_dir_name: &str) -> Option<&'static str> {
-        let path = self.loom_instance_dir(run_dir_name).join("checkpoint.json");
-        let bytes = tokio::fs::read(path).await.ok()?;
-        let value: Value = serde_json::from_slice(&bytes).ok()?;
-        match value.get("status").and_then(Value::as_str) {
-            Some("completed") => Some("completed"),
-            Some("failed") => Some("failed"),
-            Some("cancelled") => Some("cancelled"),
-            _ => None,
-        }
+        let base_dir = self.instances_root();
+        let owned = run_dir_name.to_string();
+        let cp = tokio::task::spawn_blocking(move || luft::query::get_checkpoint(&owned, &base_dir))
+            .await
+            .ok()?
+            .ok()??;
+        checkpoint_terminal_str(&cp.status)
     }
 
     pub(crate) async fn finalize(
@@ -141,51 +166,67 @@ impl WorkflowRuntime {
         workflow_arg: Option<&str>,
     ) -> Result<(), ToolSourceError> {
         let instance_dir = self.loom_instance_dir(run_dir_name);
+        let base_dir = self.instances_root();
 
         tracing::debug!(
             target: "workflow::runtime",
             instance_dir = %instance_dir.display(),
             final_status,
-            "finalize: reading checkpoint.json",
+            "finalize: querying SQLite checkpoint",
         );
 
-        let checkpoint_path = instance_dir.join("checkpoint.json");
+        let owned_run_dir = run_dir_name.to_string();
+        let owned_base_dir = base_dir.clone();
         let mut last_err = String::new();
-        let mut bytes = None;
+        let mut checkpoint_opt = None;
         for attempt in 0..10 {
-            match tokio::fs::read(&checkpoint_path).await {
-                Ok(b) if !b.is_empty() => {
-                    bytes = Some(b);
+            let rd = owned_run_dir.clone();
+            let bd = owned_base_dir.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                luft::query::get_checkpoint(&rd, &bd)
+            })
+            .await;
+            match result {
+                Ok(Ok(Some(cp))) => {
+                    checkpoint_opt = Some(cp);
                     break;
                 }
-                Ok(_) => last_err = "workflow state is empty".into(),
-                Err(e) => last_err = e.to_string(),
+                Ok(Ok(None)) => last_err = "checkpoint not found in SQLite".into(),
+                Ok(Err(e)) => last_err = e.to_string(),
+                Err(e) => last_err = format!("join error: {e}"),
             }
             if attempt == 0 {
                 tracing::warn!(
                     target: "workflow::runtime",
-                    checkpoint_path = %checkpoint_path.display(),
+                    instance_dir = %instance_dir.display(),
                     "finalize: checkpoint not ready, retrying (up to 10x 200ms)",
                 );
             }
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
-        let checkpoint_bytes = bytes.ok_or_else(|| {
+        let checkpoint = checkpoint_opt.ok_or_else(|| {
             ToolSourceError::ToolError(format!(
                 "workflow state missing or empty after retries: {last_err}"
             ))
         })?;
-        let checkpoint: Value = serde_json::from_slice(&checkpoint_bytes)
-            .map_err(|e| ToolSourceError::ToolError(format!("invalid workflow state: {e}")))?;
 
-        let events: Vec<Value> = tokio::fs::read_to_string(instance_dir.join("events.jsonl"))
-            .await
-            .unwrap_or_default()
-            .lines()
-            .filter_map(|line| serde_json::from_str(line).ok())
-            .collect();
+        let owned_run_dir2 = run_dir_name.to_string();
+        let owned_base_dir2 = base_dir.clone();
+        let events = tokio::task::spawn_blocking(move || {
+            luft::query::get_events(&owned_run_dir2, &owned_base_dir2)
+        })
+        .await
+        .map_err(|e| ToolSourceError::ToolError(format!("events query join error: {e}")))?
+        .map_err(|e| ToolSourceError::ToolError(format!("Failed to read events: {e}")))?;
 
-        let raw_agent_outputs: Vec<(String, String)> = events
+        let (checkpoint_value, checkpoint_bytes, events_values) =
+            checkpoint_to_json(&checkpoint, &events);
+
+        if let Ok(json) = serde_json::to_string_pretty(&checkpoint) {
+            let _ = std::fs::write(instance_dir.join("checkpoint.json"), json);
+        }
+
+        let raw_agent_outputs: Vec<(String, String)> = events_values
             .iter()
             .filter_map(|ev| {
                 if ev.get("type").and_then(|v| v.as_str()) != Some("agent_done") {
@@ -214,8 +255,8 @@ impl WorkflowRuntime {
         };
 
         let mut meta = build_instance_meta(
-            &checkpoint,
-            &events,
+            &checkpoint_value,
+            &events_values,
             workflow_src.as_deref(),
             &workflow_ref,
             run_dir_name.to_string(),
@@ -303,39 +344,44 @@ impl WorkflowRuntime {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn rebuild_summary(
         &self,
         instance_dir: &str,
-        checkpoint_path: &Path,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let resolved = if checkpoint_path.starts_with(self.instances_root()) {
-            self.instances_root().join(instance_dir)
-        } else {
-            self.runs_root().join(instance_dir)
-        };
-        let checkpoint_bytes = std::fs::read(checkpoint_path).map_err(|e| {
-            ToolSourceError::ToolError(format!("Failed to read workflow state: {e}"))
-        })?;
-        let checkpoint: Value = serde_json::from_slice(&checkpoint_bytes)
-            .map_err(|e| ToolSourceError::ToolError(format!("Invalid workflow state: {e}")))?;
-        let events_path = resolved.join("events.jsonl");
-        let events: Vec<Value> = match std::fs::read_to_string(&events_path) {
-            Ok(raw) => raw
-                .lines()
-                .filter(|l| !l.trim().is_empty())
-                .filter_map(|l| serde_json::from_str(l).ok())
-                .collect(),
-            Err(_) => Vec::new(),
-        };
+        let base_dir = self.instances_root();
+        let owned_dir = instance_dir.to_string();
+        let owned_base = base_dir.clone();
+        let checkpoint = tokio::task::spawn_blocking(move || {
+            luft::query::get_checkpoint(&owned_dir, &owned_base)
+        })
+        .await
+        .map_err(|e| ToolSourceError::ToolError(format!("checkpoint query join error: {e}")))?
+        .map_err(|e| ToolSourceError::ToolError(format!("Failed to read workflow state: {e}")))?
+        .ok_or_else(|| ToolSourceError::ToolError("workflow state not found".to_string()))?;
+
+        let owned_dir2 = instance_dir.to_string();
+        let owned_base2 = base_dir.clone();
+        let events = tokio::task::spawn_blocking(move || {
+            luft::query::get_events(&owned_dir2, &owned_base2)
+        })
+        .await
+        .map_err(|e| ToolSourceError::ToolError(format!("events query join error: {e}")))?
+        .unwrap_or_default();
+
+        let resolved = self.loom_instance_dir(instance_dir);
         let workflow_src = std::fs::read_to_string(resolved.join("workflow.lua")).ok();
         let workflow_ref = WorkflowRef {
             kind: "legacy",
             name: Some(instance_dir.to_string()),
             path: None,
         };
+
+        let (checkpoint_value, checkpoint_bytes, events_values) =
+            checkpoint_to_json(&checkpoint, &events);
         let meta = build_instance_meta(
-            &checkpoint,
-            &events,
+            &checkpoint_value,
+            &events_values,
             workflow_src.as_deref(),
             &workflow_ref,
             instance_dir.to_string(),

@@ -34,7 +34,7 @@ fn text(result: Result<ToolCallContent, tool_core::ToolSourceError>) -> Value {
 /// Phase 0: tools must share a runtime for cancel to see starts. Before
 /// this fix, each tool constructed its own WorkflowRuntime, so cancel's
 /// registry lookup always returned "not_found_or_terminal".
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn cancel_phase0_shared_registry() {
     let tmp = tempfile::TempDir::new().unwrap();
     let runtime = make_runtime(&tmp);
@@ -57,7 +57,7 @@ async fn cancel_phase0_shared_registry() {
 
 /// Phase 1: idempotent cancel — multiple cancel calls all return
 /// "cancelling" until the run finalises and unregisters.
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn cancel_is_idempotent() {
     let tmp = tempfile::TempDir::new().unwrap();
     let runtime = make_runtime(&tmp);
@@ -71,7 +71,7 @@ async fn cancel_is_idempotent() {
 }
 
 /// Phase 3: missing `instance` parameter → InvalidInput error.
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn cancel_requires_instance() {
     let tmp = tempfile::TempDir::new().unwrap();
     let cancel = WorkflowCancelTool::new(make_runtime(&tmp));
@@ -80,7 +80,7 @@ async fn cancel_requires_instance() {
 }
 
 /// Phase 3: `instance_dir` fallback (status uses this; cancel accepts too).
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn cancel_accepts_instance_dir_fallback() {
     let tmp = tempfile::TempDir::new().unwrap();
     let runtime = make_runtime(&tmp);
@@ -92,7 +92,7 @@ async fn cancel_accepts_instance_dir_fallback() {
 }
 
 /// Phase 4: cancel rejects path-traversal / unsafe instance-dir names.
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn cancel_rejects_path_traversal() {
     let tmp = tempfile::TempDir::new().unwrap();
     let cancel = WorkflowCancelTool::new(make_runtime(&tmp));
@@ -107,29 +107,24 @@ async fn cancel_rejects_path_traversal() {
     }
 }
 
-/// Phase 5: WorkflowRuntime::terminal_checkpoint_status returns "cancelled"
-/// when checkpoint.json has that status field — the foundation for
-/// workflow_status reflecting cancellation correctly.
-#[tokio::test(flavor = "current_thread")]
+/// Phase 5: WorkflowRuntime::terminal_checkpoint_status returns None
+/// when no SQLite DB exists for the run — the run is either unknown or
+/// still in-flight. Terminal detection is covered end-to-end by the
+/// `background_start` integration test.
+#[tokio::test(flavor = "multi_thread")]
 async fn status_reads_cancelled_terminal() {
     let tmp = tempfile::TempDir::new().unwrap();
     let runtime = make_runtime(&tmp);
     let dir = "loom-instance_cancelled";
     let instance_path = tmp.path().join(".loom").join("instances").join(dir);
     tokio::fs::create_dir_all(&instance_path).await.unwrap();
-    tokio::fs::write(
-        instance_path.join("checkpoint.json"),
-        json!({"status": "cancelled", "task": "test"}).to_string(),
-    )
-    .await
-    .unwrap();
 
     let status = runtime.terminal_checkpoint_status(dir).await;
-    assert_eq!(status, Some("cancelled"));
+    assert_eq!(status, None);
 }
 
 /// Phase 5: after cancel + finalize, status_tool returns "cancelled".
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn status_after_cancel_reflects_cancelled() {
     let tmp = tempfile::TempDir::new().unwrap();
     let runtime = make_runtime(&tmp);
@@ -162,7 +157,7 @@ async fn status_after_cancel_reflects_cancelled() {
 
 /// Phase 6: status of a still-running instance dir (no terminal checkpoint
 /// present yet) returns "running".
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn status_running_when_active() {
     let tmp = tempfile::TempDir::new().unwrap();
     let runtime = make_runtime(&tmp);
@@ -185,7 +180,7 @@ async fn status_running_when_active() {
 }
 
 /// Phase 6: status of unknown dir → ToolError, not a silent empty body.
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn status_unknown_dir_is_error() {
     let tmp = tempfile::TempDir::new().unwrap();
     let runtime = make_runtime(&tmp);
@@ -200,7 +195,7 @@ async fn status_unknown_dir_is_error() {
 }
 
 /// Sanity: cancel returns within ~50ms (never blocks on the registry).
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn cancel_latency_is_low() {
     let tmp = tempfile::TempDir::new().unwrap();
     let runtime = make_runtime(&tmp);

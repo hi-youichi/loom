@@ -433,42 +433,24 @@ pub(crate) async fn read_status(
         ));
     }
 
-    let checkpoint_path = resolved.join("checkpoint.json");
-
-    if checkpoint_path.is_file() {
-        return runtime.rebuild_summary(dir, &checkpoint_path).await;
-    }
-
     if resolved == new_path {
-        return Ok(running_status(dir, &checkpoint_path));
+        return Ok(running_status(dir));
     }
 
     Err(ToolSourceError::ToolError(format!(
-        "Instance '{dir}' is incomplete (missing checkpoint)"
+        "Instance '{dir}' is incomplete (missing instance summary)"
     )))
 }
 
 /// Build a running-state response with the same InstanceMeta shape as terminal state.
-fn running_status(dir: &str, checkpoint_path: &Path) -> ToolCallContent {
-    let ckpt = read_json_value(checkpoint_path);
-    let instance_id = ckpt
-        .as_ref()
-        .and_then(|c| c.get("run_id"))
-        .and_then(|v| v.as_str())
-        .unwrap_or(dir);
-    let created_at = ckpt
-        .as_ref()
-        .and_then(|c| c.get("created_at"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-
+fn running_status(dir: &str) -> ToolCallContent {
     let payload = json!({
         "schema_version": crate::instance::SCHEMA_VERSION,
-        "instance_id": instance_id,
+        "instance_id": dir,
         "instance_dir": dir,
         "workflow": { "kind": "file", "name": dir },
         "status": "running",
-        "created_at": created_at,
+        "created_at": 0,
         "completed_at": 0,
         "total_tokens": 0,
         "total_elapsed_ms": 0,
@@ -667,38 +649,6 @@ fn build_entry_from_instance_json(v: &Value, dir_name: &str) -> Value {
     })
 }
 
-fn build_entry_from_checkpoint(ckpt: &Value, dir_name: &str) -> Option<Value> {
-    let status = ckpt
-        .get("status")
-        .and_then(|x| x.as_str())
-        .unwrap_or("unknown");
-    let is_terminal = matches!(
-        status.to_ascii_lowercase().as_str(),
-        "completed" | "failed" | "cancelled"
-    );
-    if !is_terminal {
-        return None;
-    }
-    let agent_count = ckpt
-        .get("agent_results")
-        .and_then(|x| x.as_object())
-        .map(|o| o.len() as u64)
-        .unwrap_or(0);
-    Some(json!({
-        "instance_id": ckpt.get("run_id").and_then(|x| x.as_str()).unwrap_or("?"),
-        "instance_dir": dir_name,
-        "status": status,
-        "workflow": {
-            "kind": "file",
-            "name": dir_name,
-        },
-        "created_at": ckpt.get("created_at").and_then(|x| x.as_u64()).unwrap_or(0),
-        "completed_at": ckpt.get("updated_at").and_then(|x| x.as_u64()).unwrap_or(0),
-        "total_tokens": ckpt.get("total_tokens").and_then(|x| x.as_u64()).unwrap_or(0),
-        "agent_count": agent_count,
-    }))
-}
-
 fn collect_instances_under(root: &Path, out: &mut Vec<Value>) {
     if !root.exists() {
         return;
@@ -720,14 +670,6 @@ fn collect_instances_under(root: &Path, out: &mut Vec<Value>) {
         let inst_path = path.join("instance.json");
         if let Some(inst) = read_json_value(&inst_path) {
             out.push(build_entry_from_instance_json(&inst, &dir_name));
-            continue;
-        }
-
-        let ckpt_path = path.join("checkpoint.json");
-        if let Some(ckpt) = read_json_value(&ckpt_path) {
-            if let Some(entry) = build_entry_from_checkpoint(&ckpt, &dir_name) {
-                out.push(entry);
-            }
         }
     }
 }
@@ -745,49 +687,58 @@ pub(crate) fn read_events(
             ToolSourceError::InvalidInput("'instance' is required for workflow_events.".into())
         })?;
     validate_instance_dir_name(dir)?;
-    let path = runtime
-        .resolve_instance_path(dir)
-        .ok_or_else(|| ToolSourceError::InvalidInput(format!("Instance '{dir}' not found")))?;
-    let events_path = path.join("events.jsonl");
     let filter = params::EventsFilter::from_args(args);
 
     tracing::debug!(
         target: "workflow::service",
         instance = %dir,
-        events_path = %events_path.display(),
         has_type_filter = filter.types.as_ref().is_some_and(|t| !t.is_empty()),
         offset = filter.offset,
         events_limit = filter.events_limit,
         "read_events: reading event stream",
     );
 
+    let base_dir = runtime.instances_root();
+    let db_exists = base_dir.join("luft.db").exists();
+    let owned_dir = dir.to_string();
+    let mut all_events: Vec<Value> = if db_exists {
+        std::thread::scope(|s| {
+            let h = s.spawn(move || {
+                luft::query::get_events(&owned_dir, &base_dir)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|e| serde_json::to_value(e).ok())
+                    .collect::<Vec<_>>()
+            });
+            h.join().unwrap_or_default()
+        })
+    } else {
+        Vec::new()
+    };
+
+    if all_events.is_empty() {
+        if let Some(path) = runtime.resolve_instance_path(dir) {
+            if let Ok(raw) = std::fs::read_to_string(path.join("events.jsonl")) {
+                all_events = raw
+                    .lines()
+                    .filter(|l| !l.trim().is_empty())
+                    .filter_map(|l| serde_json::from_str(l).ok())
+                    .collect();
+            }
+        }
+    }
+
     let mut filtered_count: u64 = 0;
     let mut returned: usize = 0;
     let mut events: Vec<Value> = Vec::new();
-
-    if let Ok(file) = std::fs::File::open(&events_path) {
-        let reader = std::io::BufReader::new(file);
-        use std::io::BufRead as _;
-        for line in reader.lines() {
-            let Ok(line) = line else { continue };
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            let val: Value = match serde_json::from_str(trimmed) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-
-            if !filter.matches(&val) {
-                continue;
-            }
-
-            filtered_count += 1;
-            if filtered_count > filter.offset && (returned as u64) < filter.events_limit {
-                events.push(val);
-                returned += 1;
-            }
+    for val in &all_events {
+        if !filter.matches(val) {
+            continue;
+        }
+        filtered_count += 1;
+        if filtered_count > filter.offset && (returned as u64) < filter.events_limit {
+            events.push(val.clone());
+            returned += 1;
         }
     }
 
@@ -914,40 +865,11 @@ mod tests {
     }
 
     fn block_on<F: std::future::Future>(f: F) -> F::Output {
-        let rt = tokio::runtime::Builder::new_current_thread()
+        let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .expect("tokio runtime");
         rt.block_on(f)
-    }
-
-    // -- list helpers tests moved to luft_service::params --
-    fn sample_checkpoint(run_id: &str, status: &str, created_at: u64) -> Value {
-        json!({
-            "run_id": run_id,
-            "status": status,
-            "created_at": created_at,
-            "updated_at": created_at + 1,
-            "agent_results": {},
-            "total_tokens": 100,
-        })
-    }
-
-    #[test]
-    fn list_entry_from_checkpoint_skips_non_terminal() {
-        assert!(build_entry_from_checkpoint(&sample_checkpoint("r", "running", 1), "r").is_none());
-    }
-
-    #[test]
-    fn list_entry_from_checkpoint_keeps_terminal() {
-        let e = build_entry_from_checkpoint(
-            &sample_checkpoint("r1", "completed", 2),
-            "loom-instance_r1",
-        )
-        .unwrap();
-        assert_eq!(e["instance_id"], "r1");
-        assert_eq!(e["status"], "completed");
-        assert_eq!(e["instance_dir"], "loom-instance_r1");
     }
 
     #[test]
@@ -967,21 +889,15 @@ mod tests {
         assert_eq!(e["agent_count"], 2);
     }
 
-    fn write_checkpoint(dir: &Path, run_id: &str, status: &str, created_at: u64) {
-        std::fs::create_dir_all(dir).unwrap();
-        std::fs::write(
-            dir.join("checkpoint.json"),
-            serde_json::to_vec_pretty(&sample_checkpoint(run_id, status, created_at)).unwrap(),
-        )
-        .unwrap();
-    }
 
     #[test]
-    fn collect_instances_under_skips_non_terminal_and_keeps_terminal() {
+    fn collect_instances_under_finds_instance_json() {
         let tmp = tempfile::tempdir().unwrap();
-        let root: PathBuf = tmp.path().join(".luft").join("runs");
-        write_checkpoint(&root.join("done"), "rd", "completed", 1);
-        write_checkpoint(&root.join("alive"), "ra", "running", 2);
+        let root: PathBuf = tmp.path().join(".loom").join("instances");
+        let dir = root.join("done");
+        std::fs::create_dir_all(&dir).unwrap();
+        let inst = json!({"instance_id": "rd", "status": "completed", "instance_dir": "done"});
+        std::fs::write(dir.join("instance.json"), serde_json::to_string_pretty(&inst).unwrap()).unwrap();
         let mut out = Vec::new();
         collect_instances_under(&root, &mut out);
         assert_eq!(out.len(), 1);
@@ -1078,7 +994,7 @@ mod tests {
         let err = block_on(read_status(&rt, &json!({"instance": instance_dir}))).unwrap_err();
         let msg = format!("{err:?}");
         assert!(
-            msg.contains("corrupt") || msg.contains("missing checkpoint"),
+            msg.contains("corrupt") || msg.contains("incomplete"),
             "unexpected error: {msg}"
         );
     }

@@ -1476,7 +1476,7 @@ version = "3.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "519bd3116aeeb42d5372c29d982d16d0170d3d4a5ed85fc7dd91642ffff3c67c"
 dependencies = [
- "darling 0.20.11",
+ "darling 0.23.0",
  "ident_case",
  "prettyplease",
  "proc-macro2",
@@ -2170,16 +2170,6 @@ dependencies = [
 
 [[package]]
 name = "darling"
-version = "0.21.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cdf337090841a411e2a7f3deb9187445851f91b309c0c0a29e05f74a00a48c0"
-dependencies = [
- "darling_core 0.21.3",
- "darling_macro 0.21.3",
-]
-
-[[package]]
-name = "darling"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25ae13da2f202d56bd7f91c25fba009e7717a1e4a1cc98a76d844b65ae912e9d"
@@ -2207,20 +2197,6 @@ name = "darling_core"
 version = "0.20.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d00b9596d185e565c2207a0b01f8bd1a135483d02d9b7b0a54b11da8d53412e"
-dependencies = [
- "fnv",
- "ident_case",
- "proc-macro2",
- "quote",
- "strsim 0.11.1",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "darling_core"
-version = "0.21.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1247195ecd7e3c85f83c8d2a366e4210d588e802133e1e355180a9870b517ea4"
 dependencies = [
  "fnv",
  "ident_case",
@@ -2261,17 +2237,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc34b93ccb385b40dc71c6fceac4b2ad23662c7eeb248cf10d529b7e055b6ead"
 dependencies = [
  "darling_core 0.20.11",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "darling_macro"
-version = "0.21.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d38308df82d1080de0afee5d069fa14b0326a88c14f15c5ccda35b4a6c414c81"
-dependencies = [
- "darling_core 0.21.3",
  "quote",
  "syn 2.0.117",
 ]
@@ -5892,9 +5857,9 @@ dependencies = [
 
 [[package]]
 name = "luft"
-version = "0.4.6"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82623e102397c0afa4e2f6b59505baee2dbe1f8997671081ca074082b2217fd3"
+checksum = "840831711dfe0a2f13ed56308b9a71d71786732550184a5d71c9ecbf7de1ed71"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5905,6 +5870,7 @@ dependencies = [
  "luft-storage",
  "serde",
  "serde_json",
+ "sqlx",
  "thiserror 1.0.69",
  "tokio",
  "tokio-util",
@@ -5914,9 +5880,9 @@ dependencies = [
 
 [[package]]
 name = "luft-adapters"
-version = "0.4.6"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e95642b60fcdd963182188424876bbf18e3400dc5c4ba661ef441daeaac61fe3"
+checksum = "8bdd4833d739a2bcb7ccd3ecec66567f930030ec204b89b4e2b875784f9d2b89"
 dependencies = [
  "agent-client-protocol 0.14.0",
  "anyhow",
@@ -5934,9 +5900,9 @@ dependencies = [
 
 [[package]]
 name = "luft-core"
-version = "0.4.6"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b934a5c03e57f5126e2a67edb11836c289a27849b397321464192431aed0400a"
+checksum = "e4b201956ff505c66809f4761b862b013d59b7317cfc9d5c6bed1dbce0e41177"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5958,9 +5924,9 @@ dependencies = [
 
 [[package]]
 name = "luft-planner"
-version = "0.4.6"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3dc27250eeb161656109b5c394b48657543be3758f615eb7e8d288762f895020"
+checksum = "596faaf7584d03d4c06f87e268fdd827d2ccbae9bb4a0f0131f58050cf950078"
 dependencies = [
  "anyhow",
  "luft-core",
@@ -5978,9 +5944,9 @@ dependencies = [
 
 [[package]]
 name = "luft-runtime"
-version = "0.4.6"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b614036d022087a7bd3d72da6d4a156d22254daa664dea241dd8f1dfdf21b5c"
+checksum = "4206ff517a3c4a7755812f50de786800eeaa0da3dc17b06eb2b9f4ce6f530eb4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6000,32 +5966,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "luft-service"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bffea021e3bfe935134ce803f6a2dcd613a6b027d4a91095e570fdb7363d42d"
-dependencies = [
- "anyhow",
- "chrono",
- "luft",
- "luft-core",
- "luft-planner",
- "luft-runtime",
- "luft-storage",
- "rmcp 0.6.4",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "luft-skills"
-version = "0.4.6"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35121d2b782580b446715ac0de660c559e4583ca45b86a501cdcfa114c628c19"
+checksum = "c07e1094eb7b9ff55d024ff08e61c15e5b3fa4aef0e43639c4e1a1cb7671a752"
 dependencies = [
  "const_format",
  "luft-core",
@@ -6033,9 +5977,9 @@ dependencies = [
 
 [[package]]
 name = "luft-storage"
-version = "0.4.6"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "557db458974db3cb4e27c2a7130fb7674749985a5f84ae53d00aab05ef1924e0"
+checksum = "ee6cda074ab533e29e772aa8d19b34451ae7dc441a0ae2e4e83cf686b9e1e966"
 dependencies = [
  "anyhow",
  "chrono",
@@ -7181,7 +7125,7 @@ version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "itertools 0.14.0",
  "log",
  "multimap",
@@ -7786,27 +7730,6 @@ dependencies = [
 
 [[package]]
 name = "rmcp"
-version = "0.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41ab0892f4938752b34ae47cb53910b1b0921e55e77ddb6e44df666cab17939f"
-dependencies = [
- "base64 0.22.1",
- "chrono",
- "futures",
- "paste",
- "pin-project-lite",
- "rmcp-macros 0.6.4",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "rmcp"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc4c9c94680f75470ee8083a0667988b5d7b5beb70b9f998a8e51de7c682ce60"
@@ -7820,7 +7743,7 @@ dependencies = [
  "pin-project-lite",
  "process-wrap",
  "reqwest 0.13.4",
- "rmcp-macros 0.16.0",
+ "rmcp-macros",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -7830,19 +7753,6 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "tracing",
-]
-
-[[package]]
-name = "rmcp-macros"
-version = "0.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1827cd98dab34cade0513243c6fe0351f0f0b2c9d6825460bcf45b42804bdda0"
-dependencies = [
- "darling 0.21.3",
- "proc-macro2",
- "quote",
- "serde_json",
- "syn 2.0.117",
 ]
 
 [[package]]
@@ -8686,7 +8596,7 @@ version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1c97747dbf44bb1ca44a561ece23508e99cb592e862f22222dcf42f51d1e451"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -9425,7 +9335,7 @@ name = "task-mcp-server"
 version = "0.5.0"
 dependencies = [
  "clap",
- "rmcp 0.16.0",
+ "rmcp",
  "serde",
  "serde_json",
  "task-core",
@@ -9962,7 +9872,7 @@ dependencies = [
  "loom-util",
  "regex",
  "reqwest 0.12.28",
- "rmcp 0.16.0",
+ "rmcp",
  "serde",
  "serde_json",
  "skill",
@@ -10049,7 +9959,6 @@ dependencies = [
  "loom-llm",
  "luft",
  "luft-core",
- "luft-service",
  "serde",
  "serde_json",
  "sha2 0.10.9",

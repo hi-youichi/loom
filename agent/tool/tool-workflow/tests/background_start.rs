@@ -14,7 +14,7 @@ fn text(content: ToolCallContent) -> String {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn start_returns_before_terminal_summary_is_available() {
     let temp = tempdir().expect("tempdir");
     let config = AgentConfig {

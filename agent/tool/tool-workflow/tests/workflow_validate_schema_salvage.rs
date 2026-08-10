@@ -98,7 +98,7 @@ impl AgentBackend for FailingBackend {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn salvage_backend_produces_structured_output_in_workflow() {
     let backend = SalvageBackend {
         outputs: Arc::new(Mutex::new(vec![])),
@@ -152,7 +152,7 @@ async fn salvage_backend_produces_structured_output_in_workflow() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn failing_backend_causes_workflow_failure() {
     let backend = FailingBackend;
 

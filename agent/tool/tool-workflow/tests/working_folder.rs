@@ -56,7 +56,7 @@ impl AgentBackend for CapturingBackend {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn working_folder_propagates_to_backend() {
     let seen: Arc<Mutex<Vec<Option<PathBuf>>>> = Arc::new(Mutex::new(vec![]));
 
@@ -99,7 +99,7 @@ async fn working_folder_propagates_to_backend() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn no_working_folder_defaults_to_none() {
     let seen: Arc<Mutex<Vec<Option<PathBuf>>>> = Arc::new(Mutex::new(vec![]));
 
@@ -135,7 +135,7 @@ async fn no_working_folder_defaults_to_none() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn parallel_propagates_working_folder() {
     let seen: Arc<Mutex<Vec<Option<PathBuf>>>> = Arc::new(Mutex::new(vec![]));
 
