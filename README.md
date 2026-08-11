@@ -1,92 +1,80 @@
 # Loom
 
-A graph-based agent framework in Rust with a **state-in, state-out** design: a single state type flows through the graph, with no separate Input/Output types.
+Loom is a local-first AI Agent runtime. It lets developers run agents in the CLI, IDE (ACP), and messaging bots, while keeping tool calls, sessions, memory, skills, and workflows within a controllable project context.
 
-## Features
+Loom's goal is not to replace code review or let agents modify systems unattended, but to enable them to complete real project tasks continuously and interpretably.
 
-- **State graphs**: StateGraph, conditional edges, middleware, checkpointing
-- **ReAct / DUP / ToT / GoT**: Multiple run modes
-- **LLM integration**: `LlmClient` trait, OpenAI / Mock support
-- **Tool system**: Pluggable ToolSource (MCP, Web, Bash, Store, etc.)
-- **Memory & persistence**: Checkpointer, Store (SQLite, optional LanceDB)
+> The current version is still evolving. Workflows, browser extension, and task modes include experimental capabilities; `evolve` is not yet implemented.
 
-## Streaming output (JSON)
+## Quick Start
 
-With `--json`, the CLI emits [NDJSON](https://ndjson.org/) per [docs/protocol_spec.md](docs/protocol_spec.md): one JSON object per line (events with `type` + payload, then a final line with `reply`). Optional envelope fields `session_id`, `node_id`, `event_id` are included for merging multi-turn or multi-session streams.
+### 1. Configure Your Model
 
-```bash
-cargo run -p cli -- -m "Hello" --json
-# or stream to file: --json --file out.json
+Copy the example environment file and fill in your model credentials:
+
+```powershell
+Copy-Item .env.example .env
 ```
 
-## Quick start
+You can also create a `config.toml` in the user config directory (default `~/.loom/`, overridable via `LOOM_HOME`). The `.env` in the project root takes precedence over that config.
 
-```bash
-# Set up .env (see .env.example; requires OPENAI_API_KEY)
-cp .env.example .env
+### 2. Run an Agent in Your Project
 
-# Run Loom CLI
-cargo run -p cli -- -m "What time is it?"
-cargo run -p cli -- --working-folder . "Summarize this repo"
+```powershell
+# Run the default ReAct agent
+cargo run -p cli -- -m "Survey this repo and list test entry points"
+
+# Explicitly specify the agent's working directory
+cargo run -p cli -- --working-folder . "Find failing tests and explain why"
+
+# Continue in the same session
+cargo run -p cli -- --session-id bug-123 "Now fix it and run the relevant tests"
 ```
 
-## WebSocket server
+Before the first run, verify the agent's effective working directory, model, and tool permissions. For modification tasks, use `--worktree` to run in an isolated Git worktree.
 
-Run the WebSocket server so other clients can connect (default: ws://127.0.0.1:8080, keeps running until killed):
+## What Loom Can Do
 
-```bash
-cargo run -p cli -- serve
+| Capability | Use Case |
+| --- | --- |
+| Local Agents | Complete multi-step tasks using ReAct, DUP, ToT, or GoT. |
+| Models & Tools | Configure multiple providers, model tiers, MCP, file, shell, web, and more. |
+| Persistent Context | Continue project work across sessions with checkpoints, memory, and skills. |
+| Workflows | Orchestrate multi-agent tasks in Lua; inspect instance summaries, events, cancel and resume. |
+| Multiple Entry Points | Use from CLI, or connect via ACP to compatible IDEs; also supports Telegram multi-bot. |
 
-# Custom address
-cargo run -p cli -- serve --addr 127.0.0.1:9000
+## Common Commands
+
+```text
+loom -m "task"                         # Start a one-shot task
+loom -i -m "task"                      # Enter an interactive session
+loom --session-id <id> "continue task" # Resume a session
+loom session list                       # List sessions
+loom models                             # List available models
+loom tool list                          # List tools
+loom mcp list                           # Manage MCP services
+loom skills list / loom memory list     # Manage reusable context
+loom acp                                # Start as an ACP server
 ```
 
-When a Run request includes both `workspace_id` and `thread_id`, the thread is associated with that workspace (see `loom-workspace`). The server uses a SQLite DB for workspaces; set `WORKSPACE_DB` to a file path (default: `workspace.db` in the current directory).
+For full usage, see the [CLI Guide](docs/guides/cli.md).
 
+## Documentation
 
-## Workspace (crates)
+- [CLI Guide](docs/guides/cli.md)
+- [IDE / ACP Integration](docs/guides/acp-ide.md)
+- [Workflow Guide](docs/guides/workflows.md)
+- [Security & Privacy](docs/guides/security-and-privacy.md)
+- [Troubleshooting](docs/guides/troubleshooting.md)
 
-| Crate | Description |
-|-------|-------------|
-| `loom` | Core library: graph, nodes, state, LLM, tools, memory |
-| `cli` | CLI binary with React / Dup / Tot / Got / Tool / Serve subcommands |
-| `serve` | WebSocket server (used by `loom serve`) |
-| `stream-event` | Streaming event types and protocol |
-| `config` | Config loading |
-| `loom-workspace` | Workspace and thread association (own SQLite); list workspaces, list threads per workspace; Run with `workspace_id` + `thread_id` registers the thread |
-| `loom-examples` | Examples |
+## Development
 
-## Library usage
-
-Run an agent with a user message. Pass `None` for options to use mock LLM and tool source (good for demos); pass `Some(AgentOptions { ... })` to supply your own `llm`, `tool_source`, and optional `checkpointer`, `store`, `runnable_config`, or `verbose`. Add `dotenv` to `Cargo.toml` if loading `.env`.
-
-```rust
-use loom::{run_agent, AgentOptions, ChatOpenAI, MockToolSource};
-
-// Minimal: mock LLM and get_time tool (no API key)
-let state = run_agent("What time is it?", None).await?;
-println!("{}", state.last_assistant_reply().unwrap_or_default());
-
-// OpenAI with get_time tool — API key from env or .env
-dotenv::dotenv().ok();  // load .env (OPENAI_API_KEY=sk-...)
-let tool_source = MockToolSource::get_time_example();
-let tools = tool_source.list_tools().await?;
-// Option A: key from OPENAI_API_KEY env (set in .env or shell)
-let llm = ChatOpenAI::new("gpt-4o-mini").with_tools(tools);
-// Option B: key set programmatically (add async-openai dep)
-// let config = async_openai::config::OpenAIConfig::new()
-//     .with_api_key(std::env::var("OPENAI_API_KEY")?);
-// let llm = ChatOpenAI::with_config(config, "gpt-4o-mini").with_tools(tools);
-let state = run_agent(
-    "What time is it?",
-    Some(AgentOptions {
-        llm: Some(Box::new(llm)),
-        tool_source: Some(Box::new(tool_source)),
-        ..Default::default()
-    }),
-).await?;
-println!("{}", state.last_assistant_reply().unwrap_or_default());
+```powershell
+cargo build -p cli
+cargo test -p cli
 ```
+
+Loom is a Rust workspace; crate and experimental module details can be found in each module's `Cargo.toml`, source code, and `docs/design/`. User experience and scope are defined by the guides under `docs/`.
 
 ## License
 

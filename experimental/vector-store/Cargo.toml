@@ -1,0 +1,31 @@
+[package]
+name = "vector-store"
+version.workspace = true
+edition.workspace = true
+description = "Vector search Store implementations for Loom (in-memory, sqlite-vec, LanceDB)"
+license.workspace = true
+authors.workspace = true
+
+[features]
+lance = ["dep:lancedb", "dep:arrow-array", "dep:arrow-schema"]
+
+[dependencies]
+checkpoint = { path = "../../foundation/checkpoint" }
+checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+tracing = "0.1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+sqlite-vec = "0.1"
+dashmap = "6.0"
+async-openai = { version = "0.32", features = ["chat-completion", "embedding", "model"] }
+
+# Optional: LanceDB for persistent Store with vector search (feature "lance").
+lancedb = { version = "0.23", optional = true }
+arrow-array = { version = "56.2", optional = true }
+arrow-schema = { version = "56.2", optional = true }
+
+[dev-dependencies]
+tempfile = "3"

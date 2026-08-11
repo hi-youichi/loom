@@ -1,8 +1,0 @@
-name: help
-description: |
-  Show help information about Loom, Skills, and MCP (Model Context Protocol).
-  Call this tool when the user asks "what is loom", "how do skills work", "what is MCP",
-  or needs a general overview of the platform. Returns a concise reference document.
-input_schema:
-  type: object
-  properties: {}

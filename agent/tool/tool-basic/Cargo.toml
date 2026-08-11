@@ -1,0 +1,48 @@
+[package]
+name = "tool-basic"
+version.workspace = true
+edition.workspace = true
+description = "Basic tool implementations for Loom agents"
+license.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+futures-util = "0.3"
+
+tool-core = { path = "../tool-core" }
+loom-llm = { path = "../../../foundation/llm" }
+loom-util = { path = "../../../foundation/loom-util" }
+skill = { path = "../../skill" }
+config = { path = "../../../foundation/config" }
+
+rmcp = { version = "0.16", features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
+
+walkdir = "2"
+glob = "0.3"
+which = "6.0"
+grep-regex = "0.1"
+grep-searcher = "0.1"
+ignore = "0.4"
+regex = "1"
+reqwest = { version = "0.12", features = ["json"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+thiserror = { workspace = true }
+tokio-stream = { workspace = true }
+
+dirs = "5"
+
+[dev-dependencies]
+tempfile = "3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ctor = { workspace = true }
+wiremock = "0.6"
+futures-executor = "0.3"
+serde_json = "1.0"

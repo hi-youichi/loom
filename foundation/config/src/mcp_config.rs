@@ -1,0 +1,617 @@
+//! MCP server config: parse JSON (Cursor/Claude-compatible) and discover config file path.
+//!
+//! Used by loom to load `mcp.json` from project `.loom/mcp.json` or
+//! `~/.loom/mcp.json`. No dependency on loom.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum McpConfigError {
+    #[error("read mcp config: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("parse mcp config: {0}")]
+    Parse(#[from] serde_json::Error),
+    #[error("mcp server entry {name}: {message}")]
+    InvalidEntry { name: String, message: String },
+}
+
+/// Root structure of mcp.json; key `mcpServers` for Cursor/Claude compatibility.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct McpConfigFile {
+    #[serde(default, rename = "mcpServers")]
+    pub mcp_servers: HashMap<String, McpServerEntry>,
+}
+
+/// One server entry in the JSON. Cursor format: either `command` (stdio) or `url` (remote).
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct McpServerEntry {
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+    #[serde(default)]
+    pub disabled: bool,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub headers: HashMap<String, String>,
+    #[serde(default)]
+    pub oauth: Option<OAuthConfig>,
+    /// Whether Loom must fail the run when this server cannot start.
+    #[serde(default)]
+    pub required: bool,
+    /// Maximum time allowed for the initial MCP handshake and tool discovery.
+    #[serde(default)]
+    pub startup_timeout_sec: Option<u64>,
+    /// Maximum time allowed for a single MCP tool call.
+    #[serde(default)]
+    pub tool_timeout_sec: Option<u64>,
+}
+
+/// OAuth configuration for an MCP HTTP server.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct OAuthConfig {
+    /// Enable OAuth for this server.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Pre-registered client_id (if DCR is not supported).
+    #[serde(default)]
+    pub client_id: Option<String>,
+    /// OAuth scope to request.
+    #[serde(default)]
+    pub scope: Option<String>,
+}
+
+/// Parsed definition for one MCP server: stdio (spawn process) or HTTP (remote URL).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum McpServerDef {
+    Stdio {
+        name: String,
+        command: String,
+        args: Vec<String>,
+        env: HashMap<String, String>,
+        required: bool,
+        startup_timeout_sec: Option<u64>,
+        tool_timeout_sec: Option<u64>,
+    },
+    Http {
+        name: String,
+        url: String,
+        headers: HashMap<String, String>,
+        oauth: Option<OAuthConfig>,
+        required: bool,
+        startup_timeout_sec: Option<u64>,
+        tool_timeout_sec: Option<u64>,
+    },
+}
+
+impl McpServerDef {
+    /// Return the server name regardless of variant.
+    pub fn name(&self) -> &str {
+        match self {
+            McpServerDef::Stdio { name, .. } => name,
+            McpServerDef::Http { name, .. } => name,
+        }
+    }
+
+    /// Whether startup failure should fail the enclosing run.
+    pub fn required(&self) -> bool {
+        match self {
+            McpServerDef::Stdio { required, .. } | McpServerDef::Http { required, .. } => *required,
+        }
+    }
+
+    /// Configured startup timeout, in seconds.
+    pub fn startup_timeout_sec(&self) -> Option<u64> {
+        match self {
+            McpServerDef::Stdio {
+                startup_timeout_sec,
+                ..
+            }
+            | McpServerDef::Http {
+                startup_timeout_sec,
+                ..
+            } => *startup_timeout_sec,
+        }
+    }
+
+    /// Configured per-tool-call timeout, in seconds.
+    pub fn tool_timeout_sec(&self) -> Option<u64> {
+        match self {
+            McpServerDef::Stdio {
+                tool_timeout_sec, ..
+            }
+            | McpServerDef::Http {
+                tool_timeout_sec, ..
+            } => *tool_timeout_sec,
+        }
+    }
+}
+
+fn is_http_url(s: &str) -> bool {
+    s.starts_with("http://") || s.starts_with("https://")
+}
+
+/// Parses JSON content into a list of enabled MCP server definitions.
+/// Skips entries with `disabled: true`. Order follows the map iteration order.
+/// Cursor-compatible: each entry must have either `command` (stdio) or `url` (http(s)); url wins if both present.
+pub fn parse_mcp_config(content: &str) -> Result<Vec<McpServerDef>, McpConfigError> {
+    let file: McpConfigFile = serde_json::from_str(content)?;
+    let mut out = Vec::with_capacity(file.mcp_servers.len());
+    for (name, entry) in file.mcp_servers {
+        if entry.disabled {
+            continue;
+        }
+        let def = if let Some(ref url) = entry.url {
+            if !is_http_url(url) {
+                return Err(McpConfigError::InvalidEntry {
+                    name: name.clone(),
+                    message: "url must start with http:// or https://".to_string(),
+                });
+            }
+            McpServerDef::Http {
+                name: name.clone(),
+                url: url.clone(),
+                headers: entry.headers,
+                oauth: entry.oauth,
+                required: entry.required,
+                startup_timeout_sec: entry.startup_timeout_sec,
+                tool_timeout_sec: entry.tool_timeout_sec,
+            }
+        } else if let Some(ref cmd) = entry.command {
+            if cmd.is_empty() {
+                return Err(McpConfigError::InvalidEntry {
+                    name: name.clone(),
+                    message: "command must be non-empty when present".to_string(),
+                });
+            }
+            McpServerDef::Stdio {
+                name: name.clone(),
+                command: cmd.clone(),
+                args: entry.args,
+                env: entry.env,
+                required: entry.required,
+                startup_timeout_sec: entry.startup_timeout_sec,
+                tool_timeout_sec: entry.tool_timeout_sec,
+            }
+        } else {
+            return Err(McpConfigError::InvalidEntry {
+                name: name.clone(),
+                message: "each server must have either 'command' or 'url'".to_string(),
+            });
+        };
+        out.push(def);
+    }
+    Ok(out)
+}
+
+/// Reads the file at `path` and parses it as MCP config.
+pub fn load_mcp_config_from_path(path: &Path) -> Result<Vec<McpServerDef>, McpConfigError> {
+    let content = std::fs::read_to_string(path)?;
+    parse_mcp_config(&content)
+}
+
+/// Returns the path to the MCP config file to use, or `None` if none exists.
+///
+/// Order: if `override_path` is `Some` and that file exists, use it; else
+/// `working_dir/.loom/mcp.json` if it exists; else `~/.loom/mcp.json` if it exists.
+pub fn discover_mcp_config_path(
+    override_path: Option<&Path>,
+    working_dir: Option<&Path>,
+) -> Option<PathBuf> {
+    if let Some(p) = override_path {
+        if p.exists() {
+            return Some(p.to_path_buf());
+        }
+    }
+    if let Some(wd) = working_dir {
+        let project = wd.join(".loom").join("mcp.json");
+        if project.exists() {
+            return Some(project);
+        }
+    }
+    let global = crate::home::loom_home().join("mcp.json");
+    if global.exists() {
+        return Some(global);
+    }
+    None
+}
+
+/// Creates a default MCP config file at the specified path if it doesn't exist.
+pub fn create_mcp_config_if_missing(path: &Path) -> Result<(), McpConfigError> {
+    if path.exists() {
+        return Ok(());
+    }
+
+    // Create parent directories if needed
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let default_config = McpConfigFile {
+        mcp_servers: HashMap::new(),
+    };
+
+    save_mcp_config(path, &default_config)
+}
+
+/// Saves MCP config to the specified path with atomic write operation.
+pub fn save_mcp_config(path: &Path, config: &McpConfigFile) -> Result<(), McpConfigError> {
+    let content = serde_json::to_string_pretty(config)?;
+
+    // Atomic write: write to temp file first, then rename
+    let tmp_path = path.with_extension("json.tmp");
+    std::fs::write(&tmp_path, &content)?;
+    std::fs::rename(&tmp_path, path)?;
+
+    Ok(())
+}
+
+/// Adds or updates an MCP server in the config file at the specified path.
+pub fn upsert_mcp_server(
+    path: &Path,
+    name: &str,
+    entry: McpServerEntry,
+) -> Result<bool, McpConfigError> {
+    let config = if path.exists() {
+        let content = std::fs::read_to_string(path)?;
+        serde_json::from_str::<McpConfigFile>(&content)?
+    } else {
+        // Create parent directories and default config if file doesn't exist
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        McpConfigFile {
+            mcp_servers: HashMap::new(),
+        }
+    };
+
+    let is_new = !config.mcp_servers.contains_key(name);
+
+    let mut updated_config = config;
+    updated_config.mcp_servers.insert(name.to_string(), entry);
+
+    save_mcp_config(path, &updated_config)?;
+
+    Ok(is_new)
+}
+
+/// Removes an MCP server from the config file at the specified path.
+pub fn remove_mcp_server(path: &Path, name: &str) -> Result<bool, McpConfigError> {
+    if !path.exists() {
+        return Ok(false);
+    }
+
+    let content = std::fs::read_to_string(path)?;
+    let mut config: McpConfigFile = serde_json::from_str(&content)?;
+
+    let existed = config.mcp_servers.remove(name).is_some();
+
+    if existed {
+        save_mcp_config(path, &config)?;
+    }
+
+    Ok(existed)
+}
+
+/// Loads the MCP config file as a McpConfigFile structure.
+pub fn load_mcp_config_file(path: &Path) -> Result<McpConfigFile, McpConfigError> {
+    let content = std::fs::read_to_string(path)?;
+    let config: McpConfigFile = serde_json::from_str(&content)?;
+    Ok(config)
+}
+
+/// Gets the default MCP config path, creating the file if it doesn't exist.
+pub fn get_or_create_mcp_config_path() -> Result<PathBuf, McpConfigError> {
+    let home = crate::home::loom_home();
+    let config_path = home.join("mcp.json");
+    create_mcp_config_if_missing(&config_path)?;
+    Ok(config_path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_empty_servers() {
+        let json = r#"{"mcpServers":{}}"#;
+        let list = parse_mcp_config(json).unwrap();
+        assert!(list.is_empty());
+    }
+
+    #[test]
+    fn parse_one_server() {
+        let json = r#"{
+            "mcpServers": {
+                "fs": {
+                    "command": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+                }
+            }
+        }"#;
+        let list = parse_mcp_config(json).unwrap();
+        assert_eq!(list.len(), 1);
+        match &list[0] {
+            McpServerDef::Stdio {
+                name,
+                command,
+                args,
+                env,
+                ..
+            } => {
+                assert_eq!(name, "fs");
+                assert_eq!(command, "npx");
+                assert_eq!(
+                    args.as_slice(),
+                    ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+                );
+                assert!(env.is_empty());
+            }
+            McpServerDef::Http { .. } => panic!("expected Stdio"),
+        }
+    }
+
+    #[test]
+    fn parse_server_with_env_and_disabled_filter() {
+        let json = r#"{
+            "mcpServers": {
+                "enabled": {
+                    "command": "node",
+                    "args": ["server.js"],
+                    "env": {"API_KEY": "secret"}
+                },
+                "off": {
+                    "command": "echo",
+                    "args": [],
+                    "disabled": true
+                }
+            }
+        }"#;
+        let list = parse_mcp_config(json).unwrap();
+        assert_eq!(list.len(), 1);
+        match &list[0] {
+            McpServerDef::Stdio {
+                name,
+                command,
+                args,
+                env,
+                ..
+            } => {
+                assert_eq!(name, "enabled");
+                assert_eq!(command, "node");
+                assert_eq!(args.as_slice(), ["server.js"]);
+                assert_eq!(env.get("API_KEY"), Some(&"secret".to_string()));
+            }
+            McpServerDef::Http { .. } => panic!("expected Stdio"),
+        }
+    }
+
+    #[test]
+    fn parse_missing_mcp_servers_defaults_empty() {
+        let json = r#"{}"#;
+        let list = parse_mcp_config(json).unwrap();
+        assert!(list.is_empty());
+    }
+
+    #[test]
+    fn parse_invalid_json_returns_error() {
+        let json = r#"{"mcpServers": {"x": "not an object"}}"#;
+        let err = parse_mcp_config(json).unwrap_err();
+        assert!(matches!(err, McpConfigError::Parse(_)));
+    }
+
+    #[test]
+    fn parse_missing_command_and_url_returns_invalid_entry() {
+        let json = r#"{"mcpServers": {"x": {}}}"#;
+        let err = parse_mcp_config(json).unwrap_err();
+        assert!(matches!(err, McpConfigError::InvalidEntry { .. }));
+    }
+
+    #[test]
+    fn parse_url_only_http() {
+        let json = r#"{
+            "mcpServers": {
+                "my-service": {
+                    "url": "https://mcp.example.com/sse"
+                }
+            }
+        }"#;
+        let list = parse_mcp_config(json).unwrap();
+        assert_eq!(list.len(), 1);
+        match &list[0] {
+            McpServerDef::Http {
+                name, url, headers, ..
+            } => {
+                assert_eq!(name, "my-service");
+                assert_eq!(url, "https://mcp.example.com/sse");
+                assert!(headers.is_empty());
+            }
+            McpServerDef::Stdio { .. } => panic!("expected Http"),
+        }
+    }
+
+    #[test]
+    fn parse_url_with_headers() {
+        let json = r#"{
+            "mcpServers": {
+                "my-service": {
+                    "url": "https://mcp.example.com/sse",
+                    "headers": {
+                        "Authorization": "Bearer your-token-here"
+                    }
+                }
+            }
+        }"#;
+        let list = parse_mcp_config(json).unwrap();
+        assert_eq!(list.len(), 1);
+        match &list[0] {
+            McpServerDef::Http {
+                name, url, headers, ..
+            } => {
+                assert_eq!(name, "my-service");
+                assert_eq!(url, "https://mcp.example.com/sse");
+                assert_eq!(
+                    headers.get("Authorization").map(|s| s.as_str()),
+                    Some("Bearer your-token-here")
+                );
+            }
+            McpServerDef::Stdio { .. } => panic!("expected Http"),
+        }
+    }
+
+    #[test]
+    fn parse_startup_settings() {
+        let json = r#"{
+            "mcpServers": {
+                "required-server": {
+                    "url": "https://mcp.example.com/mcp",
+                    "required": true,
+                    "startup_timeout_sec": 12,
+                    "tool_timeout_sec": 45
+                }
+            }
+        }"#;
+
+        let list = parse_mcp_config(json).unwrap();
+        assert_eq!(list.len(), 1);
+        assert!(list[0].required());
+        assert_eq!(list[0].startup_timeout_sec(), Some(12));
+        assert_eq!(list[0].tool_timeout_sec(), Some(45));
+    }
+
+    #[test]
+    fn parse_url_wins_when_both_command_and_url() {
+        let json = r#"{
+            "mcpServers": {
+                "hybrid": {
+                    "command": "npx",
+                    "args": ["-y", "mcp-server"],
+                    "url": "https://remote.example.com/mcp"
+                }
+            }
+        }"#;
+        let list = parse_mcp_config(json).unwrap();
+        assert_eq!(list.len(), 1);
+        match &list[0] {
+            McpServerDef::Http { name, url, .. } => {
+                assert_eq!(name, "hybrid");
+                assert_eq!(url, "https://remote.example.com/mcp");
+            }
+            McpServerDef::Stdio { .. } => panic!("url should win, expected Http"),
+        }
+    }
+
+    #[test]
+    fn parse_invalid_url_returns_error() {
+        let json = r#"{"mcpServers": {"x": {"url": "ftp://invalid.example.com"}}}"#;
+        let err = parse_mcp_config(json).unwrap_err();
+        assert!(matches!(err, McpConfigError::InvalidEntry { .. }));
+    }
+
+    #[test]
+    fn parse_empty_command_returns_error() {
+        let json = r#"{"mcpServers": {"x": {"command": ""}}}"#;
+        let err = parse_mcp_config(json).unwrap_err();
+        assert!(matches!(err, McpConfigError::InvalidEntry { .. }));
+    }
+
+    #[test]
+    fn discover_uses_override_when_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let override_path = dir.path().join("custom.json");
+        std::fs::write(&override_path, r#"{"mcpServers":{}}"#).unwrap();
+        let working = dir.path().join("proj");
+        std::fs::create_dir_all(working.join(".loom")).unwrap();
+        std::fs::write(working.join(".loom").join("mcp.json"), "{}").unwrap();
+
+        let got = discover_mcp_config_path(Some(&override_path), Some(working.as_path()));
+        assert_eq!(got.as_deref(), Some(override_path.as_path()));
+    }
+
+    #[test]
+    fn discover_skips_override_when_not_exists_then_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let override_path = dir.path().join("nonexistent.json");
+        let working = dir.path().join("proj");
+        std::fs::create_dir_all(working.join(".loom")).unwrap();
+        let project_mcp = working.join(".loom").join("mcp.json");
+        std::fs::write(&project_mcp, "{}").unwrap();
+
+        let loom_home = dir.path().join("loom_home");
+        std::fs::create_dir_all(&loom_home).unwrap();
+        std::fs::write(loom_home.join("mcp.json"), "{}").unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", &loom_home);
+
+        let got = discover_mcp_config_path(Some(&override_path), Some(working.as_path()));
+        if let Some(ref p) = prev {
+            std::env::set_var("LOOM_HOME", p);
+        } else {
+            std::env::remove_var("LOOM_HOME");
+        }
+
+        assert_eq!(got.as_deref(), Some(project_mcp.as_path()));
+    }
+
+    #[test]
+    fn discover_returns_none_when_nothing_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let working = dir.path().join("empty");
+        std::fs::create_dir_all(&working).unwrap();
+
+        let loom_home = dir.path().join("loom_home");
+        std::fs::create_dir_all(&loom_home).unwrap();
+        let prev = std::env::var("LOOM_HOME").ok();
+        std::env::set_var("LOOM_HOME", &loom_home);
+
+        let got = discover_mcp_config_path(None, Some(working.as_path()));
+        if let Some(ref p) = prev {
+            std::env::set_var("LOOM_HOME", p);
+        } else {
+            std::env::remove_var("LOOM_HOME");
+        }
+
+        assert!(got.is_none());
+    }
+
+    #[test]
+    fn load_mcp_config_from_path_reads_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mcp.json");
+        std::fs::write(
+            &path,
+            r#"{"mcpServers":{"a":{"command":"cmd","args":["x"]}}}"#,
+        )
+        .unwrap();
+
+        let list = load_mcp_config_from_path(&path).unwrap();
+        assert_eq!(list.len(), 1);
+        match &list[0] {
+            McpServerDef::Stdio {
+                name,
+                command,
+                args,
+                ..
+            } => {
+                assert_eq!(name, "a");
+                assert_eq!(command, "cmd");
+                assert_eq!(args.as_slice(), ["x"]);
+            }
+            McpServerDef::Http { .. } => panic!("expected Stdio"),
+        }
+    }
+
+    #[test]
+    fn load_mcp_config_from_nonexistent_returns_io_error() {
+        let path = Path::new("/nonexistent/loom/mcp.json");
+        let err = load_mcp_config_from_path(path).unwrap_err();
+        assert!(matches!(err, McpConfigError::Io(_)));
+    }
+}

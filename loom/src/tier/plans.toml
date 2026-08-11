@@ -1,8 +1,0 @@
-[[plan]]
-provider_id = "zhipuai"
-family = "glm"
-version = "5"
-[plan.tiers]
-strong   = "glm-5.1"
-standard = "glm-4.7"
-light    = "glm-4.5-air"

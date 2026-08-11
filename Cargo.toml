@@ -1,58 +1,133 @@
 [workspace]
+
 resolver = "2"
+
 members = [
-    "loom",
-    "loom-llm",
-    "loom-lsp",
-    "loom-memory",
-    "loom-model-spec",
-    "loom-cache",
-    "loom-worktree",
-    "loom-curator",
-    "loom-skill",
-    "loom-graph",
-    "loom-pregel",
-    "config",
-    "model-spec-core",
-    "loom-examples",
-    "cli",
-    "serve",
-    "stream-event",
-    "loom-workspace",
-    "loom-acp",
-    "loom-workspace/gh",
-    "telegram-bot",
-    "task-core",
-    "task-cli",
-    "task-mcp-server",
+
+    "foundation/llm",
+
+    "experimental/tool/lsp",
+
+    "foundation/checkpoint",
+    "foundation/checkpoint-sqlite-store",
+    "experimental/worktree",
+
+
+    "agent/skill",
+
+    "foundation/graph-core",
+
+    "foundation/pregel",
+
+    "foundation/config",
+
+    "foundation/model-spec-core",
+
+    "apps/cli",
+    "apps/server",
+
+    "foundation/stream-event",
+
+
+
+    "apps/acp",
+
+
+
+    "apps/telegram-bot",
+
+    "experimental/task/task-core",
+
+    "experimental/task/task-cli",
+
+    "experimental/task/task-mcp-server",
+
+    "agent/agent-core",
+
+    "agent/tool/tool-core",
+
+    "agent/tool/tool-basic",
+
+    "agent/tool/tool-extensions",
+
+    "agent/tool/tool-experimental",
+
+    "agent/tool/tool-workflow",
+
+    "experimental/curator",
+
+
+
+    "experimental/memory-v2",
+    "experimental/vector-store",
+
+    "foundation/loom-util",
+
+    "foundation/loom-http-retry",
+
+    "foundation/pty-protocol",
+
+    "experimental/codex",
+
 ]
 
+
+
 [workspace.package]
-version = "0.3.0"
+
+version = "0.5.0"
+
 edition = "2021"
+
 authors = ["loom contributors"]
+
 license = "MIT"
 
+
+
 [workspace.dependencies]
+
 tokio = { version = "1.0", features = ["full"] }
+
 async-trait = "0.1"
+
 thiserror = "1.0"
+
 dotenv = "0.15"
+
 futures = "0.3"
+
 clap = { version = "4", features = ["derive", "env"] }
+
 tokio-stream = { version = "0.1", features = ["sync"] }
 
-# Test profile optimizations: build tests with optimizations for faster execution
-# while keeping debug assertions for safety checks.
+serde = { version = "1.0", features = ["derive"] }
+
+serde_json = "1.0"
+
+tracing = "0.1"
+
+ctor = "0.2"
 [profile.test]
-opt-level = 2          # Optimize for speed (default is 0)
-debug = 1              # Minimal debug info (faster compilation)
+
+opt-level = 2
+
+debug = 1
+
 debug-assertions = true
+
 overflow-checks = true
-lto = false            # Skip LTO for faster compilation
-codegen-units = 16     # Max parallelism during compilation
+
+lto = false
+
+codegen-units = 16
+
 incremental = true
 
+
+
 [profile.dev]
+
 opt-level = 0
+
 debug = 2

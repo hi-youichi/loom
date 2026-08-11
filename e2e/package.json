@@ -1,0 +1,15 @@
+{
+  "name": "e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npx playwright test",
+    "test:bdd:acp": "cargo build --manifest-path ../Cargo.toml -p cli && cargo build --manifest-path ../Cargo.toml -p loom-server-core --features test-support --bin acp-test-server && node --test tests/acp-bdd/loom-acp-stdio.test.mjs tests/acp-bdd/cli-acp-client.test.mjs tests/acp-bdd/loom-acp-multi-session.test.mjs",
+    "report": "npx playwright show-report",
+    "ui": "npx playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "latest"
+  }
+}

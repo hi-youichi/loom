@@ -1,0 +1,112 @@
+//! ACP Client Tools — Tools that call Client methods via ACP protocol.
+//!
+//! These tools allow Loom to leverage IDE capabilities when running as an ACP agent:
+//! - File system operations (fs/read_text_file, fs/write_text_file)
+//!
+//! Tools are only available when the Client declares support in initialize request.
+//! If a capability is not available, tools fall back to local execution or return errors.
+
+mod client_bridge;
+mod fs_tools;
+mod terminal_executor;
+
+pub use client_bridge::{
+    AcpClientBridge, ClientBridgeTrait, NoOpClientBridge, TerminalExitResult, TerminalOutput,
+};
+pub use fs_tools::{ReadTextFileTool, WriteTextFileTool};
+pub use terminal_executor::{AcpBridgeCommandExecutor, TerminalCommandExecutor};
+
+use crate::client_capabilities::ClientCapabilitiesInfo;
+use tool_core::Tool;
+
+/// Helper function to create a tool spec with common fields.
+pub(crate) fn create_tool_spec(
+    name: &str,
+    description: &str,
+    input_schema: serde_json::Value,
+) -> tool_core::ToolSpec {
+    tool_core::ToolSpec {
+        name: name.to_string(),
+        description: Some(description.to_string()),
+        input_schema,
+        output_hint: None,
+    }
+}
+
+/// Create all available ACP client tools based on capabilities.
+///
+/// This function returns tools that the client supports based on capabilities.
+/// Tools that require capabilities the client doesn't have are not included.
+///
+/// The bridge is injected per prompt/session, so tools never depend on a
+/// process-global client connection.
+pub fn create_acp_tools(
+    capabilities: &ClientCapabilitiesInfo,
+    bridge: std::sync::Arc<dyn ClientBridgeTrait>,
+) -> Vec<Box<dyn Tool>> {
+    let mut tools: Vec<Box<dyn Tool>> = Vec::new();
+
+    // File system tools
+    if capabilities.can_read_text_file() {
+        tools.push(Box::new(ReadTextFileTool::with_bridge(bridge.clone())));
+    }
+
+    if capabilities.can_write_text_file() {
+        tools.push(Box::new(WriteTextFileTool::with_bridge(bridge)));
+    }
+
+    tools
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_create_acp_tools_empty() {
+        // Default capabilities should not create any tools
+        let caps = ClientCapabilitiesInfo::default();
+        let tools = create_acp_tools(&caps, std::sync::Arc::new(NoOpClientBridge));
+        assert!(tools.is_empty());
+    }
+
+    #[test]
+    fn test_create_acp_tools_fs_read() {
+        let caps_json = json!({
+            "fs": {
+                "readTextFile": true
+            }
+        });
+        let caps = ClientCapabilitiesInfo::from_json(Some(caps_json));
+        let tools = create_acp_tools(&caps, std::sync::Arc::new(NoOpClientBridge));
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name(), "fs_read_text_file");
+    }
+
+    #[test]
+    fn test_create_acp_tools_fs_all() {
+        let caps_json = json!({
+            "fs": {
+                "readTextFile": true,
+                "writeTextFile": true
+            }
+        });
+        let caps = ClientCapabilitiesInfo::from_json(Some(caps_json));
+        let tools = create_acp_tools(&caps, std::sync::Arc::new(NoOpClientBridge));
+        assert_eq!(tools.len(), 2);
+    }
+
+    #[test]
+    fn test_tool_specs() {
+        let read_tool = ReadTextFileTool::new();
+        let spec = read_tool.spec();
+        assert_eq!(spec.name, "fs_read_text_file");
+        assert!(spec.description.is_some());
+
+        let write_tool = WriteTextFileTool::new();
+        let spec = write_tool.spec();
+        assert_eq!(spec.name, "fs_write_text_file");
+        assert!(spec.description.is_some());
+    }
+}

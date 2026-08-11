@@ -15,28 +15,12 @@ name = "state_graph_echo"
 path = "examples/state_graph_echo.rs"
 
 [[example]]
-name = "react_linear"
-path = "examples/react_linear.rs"
-
-[[example]]
 name = "memory_checkpoint"
 path = "examples/memory_checkpoint.rs"
 
 [[example]]
 name = "memory_persistence"
 path = "examples/memory_persistence.rs"
-
-[[example]]
-name = "react_exa"
-path = "examples/react_exa.rs"
-
-[[example]]
-name = "react_mcp"
-path = "examples/react_mcp.rs"
-
-[[example]]
-name = "react_mcp_gitlab"
-path = "examples/react_mcp_gitlab.rs"
 
 [[example]]
 name = "react_memory"
@@ -50,10 +34,16 @@ required-features = ["embedding"]
 
 [features]
 # LanceDB vector store for LanceStore (react_memory example). Disabled by default so `cargo test` does not pull in lancedb.
-embedding = ["loom/lance"]
+embedding = ["vector-store/lance"]
 
 [dependencies]
 loom = { path = "../loom" }
+loom-graph-core = { path = "../foundation/graph-core" }
+loom-llm = { path = "../foundation/llm" }
+tool-core = { path = "../agent/tool/tool-core" }
+checkpoint = { path = "../foundation/checkpoint" }
+checkpoint-sqlite-store = { path = "../foundation/checkpoint-sqlite-store" }
+vector-store = { path = "../experimental/vector-store" }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 dotenv = { workspace = true }

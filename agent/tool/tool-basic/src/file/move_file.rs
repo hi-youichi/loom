@@ -1,0 +1,105 @@
+//! Move-file tool: move or rename a file or directory under the working folder.
+//!
+//! Exposes `move_file` as a tool for the LLM. Both source and target are
+//! validated to be under working folder. Interacts with [`Tool`](tool_core::Tool),
+//! [`ToolSpec`](tool_core::ToolSpec).
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use serde_json::json;
+
+use tool_core::Tool;
+use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
+
+use super::path::resolve_path;
+
+/// Tool name for moving or renaming a file or directory.
+pub const TOOL_MOVE_FILE: &str = "move_file";
+
+/// Tool that moves or renames a file or directory under the working folder.
+///
+/// Both source and target must be under the working folder. Interacts with
+/// [`resolve_path_under`] for path validation.
+pub struct MoveFileTool {
+    /// Canonical working folder path (shared with other file tools).
+    pub(crate) working_folder: Arc<std::path::PathBuf>,
+    pub(crate) allow_outside: bool,
+}
+
+impl MoveFileTool {
+    /// Creates a new MoveFileTool with the given working folder.
+    pub fn new(working_folder: Arc<std::path::PathBuf>, allow_outside: bool) -> Self {
+        Self {
+            working_folder,
+            allow_outside,
+        }
+    }
+}
+
+#[async_trait]
+impl Tool for MoveFileTool {
+    fn name(&self) -> &str {
+        TOOL_MOVE_FILE
+    }
+
+    fn spec(&self) -> tool_core::ToolSpec {
+        tool_core::ToolSpec {
+            name: TOOL_MOVE_FILE.to_string(),
+            description: Some(
+                "Move or rename a file or directory. Both source and target must be under the \
+                 working folder."
+                    .to_string(),
+            ),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "source": {
+                        "type": "string",
+                        "description": "Source path relative to working folder."
+                    },
+                    "target": {
+                        "type": "string",
+                        "description": "Target path relative to working folder."
+                    }
+                },
+                "required": ["source", "target"]
+            }),
+            output_hint: None,
+        }
+    }
+
+    async fn call(
+        &self,
+        args: serde_json::Value,
+        _ctx: Option<&ToolCallContext>,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        let source_param = args
+            .get("source")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolSourceError::InvalidInput("missing source".to_string()))?;
+        let target_param = args
+            .get("target")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ToolSourceError::InvalidInput("missing target".to_string()))?;
+        let source = resolve_path(
+            self.working_folder.as_ref(),
+            source_param,
+            self.allow_outside,
+        )?;
+        let target = resolve_path(
+            self.working_folder.as_ref(),
+            target_param,
+            self.allow_outside,
+        )?;
+        if !source.exists() {
+            return Err(ToolSourceError::InvalidInput(format!(
+                "source not found: {}",
+                source.display()
+            )));
+        }
+        std::fs::rename(&source, &target)
+            .map_err(|e| ToolSourceError::Transport(format!("failed to move: {}", e)))?;
+        Ok(ToolCallContent::text("ok".to_string()))
+    }
+}

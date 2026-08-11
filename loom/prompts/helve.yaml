@@ -1,9 +1,0 @@
-# Helve product prompts: workdir rules and approval text. Canonical source.
-# Placeholder: {workdir} is replaced at runtime with the working folder path.
-
-workdir_section_template: |
-  WORKING FOLDER & FILE RULES:
-  - Working folder path: {workdir}
-
-approval_destructive: "\n\nAPPROVAL: Before executing delete_file or remove_dir, output your plan and wait for the user to confirm (e.g. \"Proceed?\" or \"Continue?\"). Do not perform the deletion until the user approves."
-approval_always: "\n\nAPPROVAL: Before executing delete_file, remove_dir, or bulk write_file operations, output your plan and wait for the user to confirm. Do not perform these operations until the user approves."

@@ -1,0 +1,86 @@
+//! Graph visualization utilities.
+//!
+//! Provides functionality to export graph structure to Graphviz DOT format
+//! for visualization and debugging.
+
+use std::fmt::Write;
+
+use crate::compiled::CompiledStateGraph;
+use crate::state_graph::{END, START};
+
+/// Generate Graphviz DOT format representation of the graph.
+///
+/// Returns a string in DOT format that can be rendered using Graphviz tools.
+pub fn generate_dot<S>(graph: &CompiledStateGraph<S>) -> String
+where
+    S: std::fmt::Debug,
+{
+    let mut dot = String::from("digraph {\n");
+    dot.push_str("  rankdir=LR;\n");
+    dot.push_str("  node [shape=box];\n\n");
+
+    // Add START and END nodes
+    dot.push_str(&format!(
+        "  \"{}\" [label=\"START\", style=bold, fillcolor=lightgreen];\n",
+        START
+    ));
+    dot.push_str(&format!(
+        "  \"{}\" [label=\"END\", style=bold, fillcolor=lightcoral];\n",
+        END
+    ));
+
+    // Add regular nodes
+    for node_id in graph.nodes.keys() {
+        dot.push_str(&format!("  \"{}\";\n", node_id));
+    }
+
+    dot.push('\n');
+
+    // Add edges based on edge_order
+    if !graph.edge_order.is_empty() {
+        // Edge from START to first node
+        dot.push_str(&format!(
+            "  \"{}\" -> \"{}\";\n",
+            START, graph.edge_order[0]
+        ));
+
+        // Edges between nodes
+        for i in 1..graph.edge_order.len() {
+            dot.push_str(&format!(
+                "  \"{}\" -> \"{}\";\n",
+                graph.edge_order[i - 1],
+                graph.edge_order[i]
+            ));
+        }
+
+        // Edge from last node to END
+        if let Some(last_node) = graph.edge_order.last() {
+            dot.push_str(&format!("  \"{}\" -> \"{}\";\n", last_node, END));
+        }
+    }
+
+    dot.push_str("}\n");
+    dot
+}
+
+/// Generate a simple text representation of the graph structure.
+pub fn generate_text<S>(graph: &CompiledStateGraph<S>) -> String
+where
+    S: std::fmt::Debug,
+{
+    let mut text = String::new();
+    writeln!(text, "Graph Structure:").unwrap();
+    writeln!(text, "Nodes: {}", graph.nodes.len()).unwrap();
+
+    writeln!(text, "\nExecution Order:").unwrap();
+    writeln!(text, "  {} ->", START).unwrap();
+    for (i, node_id) in graph.edge_order.iter().enumerate() {
+        if i == graph.edge_order.len() - 1 {
+            writeln!(text, "  {} -> {}", node_id, END).unwrap();
+        } else {
+            writeln!(text, "  {} ->", node_id).unwrap();
+        }
+    }
+
+    text
+}

@@ -3,12 +3,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use loom::SqliteSaver;
-use loom::{
-    Checkpointer, Embedder, JsonSerializer, LanceStore, LlmClient, LlmResponse, Message, Namespace,
-    Next, Node, RunnableConfig, StateGraph, Store, StoreError, ToolCall as ReActToolCall,
-    ToolCallContent, ToolResult, ToolSource, ToolSpec, END, START,
-};
+use checkpoint::{Checkpointer, JsonSerializer, Namespace, RunnableConfig, Store, StoreError};
+use checkpoint_sqlite_store::SqliteSaver;
+use vector_store::LanceStore;
+use loom_llm::{Embedder, LlmClient, LlmResponse};
+use loom_llm::message::Message;
+use loom_graph_core::{Next, Node, SearchOptions, StateGraph, END, START};
+use loom_tools::tool_source::{ToolSource, ToolSpec, ToolCallContent, ToolResult};
+use agent::state::ToolCall as ReActToolCall;
 
 #[derive(Clone)]
 struct MockEmbedder;
@@ -50,7 +52,7 @@ struct MemoryMockLlm;
 
 #[async_trait]
 impl LlmClient for MemoryMockLlm {
-    async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, loom::error::AgentError> {
+    async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, agent::agent::error::AgentError> {
         let last_user_msg = messages
             .iter()
             .rev()
@@ -94,11 +96,12 @@ impl LlmClient for MemoryMockLlm {
             vec![]
         };
 
-        Ok(LlmResponse {
+Ok(LlmResponse {
             content,
             reasoning_content: None,
             tool_calls,
             usage: None,
+            ..Default::default()
         })
     }
 }
@@ -156,7 +159,7 @@ impl MemoryToolSource {
 
 #[async_trait::async_trait]
 impl ToolSource for MemoryToolSource {
-    async fn list_tools(&self) -> Result<Vec<ToolSpec>, loom::tool_source::ToolSourceError> {
+    async fn list_tools(&self) -> Result<Vec<ToolSpec>, tool_core::tool_source::ToolSourceError> {
         Ok(vec![
             ToolSpec {
                 name: "save_memory".to_string(),
@@ -201,7 +204,7 @@ impl ToolSource for MemoryToolSource {
         &self,
         name: &str,
         arguments: serde_json::Value,
-    ) -> Result<ToolCallContent, loom::tool_source::ToolSourceError> {
+    ) -> Result<ToolCallContent, tool_core::tool_source::ToolSourceError> {
         match name {
             "save_memory" => {
                 let info = arguments["info"].as_str().unwrap_or("").to_string();
@@ -217,39 +220,39 @@ impl ToolSource for MemoryToolSource {
                 self.store
                     .put(&self.namespace, &key, &value)
                     .await
-                    .map_err(|e| loom::tool_source::ToolSourceError::Transport(e.to_string()))?;
-                Ok(ToolCallContent::text(format!("Saved to memory: {)", info),
+                    .map_err(|e| tool_core::tool_source::ToolSourceError::Transport(e.to_string()))?;
+                Ok(ToolCallContent::text(format!("Saved to memory: {}", info))),
                 })
             }
             "retrieve_memory" => {
                 let key = arguments["key"].as_str().unwrap_or("");
                 let hits = self
                     .store
-                    .search(&self.namespace, Some(key), Some(5))
+                    .search(&self.namespace, SearchOptions { query: Some(key), limit: 5 })
                     .await
-                    .map_err(|e| loom::tool_source::ToolSourceError::Transport(e.to_string()))?;
+                    .map_err(|e| tool_core::tool_source::ToolSourceError::Transport(e.to_string()))?;
                 if hits.is_empty() {
-                    Ok(ToolCallContent::text(format!("No memories found for '{)'", key),
+                    Ok(ToolCallContent::text(format!("No memories found for '{}'", key))),
                     })
                 } else {
                     let memories: Vec<String> = hits
                         .iter()
-                        .map(|h| h.value["info"].as_str().unwrap_or("").to_string())
+                        .map(|h| h.item.value["info"].as_str().unwrap_or("").to_string())
                         .collect();
-                    Ok(ToolCallContent::text(format!("Found memories: {)", memories.join(", ")),
+                    Ok(ToolCallContent::text(format!("Found memories: {}", memories.join(", "))),
                     })
                 }
             }
             "list_memories" => {
                 let keys =
                     self.store.list(&self.namespace).await.map_err(|e| {
-                        loom::tool_source::ToolSourceError::Transport(e.to_string())
+                        tool_core::tool_source::ToolSourceError::Transport(e.to_string())
                     })?;
                 let mut memories = Vec::new();
                 for key in keys {
                     if let Some(value) =
                         self.store.get(&self.namespace, &key).await.map_err(|e| {
-                            loom::tool_source::ToolSourceError::Transport(e.to_string())
+                            tool_core::tool_source::ToolSourceError::Transport(e.to_string())
                         })?
                     {
                         if let Some(info) = value["info"].as_str() {
@@ -264,7 +267,7 @@ impl ToolSource for MemoryToolSource {
                     })
                 }
             }
-            _ => Err(loom::tool_source::ToolSourceError::NotFound(format!(
+            _ => Err(tool_core::tool_source::ToolSourceError::NotFound(format!(
                 "Unknown tool: {}",
                 name
             ))),
@@ -291,7 +294,7 @@ impl Node<MemoryReActState> for MemoryThinkNode {
     async fn run(
         &self,
         state: MemoryReActState,
-    ) -> Result<(MemoryReActState, Next), loom::error::AgentError> {
+    ) -> Result<(MemoryReActState, Next), agent::agent::error::AgentError> {
         let response = self.llm.invoke(&state.messages).await?;
 
         let mut messages = state.messages;
@@ -329,7 +332,7 @@ impl Node<MemoryReActState> for MemoryActNode {
     async fn run(
         &self,
         state: MemoryReActState,
-    ) -> Result<(MemoryReActState, Next), loom::error::AgentError> {
+    ) -> Result<(MemoryReActState, Next), agent::agent::error::AgentError> {
         let mut tool_results = Vec::with_capacity(state.tool_calls.len());
 
         for tc in &state.tool_calls {
@@ -343,7 +346,7 @@ impl Node<MemoryReActState> for MemoryActNode {
                 .tools
                 .call_tool(&tc.name, args)
                 .await
-                .map_err(|e| loom::error::AgentError::ExecutionFailed(e.to_string()))?;
+                .map_err(|e| agent::agent::error::AgentError::ExecutionFailed(e.to_string()))?;
 
             tool_results.push(ToolResult {
                 call_id: tc.id.clone(),
@@ -390,7 +393,7 @@ impl Node<MemoryReActState> for MemoryObserveNode {
     async fn run(
         &self,
         state: MemoryReActState,
-    ) -> Result<(MemoryReActState, Next), loom::error::AgentError> {
+    ) -> Result<(MemoryReActState, Next), agent::agent::error::AgentError> {
         let had_tool_calls = !state.tool_calls.is_empty();
 
         let mut messages = state.messages;

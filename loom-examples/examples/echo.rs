@@ -1,25 +1,22 @@
-//! Echo example: state-in, state-out (Loom-style).
+//! Simple echo agent example using the loom Graph API.
 //!
-//! EchoAgent and AgentState are implemented here as examples of using the minimal
-//! Agent trait; they are not part of the framework.
-//! Run: `cargo run -p loom-examples --example echo -- "Hello"`
+//! Run: `cargo run -p loom-examples --example echo`
 
 use async_trait::async_trait;
-use loom::{Agent, AgentError, Message};
+use loom_graph_core::Agent;
+use loom_llm::{error::GraphError, message::Message};
 use std::env;
 
-/// Example state: message list only (defined in example, not in framework).
 #[derive(Debug, Clone, Default)]
-struct AgentState {
-    pub messages: Vec<Message>,
+struct EchoState {
+    messages: Vec<Message>,
 }
 
-/// Example agent: if the last message is `User(s)`, appends `Assistant(s)`.
 struct EchoAgent;
 
 impl EchoAgent {
     fn new() -> Self {
-        Self
+        EchoAgent
     }
 }
 
@@ -28,10 +25,8 @@ impl Agent for EchoAgent {
     fn name(&self) -> &str {
         "echo"
     }
-
-    type State = AgentState;
-
-    async fn run(&self, state: Self::State) -> Result<Self::State, AgentError> {
+    type State = EchoState;
+    async fn run(&self, state: Self::State) -> Result<Self::State, GraphError> {
         let mut messages = state.messages;
         let last = messages.last().and_then(|m| {
             if let Message::User(s) = m {
@@ -43,33 +38,24 @@ impl Agent for EchoAgent {
         if let Some(content) = last {
             messages.push(Message::assistant(content));
         }
-        Ok(AgentState { messages })
+        Ok(EchoState { messages })
     }
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = env::args()
         .nth(1)
-        .unwrap_or_else(|| "hello world".to_string());
-
-    let mut state = AgentState::default();
-    state.messages.push(Message::user(input));
+        .unwrap_or_else(|| "Hello, world!".to_string());
 
     let agent = EchoAgent::new();
-    match agent.run(state).await {
-        Ok(s) => {
-            if let Some(Message::Assistant(payload)) = s.messages.last() {
-                let content = &payload.content;
-                println!("{content}");
-            } else {
-                eprintln!("no assistant reply");
-                std::process::exit(1);
-            }
-        }
-        Err(e) => {
-            eprintln!("error: {e}");
-            std::process::exit(1);
-        }
+    let state = agent.run(EchoState {
+        messages: vec![Message::user(input)],
+    }).await?;
+
+    if let Some(Message::Assistant(payload)) = state.messages.last() {
+        println!("{}", payload.content);
     }
+
+    Ok(())
 }

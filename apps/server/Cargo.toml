@@ -1,0 +1,63 @@
+[package]
+name = "loom-server-core"
+version.workspace = true
+edition.workspace = true
+description = "Loom HTTP+SSE server: serves loom as an opencode-compatible kernel (External mode)"
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "loom_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "acp-test-server"
+path = "src/bin/acp_test_server.rs"
+required-features = ["test-support"]
+
+[features]
+# Exposes deterministic LLM injection for the server's black-box integration
+# suite. Production routes never select this path.
+test-support = ["loom-acp/test-support"]
+
+[dependencies]
+agent = { path = "../../agent/agent-core" }
+loom-llm = { path = "../../foundation/llm" }
+tool-core = { path = "../../agent/tool/tool-core" }
+stream-event = { path = "../../foundation/stream-event" }
+config = { path = "../../foundation/config", features = ["tracing-init"] }
+model-spec-core = { path = "../../foundation/model-spec-core" }
+loom-acp = { package = "acp", path = "../acp" }
+agent-client-protocol = "0.15.1"
+
+axum = { version = "0.7", features = ["macros", "ws"] }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
+
+serde = { workspace = true }
+serde_json = "1"
+toml = "0.8"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+parking_lot = "0.12"
+portable-pty = "0.8"
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+
+# PTY wire-protocol helpers (foundation/pty-protocol crate — filled in by W1).
+loom-pty-protocol = { path = "../../foundation/pty-protocol" }
+
+# HTTP middleware (task P0.7)
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["cors", "set-header", "trace", "validate-request"] }
+
+# CLI parsing (task P0.1)
+clap = { workspace = true }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+tower-test = "0.4"
+tokio-tungstenite = "0.24"
+reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls"] }

@@ -1,0 +1,63 @@
+[package]
+name = "cli"
+version.workspace = true
+edition.workspace = true
+description = "CLI for Loom: run ReAct agent from the command line"
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "loom"
+path = "src/main.rs"
+
+[dependencies]
+agent = { path = "../../agent/agent-core" }
+loom-llm = { path = "../../foundation/llm" }
+loom-graph-core = { path = "../../foundation/graph-core" }
+skill = { path = "../../agent/skill" }
+
+tool-core = { path = "../../agent/tool/tool-core" }
+tool-workflow = { path = "../../agent/tool/tool-workflow" }
+loom-curator = { path = "../../experimental/curator" }
+tool-experimental = { path = "../../agent/tool/tool-experimental" }
+memory-v2 = { path = "../../experimental/memory-v2" }
+model-spec-core = { path = "../../foundation/model-spec-core" }
+checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
+loom-acp = { package = "acp", path = "../acp" }
+loom_server = { package = "loom-server-core", path = "../server" }
+
+stream-event = { path = "../../foundation/stream-event" }
+config = { path = "../../foundation/config", features = ["tracing-init"] }
+base64 = "0.22"
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "net"] }
+clap = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+thiserror = { workspace = true }
+tracing = "0.1"
+chrono = "0.4"
+tracing-core = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+futures-util = "0.3"
+rusqlite = { version = "0.31", features = ["bundled"] }
+task-core = { path = "../../experimental/task/task-core" }
+tokio-util = { version = "0.7", features = ["rt"] }
+async-trait = { workspace = true }
+ctrlc = "3"
+termsize = "0.1"
+
+unicode-width = "0.2"
+chrono-humanize = "0.2"
+minus = { version = "5.7", default-features = false, features = ["static_output"] }
+
+[dev-dependencies]
+dotenv = { workspace = true }
+tempfile = "3"

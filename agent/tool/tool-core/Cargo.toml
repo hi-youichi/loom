@@ -1,0 +1,28 @@
+[package]
+name = "tool-core"
+version.workspace = true
+edition.workspace = true
+description = "Core tool types and registry for Loom agents"
+license.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+loom-llm = { path = "../../../foundation/llm" }
+
+tokio-util = { version = "0.7", features = ["rt"] }
+futures-util = "0.3"
+
+tracing = "0.1"
+thiserror = { workspace = true }
+serde_yaml = "0.9"
+
+[dev-dependencies]
+tempfile = "3"

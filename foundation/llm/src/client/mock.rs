@@ -1,0 +1,279 @@
+//! Mock LLM for tests and examples.
+//!
+//! Returns fixed assistant message and optional fixed ToolCall (e.g. get_time);
+//! configurable "no tool_calls" to test END path. Optional stateful mode for multi-round.
+//!
+//! # Streaming Support
+//!
+//! `MockLlm` implements `invoke_stream()` with configurable streaming behavior:
+//! - Default: sends content as a single chunk (efficient for most tests)
+//! - Character-by-character: splits content into individual character chunks (for stream testing)
+
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
+
+use async_trait::async_trait;
+
+use crate::error::LlmError;
+use crate::message::Message;
+use crate::tool::ToolCall;
+use crate::traits::MessageChunk;
+use crate::traits::{LlmClient, LlmResponse, LlmUsage, StreamSink};
+
+/// Mock LLM: fixed assistant text and optional tool_calls.
+///
+/// Configurable to return one fixed ToolCall (e.g. get_time) or no tool_calls,
+/// so the graph can run one round (think → act → observe → END) or test END
+/// after think. Used by ThinkNode in tests and ReAct linear example.
+/// Optional stateful mode: first call returns tool_calls, second returns no tool_calls (multi-round).
+///
+/// # Streaming
+///
+/// By default, `invoke_stream()` sends the content as a single chunk through the
+/// [`StreamSink`]. Enable `stream_by_char` to send each character as a separate chunk.
+///
+/// **Interaction**: Implements `LlmClient`; used by ThinkNode.
+pub struct MockLlm {
+    /// Assistant message content to return (or first call when stateful).
+    content: String,
+    /// Tool calls to return (or first call when stateful).
+    tool_calls: Vec<ToolCall>,
+    /// When Some, first invoke() returns (content, tool_calls), later returns (second_content, []).
+    call_count: Option<AtomicUsize>,
+    /// Second response content (stateful mode).
+    second_content: Option<String>,
+    /// When true, invoke_stream sends each character as a separate chunk.
+    stream_by_char: AtomicBool,
+    /// Optional per-chunk delay for streaming tests.
+    stream_delay_ms: Option<u64>,
+    /// Token usage to return when set (for testing usage merge in ThinkNode).
+    usage: Option<LlmUsage>,
+}
+
+impl MockLlm {
+    /// Creates a mock that returns one assistant message and one tool call (get_time).
+    pub fn with_get_time_call() -> Self {
+        Self {
+            content: "I'll check the time.".to_string(),
+            tool_calls: vec![ToolCall {
+                name: "get_time".to_string(),
+                arguments: "{}".to_string(),
+                id: Some("call-1".to_string()),
+            }],
+            call_count: None,
+            second_content: None,
+            stream_by_char: AtomicBool::new(false),
+            stream_delay_ms: None,
+            usage: None,
+        }
+    }
+
+    /// Creates a mock that returns assistant text and no tool_calls (END path).
+    pub fn with_no_tool_calls(content: impl Into<String>) -> Self {
+        Self {
+            content: content.into(),
+            tool_calls: vec![],
+            call_count: None,
+            second_content: None,
+            stream_by_char: AtomicBool::new(false),
+            stream_delay_ms: None,
+            usage: None,
+        }
+    }
+
+    /// Creates a mock with custom content and tool_calls.
+    pub fn new(content: impl Into<String>, tool_calls: Vec<ToolCall>) -> Self {
+        Self {
+            content: content.into(),
+            tool_calls,
+            call_count: None,
+            second_content: None,
+            stream_by_char: AtomicBool::new(false),
+            stream_delay_ms: None,
+            usage: None,
+        }
+    }
+
+    /// Creates a stateful mock: first invoke() returns get_time tool_call, second returns no tool_calls.
+    /// Used for multi-round ReAct tests.
+    pub fn first_tools_then_end() -> Self {
+        Self {
+            content: "I'll check the time.".to_string(),
+            tool_calls: vec![ToolCall {
+                name: "get_time".to_string(),
+                arguments: "{}".to_string(),
+                id: Some("call-1".to_string()),
+            }],
+            call_count: Some(AtomicUsize::new(0)),
+            second_content: Some("The time is as above.".to_string()),
+            stream_by_char: AtomicBool::new(false),
+            stream_delay_ms: None,
+            usage: None,
+        }
+    }
+
+    /// Set content (builder).
+    pub fn with_content(mut self, content: impl Into<String>) -> Self {
+        self.content = content.into();
+        self
+    }
+
+    /// Set tool_calls (builder).
+    pub fn with_tool_calls(mut self, tool_calls: Vec<ToolCall>) -> Self {
+        self.tool_calls = tool_calls;
+        self
+    }
+
+    /// Enable character-by-character streaming for `invoke_stream()`.
+    pub fn with_stream_by_char(self) -> Self {
+        self.stream_by_char.store(true, Ordering::SeqCst);
+        self
+    }
+
+    /// Add an artificial per-chunk streaming delay in milliseconds.
+    pub fn with_stream_delay_ms(mut self, delay_ms: u64) -> Self {
+        self.stream_delay_ms = Some(delay_ms);
+        self
+    }
+
+    /// Set token usage to return in the response (for testing usage merge in ThinkNode).
+    pub fn with_usage(mut self, usage: LlmUsage) -> Self {
+        self.usage = Some(usage);
+        self
+    }
+}
+
+#[async_trait]
+impl LlmClient for MockLlm {
+    async fn invoke(&self, _messages: &[Message]) -> Result<LlmResponse, LlmError> {
+        let (content, tool_calls) = match &self.call_count {
+            Some(c) => {
+                let n = c.fetch_add(1, Ordering::SeqCst);
+                if n == 0 {
+                    (self.content.clone(), self.tool_calls.clone())
+                } else {
+                    (
+                        self.second_content
+                            .as_deref()
+                            .unwrap_or(&self.content)
+                            .to_string(),
+                        vec![],
+                    )
+                }
+            }
+            None => (self.content.clone(), self.tool_calls.clone()),
+        };
+        Ok(LlmResponse {
+            content,
+            reasoning_content: None,
+            tool_calls,
+            usage: self.usage.clone(),
+            ..Default::default()
+        })
+    }
+
+    /// Streaming variant: sends content chunks via the [`StreamSink`].
+    ///
+    /// Behavior depends on `stream_by_char`:
+    /// - false (default): sends entire content as one chunk
+    /// - true: sends each character as a separate chunk
+    async fn invoke_stream(
+        &self,
+        messages: &[Message],
+        sink: Option<&dyn StreamSink>,
+        node_id: &str,
+    ) -> Result<LlmResponse, LlmError> {
+        // Get the response content (handles stateful mode)
+        let response = self.invoke(messages).await?;
+
+        let mut first_chunk_at: Option<std::time::Instant> = None;
+
+        // Send chunks if streaming is enabled
+        if let Some(sink) = sink {
+            if !response.content.is_empty() {
+                if self.stream_by_char.load(Ordering::SeqCst) {
+                    // Character-by-character streaming
+                    for c in response.content.chars() {
+                        if let Some(delay_ms) = self.stream_delay_ms {
+                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                        }
+                        let chunk = MessageChunk::message(c.to_string());
+                        let r = sink.try_send_message(chunk, node_id);
+                        if first_chunk_at.is_none() {
+                            first_chunk_at = r;
+                        }
+                    }
+                } else {
+                    // Single chunk (default)
+                    if let Some(delay_ms) = self.stream_delay_ms {
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                    }
+                    let chunk = MessageChunk::message(response.content.clone());
+                    first_chunk_at = sink.try_send_message(chunk, node_id);
+                }
+            }
+        }
+
+        let mut response = response;
+        if first_chunk_at.is_some() {
+            response.first_chunk_at = first_chunk_at;
+        }
+
+        Ok(response)
+    }
+
+    async fn list_models(&self) -> Result<Vec<crate::traits::ModelInfo>, LlmError> {
+        Ok(vec![crate::traits::ModelInfo {
+            id: "mock-model".to_string(),
+            created: None,
+            owned_by: Some("mock".to_string()),
+        }])
+    }
+}
+
+/// Multi-round mock LLM that returns a pre-recorded sequence of responses.
+///
+/// Each element in `rounds` is `(content, tool_calls)`. After all rounds are
+/// consumed, returns the last entry repeatedly. When a round has empty
+/// `tool_calls`, the review agent loop exits.
+pub struct MultiRoundMockLlm {
+    rounds: Vec<(String, Vec<ToolCall>)>,
+    current: AtomicUsize,
+}
+
+impl MultiRoundMockLlm {
+    pub fn new(rounds: Vec<(String, Vec<ToolCall>)>) -> Self {
+        assert!(
+            !rounds.is_empty(),
+            "MultiRoundMockLlm needs at least one round"
+        );
+        Self {
+            rounds,
+            current: AtomicUsize::new(0),
+        }
+    }
+}
+
+#[async_trait]
+impl LlmClient for MultiRoundMockLlm {
+    async fn invoke(&self, _messages: &[Message]) -> Result<LlmResponse, LlmError> {
+        let idx = self.current.fetch_add(1, Ordering::SeqCst);
+        let idx = idx.min(self.rounds.len() - 1);
+        let (content, tool_calls) = self.rounds[idx].clone();
+        Ok(LlmResponse {
+            content,
+            reasoning_content: None,
+            tool_calls,
+            usage: None,
+            ..Default::default()
+        })
+    }
+
+    async fn list_models(&self) -> Result<Vec<crate::traits::ModelInfo>, LlmError> {
+        Ok(vec![crate::traits::ModelInfo {
+            id: "mock-model".to_string(),
+            created: None,
+            owned_by: Some("mock".to_string()),
+        }])
+    }
+}

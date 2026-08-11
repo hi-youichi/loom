@@ -1,0 +1,109 @@
+//! Prune node: runs compaction::prune on state.messages when config.prune is true.
+
+use async_trait::async_trait;
+use tracing::debug;
+
+use crate::state::ReActState;
+use loom_graph_core::GraphError;
+use loom_graph_core::{Next, Node};
+
+use super::compaction;
+use super::config::CompactionConfig;
+
+/// Node that prunes old tool results from messages when `config.prune` is true.
+pub struct PruneNode {
+    pub config: CompactionConfig,
+}
+
+#[async_trait]
+impl Node<ReActState> for PruneNode {
+    fn id(&self) -> &str {
+        "prune"
+    }
+
+    async fn run(&self, state: ReActState) -> Result<(ReActState, Next), GraphError> {
+        let message_count = state.messages.len();
+        debug!(
+            message_count,
+            prune = self.config.prune,
+            "compress prune node entered"
+        );
+        let messages = if self.config.prune {
+            compaction::prune(state.messages, &self.config)
+        } else {
+            debug!("prune disabled, passing through");
+            state.messages
+        };
+        Ok((ReActState { messages, ..state }, Next::Continue))
+    }
+
+    async fn run_with_context(
+        &self,
+        state: ReActState,
+        _ctx: &loom_graph_core::RunContext<ReActState>,
+    ) -> Result<(ReActState, Next), GraphError> {
+        // For now, delegate to run. Implement proper context handling if needed.
+        self.run(state).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::state::ReActState;
+    use loom_llm::message::{Message, UserContent};
+
+    use super::*;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn prune_node_id_is_prune() {
+        let node = PruneNode {
+            config: CompactionConfig::default(),
+        };
+        assert_eq!(node.id(), "prune");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn prune_node_with_prune_false_passes_through() {
+        let node = PruneNode {
+            config: CompactionConfig {
+                prune: false,
+                ..Default::default()
+            },
+        };
+        let state = ReActState {
+            messages: vec![Message::user("Tool x returned: y")],
+            ..Default::default()
+        };
+        let (out, next) = node.run(state).await.unwrap();
+        assert_eq!(out.messages.len(), 1);
+        assert!(
+            matches!(&out.messages[0], Message::User(UserContent::Text(s)) if s.contains("Tool x returned:"))
+        );
+        assert!(matches!(next, Next::Continue));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn prune_node_with_prune_true_applies_prune() {
+        let node = PruneNode {
+            config: CompactionConfig {
+                prune: true,
+                prune_keep_tokens: 1,
+                prune_minimum: Some(0),
+                ..Default::default()
+            },
+        };
+        let state = ReActState {
+            messages: vec![
+                Message::user("u"),
+                Message::user("Tool a returned: xxxxxxxxxxxxxxxxxxxx"), // 5 tokens
+            ],
+            ..Default::default()
+        };
+        let (out, next) = node.run(state).await.unwrap();
+        assert_eq!(out.messages.len(), 2);
+        assert!(
+            matches!(&out.messages[1], Message::User(UserContent::Text(s)) if s == compaction::PRUNE_PLACEHOLDER)
+        );
+        assert!(matches!(next, Next::Continue));
+    }
+}

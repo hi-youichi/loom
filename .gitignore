@@ -1,4 +1,6 @@
 .loom
+.luft
+.maestro
 internal
 vendor
 downloads
@@ -16,11 +18,13 @@ idea/
 lancedb_data/
 author-name.txt
 
+docs/dev
+
 # Cargo
 target
 /target
 **/*.rs.bk
-Cargo.lock
+# Cargo.lock - kept for reproducible builds (workspace has binary targets)
 
 # Environment and secrets
 .env
