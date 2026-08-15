@@ -235,11 +235,7 @@ fn status_rebuild_does_not_write_instance_json_back_to_disk() {
 fn status_errors_on_legacy_run_dir_without_instance_json() {
     let tmp = TempDir::new().unwrap();
     let instance_dir = LEGACY_TS;
-    let dir = tmp
-        .path()
-        .join(".luft")
-        .join("runs")
-        .join(instance_dir);
+    let dir = tmp.path().join(".luft").join("runs").join(instance_dir);
     write_run_fixture(&dir);
     std::fs::remove_file(dir.join("instance.json")).unwrap();
 

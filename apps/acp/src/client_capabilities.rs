@@ -14,6 +14,10 @@ use std::sync::Arc;
 /// Client capabilities as detected during initialization.
 #[derive(Debug, Clone, Default)]
 pub struct DetectedCapabilities {
+    pub command_list: bool,
+    pub command_create: bool,
+    pub command_update: bool,
+    pub command_delete: bool,
     // File system capabilities
     pub fs_read_text_file: bool,
     pub fs_write_text_file: bool,
@@ -33,6 +37,7 @@ pub struct DetectedCapabilities {
     pub session_list: bool,
     pub session_fork: bool,
     pub session_resume: bool,
+    pub question: bool,
 }
 
 impl DetectedCapabilities {
@@ -48,6 +53,28 @@ impl DetectedCapabilities {
     pub fn from_client_capabilities_json(caps_json: Option<Value>) -> Self {
         let caps_json = caps_json.unwrap_or_else(|| serde_json::json!({}));
         let caps_obj = caps_json.as_object().cloned().unwrap_or_default();
+        let agent_caps = caps_obj
+            .get("agentCapabilities")
+            .and_then(|v| v.as_object())
+            .unwrap_or(&caps_obj);
+        let meta = agent_caps
+            .get("_meta")
+            .and_then(|v| v.as_object())
+            .and_then(|v| v.get("loomdesk.dev"))
+            .and_then(|v| v.as_object())
+            .cloned()
+            .unwrap_or_default();
+        let command = meta
+            .get("command")
+            .and_then(|v| v.as_object())
+            .cloned()
+            .unwrap_or_default();
+        let question = meta
+            .get("question")
+            .and_then(|v| v.as_object())
+            .and_then(|value| value.get("request"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
 
         // Extract fs capabilities
         let fs_caps = caps_obj
@@ -127,6 +154,22 @@ impl DetectedCapabilities {
         let session_resume = session_caps.contains_key("resume");
 
         Self {
+            command_list: command
+                .get("list")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            command_create: command
+                .get("create")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            command_update: command
+                .get("update")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            command_delete: command
+                .get("delete")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
             fs_read_text_file,
             fs_write_text_file,
             terminal_supported,
@@ -141,6 +184,7 @@ impl DetectedCapabilities {
             session_list,
             session_fork,
             session_resume,
+            question,
         }
     }
 }
@@ -168,6 +212,16 @@ impl ClientCapabilitiesInfo {
     /// Access the underlying detected capabilities.
     pub fn detected(&self) -> &DetectedCapabilities {
         &self.inner
+    }
+
+    pub fn supports_command(&self, method: &str) -> bool {
+        match method {
+            "list" => self.inner.command_list,
+            "create" => self.inner.command_create,
+            "update" => self.inner.command_update,
+            "delete" => self.inner.command_delete,
+            _ => false,
+        }
     }
 
     // File system checks
@@ -229,6 +283,10 @@ impl ClientCapabilitiesInfo {
     }
     pub fn supports_session_resume(&self) -> bool {
         self.inner.session_resume
+    }
+
+    pub fn supports_question(&self) -> bool {
+        self.inner.question
     }
 }
 

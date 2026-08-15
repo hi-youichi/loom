@@ -75,3 +75,7 @@ test-results/
 # Reference repos
 typescript-sdk
 .loom/worktrees/
+
+.loom-home/
+scripts/web-audit/node_modules/
+scripts/web-audit/report.json

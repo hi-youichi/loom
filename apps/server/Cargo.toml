@@ -27,7 +27,7 @@ tool-core = { path = "../../agent/tool/tool-core" }
 stream-event = { path = "../../foundation/stream-event" }
 config = { path = "../../foundation/config", features = ["tracing-init"] }
 model-spec-core = { path = "../../foundation/model-spec-core" }
-loom-acp = { package = "acp", path = "../acp" }
+loom-acp = { package = "loom-acp", path = "../acp" }
 agent-client-protocol = "0.15.1"
 
 axum = { version = "0.7", features = ["macros", "ws"] }
@@ -55,8 +55,10 @@ tower-http = { version = "0.6", features = ["cors", "set-header", "trace", "vali
 
 # CLI parsing (task P0.1)
 clap = { workspace = true }
+fs4 = "0.12"
 
 [dev-dependencies]
+tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 tower-test = "0.4"
 tokio-tungstenite = "0.24"

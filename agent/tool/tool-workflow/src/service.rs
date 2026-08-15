@@ -889,7 +889,6 @@ mod tests {
         assert_eq!(e["agent_count"], 2);
     }
 
-
     #[test]
     fn collect_instances_under_finds_instance_json() {
         let tmp = tempfile::tempdir().unwrap();
@@ -897,7 +896,11 @@ mod tests {
         let dir = root.join("done");
         std::fs::create_dir_all(&dir).unwrap();
         let inst = json!({"instance_id": "rd", "status": "completed", "instance_dir": "done"});
-        std::fs::write(dir.join("instance.json"), serde_json::to_string_pretty(&inst).unwrap()).unwrap();
+        std::fs::write(
+            dir.join("instance.json"),
+            serde_json::to_string_pretty(&inst).unwrap(),
+        )
+        .unwrap();
         let mut out = Vec::new();
         collect_instances_under(&root, &mut out);
         assert_eq!(out.len(), 1);

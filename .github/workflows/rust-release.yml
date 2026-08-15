@@ -9,8 +9,8 @@ on:
 
 jobs:
   build:
-    name: Build (release)
-    runs-on: ubuntu-latest
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
     if: github.event_name != 'pull_request' || github.event.pull_request.state == 'open'
     permissions:
       contents: write
@@ -22,6 +22,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
@@ -29,18 +31,29 @@ jobs:
           shared-key: "release"
 
       - name: Build release
-        run: cargo build --release
+        run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Package binaries
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Package Unix binary
+        if: startsWith(github.ref, 'refs/tags/') && matrix.os != 'windows-latest'
+        shell: bash
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
-          TARGET="x86_64-unknown-linux-gnu"
           mkdir -p dist
-          tar -czvf "dist/loom-${VERSION}-${TARGET}.tar.gz" -C target/release loom
+          tar -czvf "dist/loom-${VERSION}-${{ matrix.target }}.tar.gz" \
+            -C "target/${{ matrix.target }}/release" loom
+
+      - name: Package Windows binary
+        if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Compress-Archive -Path "target/${{ matrix.target }}/release/loom.exe" `
+            -DestinationPath "dist/loom-$version-${{ matrix.target }}.zip"
 
       - name: Generate release notes
         if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
         run: |
           PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -n "$PREV" ]; then
@@ -59,8 +72,63 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           body_path: release_notes.md
-          files: dist/*.tar.gz
+          files: dist/*
           generate_release_notes: true
-          allow_updates: true
+          overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-14
+            target: x86_64-apple-darwin
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+
+  installer-smoke-test:
+    name: Installer smoke test (${{ matrix.os }})
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Unix installer
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        env:
+          LOOM_VERSION: ${{ github.ref_name }}
+          LOOM_INSTALL_DIR: ${{ runner.temp }}/loom-bin
+        run: |
+          sh scripts/install.sh --version "$LOOM_VERSION" --install-dir "$LOOM_INSTALL_DIR"
+          "$LOOM_INSTALL_DIR/loom" --help
+
+      - name: Verify macOS Intel installer under Rosetta
+        if: matrix.os == 'macos-14'
+        shell: bash
+        env:
+          LOOM_VERSION: ${{ github.ref_name }}
+        run: |
+          install_dir="$RUNNER_TEMP/loom-bin-intel"
+          arch -x86_64 env LOOM_VERSION="$LOOM_VERSION" LOOM_INSTALL_DIR="$install_dir" \
+            sh scripts/install.sh --version "$LOOM_VERSION" --install-dir "$install_dir"
+          arch -x86_64 "$install_dir/loom" --help
+
+      - name: Verify Windows installer
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'loom-bin'
+          & .\scripts\install.ps1 -Version "${{ github.ref_name }}" -InstallDir $installDir
+          & (Join-Path $installDir 'loom.exe') --help

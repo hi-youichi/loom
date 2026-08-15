@@ -6,6 +6,7 @@
 use crate::agent_registry::AgentRegistry;
 use crate::client_capabilities::ClientCapabilitiesInfo;
 use crate::content::content_blocks_to_user_content;
+use crate::extensions::{register::register_default_extensions, ExtensionRegistry};
 use crate::session::{SessionId as OurSessionId, SessionStore};
 use crate::session_config_store::SessionConfigStore;
 use crate::session_repository::SessionRepository;
@@ -129,6 +130,7 @@ pub struct LoomAcpAgent {
     pub(crate) session_repository: SessionRepository,
     pub(crate) session_update_tx: Option<mpsc::Sender<SessionNotification>>,
     pub(crate) model_provider: Arc<dyn ModelProvider>,
+    pub(crate) extension_registry: Arc<ExtensionRegistry>,
 }
 
 impl std::fmt::Debug for LoomAcpAgent {
@@ -145,26 +147,14 @@ impl std::fmt::Debug for LoomAcpAgent {
 impl LoomAcpAgent {
     /// Construct a new Agent instance (no session/update sending).
     pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let db_path = checkpoint_sqlite_store::default_memory_db_path();
-        let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
-            .map_err(|e| format!("session config store init failed: {e}"))?;
-        let session_repository = SessionRepository::new(&db_path)
-            .map_err(|e| format!("session repository init failed: {e}"))?;
-
-        let agent = Self {
-            sessions: SessionStore::new(),
-            agent_registry: AgentRegistry::new(),
-            config_store,
-            session_repository,
-            session_update_tx: None,
-            model_provider: Arc::new(RealModelProvider),
-        };
-        agent.restore_session_metadata()?;
-        Ok(agent)
+        let mut extension_registry = ExtensionRegistry::new();
+        register_default_extensions(&mut extension_registry);
+        Self::new_with_extension_registry(Arc::new(extension_registry), None)
     }
 
-    pub fn with_session_update_tx(
-        tx: mpsc::Sender<SessionNotification>,
+    pub(crate) fn new_with_extension_registry(
+        extension_registry: Arc<ExtensionRegistry>,
+        session_update_tx: Option<mpsc::Sender<SessionNotification>>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let db_path = checkpoint_sqlite_store::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
@@ -177,11 +167,20 @@ impl LoomAcpAgent {
             agent_registry: AgentRegistry::new(),
             config_store,
             session_repository,
-            session_update_tx: Some(tx),
+            session_update_tx,
             model_provider: Arc::new(RealModelProvider),
+            extension_registry,
         };
         agent.restore_session_metadata()?;
         Ok(agent)
+    }
+
+    pub fn with_session_update_tx(
+        tx: mpsc::Sender<SessionNotification>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let mut extension_registry = ExtensionRegistry::new();
+        register_default_extensions(&mut extension_registry);
+        Self::new_with_extension_registry(Arc::new(extension_registry), Some(tx))
     }
 
     pub fn with_model_provider(mut self, provider: Arc<dyn ModelProvider>) -> Self {
@@ -439,11 +438,17 @@ impl LoomAcpAgent {
             .resume(SessionResumeCapabilities::new())
             .close(SessionCloseCapabilities::new());
 
+        let mut extension_meta = serde_json::Map::new();
+        extension_meta.insert(
+            "loomdesk.dev".to_string(),
+            self.extension_registry.build_capability_snapshot(),
+        );
         let agent_caps = AgentCapabilities::new()
             .load_session(true)
             .mcp_capabilities(mcp)
             .prompt_capabilities(prompts)
-            .session_capabilities(session);
+            .session_capabilities(session)
+            .meta(extension_meta);
 
         let protocol_version = ProtocolVersion::V1;
         let response = InitializeResponse::new(protocol_version)

@@ -117,7 +117,7 @@ pub(crate) struct Args {
     /// "auto" means use the model's default (don't send the parameter).
     /// Unknown values are forwarded and warned by the LLM client.
     #[arg(long, value_name = "LEVEL")]
-pub(crate) effort: Option<String>,
+    pub(crate) effort: Option<String>,
 
     /// Log level (tracing EnvFilter syntax). Overrides `RUST_LOG` and verbosity-based level.
     /// Default: `off` (no logs); use `-v`/`-vv`/`-vvv` to enable error/warn/info respectively.
@@ -784,4 +784,8 @@ pub(crate) struct AcpArgs {
     #[arg(value_name = "URL", num_args = 0..=1,
           default_missing_value = "ws://127.0.0.1:3030/acp")]
     pub(crate) url: Option<String>,
+
+    /// PID file for an auto-spawned loom server.
+    #[arg(long, value_name = "PATH")]
+    pub(crate) pid_file: Option<PathBuf>,
 }

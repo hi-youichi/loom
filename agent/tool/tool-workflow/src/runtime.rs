@@ -40,7 +40,7 @@ fn checkpoint_to_json(
     let checkpoint_value = serde_json::to_value(checkpoint).unwrap_or(Value::Null);
     let events_values: Vec<Value> = events
         .iter()
-    	.filter_map(|e| serde_json::to_value(e).ok())
+        .filter_map(|e| serde_json::to_value(e).ok())
         .collect();
     (checkpoint_value, checkpoint_bytes, events_values)
 }
@@ -149,10 +149,11 @@ impl WorkflowRuntime {
     pub async fn terminal_checkpoint_status(&self, run_dir_name: &str) -> Option<&'static str> {
         let base_dir = self.instances_root();
         let owned = run_dir_name.to_string();
-        let cp = tokio::task::spawn_blocking(move || luft::query::get_checkpoint(&owned, &base_dir))
-            .await
-            .ok()?
-            .ok()??;
+        let cp =
+            tokio::task::spawn_blocking(move || luft::query::get_checkpoint(&owned, &base_dir))
+                .await
+                .ok()?
+                .ok()??;
         checkpoint_terminal_str(&cp.status)
     }
 
@@ -182,10 +183,8 @@ impl WorkflowRuntime {
         for attempt in 0..10 {
             let rd = owned_run_dir.clone();
             let bd = owned_base_dir.clone();
-            let result = tokio::task::spawn_blocking(move || {
-                luft::query::get_checkpoint(&rd, &bd)
-            })
-            .await;
+            let result =
+                tokio::task::spawn_blocking(move || luft::query::get_checkpoint(&rd, &bd)).await;
             match result {
                 Ok(Ok(Some(cp))) => {
                     checkpoint_opt = Some(cp);
@@ -362,12 +361,11 @@ impl WorkflowRuntime {
 
         let owned_dir2 = instance_dir.to_string();
         let owned_base2 = base_dir.clone();
-        let events = tokio::task::spawn_blocking(move || {
-            luft::query::get_events(&owned_dir2, &owned_base2)
-        })
-        .await
-        .map_err(|e| ToolSourceError::ToolError(format!("events query join error: {e}")))?
-        .unwrap_or_default();
+        let events =
+            tokio::task::spawn_blocking(move || luft::query::get_events(&owned_dir2, &owned_base2))
+                .await
+                .map_err(|e| ToolSourceError::ToolError(format!("events query join error: {e}")))?
+                .unwrap_or_default();
 
         let resolved = self.loom_instance_dir(instance_dir);
         let workflow_src = std::fs::read_to_string(resolved.join("workflow.lua")).ok();

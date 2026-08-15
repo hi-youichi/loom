@@ -59,7 +59,7 @@ impl BotManager {
                     GET_ME_TIMEOUT.as_secs()
                 ))
             })
-            .and_then(|res| res.map_err(BotError::Network));
+            .and_then(|res| res.map_err(|e| BotError::Network(Box::new(e))));
         let bot_username = match me {
             Ok(m) => m.username.clone().unwrap_or_default(),
             Err(_) => String::new(),

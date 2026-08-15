@@ -51,7 +51,7 @@ fn backoff_duration(attempt: u32) -> Duration {
 
 fn fallback_error(last_error: Option<teloxide::RequestError>) -> BotError {
     match last_error {
-        Some(e) => BotError::Network(e),
+        Some(e) => BotError::Network(Box::new(e)),
         None => BotError::Config("retry exhausted with no recorded error".into()),
     }
 }

@@ -671,6 +671,44 @@ impl Clone for SessionEntry {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Prompt guard — RAII cleanup for cancelled prompts
+// ---------------------------------------------------------------------------
+
+/// RAII guard that calls [`SessionStore::finish_prompt`] on drop.
+///
+/// When the prompt future is dropped mid-execution (e.g., the WebSocket
+/// connection drops while a prompt is in flight), Rust's cancellation
+/// semantics mean code after the last `.await` is never reached.  This guard
+/// ensures `finish_prompt` is called regardless, preventing the session from
+/// being permanently blocked.
+pub(crate) struct PromptGuard<'a> {
+    sessions: &'a SessionStore,
+    session_id: &'a SessionId,
+    generation: u64,
+}
+
+impl<'a> PromptGuard<'a> {
+    pub(crate) fn new(
+        sessions: &'a SessionStore,
+        session_id: &'a SessionId,
+        generation: u64,
+    ) -> Self {
+        Self {
+            sessions,
+            session_id,
+            generation,
+        }
+    }
+}
+
+impl Drop for PromptGuard<'_> {
+    fn drop(&mut self) {
+        self.sessions
+            .finish_prompt(self.session_id, self.generation);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -842,43 +880,5 @@ mod tests {
         let existing = store.create(None);
         assert!(store.delete(&existing));
         assert!(!store.delete(&existing));
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Prompt guard — RAII cleanup for cancelled prompts
-// ---------------------------------------------------------------------------
-
-/// RAII guard that calls [`SessionStore::finish_prompt`] on drop.
-///
-/// When the prompt future is dropped mid-execution (e.g., the WebSocket
-/// connection drops while a prompt is in flight), Rust's cancellation
-/// semantics mean code after the last `.await` is never reached.  This guard
-/// ensures `finish_prompt` is called regardless, preventing the session from
-/// being permanently blocked.
-pub(crate) struct PromptGuard<'a> {
-    sessions: &'a SessionStore,
-    session_id: &'a SessionId,
-    generation: u64,
-}
-
-impl<'a> PromptGuard<'a> {
-    pub(crate) fn new(
-        sessions: &'a SessionStore,
-        session_id: &'a SessionId,
-        generation: u64,
-    ) -> Self {
-        Self {
-            sessions,
-            session_id,
-            generation,
-        }
-    }
-}
-
-impl Drop for PromptGuard<'_> {
-    fn drop(&mut self) {
-        self.sessions
-            .finish_prompt(self.session_id, self.generation);
     }
 }

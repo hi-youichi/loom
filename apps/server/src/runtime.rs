@@ -1,11 +1,12 @@
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
 use clap::Args as ClapArgs;
 use tokio::net::TcpListener;
 use tracing_subscriber::{fmt, EnvFilter};
 
 use crate::logging::{init_logging, LogConfig};
-use crate::{routes::build_router, state::new_server_state};
+use crate::{pid_file, routes::build_router, state::new_server_state};
 
 #[derive(ClapArgs, Debug, Clone)]
 pub struct ServerOptions {
@@ -24,6 +25,10 @@ pub struct ServerOptions {
     /// Enable verbose tracing (RUST_LOG-like).
     #[arg(long)]
     pub verbose: bool,
+
+    /// PID file used to prevent concurrent server instances.
+    #[arg(long, value_name = "PATH")]
+    pub pid_file: Option<PathBuf>,
 }
 
 /// Run the HTTP + ACP-WebSocket server.
@@ -45,10 +50,7 @@ pub async fn run(
             } else {
                 EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"))
             };
-            let _ = fmt()
-                .with_env_filter(filter)
-                .with_target(false)
-                .try_init();
+            let _ = fmt().with_env_filter(filter).with_target(false).try_init();
             None
         }
     };
@@ -56,6 +58,14 @@ pub async fn run(
     if let Some(directory) = &options.directory {
         std::env::set_current_dir(directory)?;
     }
+
+    let pid_path = pid_file::resolve_path(options.pid_file.as_deref());
+    let _pid_guard = pid_file::PidFileGuard::acquire(&pid_path).map_err(|error| {
+        format!(
+            "cannot acquire server PID lock '{}': another Loom server may already be running ({error})",
+            pid_path.display()
+        )
+    })?;
 
     let app = build_router(new_server_state());
     let address: SocketAddr = format!("{}:{}", options.host, options.port).parse()?;
@@ -86,6 +96,36 @@ pub async fn run(
         }
     });
 
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
     Ok(())
+}
+
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+
+        let ctrl_c = tokio::signal::ctrl_c();
+        let terminate = async {
+            match signal(SignalKind::terminate()) {
+                Ok(mut stream) => {
+                    stream.recv().await;
+                }
+                Err(_) => std::future::pending::<()>().await,
+            }
+        };
+        tokio::select! {
+            _ = ctrl_c => {}
+            _ = terminate => {}
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+
+    tracing::info!("shutdown signal received");
 }

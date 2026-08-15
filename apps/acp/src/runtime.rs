@@ -15,6 +15,7 @@ use agent_client_protocol::schema::v1::{
 
 use crate::connection::{AcpConnection, ConnectionOutbound};
 use crate::connection_registry::ConnectionRegistry;
+use crate::extensions::{register::register_default_extensions, ExtensionRegistry};
 use crate::notification_router::NotificationRouter;
 use crate::prompt_executor::{AcpPromptExecutor, LoomPromptExecutor};
 use crate::session_bindings::SessionBindings;
@@ -52,6 +53,7 @@ pub struct AcpRuntime {
     pub bindings: Arc<SessionBindings>,
     pub connections: Arc<ConnectionRegistry>,
     pub notification_router: Arc<NotificationRouter>,
+    pub extensions: Arc<ExtensionRegistry>,
     prompt_executor: Arc<dyn AcpPromptExecutor>,
     prompt_capacity: Arc<Semaphore>,
     metrics: Arc<AcpRuntimeMetrics>,
@@ -78,7 +80,13 @@ impl AcpRuntime {
         prompt_executor: Arc<dyn AcpPromptExecutor>,
     ) -> Result<Arc<Self>, Box<dyn std::error::Error + Send + Sync>> {
         let (updates_tx, mut updates_rx) = mpsc::channel(256);
-        let agent = Arc::new(LoomAcpAgent::with_session_update_tx(updates_tx.clone())?);
+        let mut extension_registry = ExtensionRegistry::new();
+        register_default_extensions(&mut extension_registry);
+        let extensions = Arc::new(extension_registry);
+        let agent = Arc::new(LoomAcpAgent::new_with_extension_registry(
+            extensions.clone(),
+            Some(updates_tx.clone()),
+        )?);
         let bindings = Arc::new(SessionBindings::new());
         let connections = Arc::new(ConnectionRegistry::default());
         let notification_router = Arc::new(NotificationRouter::new(
@@ -93,6 +101,7 @@ impl AcpRuntime {
             bindings,
             connections,
             notification_router,
+            extensions,
             prompt_executor,
             prompt_capacity: Arc::new(Semaphore::new(
                 std::env::var("LOOM_ACP_MAX_CONCURRENT_PROMPTS")
