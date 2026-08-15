@@ -8,6 +8,22 @@ Loom's goal is not to replace code review or let agents modify systems unattende
 
 ## Quick Start
 
+### Install a Release Binary
+
+On Linux or macOS:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/hi-youichi/loom/main/scripts/install.sh | sh
+```
+
+On Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/hi-youichi/loom/main/scripts/install.ps1 | iex
+```
+
+The installers use a user-level directory and do not require administrator privileges. Set `LOOM_VERSION`, `LOOM_REPO`, or `LOOM_INSTALL_DIR` to override the release, repository, or destination.
+
 ### 1. Configure Your Model
 
 Copy the example environment file and fill in your model credentials:
