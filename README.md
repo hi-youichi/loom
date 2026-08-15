@@ -16,6 +16,12 @@ On Linux or macOS:
 curl -fsSL https://raw.githubusercontent.com/hi-youichi/loom/main/scripts/install.sh | sh
 ```
 
+To install a specific release:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/hi-youichi/loom/main/scripts/install.sh | sh -s -- --version VERSION
+```
+
 On Windows PowerShell:
 
 ```powershell
