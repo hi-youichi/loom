@@ -402,7 +402,7 @@ mod session_notifier_integration_tests {
         let mut updates_received = 0;
 
         // Trigger 50% threshold (5000/10000)
-        if let Some(_) = notifier.test_update_high_freq_tokens(1000) {
+        if notifier.test_update_high_freq_tokens(1000).is_some() {
             updates_received += 1;
         }
 
@@ -420,7 +420,7 @@ mod session_notifier_integration_tests {
         let mut updates_received = 0;
 
         // Add small tokens (below increment threshold)
-        if let Some(_) = notifier.test_update_high_freq_tokens(10) {
+        if notifier.test_update_high_freq_tokens(10).is_some() {
             updates_received += 1;
         }
 
@@ -433,7 +433,7 @@ mod session_notifier_integration_tests {
         tokio::time::sleep(Duration::from_millis(110)).await;
 
         // Add more small tokens
-        if let Some(_) = notifier.test_update_high_freq_tokens(10) {
+        if notifier.test_update_high_freq_tokens(10).is_some() {
             updates_received += 1;
         }
 
@@ -452,7 +452,7 @@ mod session_notifier_integration_tests {
 
         // Should trigger with smaller threshold
         for i in 1..=3 {
-            if let Some(_) = notifier.test_update_high_freq_tokens(i * 10) {
+            if notifier.test_update_high_freq_tokens(i * 10).is_some() {
                 updates_received += 1;
             }
         }
@@ -507,7 +507,7 @@ mod session_notifier_integration_tests {
         // More aggressive updates should work with low load
         let mut updates_received = 0;
         for i in 1..=10 {
-            if let Some(_) = notifier.test_update_high_freq_tokens(i * 5) {
+            if notifier.test_update_high_freq_tokens(i * 5).is_some() {
                 updates_received += 1;
             }
         }

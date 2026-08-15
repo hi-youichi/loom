@@ -6,10 +6,10 @@ pub enum BotError {
     Config(String),
 
     #[error("Network error: {0}")]
-    Network(#[from] teloxide::RequestError),
+    Network(#[source] Box<teloxide::RequestError>),
 
     #[error("Download error: {0}")]
-    Download(#[from] teloxide::DownloadError),
+    Download(#[source] Box<teloxide::DownloadError>),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -18,13 +18,37 @@ pub enum BotError {
     Agent(String),
 
     #[error("Agent run error: {0}")]
-    AgentRun(#[from] agent::run::RunError),
+    AgentRun(#[source] Box<agent::run::RunError>),
 
     #[error("SQLite error: {0}")]
-    Sqlite(#[from] rusqlite::Error),
+    Sqlite(#[source] Box<rusqlite::Error>),
 
     #[error("{0}")]
     Unknown(String),
+}
+
+impl From<teloxide::RequestError> for BotError {
+    fn from(e: teloxide::RequestError) -> Self {
+        Self::Network(Box::new(e))
+    }
+}
+
+impl From<teloxide::DownloadError> for BotError {
+    fn from(e: teloxide::DownloadError) -> Self {
+        Self::Download(Box::new(e))
+    }
+}
+
+impl From<agent::run::RunError> for BotError {
+    fn from(e: agent::run::RunError) -> Self {
+        Self::AgentRun(Box::new(e))
+    }
+}
+
+impl From<rusqlite::Error> for BotError {
+    fn from(e: rusqlite::Error) -> Self {
+        Self::Sqlite(Box::new(e))
+    }
 }
 
 pub type Result<T> = std::result::Result<T, BotError>;

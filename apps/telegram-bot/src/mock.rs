@@ -482,7 +482,7 @@ impl Default for ErrorSessionManager {
 #[async_trait]
 impl crate::traits::SessionManager for ErrorSessionManager {
     async fn reset(&self, _thread_id: &str) -> Result<usize, BotError> {
-        Err(BotError::Sqlite(rusqlite::Error::InvalidQuery))
+        Err(BotError::Sqlite(Box::new(rusqlite::Error::InvalidQuery)))
     }
 
     async fn exists(&self, _thread_id: &str) -> Result<bool, BotError> {

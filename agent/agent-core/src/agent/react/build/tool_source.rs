@@ -14,7 +14,7 @@ use tool_basic::{
     batch::BatchTool,
     exa::ExaCodesearchTool,
     exa::ExaWebsearchTool,
-    mcp::{DEFAULT_TOOL_TIMEOUT, McpToolSource},
+    mcp::{McpToolSource, DEFAULT_TOOL_TIMEOUT},
     register_file_tools, register_mcp_tools,
     web::WebFetcherTool,
 };
@@ -402,69 +402,6 @@ async fn apply_registry_config(
     Ok(())
 }
 
-#[cfg(test)]
-mod mcp_startup_tests {
-    use super::*;
-    use std::collections::HashMap;
-
-    async fn unresponsive_http_server() -> String {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            let _connection = listener.accept().await;
-            tokio::time::sleep(Duration::from_secs(10)).await;
-        });
-        format!("http://{address}/mcp")
-    }
-
-    fn http_server(
-        name: &str,
-        url: String,
-        required: bool,
-        startup_timeout_sec: u64,
-    ) -> McpServerDef {
-        McpServerDef::Http {
-            name: name.to_string(),
-            url,
-            headers: HashMap::new(),
-            oauth: None,
-            required,
-            startup_timeout_sec: Some(startup_timeout_sec),
-            tool_timeout_sec: None,
-        }
-    }
-
-    #[tokio::test]
-    async fn optional_unresponsive_server_does_not_block_tool_source_build() {
-        let server = http_server("slow", unresponsive_http_server().await, false, 5);
-        let aggregate = Arc::new(ToolRegistryLocked::new());
-        let started = tokio::time::Instant::now();
-
-        start_configured_mcp_servers(&[server], aggregate, false)
-            .await
-            .unwrap();
-
-        assert!(started.elapsed() < Duration::from_secs(2));
-    }
-
-    #[tokio::test]
-    async fn required_unresponsive_server_fails_after_its_startup_timeout() {
-        let server = http_server("required", unresponsive_http_server().await, true, 1);
-        let aggregate = Arc::new(ToolRegistryLocked::new());
-
-        let error = start_configured_mcp_servers(&[server], aggregate, false)
-            .await
-            .unwrap_err();
-
-        assert!(
-            error
-                .to_string()
-                .contains("required MCP server `required` failed to start")
-        );
-        assert!(error.to_string().contains("startup timed out"), "{error}");
-    }
-}
-
 /// Pre-load provider + models.dev catalog and register the `LlmTool`.
 ///
 /// Steps:
@@ -549,4 +486,65 @@ async fn register_llm_tool(
     let tool = LlmTool::new(data, working_folder.cloned(), Default::default());
     aggregate.register_async(Box::new(tool)).await;
     Ok(())
+}
+
+#[cfg(test)]
+mod mcp_startup_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    async fn unresponsive_http_server() -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _connection = listener.accept().await;
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        });
+        format!("http://{address}/mcp")
+    }
+
+    fn http_server(
+        name: &str,
+        url: String,
+        required: bool,
+        startup_timeout_sec: u64,
+    ) -> McpServerDef {
+        McpServerDef::Http {
+            name: name.to_string(),
+            url,
+            headers: HashMap::new(),
+            oauth: None,
+            required,
+            startup_timeout_sec: Some(startup_timeout_sec),
+            tool_timeout_sec: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn optional_unresponsive_server_does_not_block_tool_source_build() {
+        let server = http_server("slow", unresponsive_http_server().await, false, 5);
+        let aggregate = Arc::new(ToolRegistryLocked::new());
+        let started = tokio::time::Instant::now();
+
+        start_configured_mcp_servers(&[server], aggregate, false)
+            .await
+            .unwrap();
+
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[tokio::test]
+    async fn required_unresponsive_server_fails_after_its_startup_timeout() {
+        let server = http_server("required", unresponsive_http_server().await, true, 1);
+        let aggregate = Arc::new(ToolRegistryLocked::new());
+
+        let error = start_configured_mcp_servers(&[server], aggregate, false)
+            .await
+            .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("required MCP server `required` failed to start"));
+        assert!(error.to_string().contains("startup timed out"), "{error}");
+    }
 }
