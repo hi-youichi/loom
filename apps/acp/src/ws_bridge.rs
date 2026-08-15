@@ -19,6 +19,7 @@
 //! All agent logic runs on the loom-server side.
 
 use std::io::{BufRead, Write};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use futures::{SinkExt, StreamExt};
@@ -153,7 +154,7 @@ async fn relay_loop(
 /// 3. Connect WebSocket and relay.
 /// 4. On disconnect, re-probe / re-spawn and reconnect (exponential back-off).
 /// 5. Exit only when stdin (IDE) or stdout closes.
-pub async fn run_ws_bridge(url: Option<String>) -> BridgeResult<()> {
+pub async fn run_ws_bridge(url: Option<String>, pid_file: Option<PathBuf>) -> BridgeResult<()> {
     let ws_url = url.unwrap_or_else(|| DEFAULT_WS_URL.to_string());
 
     // stdin reader → unbounded channel (persists across reconnections).
@@ -237,7 +238,7 @@ pub async fn run_ws_bridge(url: Option<String>) -> BridgeResult<()> {
         }
 
         // Ensure server is alive (probe → spawn if needed).
-        match ensure_server_ready(&ws_url, &cancel, &probe_client).await {
+        match ensure_server_ready(&ws_url, pid_file.as_deref(), &cancel, &probe_client).await {
             Ok(Some(child)) => {
                 // New server spawned — reap the old child to prevent zombies.
                 if let Some(old) = server_child.take() {
@@ -406,14 +407,21 @@ fn resolve_loom_binary() -> BridgeResult<std::path::PathBuf> {
 }
 
 /// Spawn `loom server --host <host> --port <port>` as a detached child.
-fn spawn_server(host: &str, port: u16) -> BridgeResult<std::process::Child> {
+fn spawn_server(
+    host: &str,
+    port: u16,
+    pid_file: Option<&Path>,
+) -> BridgeResult<std::process::Child> {
     let bin = resolve_loom_binary()?;
 
     tracing::info!(bin = %bin.display(), host, port, "spawning loom server");
 
     let mut cmd = std::process::Command::new(&bin);
-    cmd.args(["server", "--host", host, "--port", &port.to_string()])
-        .stdin(std::process::Stdio::null())
+    cmd.args(["server", "--host", host, "--port", &port.to_string()]);
+    if let Some(pid_file) = pid_file {
+        cmd.arg("--pid-file").arg(pid_file);
+    }
+    cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
 
@@ -465,6 +473,7 @@ fn spawn_reaper(child: std::process::Child) {
 /// If not, spawn one and poll until healthy.
 async fn ensure_server_ready(
     ws_url: &str,
+    pid_file: Option<&Path>,
     cancel: &tokio_util::sync::CancellationToken,
     probe_client: &reqwest::Client,
 ) -> BridgeResult<Option<std::process::Child>> {
@@ -480,7 +489,7 @@ async fn ensure_server_ready(
     tracing::info!("loom-server not detected, auto-spawning");
     let (host, port) =
         parse_host_port(ws_url).ok_or_else(|| format!("cannot parse host:port from {ws_url}"))?;
-    let child = spawn_server(&host, port)?;
+    let child = spawn_server(&host, port, pid_file)?;
 
     let deadline = tokio::time::Instant::now() + SERVER_READY_TIMEOUT;
     loop {
@@ -584,7 +593,7 @@ mod tests {
         let ws_url = format!("ws://{addr}/acp");
         let cancel = tokio_util::sync::CancellationToken::new();
         let client = probe_client();
-        let result = ensure_server_ready(&ws_url, &cancel, &client).await;
+        let result = ensure_server_ready(&ws_url, None, &cancel, &client).await;
         assert!(result.is_ok(), "ensure_server_ready should succeed");
         assert!(
             result.unwrap().is_none(),

@@ -75,3 +75,5 @@ test-results/
 # Reference repos
 typescript-sdk
 .loom/worktrees/
+
+.loom-home/
