@@ -22,6 +22,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
@@ -72,7 +74,7 @@ jobs:
           body_path: release_notes.md
           files: dist/*
           generate_release_notes: true
-          allow_updates: true
+          overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -82,7 +84,7 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - os: macos-13
+          - os: macos-14
             target: x86_64-apple-darwin
           - os: macos-14
             target: aarch64-apple-darwin
@@ -97,7 +99,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-13, windows-latest]
+        os: [ubuntu-latest, macos-14, windows-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -111,6 +113,17 @@ jobs:
         run: |
           sh scripts/install.sh --version "$LOOM_VERSION" --install-dir "$LOOM_INSTALL_DIR"
           "$LOOM_INSTALL_DIR/loom" --help
+
+      - name: Verify macOS Intel installer under Rosetta
+        if: matrix.os == 'macos-14'
+        shell: bash
+        env:
+          LOOM_VERSION: ${{ github.ref_name }}
+        run: |
+          install_dir="$RUNNER_TEMP/loom-bin-intel"
+          arch -x86_64 env LOOM_VERSION="$LOOM_VERSION" LOOM_INSTALL_DIR="$install_dir" \
+            sh scripts/install.sh --version "$LOOM_VERSION" --install-dir "$install_dir"
+          arch -x86_64 "$install_dir/loom" --help
 
       - name: Verify Windows installer
         if: matrix.os == 'windows-latest'
