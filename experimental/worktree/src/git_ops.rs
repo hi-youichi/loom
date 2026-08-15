@@ -41,14 +41,13 @@ pub(crate) fn run_git(workdir: &Path, args: &[&str]) -> Result<std::process::Out
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         git_cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    let output = git_cmd.output()
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                GitWorktreeError::GitNotFound
-            } else {
-                GitWorktreeError::Io(e)
-            }
-        })?;
+    let output = git_cmd.output().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            GitWorktreeError::GitNotFound
+        } else {
+            GitWorktreeError::Io(e)
+        }
+    })?;
 
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();

@@ -115,7 +115,9 @@ fn resolve_rotate(cli_rotate: LogRotate, logging_config: Option<&LoggingSection>
     if cli_rotate != LogRotate::None {
         return cli_rotate;
     }
-    logging_config.map(|c| c.rotate()).unwrap_or(LogRotate::None)
+    logging_config
+        .map(|c| c.rotate())
+        .unwrap_or(LogRotate::None)
 }
 
 /// Initialize file logging from CLI config, merged with `config.toml [logging]`.
@@ -124,9 +126,7 @@ fn resolve_rotate(cli_rotate: LogRotate, logging_config: Option<&LoggingSection>
 /// to open the log file, logs an error to stderr and returns a guard backed by a
 /// null sink so the server can still start.
 pub fn init_logging(config: &LogConfig) -> LogGuard {
-    let logging_config = config::load_full_config("loom")
-        .ok()
-        .map(|c| c.logging);
+    let logging_config = config::load_full_config("loom").ok().map(|c| c.logging);
 
     let log_path = resolve_server_log_path(config.file.as_deref(), logging_config.as_ref());
 
@@ -166,7 +166,10 @@ pub fn init_logging(config: &LogConfig) -> LogGuard {
             }
         }
         Err(error) => {
-            eprintln!("loom-server: failed to open log file {}: {error}", log_path.display());
+            eprintln!(
+                "loom-server: failed to open log file {}: {error}",
+                log_path.display()
+            );
             init_sink_logging(filter)
         }
     }

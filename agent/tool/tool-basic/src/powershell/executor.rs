@@ -33,10 +33,7 @@ fn detect_powershell() -> (&'static str, &'static str) {
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
             probe.creation_flags(CREATE_NO_WINDOW);
         }
-        let pwsh_ok = probe
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
+        let pwsh_ok = probe.status().map(|s| s.success()).unwrap_or(false);
         if pwsh_ok {
             ("pwsh", "-Command")
         } else {
