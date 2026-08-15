@@ -1,0 +1,320 @@
+{
+  "test_cases": [
+    "test_create_succeeds_with_default_ttl: handle('create', json!({}), ctx) returns Ok with secret, pairingId, expiresAt, transports",
+    "test_create_succeeds_with_explicit_ttl: ttlSeconds=600 produces expiresAt = now + 600s",
+    "test_create_default_ttl_is_300_seconds",
+    "test_create_ttl_too_small_returns_invalid_params: ttlSeconds=0 returns -32602",
+    "test_create_ttl_too_large_returns_invalid_params: ttlSeconds=86401 returns -32602",
+    "test_create_min_ttl_succeeds: ttlSeconds=1 succeeds",
+    "test_create_max_ttl_succeeds: ttlSeconds=86400 succeeds",
+    "test_create_default_transports_includes_direct_and_relay",
+    "test_create_explicit_transports_respected",
+    "test_create_invalid_transport_type_returns_invalid_params: allowedTransports=['tcp'] returns -32602",
+    "test_create_redeem_round_trip: create then redeem with same secret returns clientToken",
+    "test_create_response_no_secrets_no_secret_hash",
+    "test_create_secret_format_starts_with_pair_secret",
+    "test_create_pairing_id_format_starts_with_pair",
+    "test_create_token_hash_stored_not_plaintext: store.get().secret_hash is sha256(secret)",
+    "test_create_response_camel_case",
+    "test_create_requires_principal_returns_forbidden: empty principal returns -32002",
+    "test_create_null_params_returns_invalid_params",
+    "test_create_array_params_returns_invalid_params",
+    "test_create_string_params_returns_invalid_params",
+    "test_create_serializes_to_json_object",
+    "test_redeem_with_correct_secret_succeeds",
+    "test_redeem_returns_client_token_format_ct_uuid",
+    "test_redeem_returns_transport_in_response",
+    "test_redeem_response_camel_case",
+    "test_redeem_response_no_secrets_no_secret_hash",
+    "test_redeem_then_create_returns_new_pairing",
+    "test_redeem_already_redeemed_returns_forbidden",
+    "test_redeem_expired_returns_forbidden: after expires_at passes, redeem returns -32002",
+    "test_redeem_wrong_secret_returns_forbidden: mismatched secret returns -32002",
+    "test_redeem_brute_force_locks_after_max_attempts: 5 wrong attempts remove the pairing, 6th attempt returns not_found",
+    "test_redeem_no_pending_pairings_returns_not_found",
+    "test_redeem_whitespace_secret_returns_forbidden",
+    "test_redeem_missing_client_info_returns_invalid_params",
+    "test_redeem_empty_client_info_name_returns_invalid_params",
+    "test_redeem_empty_client_info_version_returns_invalid_params",
+    "test_redeem_empty_client_info_platform_returns_invalid_params",
+    "test_redeem_whitespace_client_info_name_returns_invalid_params",
+    "test_redeem_null_params_returns_invalid_params",
+    "test_redeem_array_params_returns_invalid_params",
+    "test_pending_list_empty_store_returns_empty",
+    "test_pending_list_single_pending",
+    "test_pending_list_excludes_redeemed",
+    "test_pending_list_excludes_expired",
+    "test_pending_list_multiple_succeeds",
+    "test_pending_list_default_limit_is_20",
+    "test_pending_list_custom_limit",
+    "test_pending_list_limit_clamps_to_max_100",
+    "test_pending_list_limit_zero_returns_invalid_params",
+    "test_pending_list_invalid_hex_cursor_returns_invalid_params",
+    "test_pending_list_cursor_round_trip",
+    "test_pending_list_sort_order_by_created_at_ascending",
+    "test_pending_list_response_no_secrets_no_secret_hash",
+    "test_pending_list_response_keys_camel_case",
+    "test_pending_list_requires_principal_returns_forbidden",
+    "test_pending_list_no_params_succeeds",
+    "test_pending_list_non_object_params_returns_invalid_params",
+    "test_cancel_existing_pending_succeeds",
+    "test_cancel_then_pending_list_excludes",
+    "test_cancel_already_redeemed_returns_not_found",
+    "test_cancel_expired_returns_not_found",
+    "test_cancel_nonexistent_returns_not_found",
+    "test_cancel_empty_pairing_id_returns_invalid_params",
+    "test_cancel_whitespace_pairing_id_returns_invalid_params",
+    "test_cancel_missing_pairing_id_returns_invalid_params",
+    "test_cancel_response_camel_case",
+    "test_cancel_requires_principal_returns_forbidden",
+    "test_cancel_non_object_params_returns_invalid_params",
+    "test_transports_returns_direct_and_relay",
+    "test_transports_relay_available_in_relay_context: connection_id='relay-abc' sets available=true for relay",
+    "test_transports_relay_unavailable_in_direct_context: connection_id='ws-1' sets available=false for relay",
+    "test_transports_direct_always_available",
+    "test_transports_response_keys_camel_case",
+    "test_transports_no_params_succeeds",
+    "test_transports_response_no_secrets",
+    "test_unknown_method_returns_method_not_found",
+    "test_capabilities_has_exactly_five_keys",
+    "test_capabilities_all_keys_true",
+    "test_capabilities_keys_are_snake_case: pending_list, allowed_transports etc. are snake_case",
+    "test_handler_is_send_and_sync",
+    "test_store_is_send_and_sync",
+    "test_arc_handler_is_send_and_sync",
+    "test_default_impl_equivalent_to_new",
+    "test_with_store_shares_state_across_handlers",
+    "test_concurrent_create_no_race",
+    "test_concurrent_redeem_serializes_correctly",
+    "test_concurrent_pending_list_is_safe",
+    "test_concurrent_cancel_is_safe",
+    "test_registry_dispatch_create_succeeds",
+    "test_registry_dispatch_redeem_succeeds",
+    "test_registry_dispatch_pending_list_succeeds",
+    "test_registry_dispatch_cancel_succeeds",
+    "test_registry_dispatch_transports_succeeds",
+    "test_registry_dispatch_unknown_method_returns_method_not_found",
+    "test_registry_capability_snapshot_under_pairing_key",
+    "test_registry_has_domain_after_register",
+    "test_registry_dispatch_wrong_prefix_returns_method_not_found",
+    "test_registry_dispatch_unregistered_domain_returns_capability_not_supported",
+    "test_create_then_redeem_then_cancel_returns_not_found",
+    "test_secret_never_in_list_response: pending_list items do not contain secret",
+    "test_redeem_response_no_secret_field",
+    "test_pending_list_items_no_secret_field",
+    "test_transport_type_serializes_lowercase",
+    "test_pairing_id_uniqueness_across_creates: 100 creates produce 100 unique pairing IDs",
+    "test_secret_uniqueness_across_creates: 100 creates produce 100 unique secrets",
+    "test_token_hash_format_is_sha256_64_hex_chars",
+    "test_attempts_counter_increments_on_wrong_redeem",
+    "test_attempts_counter_resets_on_new_create",
+    "test_expired_pairing_does_not_appear_in_pending_list",
+    "test_redeem_does_not_require_principal: empty principal still allowed for redeem",
+    "test_cancel_does_not_affect_other_pairings",
+    "test_pending_list_pagination_offset_correctness",
+    "test_pending_list_no_more_pages_has_more_false",
+    "test_pending_list_has_more_true_when_more_items"
+  ],
+  "struct_name": "PairingHandler",
+  "rust_types": [
+    {
+      "purpose": "Public handler implementing ExtensionHandler. Holds Arc<PairingStore> for thread-safe in-memory storage. Constructors: new(), with_store(store), store(). Send+Sync via Arc.",
+      "name": "PairingHandler",
+      "kind": "struct"
+    },
+    {
+      "purpose": "In-memory store keyed by pairing_id. Holds Mutex<HashMap<String, PairingRecord>>. Public methods: new(), count(), insert(record), get(pairing_id), remove(pairing_id), list_pending() returns Vec<PairingRecord>, list_all() returns Vec<PairingRecord>, try_redeem(secret_hash) returns RedeemResult, cancel(pairing_id) returns CancelResult. All Mutex locks use .expect('pairing store mutex poisoned').",
+      "name": "PairingStore",
+      "kind": "struct"
+    },
+    {
+      "purpose": "Internal storage record. Fields: pairing_id, secret_hash (SHA-256 hex), created_at (RFC3339), expires_at (RFC3339), attempts (u32), redeemed (bool), allowed_transports (Vec<String>). Debug+Clone+Serialize. Not directly returned to clients.",
+      "name": "PairingRecord",
+      "kind": "struct"
+    },
+    {
+      "purpose": "Response object for the create method. Derives Debug, Clone, Serialize with rename_all=camelCase. Fields: secret (one-time plaintext), pairing_id, expires_at, transports: Vec<PairingTransport>.",
+      "name": "PairingPayload",
+      "kind": "struct"
+    },
+    {
+      "purpose": "Transport descriptor in create/redeem responses. Derives Debug, Clone, Serialize with rename_all=camelCase. Fields: r#type (renamed to 'type'): PairingTransportType, url: Option<String> (skip if None), relay_id: Option<String> (skip if None). Exactly one of url or relay_id is populated per spec example.",
+      "name": "PairingTransport",
+      "kind": "struct"
+    },
+    {
+      "purpose": "Transport type discriminator. Variants: Direct, Relay. Derives Debug, Clone, Copy, Serialize, PartialEq, Eq. Serializes as lowercase strings via rename_all=lowercase.",
+      "name": "PairingTransportType",
+      "kind": "enum"
+    },
+    {
+      "purpose": "Item type in pending_list response. Derives Debug, Clone, Serialize with rename_all=camelCase. Fields: pairing_id, created_at, expires_at, attempts. NO secret or secret_hash field.",
+      "name": "PendingPairing",
+      "kind": "struct"
+    },
+    {
+      "purpose": "Params for create. Derives Debug, Deserialize with rename_all=camelCase. Fields: ttl_seconds: Option<u64> (optional, default 300), allowed_transports: Option<Vec<String>> (optional, default ['direct','relay']). Both use #[serde(default)].",
+      "name": "PairingCreateParams",
+      "kind": "struct"
+    },
+    {
+      "purpose": "Params for redeem. Derives Debug, Deserialize with rename_all=camelCase. Fields: secret: String (required), client_info: ClientInfo (required).",
+      "name": "PairingRedeemParams",
+      "kind": "struct"
+    },
+    {
+      "purpose": "Client identification nested in redeem params. Derives Debug, Deserialize with rename_all=camelCase. Fields: name: String (required, non-empty after trim), version: String (required, non-empty after trim), platform: String (required, non-empty after trim).",
+      "name": "ClientInfo",
+      "kind": "struct"
+    },
+    {
+      "purpose": "Params for cancel. Derives Debug, Deserialize with rename_all=camelCase. Fields: pairing_id: String (required, non-empty after trim).",
+      "name": "PairingCancelParams",
+      "kind": "struct"
+    },
+    {
+      "purpose": "Response object for redeem. Derives Debug, Clone, Serialize with rename_all=camelCase. Fields: pairing_id, redeemed (always true on success), client_token (format ct-{uuid}, returned once), transport: PairingTransport.",
+      "name": "PairingRedeemResponse",
+      "kind": "struct"
+    },
+    {
+      "purpose": "Response object for cancel. Derives Debug, Clone, Serialize with rename_all=camelCase. Fields: pairing_id, cancelled (always true on success).",
+      "name": "PairingCancelResponse",
+      "kind": "struct"
+    },
+    {
+      "purpose": "Response object for transports. Derives Debug, Clone, Serialize with rename_all=camelCase. Fields: transports: Vec<AvailableTransport>.",
+      "name": "PairingTransportsResponse",
+      "kind": "struct"
+    },
+    {
+      "purpose": "Transport descriptor in transports response (with availability flag and label). Derives Debug, Clone, Serialize with rename_all=camelCase. Fields: r#type (renamed to 'type'): PairingTransportType, available: bool, url: Option<String> (skip if None), relay_id: Option<String> (skip if None), label: String.",
+      "name": "AvailableTransport",
+      "kind": "struct"
+    },
+    {
+      "purpose": "Internal result of store.try_redeem(secret_hash). Variants: Success { pairing_id }, AlreadyRedeemed, Expired, AttemptsExceeded { pairing_id } (paired with -32003 not_found for lockout), NoMatch { last_pairing_id: Option<String> } (paired with -32002 forbidden for brute-force detection), NotFound (paired with -32003 not_found when no pending pairings exist).",
+      "name": "RedeemResult",
+      "kind": "enum"
+    },
+    {
+      "purpose": "Internal result of store.cancel(pairing_id). Variants: Cancelled, NotFound. NotFound covers: not in store, already redeemed, already expired.",
+      "name": "CancelResult",
+      "kind": "enum"
+    },
+    {
+      "purpose": "Max failed redeem attempts before the pairing is auto-removed. Value: 5. Brute-force protection per spec.",
+      "name": "REDEEM_MAX_ATTEMPTS",
+      "kind": "const"
+    },
+    {
+      "purpose": "Default TTL for create. Value: 300 (5 minutes) per spec.",
+      "name": "DEFAULT_TTL_SECONDS",
+      "kind": "const"
+    },
+    {
+      "purpose": "Minimum TTL for create. Value: 1. DoS protection lower bound.",
+      "name": "MIN_TTL_SECONDS",
+      "kind": "const"
+    },
+    {
+      "purpose": "Maximum TTL for create. Value: 86400 (24 hours). DoS protection upper bound.",
+      "name": "MAX_TTL_SECONDS",
+      "kind": "const"
+    },
+    {
+      "purpose": "Default pagination limit for pending_list. Value: 20.",
+      "name": "DEFAULT_LIST_LIMIT",
+      "kind": "const"
+    },
+    {
+      "purpose": "Maximum pagination limit for pending_list. Value: 100.",
+      "name": "MAX_LIST_LIMIT",
+      "kind": "const"
+    },
+    {
+      "purpose": "Valid transport type string. Value: 'direct'.",
+      "name": "VALID_TRANSPORT_DIRECT",
+      "kind": "const"
+    },
+    {
+      "purpose": "Valid transport type string. Value: 'relay'.",
+      "name": "VALID_TRANSPORT_RELAY",
+      "kind": "const"
+    }
+  ],
+  "method_signatures": [
+    {
+      "params": "PairingCreateParams { ttl_seconds: Option<u64> (default 300), allowed_transports: Option<Vec<String>> (default ['direct','relay']) } parsed via serde_json::from_value. Raw value MUST be a JSON object or -32602. ttl_seconds must be in [1, 86400] or -32602. allowed_transports entries must each be 'direct' or 'relay' or -32602.",
+      "result": "PairingPayload serialized to JSON: { secret: String (format pair-secret-{uuid1.simple()}-{uuid2.simple()}, returned once), pairingId: String (format pair-{uuid}), expiresAt: String (RFC3339), transports: Vec<PairingTransport> }. Transports contain at most one direct entry (url: None in v1) and at most one relay entry (relayId: Some(ctx.connection_id) ONLY when ctx.connection_id starts with 'relay-'; otherwise the relay transport is OMITTED from the response, even if 'relay' was in allowed_transports). Secret hash (SHA-256) is stored internally; plaintext is never persisted and only appears in this response.",
+      "name": "create",
+      "errors": [
+        "-32602 invalid_params: params is not JSON object; missing/invalid required fields; ttlSeconds out of [1, 86400]; allowed_transports contains invalid value; serde failure",
+        "-32002 forbidden: ctx.principal is empty (no authenticated principal)",
+        "-32603 internal_error: serialization failure"
+      ]
+    },
+    {
+      "params": "PairingRedeemParams { secret: String (required, non-empty after trim), client_info: ClientInfo { name: String (required, non-empty after trim), version: String (required, non-empty after trim), platform: String (required, non-empty after trim) } } parsed via serde_json::from_value. Raw value MUST be a JSON object or -32602. spec does not require a specific scope for redeem; v1 allows empty principal.",
+      "result": "PairingRedeemResponse serialized to JSON: { pairingId: String, redeemed: true, clientToken: String (format ct-{uuid}, returned once), transport: PairingTransport }. Transport is derived from ctx.connection_id: relay transport with relayId=ctx.connection_id if connection_id starts with 'relay-', otherwise direct transport with url: None. The plaintext secret is never stored and is NOT included in the response.",
+      "name": "redeem",
+      "errors": [
+        "-32602 invalid_params: params is not JSON object; missing secret; missing or non-string client_info; client_info name/version/platform missing or empty after trim; serde failure",
+        "-32002 forbidden: secret whitespace-only; secret does not match any pending pairing; pairing already redeemed; pairing expired; no pending pairings yet redeemed attempts below max",
+        "-32003 not_found: no pending pairings exist; attempts exceeded (pairing removed due to too many failed attempts)",
+        "-32603 internal_error: serialization failure"
+      ]
+    },
+    {
+      "params": "PaginationParams { cursor: Option<String>, limit: Option<usize> } parsed via serde_json::from_value. Raw value MUST be a JSON object or -32602. limit=0 is explicitly checked and returns -32602. invalid hex cursor returns -32602.",
+      "result": "PaginatedResult<PendingPairing>.to_json() returns { items: PendingPairing[], nextCursor: Option<String>, hasMore: bool }. Items have NO secret or secret_hash field. Sorted by created_at ascending. Filtered: redeemed and expired pairings are excluded. Revoked/cancelled pairings are also excluded.",
+      "name": "pending_list",
+      "errors": [
+        "-32602 invalid_params: params is not JSON object; limit=0; invalid hex cursor; serde failure",
+        "-32002 forbidden: ctx.principal is empty (no authenticated principal)",
+        "-32603 internal_error: serialization failure"
+      ]
+    },
+    {
+      "params": "PairingCancelParams { pairing_id: String (required, non-empty after trim) } parsed via serde_json::from_value. Raw value MUST be a JSON object or -32602.",
+      "result": "PairingCancelResponse serialized to JSON: { pairingId: String, cancelled: true }. The pending pairing is atomically removed from the store. Already-redeemed or already-expired pairings return not_found (no-op, no error message leaked).",
+      "name": "cancel",
+      "errors": [
+        "-32602 invalid_params: params is not JSON object; missing/empty/whitespace pairing_id; serde failure",
+        "-32002 forbidden: ctx.principal is empty (no authenticated principal)",
+        "-32003 not_found: pairing does not exist, is already redeemed, or is expired",
+        "-32603 internal_error: serialization failure"
+      ]
+    },
+    {
+      "params": "Empty object {} parsed (must be a JSON object or -32602). transports is read-only and ignores its params entirely. No required fields. No validation beyond params being an object.",
+      "result": "PairingTransportsResponse serialized to JSON: { transports: [ { type: 'direct', available: true, label: 'Local Network' }, { type: 'relay', available: bool (true if ctx.connection_id starts with 'relay-'), relayId: Option<String> (Some(ctx.connection_id) when available, else None), label: 'Cloud Relay' } ] }. The 'direct' transport is always available. The 'relay' transport is available only when on a relay connection. Both are always returned (no filtering), unlike create which omits the relay transport when not on a relay connection.",
+      "name": "transports",
+      "errors": [
+        "-32602 invalid_params: params is not a JSON object (null, array, string, number, bool rejected)",
+        "-32603 internal_error: serialization failure"
+      ]
+    }
+  ],
+  "concerns": [
+    "[Spec/Task discrepancy] The task instructions list 'create, get, list, revoke, redeem' but the spec defines 'create, redeem, pending_list, cancel, transports'. There is NO 'get', 'list' (as a separate name), or 'revoke' method in the pairing domain per the spec (lines 270-595). I am following the spec — the spec is authoritative. 'pending_list' is the list method (with the 'pending_' prefix to distinguish from a hypothetical 'all pairings' list). 'cancel' replaces 'revoke' semantically (it removes a pending pairing before it is redeemed; redeemed pairings become client-auth records which are revoked via client-auth/revoke, not here). 'get' is not needed because the only lookup surface is pending_list. If the architect intended 'get' to mean a single-pairing lookup, please confirm and add it to the spec.",
+    "[v1 limitation] Direct transport URL is hardcoded to None in v1 because the server has no reliable way to determine the public-facing direct URL. The spec example shows 'ws://192.168.1.100:51717' but this is documentation, not a v1 contract. The client discovers the actual URL from network configuration. v2 may populate this from a configured 'direct_url' setting.",
+    "[v1 limitation] No scope check beyond principal presence. The spec mentions 'pairing:create' for create/pending_list/cancel and 'Server policy' (no specific scope) for redeem. v1's auth::check_server_policy only checks for non-empty principal; this satisfies the spec's documented v1 simplification. A future v2 could enforce 'pairing:create' explicitly.",
+    "[v1 limitation] redeem does not require principal. spec says 'Server policy' without a specific scope for redeem. v1 allows empty principal for redeem so unauthenticated clients can perform initial pairing. The other 3 write methods (create, cancel, pending_list) DO require principal.",
+    "[v1 limitation] No persistence: PairingStore is in-memory only. Restart loses all pairings. Acceptable for v1 per design. v2 could persist to disk or external store.",
+    "[v1 limitation] No notification on redeem success or cancel. The spec section 'Reconnect Resync' (line 872) states '此域无需要 resync 的 notification'. So no *_changed notifications are emitted.",
+    "[v1 limitation] No notification on pairing expiry. Expired pairings are silently removed from pending_list and from store on next access. No push notification.",
+    "Brute-force protection: When a wrong secret is presented, the system attempts to find a 'recent pending pairing' to attribute the attempt to. This is to prevent attackers from probing many pairings without consequence. If a recent pending pairing exists, its attempts counter is incremented; if the counter reaches REDEEM_MAX_ATTEMPTS (5), the pairing is removed and a not_found is returned. If no pending pairings exist, a not_found is returned immediately. This is a heuristic to balance security and usability.",
+    "Self-redeem does not apply to pairing — there is no concept of 'self' in this domain because the redeem endpoint is invoked by the client that wants to be paired, not by the server. The client-auth domain has the self-revoke concept (server revokes its own credentials). The pairing domain has no such analog.",
+    "clientInfo fields are validated as non-empty after trim. Length bounds are not specified by the spec, so v1 does not enforce length limits on name/version/platform. The pairing flow is gated by the secret itself; clientInfo is informational and used for the eventual ClientAuthRecord. Future v2 may add length bounds.",
+    "The clientToken format in redeem response is ct-{uuid} (matching client-auth's clientId format). This is the SAME format the client-auth domain uses, so the two domains are interoperable: a pairing/redeem success produces a token that a client-auth entry could later be created from. However, the v1 pairing domain does NOT auto-create a ClientAuthRecord on redeem; the integration is out of scope and will be added in a future milestone.",
+    "Transport type validation: 'direct' or 'relay' are the only valid types per spec. Any other value returns -32602. The transport type in the response is serialized as lowercase string ('direct' or 'relay') via #[serde(rename_all = 'lowercase')].",
+    "For create's 'transports' field: when allowed_transports contains 'relay' but the current connection is NOT a relay connection, the relay transport is OMITTED from the response (not just url/relayId left null). This is because the relay transport's relayId would not be available (connection_id doesn't start with 'relay-'). This matches the spec's expected behavior.",
+    "For transports method: BOTH direct and relay entries are ALWAYS returned (one each), regardless of which transport the current connection uses. The 'available' boolean discriminates whether the transport can actually be used. This differs from create which only returns the relay transport when on a relay connection.",
+    "Pagination: pending_list uses opaque cursor (hex-encoded JSON) per pagination::PaginatedResult::from_slice. Offset-based pagination with default limit 20, max 100, limit=0 returns -32602. Negative limit is rejected by serde (Option<usize>).",
+    "The secret hash is SHA-256 of the plaintext secret, hex-encoded (64 hex chars). The plaintext is never persisted; only the hash. On redeem, the presented secret is hashed and compared against stored hashes.",
+    "All Mutex locks use .expect('pairing store mutex poisoned') for clear panic messages on poisoning. This is a v1 convention to make debugging easier; future versions may handle poisoning more gracefully."
+  ],
+  "capability_json": "{\n  \"create\": true,\n  \"redeem\": true,\n  \"pending_list\": true,\n  \"cancel\": true,\n  \"transports\": true\n}",
+  "framework_notes": "Integration: (1) ExtensionHandler trait via async_trait. Method dispatch is a match on the sub_method string ('create'|'redeem'|'pending_list'|'cancel'|'transports'); unknown methods return ExtensionError::method_not_found() (code -32601). (2) create, pending_list, cancel call auth::check_server_policy(ctx, 'pairing', method) which returns -32002 forbidden when ctx.principal is empty. redeem does NOT call auth::check_server_policy because the spec marks redeem as 'Server policy' without a specific scope, and v1 supports unauthenticated redeem. (3) pending_list uses pagination::PaginationParams for cursor/limit parsing; cursor is decoded via PaginationParams::decode_cursor::<serde_json::Value> which returns -32602 on invalid hex or invalid JSON. limit is clamped via PaginationParams::limit_or_default(DEFAULT_LIST_LIMIT=20, MAX_LIST_LIMIT=100). limit=0 is explicitly checked and returns -32602. (4) All 5 methods use ensure_object_params helper that returns -32602 if params is not a JSON object (null, array, string, number, bool all rejected). transports also calls ensure_object_params for consistency. (5) For pagination, items are sorted by created_at ascending, then sliced via PaginatedResult::from_slice. (6) All Mutex locks use .expect('pairing store mutex poisoned') for clear panic messages. (7) Token format: pairingId = 'pair-' + uuid::Uuid::new_v4(). secret = 'pair-secret-' + uuid1.simple() + '-' + uuid2.simple(). clientToken = 'ct-' + uuid::Uuid::new_v4(). All three use uuid. (8) Secret hash: SHA-256 of the plaintext secret, hex-encoded, stored as secret_hash. Plaintext is never persisted and only appears in the create response. (9) is_expired helper: chrono::DateTime::parse_from_rfc3339(record.expires_at); if parse fails, treat as non-expired (defensive). (10) is_relay_connection(ctx) uses ctx.connection_id.starts_with('relay-') (case-sensitive, hyphen-required, same convention as relay domain). (11) chrono::Utc::now() is captured once per create call to derive both created_at and expires_at, avoiding microsecond drift. (12) No notifications or resync requirements (per spec section 'Reconnect Resync' line 872). (13) Brute-force protection: store.try_redeem increments attempts on wrong-secret attempts. After REDEEM_MAX_ATTEMPTS (5) failed attempts, the pairing is removed and redeem returns not_found. The 'no pending pairings' case also returns not_found to avoid leaking information. (14) Self-redeem does not apply (different from client-auth's self-revoke). (15) Pairing/redeem integration with client-auth is OUT OF SCOPE: this domain does not auto-create a ClientAuthRecord on successful redeem. The create method in client-auth is for manual admin token issuance; pairing/redeem is for user-initiated pairing. Integration will be added in a future milestone. (16) Transport type serialization uses #[serde(rename_all = 'lowercase')] on PairingTransportType enum so 'Direct' and 'Relay' serialize as 'direct' and 'relay'. The 'type' field uses #[serde(rename = 'type')] because 'type' is a Rust reserved keyword. The fields url and relay_id use #[serde(skip_serializing_if = 'Option::is_none')] so they are omitted from JSON when None (this matches the spec example which shows url OR relayId but not both)."
+}

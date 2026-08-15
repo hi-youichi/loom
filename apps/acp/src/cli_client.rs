@@ -105,8 +105,7 @@ async fn prompt_request(
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let id = next_request_id();
     ws.send(Message::Text(
-        json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params})
-            .to_string(),
+        json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}).to_string(),
     ))
     .await?;
 
@@ -159,8 +158,7 @@ async fn request(
 ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let id = next_request_id();
     ws.send(Message::Text(
-        json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params})
-            .to_string(),
+        json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}).to_string(),
     ))
     .await?;
 
