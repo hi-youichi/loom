@@ -51,32 +51,13 @@ jobs:
           Compress-Archive -Path "target/${{ matrix.target }}/release/loom.exe" `
             -DestinationPath "dist/loom-$version-${{ matrix.target }}.zip"
 
-      - name: Generate release notes
+      - name: Upload release artifact
         if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        run: |
-          PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -n "$PREV" ]; then
-            echo "## Changes since $PREV" > release_notes.md
-            echo "" >> release_notes.md
-            git log "$PREV..HEAD" --pretty=format:"* %s (%h)" >> release_notes.md
-          else
-            echo "## Release ${{ github.ref_name }}" > release_notes.md
-            echo "" >> release_notes.md
-            git log -5 --pretty=format:"* %s (%h)" >> release_notes.md
-          fi
-
-      - name: Upload to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.ref_name }}
-          body_path: release_notes.md
-          files: dist/*
-          generate_release_notes: true
-          overwrite_files: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: release-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
 
     strategy:
       fail-fast: false
@@ -91,9 +72,73 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
 
+  publish:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Verify release assets
+        shell: bash
+        run: |
+          set -eu
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          expected=(
+            "loom-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+            "loom-${VERSION}-x86_64-apple-darwin.tar.gz"
+            "loom-${VERSION}-aarch64-apple-darwin.tar.gz"
+            "loom-${VERSION}-x86_64-pc-windows-msvc.zip"
+          )
+          for asset in "${expected[@]}"; do
+            test -f "dist/$asset" || {
+              echo "missing release asset: $asset" >&2
+              exit 1
+            }
+          done
+          printf '%s\n' dist/*
+
+      - name: Generate release notes
+        shell: bash
+        run: |
+          PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV" ]; then
+            echo "## Changes since $PREV" > release_notes.md
+            echo "" >> release_notes.md
+            git log "$PREV..HEAD" --pretty=format:"* %s (%h)" >> release_notes.md
+          else
+            echo "## Release ${{ github.ref_name }}" > release_notes.md
+            echo "" >> release_notes.md
+            git log -5 --pretty=format:"* %s (%h)" >> release_notes.md
+          fi
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          body_path: release_notes.md
+          files: dist/*
+          generate_release_notes: true
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   installer-smoke-test:
     name: Installer smoke test (${{ matrix.os }})
-    needs: build
+    needs: publish
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ${{ matrix.os }}
     strategy:
