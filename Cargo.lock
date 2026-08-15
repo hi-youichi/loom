@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "acp"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "agent",
  "agent-client-protocol 0.15.1",
@@ -66,7 +66,7 @@ dependencies = [
 
 [[package]]
 name = "agent"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "async-openai",
  "async-trait",
@@ -1635,7 +1635,7 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "checkpoint"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "async-trait",
  "serde",
@@ -1646,7 +1646,7 @@ dependencies = [
 
 [[package]]
 name = "checkpoint-sqlite-store"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "async-trait",
  "checkpoint",
@@ -1746,7 +1746,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "cli"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "acp",
  "agent",
@@ -1834,7 +1834,7 @@ dependencies = [
 
 [[package]]
 name = "config"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
@@ -5619,7 +5619,7 @@ dependencies = [
 
 [[package]]
 name = "loom-codex"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "agent",
  "anyhow",
@@ -5641,7 +5641,7 @@ dependencies = [
 
 [[package]]
 name = "loom-curator"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "agent",
  "checkpoint",
@@ -5674,7 +5674,7 @@ dependencies = [
 
 [[package]]
 name = "loom-graph-core"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "async-trait",
  "checkpoint",
@@ -5691,14 +5691,14 @@ dependencies = [
 
 [[package]]
 name = "loom-http-retry"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "reqwest 0.12.28",
 ]
 
 [[package]]
 name = "loom-llm"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "async-openai",
  "async-trait",
@@ -5730,7 +5730,7 @@ dependencies = [
 
 [[package]]
 name = "loom-pregel"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "async-trait",
  "checkpoint",
@@ -5747,11 +5747,11 @@ dependencies = [
 
 [[package]]
 name = "loom-pty-protocol"
-version = "0.5.0"
+version = "0.6.0"
 
 [[package]]
 name = "loom-server-core"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "acp",
  "agent",
@@ -5786,7 +5786,7 @@ dependencies = [
 
 [[package]]
 name = "loom-util"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "regex",
 ]
@@ -5808,7 +5808,7 @@ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
 name = "lsp"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "config",
  "dashmap",
@@ -6111,7 +6111,7 @@ dependencies = [
 
 [[package]]
 name = "memory-v2"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "config",
  "fs4 0.12.0",
@@ -6221,7 +6221,7 @@ checksum = "dce6dd36094cac388f119d2e9dc82dc730ef91c32a6222170d630e5414b956e6"
 
 [[package]]
 name = "model-spec-core"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "async-trait",
  "loom-http-retry",
@@ -8549,7 +8549,7 @@ dependencies = [
 
 [[package]]
 name = "skill"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "chrono",
  "config",
@@ -8948,7 +8948,7 @@ checksum = "e51f1e89f093f99e7432c491c382b88a6860a5adbe6bf02574bf0a08efff1978"
 
 [[package]]
 name = "stream-event"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -9307,7 +9307,7 @@ dependencies = [
 
 [[package]]
 name = "task-cli"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "clap",
  "serde_json",
@@ -9317,7 +9317,7 @@ dependencies = [
 
 [[package]]
 name = "task-core"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "chrono",
  "rusqlite",
@@ -9332,7 +9332,7 @@ dependencies = [
 
 [[package]]
 name = "task-mcp-server"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "clap",
  "rmcp",
@@ -9344,7 +9344,7 @@ dependencies = [
 
 [[package]]
 name = "telegram-bot"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "agent",
  "anyhow",
@@ -9855,7 +9855,7 @@ checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 
 [[package]]
 name = "tool-basic"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -9890,7 +9890,7 @@ dependencies = [
 
 [[package]]
 name = "tool-core"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -9907,7 +9907,7 @@ dependencies = [
 
 [[package]]
 name = "tool-experimental"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -9928,7 +9928,7 @@ dependencies = [
 
 [[package]]
 name = "tool-extensions"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "async-trait",
  "config",
@@ -9950,7 +9950,7 @@ dependencies = [
 
 [[package]]
 name = "tool-workflow"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "agent",
  "async-trait",
@@ -10346,7 +10346,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "vector-store"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -11100,7 +11100,7 @@ dependencies = [
 
 [[package]]
 name = "worktree"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "serde",
  "serde_json",
