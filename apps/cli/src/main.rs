@@ -6,6 +6,7 @@
 mod args;
 mod bootstrap;
 mod codex_event_builder;
+mod config_cmd;
 mod display_limits;
 mod goal_cmd;
 mod goal_runner;
@@ -36,6 +37,7 @@ use tokio::sync::Notify;
 
 use args::{Args, Command as Cmd, GotArgs};
 use bootstrap::{init_logging, preserve_shell_env, print_config_report};
+use config_cmd::handle_config_command;
 use display_limits::max_reply_len;
 use run_flow::{
     build_run_options, output_config, resolve_user_message, run_interactive_mode,
@@ -156,6 +158,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(Cmd::Mcp(ma)) = &args.cmd {
         if let Err(err) = handle_mcp_command(ma, args.json) {
+            eprintln!("{}", err);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if let Some(Cmd::Config(ca)) = &args.cmd {
+        if let Err(err) = handle_config_command(ca, args.json) {
             eprintln!("{}", err);
             std::process::exit(1);
         }

@@ -155,6 +155,8 @@ pub(crate) enum Command {
     Models(ModelsArgs),
     /// Manage MCP servers (list, show, add, edit, delete, enable, disable)
     Mcp(McpArgs),
+    /// Manage model providers and credentials
+    Config(ConfigArgs),
     /// Manage agent profiles (list, export)
     Agent(AgentArgs),
     /// Run autonomous goal loop with an external coding tool
@@ -304,6 +306,92 @@ pub(crate) enum ModelsCommand {
 pub(crate) struct ShowModelsArgs {
     /// Provider name (e.g., openai, bigmodel)
     pub(crate) name: String,
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct ConfigArgs {
+    #[command(subcommand)]
+    pub(crate) command: ConfigCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub(crate) enum ConfigCommand {
+    /// Open the interactive provider configuration UI
+    Tui,
+    /// Manage configured model providers
+    Provider(ProviderArgs),
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct ProviderArgs {
+    #[command(subcommand)]
+    pub(crate) command: ProviderCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub(crate) enum ProviderCommand {
+    /// List configured providers
+    List,
+    /// Show one provider (the API key is always masked)
+    Show { name: String },
+    /// Add a provider; API key can be supplied through hidden stdin input
+    Add(AddProviderArgs),
+    /// Edit an existing provider
+    Edit(EditProviderArgs),
+    /// Set or replace a provider API key
+    SetKey {
+        name: String,
+        /// Read the API key from stdin instead of prompting
+        #[arg(long)]
+        api_key_stdin: bool,
+    },
+    /// Remove a provider
+    Remove {
+        name: String,
+        /// Do not ask for confirmation
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Select the default provider
+    Use { name: String },
+    /// Test provider configuration and its OpenAI-compatible /models endpoint
+    Test { name: String },
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct AddProviderArgs {
+    /// Provider name, e.g. openai or zhipuai
+    pub(crate) name: Option<String>,
+    /// Provider implementation type; defaults to provider-specific runtime inference
+    #[arg(long = "type")]
+    pub(crate) provider_type: Option<String>,
+    /// Optional API base URL; omitted means resolve through models.dev
+    #[arg(long)]
+    pub(crate) base_url: Option<String>,
+    /// Optional default model
+    #[arg(long)]
+    pub(crate) model: Option<String>,
+    /// Read the API key from stdin instead of prompting
+    #[arg(long)]
+    pub(crate) api_key_stdin: bool,
+    /// Do not configure an API key (useful for local providers)
+    #[arg(long)]
+    pub(crate) no_api_key: bool,
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(crate) struct EditProviderArgs {
+    /// Provider name
+    pub(crate) name: String,
+    /// Replace provider implementation type
+    #[arg(long = "type")]
+    pub(crate) provider_type: Option<String>,
+    /// Replace the optional API base URL
+    #[arg(long)]
+    pub(crate) base_url: Option<String>,
+    /// Replace the default model
+    #[arg(long)]
+    pub(crate) model: Option<String>,
 }
 
 /// Arguments for the `got` subcommand.
