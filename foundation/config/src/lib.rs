@@ -220,6 +220,15 @@ fn resolve_provider_api_base_from_models_dev(provider_name: &str) -> Option<Stri
     extract_provider_api_from_models_dev_json(&body, provider_name)
 }
 
+/// Resolve a provider API base URL from the models.dev catalog.
+///
+/// This is used by CLI configuration tooling when a provider does not declare
+/// `base_url` explicitly. An inline catalog from `LOOM_MODELS_DEV_API_JSON` is
+/// honored before the network catalog, matching normal config loading.
+pub fn resolve_provider_base_url(provider_name: &str) -> Option<String> {
+    resolve_provider_api_base_from_models_dev(provider_name)
+}
+
 /// Loads config from `~/.loom/config.toml` and optional project `.env`, then sets environment
 /// variables only for keys that are **not** already set (so existing env has highest priority).
 ///
