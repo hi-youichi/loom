@@ -550,6 +550,7 @@ impl ExtensionHandler for FilesHandler {
             "reveal_path" => self.handle_reveal_path(params, ctx).await,
             "exec_commands" => self.handle_exec_commands(params, ctx).await,
             "download_file" => self.handle_download_file(params, ctx).await,
+            "home" => self.handle_home().await,
             _ => Err(ExtensionError::method_not_found()),
         }
     }
@@ -566,12 +567,24 @@ impl ExtensionHandler for FilesHandler {
             "rename": true,
             "reveal_path": true,
             "exec_commands": true,
-            "download_file": true
+            "download_file": true,
+            "home": true
         })
     }
 }
 
 impl FilesHandler {
+    async fn handle_home(&self) -> Result<Value, ExtensionError> {
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .map_err(|_| ExtensionError {
+                code: -32603,
+                message: "internal_error".into(),
+                data: Some(serde_json::json!("home directory unavailable")),
+            })?;
+        Ok(serde_json::json!({ "home": home }))
+    }
+
     async fn handle_list(
         &self,
         params: Value,

@@ -11,6 +11,10 @@ pub struct SessionMetadata {
     pub owner_principal: String,
     pub cwd: PathBuf,
     pub lifecycle: String,
+    /// Auto-generated session title (first-turn LLM title), when known.
+    pub title: Option<String>,
+    /// RFC 3339 timestamp of the last metadata update.
+    pub updated_at: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -42,12 +46,27 @@ impl SessionRepository {
                 lifecycle       TEXT NOT NULL DEFAULT 'idle',
                 created_at      TEXT NOT NULL,
                 updated_at      TEXT NOT NULL,
-                closed_at       TEXT
+                closed_at       TEXT,
+                title           TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_acp_sessions_owner_updated
                 ON acp_sessions(owner_principal, updated_at DESC);
             "#,
         )?;
+        self.ensure_title_column()?;
+        Ok(())
+    }
+
+    /// Add the `title` column to databases created before it existed.
+    fn ensure_title_column(&self) -> rusqlite::Result<()> {
+        let has_title = self
+            .connection()?
+            .prepare("SELECT 1 FROM pragma_table_info('acp_sessions') WHERE name = 'title'")?
+            .exists([])?;
+        if !has_title {
+            self.connection()?
+                .execute_batch("ALTER TABLE acp_sessions ADD COLUMN title TEXT")?;
+        }
         Ok(())
     }
 
@@ -80,7 +99,7 @@ impl SessionRepository {
         self.connection()?
             .query_row(
                 r#"
-                SELECT session_id, thread_id, owner_principal, cwd, lifecycle
+                SELECT session_id, thread_id, owner_principal, cwd, lifecycle, title, updated_at
                 FROM acp_sessions WHERE session_id = ?1
                 "#,
                 [session_id],
@@ -91,6 +110,8 @@ impl SessionRepository {
                         owner_principal: row.get(2)?,
                         cwd: PathBuf::from(row.get::<_, String>(3)?),
                         lifecycle: row.get(4)?,
+                        title: row.get(5)?,
+                        updated_at: row.get(6)?,
                     })
                 },
             )
@@ -101,7 +122,7 @@ impl SessionRepository {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
             r#"
-            SELECT session_id, thread_id, owner_principal, cwd, lifecycle
+            SELECT session_id, thread_id, owner_principal, cwd, lifecycle, title, updated_at
             FROM acp_sessions ORDER BY updated_at ASC
             "#,
         )?;
@@ -113,6 +134,8 @@ impl SessionRepository {
                     owner_principal: row.get(2)?,
                     cwd: PathBuf::from(row.get::<_, String>(3)?),
                     lifecycle: row.get(4)?,
+                    title: row.get(5)?,
+                    updated_at: row.get(6)?,
                 })
             })?
             .collect();
@@ -123,7 +146,7 @@ impl SessionRepository {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
             r#"
-            SELECT session_id, thread_id, owner_principal, cwd, lifecycle
+            SELECT session_id, thread_id, owner_principal, cwd, lifecycle, title, updated_at
             FROM acp_sessions
             WHERE owner_principal = ?1
             ORDER BY updated_at DESC
@@ -137,10 +160,22 @@ impl SessionRepository {
                     owner_principal: row.get(2)?,
                     cwd: PathBuf::from(row.get::<_, String>(3)?),
                     lifecycle: row.get(4)?,
+                    title: row.get(5)?,
+                    updated_at: row.get(6)?,
                 })
             })?
             .collect();
         rows
+    }
+
+    /// Persist an auto-generated session title. Does not bump `updated_at`
+    /// so title generation never reorders the session list.
+    pub fn set_title(&self, session_id: &str, title: &str) -> rusqlite::Result<()> {
+        self.connection()?.execute(
+            "UPDATE acp_sessions SET title = ?2 WHERE session_id = ?1",
+            params![session_id, title],
+        )?;
+        Ok(())
     }
 
     pub fn set_lifecycle(&self, session_id: &str, lifecycle: &str) -> rusqlite::Result<()> {
@@ -237,9 +272,52 @@ mod tests {
             repository.get("session-a").unwrap().unwrap().lifecycle,
             "closed"
         );
+        assert_eq!(repository.get("session-a").unwrap().unwrap().title, None);
+        repository.set_title("session-a", "Fix login bug").unwrap();
+        assert_eq!(
+            repository.get("session-a").unwrap().unwrap().title,
+            Some("Fix login bug".to_string())
+        );
         repository.delete("session-a").unwrap();
         repository.delete("session-a").unwrap();
         assert!(repository.get("session-a").unwrap().is_none());
+    }
+
+    #[test]
+    fn legacy_database_without_title_column_is_migrated() {
+        let temp = tempfile::tempdir().unwrap();
+        let db_path = temp.path().join("sessions.db");
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.execute_batch(
+                r#"
+                CREATE TABLE acp_sessions (
+                    session_id      TEXT PRIMARY KEY,
+                    thread_id       TEXT NOT NULL,
+                    owner_principal TEXT NOT NULL,
+                    cwd             TEXT NOT NULL,
+                    lifecycle       TEXT NOT NULL DEFAULT 'idle',
+                    created_at      TEXT NOT NULL,
+                    updated_at      TEXT NOT NULL,
+                    closed_at       TEXT
+                );
+                INSERT INTO acp_sessions
+                    (session_id, thread_id, owner_principal, cwd, lifecycle, created_at, updated_at)
+                VALUES
+                    ('session-old', 'thread-old', 'owner-a', 'C:\\tmp', 'idle', 't0', 't0');
+                "#,
+            )
+            .unwrap();
+        }
+        let repository = SessionRepository::new(&db_path).unwrap();
+        let metadata = repository.get("session-old").unwrap().unwrap();
+        assert_eq!(metadata.title, None);
+        assert!(metadata.updated_at.is_some());
+        repository.set_title("session-old", "Migrated").unwrap();
+        assert_eq!(
+            repository.get("session-old").unwrap().unwrap().title,
+            Some("Migrated".to_string())
+        );
     }
 
     #[test]

@@ -1,13 +1,19 @@
 use std::sync::Arc;
 
+use crate::global_events::GlobalEventBus;
+
 use super::ExtensionRegistry;
 
 /// Register every extension domain implemented in this crate.
-pub fn register_default_extensions(registry: &mut ExtensionRegistry) {
+pub fn register_default_extensions(registry: &mut ExtensionRegistry, global_bus: Arc<GlobalEventBus>) {
     registry.register("files", Arc::new(super::files::FilesHandler));
-    registry.register("git", Arc::new(super::git::GitHandler::new()));
+    registry.register(
+        "git",
+        Arc::new(super::git::GitHandler::new().with_global_bus(global_bus.clone())),
+    );
     registry.register("worktree", Arc::new(super::worktree::WorktreeHandler));
     registry.register("mcp", Arc::new(super::mcp::McpHandler));
+ registry.register("model", Arc::new(super::model::ModelHandler::new()));
     registry.register("goal", Arc::new(super::goal::GoalHandler));
     registry.register(
         "scheduled-task",
@@ -30,7 +36,10 @@ pub fn register_default_extensions(registry: &mut ExtensionRegistry) {
     registry.register("project", Arc::new(super::project::ProjectHandler::persistent()));
     registry.register("tunnel", Arc::new(super::tunnel::TunnelHandler::default()));
     registry.register("multi-run", Arc::new(super::multi_run::MultiRunHandler::default()));
-    registry.register("settings", Arc::new(super::settings::SettingsHandler::default()));
+    registry.register(
+        "settings",
+        Arc::new(super::settings::SettingsHandler::default().with_global_bus(global_bus.clone())),
+    );
     registry.register("session-assist", Arc::new(super::session_assist::SessionAssistHandler));
     registry.register("small-model", Arc::new(super::small_model::SmallModelHandler::default()));
     registry.register("auto-review", Arc::new(super::auto_review::AutoReviewHandler::default()));
@@ -43,4 +52,5 @@ pub fn register_default_extensions(registry: &mut ExtensionRegistry) {
     );
     registry.register("tts", Arc::new(super::tts::TtsHandler::default()));
     registry.register("dictation", Arc::new(super::dictation::DictationHandler::default()));
+    registry.register("global", Arc::new(super::global::GlobalHandler::new(global_bus)));
 }

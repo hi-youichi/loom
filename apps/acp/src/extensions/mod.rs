@@ -21,8 +21,10 @@ pub mod dictation;
 pub mod files;
 pub mod git;
 pub mod github;
+pub mod global;
 pub mod goal;
 pub mod mcp;
+pub mod model;
 pub mod multi_run;
 pub mod notification;
 pub mod pairing;
@@ -259,12 +261,6 @@ impl Default for ExtensionRegistry {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Transport interception helper
-// ---------------------------------------------------------------------------
-
-use futures::Stream;
-use futures::StreamExt;
 
 pub fn is_extension_message(line: &str) -> bool {
     line.contains(EXTENSION_PREFIX)
@@ -281,72 +277,4 @@ pub fn extract_method(line: &str) -> Option<String> {
 pub fn extract_id(line: &str) -> Option<Value> {
     let value: Value = serde_json::from_str(line).ok()?;
     value.get("id").cloned()
-}
-
-pub fn wrap_incoming_stream<St>(
-    incoming: St,
-    registry: Arc<ExtensionRegistry>,
-) -> impl Stream<Item = std::io::Result<String>>
-where
-    St: Stream<Item = std::io::Result<String>> + Send + 'static,
-{
-    incoming.filter_map(move |item| {
-        let registry = registry.clone();
-        async move {
-            match item {
-                Ok(line) => {
-                    if !is_extension_message(&line) {
-                        return Some(Ok(line));
-                    }
-
-                    let method = extract_method(&line);
-                    let id = extract_id(&line);
-
-                    let Some(method) = method else {
-                        return Some(Ok(line));
-                    };
-
-                    if !method.starts_with(EXTENSION_PREFIX) {
-                        return Some(Ok(line));
-                    }
-
-                    let parsed: Result<Value, _> = serde_json::from_str(&line);
-                    let params = parsed
-                        .as_ref()
-                        .ok()
-                        .and_then(|v| v.get("params"))
-                        .cloned()
-                        .unwrap_or(Value::Null);
-
-                    let ctx = ExtensionContext {
-                        session_id: None,
-                        principal: String::new(),
-                        connection_id: String::new(),
-                        working_directory: None,
-                        client_capabilities: ClientCapabilitiesInfo::default(),
-                    };
-
-                    match registry.dispatch(&method, params, &ctx).await {
-                        Ok(result) => {
-                            let response = serde_json::json!({
-                                "jsonrpc": "2.0",
-                                "id": id.unwrap_or(Value::Null),
-                                "result": result,
-                            });
-                            tracing::trace!(method, "Extension dispatch succeeded");
-                            let _ = response;
-                        }
-                        Err(err) => {
-                            let response = err.to_json(&id.unwrap_or(Value::Null));
-                            tracing::warn!(method, error = %err, "Extension dispatch failed");
-                            let _ = response;
-                        }
-                    }
-
-                    None
-                }
-                Err(e) => Some(Err(e)),
-            }
-        }
-    })
 }

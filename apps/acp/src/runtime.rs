@@ -54,6 +54,7 @@ pub struct AcpRuntime {
     pub connections: Arc<ConnectionRegistry>,
     pub notification_router: Arc<NotificationRouter>,
     pub extensions: Arc<ExtensionRegistry>,
+    pub global_bus: Arc<crate::global_events::GlobalEventBus>,
     prompt_executor: Arc<dyn AcpPromptExecutor>,
     prompt_capacity: Arc<Semaphore>,
     metrics: Arc<AcpRuntimeMetrics>,
@@ -80,8 +81,9 @@ impl AcpRuntime {
         prompt_executor: Arc<dyn AcpPromptExecutor>,
     ) -> Result<Arc<Self>, Box<dyn std::error::Error + Send + Sync>> {
         let (updates_tx, mut updates_rx) = mpsc::channel(256);
+        let global_bus = Arc::new(crate::global_events::GlobalEventBus::new());
         let mut extension_registry = ExtensionRegistry::new();
-        register_default_extensions(&mut extension_registry);
+        register_default_extensions(&mut extension_registry, global_bus.clone());
         let extensions = Arc::new(extension_registry);
         let agent = Arc::new(LoomAcpAgent::new_with_extension_registry(
             extensions.clone(),
@@ -89,6 +91,7 @@ impl AcpRuntime {
         )?);
         let bindings = Arc::new(SessionBindings::new());
         let connections = Arc::new(ConnectionRegistry::default());
+        global_bus.bind_registry(connections.clone());
         let notification_router = Arc::new(NotificationRouter::new(
             bindings.clone(),
             connections.clone(),
@@ -102,6 +105,7 @@ impl AcpRuntime {
             connections,
             notification_router,
             extensions,
+            global_bus,
             prompt_executor,
             prompt_capacity: Arc::new(Semaphore::new(
                 std::env::var("LOOM_ACP_MAX_CONCURRENT_PROMPTS")
@@ -118,6 +122,7 @@ impl AcpRuntime {
 
         let router = runtime.notification_router.clone();
         let metrics_for_router = metrics;
+        let global_bus = runtime.global_bus.clone();
         tokio::spawn(async move {
             while let Some(update) = updates_rx.recv().await {
                 let update_session_id = update.session_id.to_string();
@@ -127,6 +132,13 @@ impl AcpRuntime {
                     }
                     continue;
                 }
+                // Cross-connection signal: session content changed. Payload
+                // mirrors the opencode `session.updated` event shape.
+                global_bus.publish(
+                    "session",
+                    "session.updated",
+                    serde_json::json!({ "id": update_session_id }),
+                );
                 if let Err(error) = router.send(update).await {
                     metrics_for_router
                         .route_failures

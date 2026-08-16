@@ -37,7 +37,7 @@ use crate::storage::SkillError;
 /// - `SkillError::Io` for any other I/O failure after the
 ///   copy+remove fallback is exhausted.
 pub fn archive_skill_to(base_dir: &Path, name: &str) -> Result<PathBuf, SkillError> {
-    let src = base_dir.join(name);
+    let src = find_skill_dir(base_dir, name).ok_or_else(|| SkillError::NotFound(name.into()))?;
     if !src.is_dir() {
         return Err(SkillError::NotFound(name.to_string()));
     }
@@ -58,6 +58,29 @@ pub fn archive_skill_to(base_dir: &Path, name: &str) -> Result<PathBuf, SkillErr
         }
     }
     Ok(src)
+}
+
+fn find_skill_dir(base_dir: &Path, name: &str) -> Option<PathBuf> {
+    let direct = base_dir.join(name);
+    if direct.is_dir() {
+        return Some(direct);
+    }
+    let entries = std::fs::read_dir(base_dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() || path.file_name().and_then(|n| n.to_str()) == Some(".archive") {
+            continue;
+        }
+        if path.file_name().and_then(|n| n.to_str()) == Some(name)
+            && path.join("SKILL.md").is_file()
+        {
+            return Some(path);
+        }
+        if let Some(found) = find_skill_dir(&path, name) {
+            return Some(found);
+        }
+    }
+    None
 }
 
 /// Recursively copy `src` directory to `dst`. Used as the fallback when

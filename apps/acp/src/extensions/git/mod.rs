@@ -15,7 +15,9 @@ use tokio::process::Command;
 
 pub(crate) use super::{ExtensionContext, ExtensionError, ExtensionHandler};
 
-pub struct GitHandler;
+pub struct GitHandler {
+    global_bus: Option<std::sync::Arc<crate::global_events::GlobalEventBus>>,
+}
 
 impl Default for GitHandler {
     fn default() -> Self {
@@ -25,7 +27,63 @@ impl Default for GitHandler {
 
 impl GitHandler {
     pub fn new() -> Self {
-        Self
+        Self { global_bus: None }
+    }
+
+    /// Broadcast `git.updated` on the global event bus after successful writes.
+    pub fn with_global_bus(
+        mut self,
+        bus: std::sync::Arc<crate::global_events::GlobalEventBus>,
+    ) -> Self {
+        self.global_bus = Some(bus);
+        self
+    }
+    /// Mutating methods that should broadcast `git.updated` on success.
+    const WRITE_METHODS: &'static [&'static str] = &[
+        "stage_file",
+        "stage_files",
+        "unstage_file",
+        "unstage_files",
+        "stage_hunk",
+        "unstage_hunk",
+        "revert_file",
+        "revert_hunk",
+        "checkout_branch",
+        "create_branch",
+        "rename_branch",
+        "delete_branch",
+        "delete_remote_branch",
+        "remove_remote",
+        "commit",
+        "push",
+        "pull",
+        "merge",
+        "merge_abort",
+        "merge_continue",
+        "rebase",
+        "rebase_abort",
+        "rebase_continue",
+        "cherry_pick",
+        "reset",
+        "clean",
+        "stash/create",
+        "stash/pop",
+        "stash/apply",
+        "stash/drop",
+    ];
+
+    fn publish_git_updated(&self, ctx: &ExtensionContext) {
+        if let Some(bus) = &self.global_bus {
+            bus.publish(
+                "git",
+                "git.updated",
+                serde_json::json!({
+                    "directory": ctx.working_directory
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().to_string()),
+                }),
+            );
+        }
     }
 }
 
@@ -40,6 +98,10 @@ impl ExtensionHandler for GitHandler {
         if let Some(sub) = method.strip_prefix("identity/") {
             return identity::handle(sub, params, ctx).await;
         }
+        let is_write = Self::WRITE_METHODS.contains(&method)
+            || method
+                .strip_prefix("stash/")
+                .is_some_and(|sub| matches!(sub, "create" | "pop" | "apply" | "drop"));
         if let Some(sub) = method.strip_prefix("stash/") {
             let flat = match sub {
                 "list" => "stash_list",
@@ -110,6 +172,11 @@ impl ExtensionHandler for GitHandler {
             "is_linked_worktree" => worktree::handle_is_linked_worktree(params, ctx).await,
             _ => Err(ExtensionError::method_not_found()),
         }
+        .inspect(|_| {
+            if is_write {
+                self.publish_git_updated(ctx);
+            }
+        })
     }
 
     fn capabilities(&self) -> Value {

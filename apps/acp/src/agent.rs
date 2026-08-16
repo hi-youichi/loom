@@ -148,7 +148,10 @@ impl LoomAcpAgent {
     /// Construct a new Agent instance (no session/update sending).
     pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut extension_registry = ExtensionRegistry::new();
-        register_default_extensions(&mut extension_registry);
+        register_default_extensions(
+            &mut extension_registry,
+            std::sync::Arc::new(crate::global_events::GlobalEventBus::new()),
+        );
         Self::new_with_extension_registry(Arc::new(extension_registry), None)
     }
 
@@ -179,7 +182,10 @@ impl LoomAcpAgent {
         tx: mpsc::Sender<SessionNotification>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut extension_registry = ExtensionRegistry::new();
-        register_default_extensions(&mut extension_registry);
+        register_default_extensions(
+            &mut extension_registry,
+            std::sync::Arc::new(crate::global_events::GlobalEventBus::new()),
+        );
         Self::new_with_extension_registry(Arc::new(extension_registry), Some(tx))
     }
 
@@ -1150,8 +1156,11 @@ impl LoomAcpAgent {
                         context_window_size,
                     );
 
+                    let title_repository = self.session_repository.clone();
+                    let title_session_id = session_id.to_string();
                     let closure = move |ev: TypedAnyStreamEvent| {
                         capture_turn_usage(&ev, &acc);
+                        persist_session_title(&title_repository, &title_session_id, &ev);
                         notifier.try_send_event(&ev);
                     };
                     Some(Box::new(closure) as Box<dyn FnMut(TypedAnyStreamEvent) + Send>)
@@ -1685,10 +1694,13 @@ impl LoomAcpAgent {
                     .unwrap_or(true)
             })
             .map(|metadata| {
-                agent_client_protocol::schema::v1::SessionInfo::new(
+                let mut info = agent_client_protocol::schema::v1::SessionInfo::new(
                     metadata.session_id,
                     metadata.cwd,
-                )
+                );
+                info.title = metadata.title;
+                info.updated_at = metadata.updated_at;
+                info
             })
             .collect();
         Ok(ListSessionsResponse::new(sessions))
@@ -1888,6 +1900,28 @@ pub(crate) struct TurnUsage {
     pub(crate) output_tokens: u64,
     pub(crate) total_tokens: u64,
     pub(crate) cached_tokens: u64,
+}
+
+/// Persist the fire-and-forget first-turn title event
+/// (`Updates { node_id: "title" }`) into the session repository so
+/// `session/list` can serve the title across restarts. The push to the
+/// client happens separately via `SessionNotifier` (`session_info_update`).
+fn persist_session_title(
+    repository: &SessionRepository,
+    session_id: &str,
+    ev: &TypedAnyStreamEvent,
+) {
+    if let TypedAnyStreamEvent::React(stream_event::StreamEvent::Updates { node_id, state, .. }) =
+        ev
+    {
+        if node_id == "title" {
+            if let Some(title) = state.summary.as_ref().filter(|t| !t.trim().is_empty()) {
+                if let Err(error) = repository.set_title(session_id, title) {
+                    tracing::warn!(session_id, error = %error, "failed to persist session title");
+                }
+            }
+        }
+    }
 }
 
 fn extract_llm_usage<S>(ev: &stream_event::StreamEvent<S>) -> Option<(u32, u32, u32, Option<u32>)>

@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use agent_client_protocol::schema::v1::SessionNotification;
 use agent_client_protocol::{Client, ConnectionTo};
+use serde_json::Value;
 use tokio::sync::{mpsc, oneshot, RwLock};
 
 use crate::client_capabilities::ClientCapabilitiesInfo;
@@ -25,6 +26,8 @@ pub enum ConnectionOutbound {
         /// Acknowledged after `send_notification` accepted the value.
         enqueued: Option<oneshot::Sender<()>>,
     },
+    /// Cross-connection global event (`_loomdesk.dev/global/update`).
+    GlobalNotification { method: String, params: Value },
     /// FIFO barrier used to order session/load history before its response.
     Barrier(oneshot::Sender<()>),
 }

@@ -324,6 +324,7 @@ pub struct SettingsHandler {
     authorizer: Arc<dyn SettingsAuthorizer>,
     notifier: Arc<dyn SettingsNotifier>,
     scheduler: Arc<dyn RestartScheduler>,
+    global_bus: Option<std::sync::Arc<crate::global_events::GlobalEventBus>>,
 }
 
 impl SettingsHandler {
@@ -347,7 +348,14 @@ impl SettingsHandler {
             authorizer,
             notifier,
             scheduler,
+            global_bus: None,
         }
+    }
+
+    /// Fan out `config.updated` on the global event bus after successful saves.
+    pub fn with_global_bus(mut self, bus: std::sync::Arc<crate::global_events::GlobalEventBus>) -> Self {
+        self.global_bus = Some(bus);
+        self
     }
 
     fn scope(ctx: &ExtensionContext) -> Result<SettingsScope, ExtensionError> {
@@ -620,6 +628,17 @@ impl ExtensionHandler for SettingsHandler {
                 let _ = self
                     .notifier
                     .notify_others(&ctx.connection_id, &notification);
+                // Cross-connection signal for the global event bus.
+                if let Some(bus) = &self.global_bus {
+                    bus.publish(
+                        "settings",
+                        "config.updated",
+                        serde_json::json!({
+                            "version": state.version,
+                            "changedKeys": notification.changed_keys,
+                        }),
+                    );
+                }
                 serde_json::to_value(SettingsSaveResponse {
                     applied: true,
                     version: state.version,

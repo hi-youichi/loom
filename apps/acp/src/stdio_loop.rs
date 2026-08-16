@@ -21,7 +21,8 @@ use agent_client_protocol::schema::v1::{
     SetSessionModeResponse,
 };
 use agent_client_protocol::{
-    on_receive_notification, on_receive_request, Agent, Client, ConnectionTo, Lines, Responder,
+    on_receive_notification, on_receive_request, Agent, Client, ConnectionTo, Handled, Lines,
+    Responder, UntypedMessage,
 };
 
 // ---------------------------------------------------------------------------
@@ -34,6 +35,42 @@ fn is_connection_closed_error_str(s: &str) -> bool {
         || s.contains("failed to send response")
         || s.contains("broken pipe")
         || s.contains("unexpected eof")
+}
+
+// ---------------------------------------------------------------------------
+// `_loomdesk.dev/*` extension dispatch
+// ---------------------------------------------------------------------------
+
+/// Build the extension context for a connection-scoped extension call.
+///
+/// `working_directory` is resolved from well-known params (`cwd`, `directory`)
+/// so a single browser connection can operate on multiple project roots.
+/// Params carry absolute paths, so boundary checks remain meaningful when no
+/// directory is provided.
+async fn extension_context_for(
+    connection: &AcpConnection,
+    params: &serde_json::Value,
+) -> crate::extensions::ExtensionContext {
+    let capabilities = connection.require_capabilities().await.unwrap_or_default();
+    let working_directory = ["cwd", "directory"]
+        .iter()
+        .find_map(|key| params.get(*key).and_then(|v| v.as_str()))
+        .filter(|raw| !raw.trim().is_empty() && *raw != "/")
+        .map(std::path::PathBuf::from)
+        .and_then(|p| {
+            if p.is_dir() {
+                std::fs::canonicalize(&p).ok()
+            } else {
+                None
+            }
+        });
+    crate::extensions::ExtensionContext {
+        session_id: None,
+        principal: connection.principal.clone(),
+        connection_id: connection.id.clone(),
+        working_directory,
+        client_capabilities: capabilities,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +109,15 @@ where
                             let _ = enqueued.send(());
                         }
                     }
+                    ConnectionOutbound::GlobalNotification { method, params } => {
+                        let message = agent_client_protocol::UntypedMessage {
+                            method: method.clone(),
+                            params,
+                        };
+                        if let Err(e) = conn.send_notification(message) {
+                            tracing::debug!(error = ?e, method = %method, "Failed to send global notification");
+                        }
+                    }
                     ConnectionOutbound::Barrier(enqueued) => {
                         let _ = enqueued.send(());
                     }
@@ -108,6 +154,8 @@ where
     let conn_for_config = connection.clone();
     let conn_for_mode = connection.clone();
     let conn_for_cancel = connection.clone();
+    let r_ext = runtime.clone();
+    let conn_for_ext = connection.clone();
 
     let result = Agent.builder()
         .on_receive_request(
@@ -519,6 +567,45 @@ where
                 }
             },
             on_receive_notification!(),
+        )
+        .on_receive_request(
+            move |req: UntypedMessage,
+                  responder: Responder<serde_json::Value>,
+                  _conn: ConnectionTo<Client>| {
+                let runtime = r_ext.clone();
+                let connection = conn_for_ext.clone();
+                async move {
+                    if !req.method.starts_with(crate::extensions::EXTENSION_PREFIX) {
+                        return Ok(Handled::No {
+                            message: (req, responder),
+                            retry: false,
+                        });
+                    }
+                    let method = req.method.clone();
+                    let params = req.params.clone();
+                    let ctx = extension_context_for(&connection, &params).await;
+                    match runtime.extensions.dispatch(&method, params, &ctx).await {
+                        Ok(result) => {
+                            let _ = responder.respond_with_result(Ok(result));
+                        }
+                        Err(err) => {
+                            tracing::warn!(method = %method, error = %err, "Extension dispatch failed");
+                            let error = agent_client_protocol::Error::new(
+                                err.code,
+                                err.message,
+                            );
+                            let error = if let Some(data) = err.data {
+                                error.data(data)
+                            } else {
+                                error
+                            };
+                            let _ = responder.respond_with_result(Err(error));
+                        }
+                    }
+                    Ok(Handled::Yes)
+                }
+            },
+            on_receive_request!(),
         )
         .connect_with(transport, move |_conn: ConnectionTo<Client>| async move {
             shutdown.await;
