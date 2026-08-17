@@ -36,6 +36,7 @@ pub mod quota_provider;
 pub mod relay;
 pub mod scheduled_task;
 pub mod session_assist;
+pub mod session_auth;
 pub mod session_folder;
 pub mod settings;
 pub mod skills;

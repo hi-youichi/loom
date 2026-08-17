@@ -41,6 +41,7 @@ pub fn register_default_extensions(registry: &mut ExtensionRegistry, global_bus:
         Arc::new(super::settings::SettingsHandler::default().with_global_bus(global_bus.clone())),
     );
     registry.register("session-assist", Arc::new(super::session_assist::SessionAssistHandler));
+    registry.register("session-auth", Arc::new(super::session_auth::SessionAuthHandler::default()));
     registry.register("small-model", Arc::new(super::small_model::SmallModelHandler::default()));
     registry.register("auto-review", Arc::new(super::auto_review::AutoReviewHandler::default()));
     registry.register("preview", Arc::new(super::preview::PreviewHandler::default()));
