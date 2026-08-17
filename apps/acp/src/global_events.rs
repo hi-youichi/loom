@@ -107,10 +107,16 @@ impl GlobalEventBus {
             normalized.insert(topic.clone());
         }
         let list: Vec<String> = normalized.iter().cloned().collect();
+        // Merge with existing topics instead of replacing them: multiple
+        // frontend modules share one ACP connection and subscribe to
+        // different topic sets at different times; replace semantics would
+        // silently drop an earlier module's subscription.
         self.subscriptions
             .lock()
             .expect("global bus poisoned")
-            .insert(connection_id.to_string(), normalized);
+            .entry(connection_id.to_string())
+            .or_default()
+            .extend(normalized);
         Ok(list)
     }
 

@@ -597,6 +597,42 @@ impl SessionStore {
         }
     }
 
+    /// Mark a session entry as `Loading`.
+    ///
+    /// Only transitions `Idle` sessions, so a `close` that raced an
+    /// in-flight load is never undone. Used by `session/load` when it
+    /// creates the in-memory entry for a session this process has not
+    /// seen before: without this, a prompt pipelined behind the load
+    /// would see `Idle` and interleave with the history replay.
+    pub fn mark_loading(&self, session_id: &SessionId) {
+        if let Some(entry) = recover_read(&self.inner).get(session_id).cloned() {
+            let _control = entry.control_lock.lock().unwrap_or_else(|e| e.into_inner());
+            let mut lifecycle = recover_write(&entry.lifecycle);
+            if *lifecycle == SessionLifecycle::Idle {
+                *lifecycle = SessionLifecycle::Loading;
+            }
+        }
+    }
+
+    /// Complete a restore transition by moving the session to `target`.
+    ///
+    /// Only moves sessions in `Loading` (normal completion) or `Idle`
+    /// (direct `load_session` calls that never reserved the transition).
+    /// A session that was `close`d while the load was in flight stays
+    /// `Closed`, so the rollback path also must not resurrect it.
+    /// Callers gate the durable lifecycle write on the return value.
+    pub fn finish_restore(&self, session_id: &SessionId, target: SessionLifecycle) -> bool {
+        if let Some(entry) = recover_read(&self.inner).get(session_id).cloned() {
+            let _control = entry.control_lock.lock().unwrap_or_else(|e| e.into_inner());
+            let mut lifecycle = recover_write(&entry.lifecycle);
+            if matches!(*lifecycle, SessionLifecycle::Loading | SessionLifecycle::Idle) {
+                *lifecycle = target;
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn delete(&self, session_id: &SessionId) -> bool {
         let Some(entry) = recover_read(&self.inner).get(session_id).cloned() else {
             return false;
@@ -880,5 +916,36 @@ mod tests {
         let existing = store.create(None);
         assert!(store.delete(&existing));
         assert!(!store.delete(&existing));
+    }
+
+    #[test]
+    fn mark_loading_blocks_prompt_until_finish_restore() {
+        let store = SessionStore::new();
+        let id = store.create(None);
+        store.mark_loading(&id);
+        assert_eq!(
+            *store.get(&id).unwrap().lifecycle.read().unwrap(),
+            SessionLifecycle::Loading
+        );
+        assert!(
+            store.begin_prompt(&id).is_none(),
+            "prompt must not interleave with a history replay"
+        );
+        assert!(store.finish_restore(&id, SessionLifecycle::Idle));
+        assert!(store.begin_prompt(&id).is_some());
+    }
+
+    #[test]
+    fn finish_restore_does_not_resurrect_a_closed_session() {
+        let store = SessionStore::new();
+        let id = store.create(None);
+        let previous = store.begin_restore(&id).expect("reserve restore");
+        store.close(&id);
+        assert!(!store.finish_restore(&id, previous.unwrap_or(SessionLifecycle::Idle)));
+        assert_eq!(
+            *store.get(&id).unwrap().lifecycle.read().unwrap(),
+            SessionLifecycle::Closed,
+            "close issued while a load was in flight must win"
+        );
     }
 }

@@ -124,6 +124,13 @@ impl AcpRuntime {
         let metrics_for_router = metrics;
         let global_bus = runtime.global_bus.clone();
         tokio::spawn(async move {
+            // Sessions whose history is currently being replayed via
+            // `send_history`. While a session is in this set, its
+            // notifications are routed to subscribers as usual, but the
+            // cross-connection `session.updated` global broadcast is
+            // suppressed: a `session/load` replay is a read, not a mutation.
+            let mut replaying_sessions: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
             while let Some(update) = updates_rx.recv().await {
                 let update_session_id = update.session_id.to_string();
                 if update_session_id.starts_with("__loom_flush__") {
@@ -132,13 +139,28 @@ impl AcpRuntime {
                     }
                     continue;
                 }
+                if let Some(session_id) =
+                    update_session_id.strip_prefix(crate::stream_bridge::REPLAY_BEGIN_MARKER_PREFIX)
+                {
+                    replaying_sessions.insert(session_id.to_string());
+                    continue;
+                }
+                if let Some(session_id) =
+                    update_session_id.strip_prefix(crate::stream_bridge::REPLAY_END_MARKER_PREFIX)
+                {
+                    replaying_sessions.remove(session_id);
+                    continue;
+                }
+                let is_replay = replaying_sessions.contains(&update_session_id);
                 // Cross-connection signal: session content changed. Payload
                 // mirrors the opencode `session.updated` event shape.
-                global_bus.publish(
-                    "session",
-                    "session.updated",
-                    serde_json::json!({ "id": update_session_id }),
-                );
+                if !is_replay {
+                    global_bus.publish(
+                        "session",
+                        "session.updated",
+                        serde_json::json!({ "id": update_session_id }),
+                    );
+                }
                 if let Err(error) = router.send(update).await {
                     metrics_for_router
                         .route_failures

@@ -10,7 +10,7 @@ use std::time::Duration;
 use crate::client_capabilities::ClientCapabilitiesInfo;
 use crate::connection::{AcpConnection, ConnectionOutbound};
 use crate::runtime::AcpRuntime;
-use crate::session::SessionId as LoomSessionId;
+use crate::session::{SessionId as LoomSessionId, SessionLifecycle};
 use agent_client_protocol::schema::v1::{
     AuthenticateRequest, AuthenticateResponse, CancelNotification, CloseSessionRequest,
     CloseSessionResponse, DeleteSessionRequest, DeleteSessionResponse, ForkSessionRequest,
@@ -45,13 +45,29 @@ fn is_connection_closed_error_str(s: &str) -> bool {
 ///
 /// `working_directory` is resolved from well-known params (`cwd`, `directory`)
 /// so a single browser connection can operate on multiple project roots.
+/// When absent, it falls back to the resolved session's working directory
+/// (params `sessionId` or the connection's last session), matching the spec's
+/// "Server 从当前 session 的 workingDirectory 解析 root" rule.
 /// Params carry absolute paths, so boundary checks remain meaningful when no
 /// directory is provided.
 async fn extension_context_for(
+    runtime: &AcpRuntime,
     connection: &AcpConnection,
     params: &serde_json::Value,
 ) -> crate::extensions::ExtensionContext {
     let capabilities = connection.require_capabilities().await.unwrap_or_default();
+    let params_session_id = params
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string());
+    let session_id = match params_session_id {
+        Some(id) => Some(id),
+        // Fall back to the most recent session bound to this connection so
+        // project create/remove authorization passes for browser clients
+        // that call connection-scoped extensions without a session param.
+        None => connection.last_session_id().await,
+    };
     let working_directory = ["cwd", "directory"]
         .iter()
         .find_map(|key| params.get(*key).and_then(|v| v.as_str()))
@@ -63,9 +79,16 @@ async fn extension_context_for(
             } else {
                 None
             }
+        })
+        .or_else(|| {
+            session_id
+                .as_deref()
+                .map(crate::session::SessionId::new)
+                .and_then(|id| runtime.agent.sessions().get(&id))
+                .and_then(|entry| entry.working_directory.clone())
         });
     crate::extensions::ExtensionContext {
-        session_id: None,
+        session_id,
         principal: connection.principal.clone(),
         connection_id: connection.id.clone(),
         working_directory,
@@ -220,6 +243,7 @@ where
                         runtime
                             .bindings
                             .bind_new_session(session_id.clone(), connection.id.clone());
+                        connection.note_session(session_id.as_str()).await;
                     }
                     let _ = responder.respond_with_result(result);
                     Ok(())
@@ -303,6 +327,7 @@ where
                         runtime
                             .bindings
                             .bind_new_session(session_id.clone(), connection.id.clone());
+                        connection.note_session(session_id.as_str()).await;
                     }
                     let _ = responder.respond_with_result(result);
                     Ok(())
@@ -313,64 +338,90 @@ where
         .on_receive_request(
             move |req: LoadSessionRequest,
                   responder: Responder<LoadSessionResponse>,
-                  _conn: ConnectionTo<Client>| {
+                  conn: ConnectionTo<Client>| {
                 let runtime = r_load.clone();
                 let connection = conn_for_load.clone();
-                async move {
-                    if !connection.is_initialized() {
-                        let _ = responder.respond_with_result(Err(
-                            agent_client_protocol::Error::invalid_request()
-                                .data("initialize must complete before session/load"),
-                        ));
-                        return Ok(());
-                    }
-                    let session_id = LoomSessionId::new(req.session_id.to_string());
-                    let previous_lifecycle =
-                        match runtime.agent.sessions().begin_restore(&session_id) {
-                            Ok(lifecycle) => lifecycle,
-                            Err(()) => {
-                                let _ = responder.respond_with_result(Err(
-                                    agent_client_protocol::Error::new(
-                                        -32010,
-                                        "a prompt is already in progress for this session",
-                                    ),
-                                ));
-                                return Ok(());
-                            }
-                        };
-                    let previous = runtime
-                        .bindings
-                        .rebind_session(&session_id, connection.id.clone());
-                    let result = runtime
-                        .agent
-                        .load_session_for_owner(req, &connection.principal)
-                        .await;
-                    let result = match result {
-                        Ok(response) => match runtime.flush_notifications(&session_id).await {
-                            Ok(()) => Ok(response),
-                            Err(error) => Err(agent_client_protocol::Error::internal_error()
-                                .data(format!("failed to flush session history: {error}"))),
-                        },
-                        Err(error) => Err(error),
-                    };
-                    if result.is_ok() {
-                        runtime.record_session_rebind();
-                    }
-                    if result.is_err() {
-                        runtime
-                            .agent
-                            .sessions()
-                            .restore_lifecycle(&session_id, previous_lifecycle);
-                        runtime.bindings.unbind_session(&session_id);
-                        if let Some(previous) = previous {
-                            runtime
-                                .bindings
-                                .rebind_session(&session_id, previous.clone());
+                // The handler runs on its own task: history replay is slow
+                // (full thread read from SQLite) and must not head-of-line
+                // block other requests, including reverse-RPC replies from
+                // the client. Ordering is still preserved end to end:
+                // begin_restore/rebind run before any await, so pipelined
+                // prompts on this session see the new binding immediately
+                // and conflict on the Loading lifecycle; history
+                // notifications stay ahead of the response because both
+                // travel through the connection's outbound message queue in
+                // FIFO order (flush_notifications awaits the barrier ack).
+                let _ = conn
+                    .clone()
+                    .spawn(async move {
+                        if !connection.is_initialized() {
+                            let _ = responder.respond_with_result(Err(
+                                agent_client_protocol::Error::invalid_request()
+                                    .data("initialize must complete before session/load"),
+                            ));
+                            return Ok(());
                         }
-                    }
-                    let _ = responder.respond_with_result(result);
-                    Ok(())
-                }
+                        let session_id = LoomSessionId::new(req.session_id.to_string());
+                        let previous_lifecycle =
+                            match runtime.agent.sessions().begin_restore(&session_id) {
+                                Ok(lifecycle) => lifecycle,
+                                Err(()) => {
+                                    let _ = responder.respond_with_result(Err(
+                                        agent_client_protocol::Error::new(
+                                            -32010,
+                                            "a prompt is already in progress for this session",
+                                        ),
+                                    ));
+                                    return Ok(());
+                                }
+                            };
+                        let previous = runtime
+                            .bindings
+                            .rebind_session(&session_id, connection.id.clone());
+                        connection.note_session(session_id.as_str()).await;
+                        let result = runtime
+                            .agent
+                            .load_session_for_owner(req, &connection.principal)
+                            .await;
+                        let result = match result {
+                            Ok(response) => {
+                                match runtime.flush_notifications(&session_id).await {
+                                    Ok(()) => Ok(response),
+                                    Err(error) => {
+                                        Err(agent_client_protocol::Error::internal_error()
+                                            .data(format!("failed to flush session history: {error}")))
+                                    }
+                                }
+                            }
+                            Err(error) => Err(error),
+                        };
+                        if result.is_ok() {
+                            runtime.record_session_rebind();
+                        }
+                        if result.is_err() {
+                            // Guarded rollback: if the session was closed
+                            // while this load was in flight, keep it closed
+                            // instead of resurrecting the previous lifecycle.
+                            runtime.agent.sessions().finish_restore(
+                                &session_id,
+                                previous_lifecycle
+                                    .unwrap_or(SessionLifecycle::Idle),
+                            );
+                            runtime.bindings.unbind_session(&session_id);
+                            if let Some(previous) = previous {
+                                runtime
+                                    .bindings
+                                    .rebind_session(&session_id, previous.clone());
+                            }
+                        }
+                        let _ = responder.respond_with_result(result);
+                        Ok(())
+                    })
+                    .map_err(|e| {
+                        tracing::error!(error = ?e, "Failed to spawn session/load task — client will not receive a response");
+                        e
+                    });
+                async { Ok(()) }
             },
             on_receive_request!(),
         )
@@ -583,7 +634,7 @@ where
                     }
                     let method = req.method.clone();
                     let params = req.params.clone();
-                    let ctx = extension_context_for(&connection, &params).await;
+                    let ctx = extension_context_for(&runtime, &connection, &params).await;
                     match runtime.extensions.dispatch(&method, params, &ctx).await {
                         Ok(result) => {
                             let _ = responder.respond_with_result(Ok(result));
@@ -626,4 +677,84 @@ where
     result?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn extension_context_falls_back_to_last_session_working_directory() {
+        let runtime = AcpRuntime::new().expect("runtime");
+        let opened = runtime.open_connection("owner-a".into());
+        let tmp = tempfile::TempDir::new().unwrap();
+        let canonical = std::fs::canonicalize(tmp.path()).unwrap();
+        let session = runtime
+            .agent
+            .sessions()
+            .create_owned(Some(canonical.clone()), "owner-a");
+        opened.connection.note_session(session.as_str()).await;
+
+        let ctx = extension_context_for(
+            &runtime,
+            &opened.connection,
+            &serde_json::json!({"path": "."}),
+        )
+        .await;
+        assert_eq!(ctx.working_directory.as_deref(), Some(canonical.as_path()));
+        assert_eq!(ctx.session_id.as_deref(), Some(session.as_str()));
+    }
+
+    #[tokio::test]
+    async fn extension_context_param_cwd_takes_precedence_over_session() {
+        let runtime = AcpRuntime::new().expect("runtime");
+        let opened = runtime.open_connection("owner-a".into());
+        let session_tmp = tempfile::TempDir::new().unwrap();
+        let session = runtime
+            .agent
+            .sessions()
+            .create_owned(Some(session_tmp.path().to_path_buf()), "owner-a");
+        opened.connection.note_session(session.as_str()).await;
+
+        let param_tmp = tempfile::TempDir::new().unwrap();
+        let param_canonical = std::fs::canonicalize(param_tmp.path()).unwrap();
+        let ctx = extension_context_for(
+            &runtime,
+            &opened.connection,
+            &serde_json::json!({"cwd": param_tmp.path().to_string_lossy()}),
+        )
+        .await;
+        assert_eq!(
+            ctx.working_directory.as_deref(),
+            Some(param_canonical.as_path())
+        );
+    }
+
+    #[tokio::test]
+    async fn extension_context_session_param_resolves_working_directory() {
+        let runtime = AcpRuntime::new().expect("runtime");
+        let opened = runtime.open_connection("owner-a".into());
+        let tmp = tempfile::TempDir::new().unwrap();
+        let canonical = std::fs::canonicalize(tmp.path()).unwrap();
+        let session = runtime
+            .agent
+            .sessions()
+            .create_owned(Some(canonical.clone()), "owner-a");
+        let ctx = extension_context_for(
+            &runtime,
+            &opened.connection,
+            &serde_json::json!({"sessionId": session.as_str()}),
+        )
+        .await;
+        assert_eq!(ctx.working_directory.as_deref(), Some(canonical.as_path()));
+    }
+
+    #[tokio::test]
+    async fn extension_context_without_session_or_param_has_no_directory() {
+        let runtime = AcpRuntime::new().expect("runtime");
+        let opened = runtime.open_connection("owner-a".into());
+        let ctx = extension_context_for(&runtime, &opened.connection, &serde_json::json!({}))
+            .await;
+        assert!(ctx.working_directory.is_none());
+    }
 }

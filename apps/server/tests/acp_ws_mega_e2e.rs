@@ -261,8 +261,8 @@ async fn concurrent_prompt_returns_error() {
     );
     let err_code = second["error"]["code"].as_i64().unwrap_or(0);
     assert_eq!(
-        err_code, -32000,
-        "expected error code -32000 for concurrent prompt, got {err_code}"
+        err_code, -32010,
+        "expected error code -32010 for concurrent prompt, got {err_code}"
     );
 
     let _ = socket.close(None).await;

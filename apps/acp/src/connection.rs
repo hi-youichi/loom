@@ -48,6 +48,10 @@ pub struct AcpConnection {
     pub principal: String,
     sdk_client: Arc<RwLock<Option<ConnectionTo<Client>>>>,
     capabilities: RwLock<Option<ClientCapabilitiesInfo>>,
+    /// Most recent session this connection created or loaded; extension
+    /// authorization (e.g. `_loomdesk.dev/project/create`) requires a
+    /// session-scoped principal even for connection-level calls.
+    last_session_id: RwLock<Option<String>>,
     pub outbound_tx: mpsc::Sender<ConnectionOutbound>,
     active: AtomicBool,
     initialized: AtomicBool,
@@ -77,10 +81,21 @@ impl AcpConnection {
             principal,
             sdk_client: Arc::new(RwLock::new(None)),
             capabilities: RwLock::new(None),
+            last_session_id: RwLock::new(None),
             outbound_tx,
             active: AtomicBool::new(true),
             initialized: AtomicBool::new(false),
         }
+    }
+
+    /// Record the most recent session created/loaded on this connection so
+    /// connection-scoped extension calls can authorize with session context.
+    pub async fn note_session(&self, session_id: &str) {
+        *self.last_session_id.write().await = Some(session_id.to_string());
+    }
+
+    pub async fn last_session_id(&self) -> Option<String> {
+        self.last_session_id.read().await.clone()
     }
 
     /// Bind the SDK client and capabilities exactly once.

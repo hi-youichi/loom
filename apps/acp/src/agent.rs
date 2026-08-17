@@ -7,7 +7,7 @@ use crate::agent_registry::AgentRegistry;
 use crate::client_capabilities::ClientCapabilitiesInfo;
 use crate::content::content_blocks_to_user_content;
 use crate::extensions::{register::register_default_extensions, ExtensionRegistry};
-use crate::session::{SessionId as OurSessionId, SessionStore};
+use crate::session::{SessionId as OurSessionId, SessionLifecycle, SessionStore};
 use crate::session_config_store::SessionConfigStore;
 use crate::session_repository::SessionRepository;
 use crate::stream_bridge::SessionNotifier;
@@ -1285,6 +1285,7 @@ impl LoomAcpAgent {
                 metadata.thread_id,
                 metadata.owner_principal,
             );
+            self.sessions.mark_loading(&our_session_id);
             let default_mode = self.agent_registry.default_mode_id();
             self.sessions.update_session_config(&our_session_id, |c| {
                 if c.current_agent.is_empty() {
@@ -1471,13 +1472,17 @@ impl LoomAcpAgent {
         });
         let response: LoadSessionResponse = serde_json::from_value(json)
             .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
-        self.sessions.reopen(&our_session_id);
-        self.session_repository
-            .set_lifecycle(our_session_id.as_str(), "idle")
-            .map_err(|error| {
-                agent_client_protocol::Error::internal_error()
-                    .data(format!("failed to persist session lifecycle: {error}"))
-            })?;
+        if self
+            .sessions
+            .finish_restore(&our_session_id, SessionLifecycle::Idle)
+        {
+            self.session_repository
+                .set_lifecycle(our_session_id.as_str(), "idle")
+                .map_err(|error| {
+                    agent_client_protocol::Error::internal_error()
+                        .data(format!("failed to persist session lifecycle: {error}"))
+                })?;
+        }
         Ok(response)
     }
 

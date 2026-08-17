@@ -419,11 +419,11 @@ pub trait ProjectCapabilityChecker: Send + Sync {
 struct DefaultAuthorizer;
 impl ProjectAuthorizer for DefaultAuthorizer {
     fn authorized(&self, _method: &str, ctx: &ExtensionContext) -> bool {
+        // Principal-only: the registry is a local, trusted desktop store and
+        // browser clients create projects before their first session exists.
+        // (Previously also required a session_id, which made every
+        // connection-scoped call from the web UI fail with -32002.)
         !ctx.principal.trim().is_empty()
-            && ctx
-                .session_id
-                .as_deref()
-                .is_some_and(|session| !session.trim().is_empty())
     }
 }
 
@@ -1381,10 +1381,24 @@ mod tests {
         ctx.session_id = None;
         let handler = file_handler(&dir);
 
-        let error = handler
+        // Principal-only authorization: a connection-scoped call (no session)
+        // is allowed for the local desktop registry.
+        let created = handler
             .handle(
                 "create",
                 serde_json::json!({ "path": dir.path().join("a") }),
+                &ctx,
+            )
+            .await
+            .unwrap();
+        assert_eq!(created["existed"], serde_json::json!(false));
+
+        // Empty principal is still rejected.
+        ctx.principal = String::new();
+        let error = handler
+            .handle(
+                "create",
+                serde_json::json!({ "path": dir.path().join("b") }),
                 &ctx,
             )
             .await

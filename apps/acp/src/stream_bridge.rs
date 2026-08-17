@@ -50,6 +50,23 @@ use stream_event::StreamEvent;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+/// Ingress marker sent before a `send_history` replay batch. The runtime
+/// ingress loop uses it to suppress `session.updated` global broadcasts while
+/// replaying history: a `session/load` is a read, not a mutation, so it must
+/// not fan out one cross-connection `session.updated` per replayed message.
+pub const REPLAY_BEGIN_MARKER_PREFIX: &str = "__loom_replay_begin__";
+/// Ingress marker sent after a `send_history` replay batch.
+pub const REPLAY_END_MARKER_PREFIX: &str = "__loom_replay_end__";
+
+fn replay_marker(prefix: &str, session_id: &SessionId) -> SessionNotification {
+    SessionNotification::new(
+        SessionId::new(format!("{prefix}{session_id}")),
+        SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
+            TextContent::new(String::new()),
+        ))),
+    )
+}
+
 /// A single "sendable to Client" stream update, corresponding to ACP SessionUpdate variants.
 ///
 /// Kept in sync with `agent_client_protocol::SessionUpdate` so the prompt callback can
@@ -728,6 +745,13 @@ impl SessionNotifier {
             total_messages = messages.len(),
             "send_history started"
         );
+        // Wrap the replay batch in begin/end markers so the runtime ingress
+        // loop suppresses `session.updated` global broadcasts for every
+        // replayed message (a load is a read, not a mutation).
+        let _ = self
+            .tx
+            .send(replay_marker(REPLAY_BEGIN_MARKER_PREFIX, &self.session_id))
+            .await;
         let mut tool_calls_map: HashMap<String, (String, Option<Value>)> = HashMap::new();
         let mut sent_count: usize = 0;
         let mut skipped_system: usize = 0;
@@ -782,15 +806,11 @@ impl SessionNotifier {
                     }
 
                     let msg_id = Uuid::new_v4().to_string();
-                    let mut notifs = vec![SessionNotification::new(
-                        self.session_id.clone(),
-                        SessionUpdate::AgentMessageChunk(
-                            ContentChunk::new(payload.content.clone().into())
-                                .message_id(Some(MessageId::new(msg_id))),
-                        ),
-                    )];
+                    let mut notifs = Vec::new();
 
-                    // Send reasoning content (ACP agent_thought_chunk) so thinking models stream reasoning to clients.
+                    // Send reasoning content (ACP agent_thought_chunk) first so thinking
+                    // renders above the assistant reply, matching live streaming order
+                    // where ReasoningDelta arrives before TextDelta.
                     if let Some(ref reasoning) = payload.reasoning_content {
                         if !reasoning.trim().is_empty() {
                             let reasoning_msg_id = Uuid::new_v4().to_string();
@@ -803,6 +823,14 @@ impl SessionNotifier {
                             ));
                         }
                     }
+
+                    notifs.push(SessionNotification::new(
+                        self.session_id.clone(),
+                        SessionUpdate::AgentMessageChunk(
+                            ContentChunk::new(payload.content.clone().into())
+                                .message_id(Some(MessageId::new(msg_id))),
+                        ),
+                    ));
 
                     for tc in &payload.tool_calls {
                         let args = serde_json::from_str::<Value>(&tc.arguments).ok();
@@ -878,6 +906,10 @@ impl SessionNotifier {
             system_skipped = skipped_system,
             "send_history completed"
         );
+        let _ = self
+            .tx
+            .send(replay_marker(REPLAY_END_MARKER_PREFIX, &self.session_id))
+            .await;
     }
 
     pub async fn send_current_mode(&self, mode_id: &str) {
@@ -1138,6 +1170,12 @@ pub fn create_tool_call(
     let mut tc = ToolCall::new(id.clone(), title)
         .status(ToolCallStatus::Pending)
         .kind(effective_kind);
+    // The UI keys specialized rendering (icons, previews, collapsed summaries)
+    // off the TOOL NAME, while `kind` is only a canonical category ("execute",
+    // "edit", "other"). Expose the raw name via _meta so clients can use it.
+    let mut meta = Meta::new();
+    meta.insert("toolName".to_string(), Value::String(name.to_string()));
+    tc = tc.meta(meta);
 
     if let Some(v) = input {
         tc = tc.raw_input(v.clone());
