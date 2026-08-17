@@ -224,7 +224,7 @@ impl SmallModelHandler {
 
     fn timeout() -> ExtensionError {
         ExtensionError {
-            code: -32010,
+            code: -32004,
             message: "timeout".into(),
             data: None,
         }

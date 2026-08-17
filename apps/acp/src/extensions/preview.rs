@@ -82,14 +82,14 @@ impl PreviewHandler {
 
     fn unreachable() -> ExtensionError {
         Self::error(
-            -32011,
+            -32013,
             "proxy_target_unreachable",
             "localhost target is unreachable",
         )
     }
 
     fn timeout() -> ExtensionError {
-        Self::error(-32010, "proxy_timeout", "preview proxy request timed out")
+        Self::error(-32004, "proxy_timeout", "preview proxy request timed out")
     }
 
     fn ssrf() -> ExtensionError {
