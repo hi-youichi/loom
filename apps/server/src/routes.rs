@@ -1,5 +1,7 @@
 //! HTTP route registry — ACP-only server.
 
+use std::path::PathBuf;
+
 use axum::{
     middleware,
     routing::get,
@@ -11,13 +13,24 @@ use tower_http::trace::TraceLayer;
 use crate::auth::{log_authorization_header, require_valid_token};
 use crate::handlers;
 use crate::state::SharedState;
+use crate::static_files;
 
 /// WebSocket paths that the Relay transport may connect to.
 pub const RELAY_WEBSOCKET_ALLOWLIST: &[&str] = &["/acp"];
 
 /// Build the application router.
 pub fn build_router(state: SharedState) -> Router {
-    Router::new()
+    build_router_with_static(state, None)
+}
+
+/// Build the application router, optionally serving a built frontend from
+/// `static_dir`.
+///
+/// Static assets bypass `LOOM_AUTH_TOKEN` enforcement so the browser can load
+/// the app shell before any credentials exist (openchamber's public-shell
+/// model); API routes keep full token enforcement.
+pub fn build_router_with_static(state: SharedState, static_dir: Option<PathBuf>) -> Router {
+    let api = Router::new()
         // ─── ACP WebSocket ───────────────────────────────────────
         .route("/acp", get(handlers::acp::connect))
         // ─── Health ──────────────────────────────────────────────
@@ -27,11 +40,17 @@ pub fn build_router(state: SharedState) -> Router {
         // ─── Auth middleware ─────────────────────────────────────
         .layer(middleware::from_fn(require_valid_token))
         .layer(middleware::from_fn(log_authorization_header))
-        // ─── CORS ────────────────────────────────────────────────
-        .layer(CorsLayer::very_permissive())
+        .with_state(state);
+
+    let app = match static_dir {
+        Some(dir) => api.merge(static_files::static_router(dir)),
+        None => api,
+    };
+
+    // ─── CORS ────────────────────────────────────────────────
+    app.layer(CorsLayer::very_permissive())
         // ─── Tracing ─────────────────────────────────────────────
         .layer(TraceLayer::new_for_http())
-        .with_state(state)
 }
 
 #[cfg(test)]

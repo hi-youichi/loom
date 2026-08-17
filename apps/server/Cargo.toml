@@ -51,7 +51,7 @@ loom-pty-protocol = { path = "../../foundation/pty-protocol" }
 
 # HTTP middleware (task P0.7)
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["cors", "set-header", "trace", "validate-request"] }
+tower-http = { version = "0.6", features = ["cors", "fs", "set-header", "trace", "validate-request"] }
 
 # CLI parsing (task P0.1)
 clap = { workspace = true }

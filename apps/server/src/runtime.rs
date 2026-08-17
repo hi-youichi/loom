@@ -6,7 +6,8 @@ use tokio::net::TcpListener;
 use tracing_subscriber::{fmt, EnvFilter};
 
 use crate::logging::{init_logging, LogConfig};
-use crate::{pid_file, routes::build_router, state::new_server_state};
+use crate::routes::build_router_with_static;
+use crate::{pid_file, state::new_server_state};
 
 #[derive(ClapArgs, Debug, Clone)]
 pub struct ServerOptions {
@@ -18,10 +19,6 @@ pub struct ServerOptions {
     #[arg(long = "host", visible_alias = "hostname", default_value = "127.0.0.1")]
     pub host: String,
 
-    /// Optional directory to expose as the active working directory.
-    #[arg(long)]
-    pub directory: Option<String>,
-
     /// Enable verbose tracing (RUST_LOG-like).
     #[arg(long)]
     pub verbose: bool,
@@ -29,6 +26,11 @@ pub struct ServerOptions {
     /// PID file used to prevent concurrent server instances.
     #[arg(long, value_name = "PATH")]
     pub pid_file: Option<PathBuf>,
+
+    /// Serve a built frontend (e.g. OpenChamber `packages/web/dist`) from this
+    /// directory: static assets + SPA fallback on the same origin as the API.
+    #[arg(long, value_name = "DIR")]
+    pub static_dir: Option<PathBuf>,
 }
 
 /// Run the HTTP + ACP-WebSocket server.
@@ -55,10 +57,6 @@ pub async fn run(
         }
     };
 
-    if let Some(directory) = &options.directory {
-        std::env::set_current_dir(directory)?;
-    }
-
     let pid_path = pid_file::resolve_path(options.pid_file.as_deref());
     let _pid_guard = pid_file::PidFileGuard::acquire(&pid_path).map_err(|error| {
         format!(
@@ -67,11 +65,19 @@ pub async fn run(
         )
     })?;
 
-    let app = build_router(new_server_state());
+    let app = build_router_with_static(new_server_state(), options.static_dir.clone());
     let address: SocketAddr = format!("{}:{}", options.host, options.port).parse()?;
     let listener = TcpListener::bind(address).await?;
     let bound = listener.local_addr()?;
     println!("loom server listening on http://{bound}");
+
+    if let Some(dir) = &options.static_dir {
+        if dir.is_dir() {
+            tracing::info!(dir = %dir.display(), "serving static frontend");
+        } else {
+            tracing::warn!(dir = %dir.display(), "--static-dir not found; static routes will 404");
+        }
+    }
 
     #[cfg(unix)]
     tokio::spawn(async {

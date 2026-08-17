@@ -8,3 +8,4 @@ pub mod pid_file;
 pub mod routes;
 pub mod runtime;
 pub mod state;
+pub mod static_files;
