@@ -178,12 +178,23 @@ fn git_cmd_ctx(ctx: &ExtensionContext) -> Command {
     if let Some(dir) = &ctx.working_directory {
         cmd.current_dir(dir);
     }
+    // No console when server runs detached (pm2): avoid flashing windows.
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
     cmd
 }
 
 fn git_cmd_at(path: &Path) -> Command {
     let mut cmd = Command::new("git");
     cmd.current_dir(path);
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
     cmd
 }
 

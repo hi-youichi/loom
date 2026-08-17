@@ -461,6 +461,14 @@ pub(crate) fn git_cmd(ctx: &ExtensionContext) -> Command {
     if let Some(dir) = &ctx.working_directory {
         cmd.current_dir(dir);
     }
+    // The loom server may run detached (e.g. under pm2) with no console of its
+    // own; without CREATE_NO_WINDOW every git invocation would allocate a new
+    // visible console window that flashes open and closes on exit.
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
     cmd
 }
 
@@ -475,22 +483,29 @@ pub(crate) async fn run_git_apply(
 ) -> Result<(), ExtensionError> {
     use tokio::io::AsyncWriteExt;
 
-    let child = tokio::process::Command::new("git")
-        .args(args)
-        .current_dir(
-            ctx.working_directory
-                .as_deref()
-                .unwrap_or(std::path::Path::new(".")),
-        )
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| ExtensionError {
-            code: -32603,
-            message: "internal_error".into(),
-            data: Some(Value::String(format!("failed to spawn git apply: {e}"))),
-        })?;
+    let child = {
+        let mut cmd = tokio::process::Command::new("git");
+        cmd.args(args)
+            .current_dir(
+                ctx.working_directory
+                    .as_deref()
+                    .unwrap_or(std::path::Path::new(".")),
+            )
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        #[cfg(windows)]
+        {
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        cmd.spawn()
+            .map_err(|e| ExtensionError {
+                code: -32603,
+                message: "internal_error".into(),
+                data: Some(Value::String(format!("failed to spawn git apply: {e}"))),
+            })?
+    };
 
     let mut child = child;
     if let Some(mut stdin) = child.stdin.take() {

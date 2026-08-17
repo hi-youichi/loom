@@ -121,9 +121,16 @@ impl GithubHandler {
             .as_deref()
             .ok_or_else(|| ExtensionError::invalid_params("owner/repo cannot be inferred"))?;
         let _ = boundary::validate_path(".", Some(dir))?;
-        let output = tokio::process::Command::new("git")
+        let mut remote_cmd = tokio::process::Command::new("git");
+        remote_cmd
             .args(["remote", "get-url", "origin"])
-            .current_dir(dir)
+            .current_dir(dir);
+        #[cfg(windows)]
+        {
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            remote_cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        let output = remote_cmd
             .output()
             .await
             .map_err(|_| Self::internal("unable to inspect git remote"))?;
@@ -283,11 +290,14 @@ impl ExtensionHandler for GithubHandler {
                     ));
                 }
                 let token = std::env::var("GITHUB_TOKEN").ok();
-                let gh = tokio::process::Command::new("gh")
-                    .arg("--version")
-                    .output()
-                    .await
-                    .is_ok();
+                let mut gh_cmd = tokio::process::Command::new("gh");
+                gh_cmd.arg("--version");
+                #[cfg(windows)]
+                {
+                    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                    gh_cmd.creation_flags(CREATE_NO_WINDOW);
+                }
+                let gh = gh_cmd.output().await.is_ok();
                 Ok(
                     json!({"authenticated": token.is_some(), "accounts": [], "activeAccountId": null, "ghCliAvailable": gh, "ghCliDisabled": self.state.read().await.gh_cli_disabled}),
                 )

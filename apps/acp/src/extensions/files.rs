@@ -85,6 +85,48 @@ fn resolve_path(path: &str, working_directory: Option<&Path>) -> Result<PathBuf,
     Ok(normalized)
 }
 
+/// Resolve the `cwd` for `files/exec_commands`. Unlike file paths (always
+/// relative, sandboxed via `resolve_path`), the exec cwd may legitimately be
+/// absolute - the frontend sends the project directory verbatim (e.g.
+/// `C:/repo/dir` from its directory store). Accept both forms, but keep the
+/// sandbox invariant: the resolved directory must stay inside the extension's
+/// working directory (spec: `invalid_params` when cwd is outside the worktree).
+fn resolve_exec_cwd(cwd: &str, working_directory: Option<&Path>) -> Result<PathBuf, ExtensionError> {
+    if cwd.is_empty() {
+        return Err(ExtensionError::invalid_params("cwd must not be empty"));
+    }
+    if !Path::new(cwd).is_absolute() {
+        return resolve_path(cwd, working_directory);
+    }
+    let wd = working_directory
+        .ok_or_else(|| ExtensionError::invalid_params("no working directory set"))?;
+    // The session working directory is canonicalized (Windows: `\\?\C:\...`
+    // verbatim form via fs::canonicalize), while the client cwd is a plain
+    // absolute path. Strip verbatim prefixes on both sides so the containment
+    // check compares equivalent forms.
+    let normalized = normalize_path(&strip_verbatim_prefix(Path::new(cwd)));
+    let wd_norm = normalize_path(&strip_verbatim_prefix(wd));
+    if !normalized.starts_with(&wd_norm) {
+        return Err(ExtensionError::invalid_params(
+            "cwd outside working directory",
+        ));
+    }
+    Ok(normalized)
+}
+
+/// Strip the Windows `\\?\` (or `\\?\UNC\`) verbatim prefix so paths from
+/// `fs::canonicalize` compare equal to their plain forms.
+fn strip_verbatim_prefix(path: &Path) -> PathBuf {
+    let s = path.to_string_lossy();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(rest) = s.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        path.to_path_buf()
+    }
+}
+
 fn resolve_path_for_rename(
     path: &str,
     working_directory: Option<&Path>,
@@ -1137,7 +1179,7 @@ impl FilesHandler {
         }
 
         let working_dir = ctx.working_directory.as_deref();
-        let cwd = resolve_path(&p.cwd, working_dir)?;
+        let cwd = resolve_exec_cwd(&p.cwd, working_dir)?;
 
         if !cwd.is_dir() {
             return Err(ExtensionError::invalid_params("cwd is not a directory"));
@@ -1156,13 +1198,20 @@ impl FilesHandler {
                 ("sh", "-c")
             };
 
-            let mut child = tokio::process::Command::new(shell)
+            let mut child = tokio::process::Command::new(shell);
+            child
                 .arg(shell_flag)
                 .arg(cmd)
                 .current_dir(&cwd)
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped());
+            #[cfg(windows)]
+            {
+                const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                child.creation_flags(CREATE_NO_WINDOW);
+            }
+            let mut child = child
                 .spawn()
                 .map_err(|e| ExtensionError::invalid_params(format!("spawn failed: {e}")))?;
 
@@ -2128,6 +2177,42 @@ mod tests {
         let results = result["results"].as_array().unwrap();
         assert_eq!(results.len(), 1);
         assert_ne!(results[0]["exitCode"], 0);
+    }
+
+    // ── resolve_exec_cwd ─────────────────────────────────
+
+    #[test]
+    fn test_resolve_exec_cwd_absolute_inside_workdir() {
+        let tmp = setup_workdir();
+        let wd = tmp.path();
+        let abs = wd.join("src");
+        let resolved = resolve_exec_cwd(&abs.to_string_lossy(), Some(wd)).unwrap();
+        assert!(resolved.starts_with(normalize_path(wd)));
+    }
+
+    #[test]
+    fn test_resolve_exec_cwd_absolute_forward_slashes() {
+        let tmp = setup_workdir();
+        let wd = tmp.path();
+        let abs = wd.join("src").to_string_lossy().replace('\\', "/");
+        let resolved = resolve_exec_cwd(&abs, Some(wd)).unwrap();
+        assert!(resolved.starts_with(normalize_path(wd)));
+    }
+
+    #[test]
+    fn test_resolve_exec_cwd_absolute_outside_workdir_rejected() {
+        let tmp = setup_workdir();
+        let outside = std::env::temp_dir().join("definitely-not-inside");
+        let err = resolve_exec_cwd(&outside.to_string_lossy(), Some(tmp.path()));
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err().code, -32602);
+    }
+
+    #[test]
+    fn test_resolve_exec_cwd_relative_still_sandboxed() {
+        let tmp = setup_workdir();
+        let err = resolve_exec_cwd("../../elsewhere", Some(tmp.path()));
+        assert!(err.is_err());
     }
 
     // ── helpers ──────────────────────────────────────────
