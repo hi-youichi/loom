@@ -302,7 +302,18 @@ TTS 和 Dictation 等实时音频场景使用独立 WebSocket 子流，不走标
 | `-32005` | `conflict` | 状态冲突（如重复创建） |
 | `-32006` | `partial_failure` | 批量操作部分失败（response 包含 per-item result） |
 | `-32007` | `directory_boundary_violation` | 路径超出 worktree 范围 |
+| `-32008` | `rate_limited` | 上游限流（small-model / settings 域） |
+| `-32009` | `provider_error` | 上游 provider 失败（small-model 域） |
+| `-32013` | `proxy_target_unreachable` | 本地 preview 目标不可达（preview 域） |
 | `-32603` | `internal_error` | 服务器内部错误 |
+
+核心协议保留码，扩展域不得复用：
+
+| Error code | message | 核心语义 |
+|---|---|---|
+| `-32010` | `a prompt is already in progress for this session` | 同 session 重入 prompt / load / resume |
+| `-32011` | `session is attached to another connection` | session 绑定在其他 connection |
+| `-32012` | `ssrf_blocked` | preview 代理目标非 loopback |
 
 ### Partial Failure 格式
 

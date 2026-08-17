@@ -50,7 +50,7 @@ Copy the example environment file and fill in your model credentials:
 Copy-Item .env.example .env
 ```
 
-You can also create a `config.toml` in the user config directory (default `~/.loom/`, overridable via `LOOM_HOME`). The `.env` in the project root takes precedence over that config.
+You can also create a `config.toml` in the user config directory (default `~/.loom/`, overridable via the `--home DIR` flag). The `.env` in the project root takes precedence over that config.
 
 ### 2. Run an Agent in Your Project
 

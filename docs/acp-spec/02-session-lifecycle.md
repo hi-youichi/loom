@@ -411,7 +411,7 @@ async fn resume_session_for_owner(
 | Error code | 触发条件 |
 |---|---|
 | `session_not_found` | session 不存在 |
-| `conflict` | session 有 active prompt |
+| `busy (-32010)` | session 有 active prompt 或 restore in progress |
 | `forbidden` | session 属于其他 principal |
 
 ---

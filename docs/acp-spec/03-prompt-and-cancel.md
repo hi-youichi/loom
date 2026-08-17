@@ -74,7 +74,7 @@
 1. **验证 session binding**: 检查 sessionId 是否属于当前 connection
 2. **验证 content blocks**: 通过 `content_blocks_to_user_content()` 转换
 3. **捕获 snapshot**: model/mode/agent/effort 在此时捕获，不能在执行中途从 mutable state 重新解析
-4. **Generation 唯一性**: 一个 session 同时只能有一个 active generation；已有 active generation 时返回 `conflict` 错误
+4. **Generation 唯一性**: 一个 session 同时只能有一个 active generation；已有 active generation 时返回 `busy`（code `-32010`）错误
 5. **启动 generation**: 创建 `GenerationCancellation`，启动 agent 执行循环
 6. **流式输出**: 执行过程中通过 `session/update` notification 发送更新
 7. **Response 顺序**: prompt response 不能先于已生成的 update 被发送
@@ -128,7 +128,8 @@ async fn prompt_with_capabilities(
 | Error code | 触发条件 |
 |---|---|
 | `session_not_found` | session 不存在或不属于当前连接 |
-| `conflict` | session 已有 active generation |
+| `busy (-32010)` | session 已有 active generation |
+| `wrong connection (-32011)` | session 绑定在其他 connection |
 | `Invalid Params (-32602)` | content blocks 为空或包含不支持类型 |
 
 ---
