@@ -230,7 +230,16 @@ impl ExtensionHandler for ModelHandler {
         _ctx: &ExtensionContext,
     ) -> Result<Value, ExtensionError> {
         match method {
-            "list" => Ok(self.catalog().await),
+            "list" => {
+                // `lastUsed` is stamped per-request (not part of the cached
+                // catalog): it tracks `set_session_config_option("model")`
+                // selections and changes far more often than the catalog.
+                let mut catalog = self.catalog().await;
+                if let Some(last) = crate::last_model::load() {
+                    catalog["lastUsed"] = Value::String(last);
+                }
+                Ok(catalog)
+            }
             _ => Err(ExtensionError::method_not_found()),
         }
     }
