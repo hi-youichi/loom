@@ -1,6 +1,18 @@
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
+import { defineBddProject } from "playwright-bdd";
+
+// BDD：Gherkin feature → .features-gen 生成物（*.feature.spec.js）
+// 注意：运行时要求 project.testDir === BDD outputDir，故生成物由独立 project 承载，
+// 存量 spec.ts 的 "Web Chromium" project 通过 testIgnore 排除 .features-gen 避免重复发现。
+const bddWeb = defineBddProject({
+  name: "Web BDD",
+  outputDir: "./tests/.features-gen",
+  featuresRoot: "./features",
+  features: ["features/web/**/*.feature"],
+  steps: ["steps/**/*.ts"],
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +29,7 @@ function getBaseUrl(): string {
 }
 
 export default defineConfig({
-  testDir: "./tests",
+  testDir: "./tests", // 存量 spec.ts（BDD 生成物由 "Web BDD" project 单独承载）
   fullyParallel: true,
   // CI 中禁止 .only；本地放开
   forbidOnly: !!process.env.CI,
@@ -39,14 +51,24 @@ export default defineConfig({
   },
 
   projects: [
-    // P0 — Web (Chromium)
+    // P0 — Web (Chromium) 存量 spec.ts
     {
       name: "Web Chromium",
       use: {
         ...devices["Desktop Chrome"],
         headless: process.env.E2E_HEADLESS !== "false",
       },
-      testIgnore: /mobile\.spec\.ts/,
+      testIgnore: [/mobile\.spec\.ts/, /\.features-gen/],
+    },
+
+    // P0 — BDD (Chromium) playwright-bdd 生成物
+    {
+      name: bddWeb.name,
+      testDir: bddWeb.testDir,
+      use: {
+        ...devices["Desktop Chrome"],
+        headless: process.env.E2E_HEADLESS !== "false",
+      },
     },
 
     // P1 — Mobile viewport（复用 Web Server，仅切换视口 / UA）

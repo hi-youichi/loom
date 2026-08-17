@@ -5,11 +5,17 @@
   "type": "module",
   "scripts": {
     "test": "npx playwright test",
+    "test:bdd": "bddgen && playwright test",
+    "test:bdd:watch": "bddgen --watch",
+    "test:bdd:gen": "bddgen",
+    "test:bdd:dev": "bddgen && cross-env E2E_BASE_URL=http://127.0.0.1:5180 E2E_NO_AUTOSTART=1 playwright test --project=\"Web BDD\"",
     "test:bdd:acp": "cargo build --manifest-path ../Cargo.toml -p cli && cargo build --manifest-path ../Cargo.toml -p loom-server-core --features test-support --bin acp-test-server && node --test tests/acp-bdd/loom-acp-stdio.test.mjs tests/acp-bdd/cli-acp-client.test.mjs tests/acp-bdd/loom-acp-multi-session.test.mjs",
     "report": "npx playwright show-report",
     "ui": "npx playwright test --ui"
   },
   "devDependencies": {
-    "@playwright/test": "latest"
+    "@playwright/test": "latest",
+    "cross-env": "10.0.0",
+    "playwright-bdd": "9.2.0"
   }
 }

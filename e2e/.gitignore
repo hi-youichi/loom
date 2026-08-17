@@ -10,3 +10,8 @@ playwright-report/
 
 # macOS
 .DS_Store
+
+# playwright-bdd 生成物（不能忽略整个 .features-gen 目录，Playwright 快照存放在测试文件旁）
+**/.features-gen/**/*.spec.js
+**/.features-gen/**/*.spec.js.map
+**/.features-gen/.bddgen.lock
