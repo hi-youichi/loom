@@ -2,7 +2,7 @@
 //!
 //! Each test:
 //!  1. Writes a real config.toml to a tempdir
-//!  2. Runs load_and_apply_with_report with LOOM_HOME pointed at that dir
+//!  2. Runs load_and_apply_with_report with the loom home override pointed at that dir
 //!  3. Asserts the correct env vars are set and the report is accurate
 //!
 //! Tests are serialised through LOCK because they mutate process-level env vars.
@@ -48,23 +48,20 @@ impl Drop for EnvGuard {
 }
 
 struct LoomHomeGuard {
-    prev: Option<String>,
+    prev: Option<std::path::PathBuf>,
 }
 
 impl LoomHomeGuard {
     fn set(path: &std::path::Path) -> Self {
-        let prev = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", path);
+        let prev = config::home::override_path();
+        config::home::set_override(Some(path.to_path_buf()));
         Self { prev }
     }
 }
 
 impl Drop for LoomHomeGuard {
     fn drop(&mut self) {
-        match &self.prev {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
-        }
+        config::home::set_override(self.prev.clone());
     }
 }
 
@@ -159,10 +156,11 @@ temperature = 0.35
     assert_eq!(te.map(|e| e.source), Some(ConfigSource::Provider));
 }
 
-/// Provider with type = "bigmodel" maps to LLM_PROVIDER=bigmodel.
+/// Provider with type = "bigmodel": type is informational only (inferred from
+/// base_url since 864ee2d9); it must not export LLM_PROVIDER.
 #[test]
 #[ignore]
-fn e2e_bigmodel_provider_sets_llm_provider() {
+fn e2e_bigmodel_provider_does_not_set_llm_provider() {
     let _lock = LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     write_config(
@@ -187,7 +185,10 @@ type = "bigmodel"
     let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
 
     assert_eq!(std::env::var("OPENAI_API_KEY").unwrap(), "bm-key-e2e");
-    assert_eq!(std::env::var("LLM_PROVIDER").unwrap(), "bigmodel");
+    assert!(
+        std::env::var("LLM_PROVIDER").is_err(),
+        "type is inferred from base_url, must not set LLM_PROVIDER"
+    );
     assert_eq!(std::env::var("MODEL").unwrap(), "glm-4-flash");
     assert_eq!(report.active_provider.as_deref(), Some("bigmodel"));
 }

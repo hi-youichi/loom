@@ -239,13 +239,10 @@ mod tests {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        let prev = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", dir.path());
+        let prev = env_config::home::override_path();
+        env_config::home::set_override(Some(dir.path().to_path_buf()));
         let path = default_memory_db_path();
-        match prev {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
-        }
+        env_config::home::set_override(prev);
         assert_eq!(path, dir.path().join("memory.db"));
     }
 
@@ -255,13 +252,10 @@ mod tests {
         let _g = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let nested = dir.path().join("sub").join("dir");
-        let prev = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", &nested);
+        let prev = env_config::home::override_path();
+        env_config::home::set_override(Some(nested.clone()));
         let path = default_memory_db_path();
-        match prev {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
-        }
+        env_config::home::set_override(prev);
         assert!(nested.exists());
         assert_eq!(path, nested.join("memory.db"));
     }

@@ -123,8 +123,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let prev_dir = std::env::current_dir().ok();
         let _ = std::env::set_current_dir(dir.path());
-        let prev_loom = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", dir.path());
+        let prev_loom = env_config::home::override_path();
+        env_config::home::set_override(Some(dir.path().to_path_buf()));
 
         let opts = RunOptions {
             message: UserContent::Text(String::new()),
@@ -166,10 +166,7 @@ mod tests {
         if let Some(d) = prev_dir {
             let _ = std::env::set_current_dir(d);
         }
-        match prev_loom {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
-        }
+        env_config::home::set_override(prev_loom);
 
         assert!(result.is_none());
     }
@@ -177,9 +174,9 @@ mod tests {
     #[test]
     fn load_profile_from_options_unknown_agent() {
         let _lock = env_test_lock().lock().unwrap();
-        let prev_loom = std::env::var("LOOM_HOME").ok();
+        let prev_loom = env_config::home::override_path();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("LOOM_HOME", dir.path());
+        env_config::home::set_override(Some(dir.path().to_path_buf()));
 
         let opts = RunOptions {
             message: UserContent::Text(String::new()),
@@ -217,10 +214,7 @@ mod tests {
             tier: None,
         };
         let result = load_profile_from_options(&opts);
-        match prev_loom {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
-        }
+        env_config::home::set_override(prev_loom);
         assert!(result.is_none());
     }
 
@@ -237,8 +231,8 @@ mod tests {
         )
         .unwrap();
 
-        let prev_loom = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", loom_home.path());
+        let prev_loom = env_config::home::override_path();
+        env_config::home::set_override(Some(loom_home.path().to_path_buf()));
 
         let prev_dir = std::env::current_dir().ok();
         let empty = tempfile::tempdir().unwrap();
@@ -249,10 +243,7 @@ mod tests {
         if let Some(d) = prev_dir {
             let _ = std::env::set_current_dir(d);
         }
-        match prev_loom {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
-        }
+        env_config::home::set_override(prev_loom);
 
         assert!(result.is_some());
     }

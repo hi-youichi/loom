@@ -18,14 +18,7 @@ const TODOS_FILENAME: &str = "todo.json";
 pub fn todo_file_path(
     thread_id: Option<&str>,
 ) -> Result<std::path::PathBuf, tool_core::ToolSourceError> {
-    let base = if let Ok(custom) = std::env::var("LOOM_HOME") {
-        std::path::PathBuf::from(custom)
-    } else {
-        let home = dirs::home_dir().ok_or_else(|| {
-            tool_core::ToolSourceError::Transport("failed to determine home directory".to_string())
-        })?;
-        home.join(".loom")
-    };
+    let base = config::home::loom_home();
     match thread_id {
         Some(tid) => Ok(base.join("thread").join(tid).join(TODOS_FILENAME)),
         None => Ok(base.join(TODOS_FILENAME)),
@@ -48,25 +41,25 @@ pub(crate) static XDG_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(()
 mod tests {
     use super::{TodoInfo, TODOS_FILENAME};
 
-    /// Given LOOM_HOME is set, todo_file_path returns loom_home/todo.json.
+    /// Given a --home override, todo_file_path returns <home>/todo.json.
     #[test]
     fn todo_file_path_uses_loom_home() {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = super::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("LOOM_HOME", dir.path());
+        config::home::set_override(Some(dir.path().to_path_buf()));
         let path = super::todo_file_path(None).unwrap();
         assert_eq!(path, dir.path().join("todo.json"));
-        std::env::remove_var("LOOM_HOME");
+        config::home::set_override(None);
     }
 
-    /// Given LOOM_HOME and thread_id, todo_file_path returns loom_home/thread/{thread_id}/todo.json.
+    /// Given the loom home override and thread_id, todo_file_path returns loom_home/thread/{thread_id}/todo.json.
     #[test]
     fn todo_file_path_with_thread_id() {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = super::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("LOOM_HOME", dir.path());
+        config::home::set_override(Some(dir.path().to_path_buf()));
         let path = super::todo_file_path(Some("session-123")).unwrap();
         assert_eq!(
             path,
@@ -75,7 +68,7 @@ mod tests {
                 .join("session-123")
                 .join("todo.json")
         );
-        std::env::remove_var("LOOM_HOME");
+        config::home::set_override(None);
     }
 
     /// TodoInfo roundtrip: serialize to JSON and deserialize back.

@@ -43,7 +43,7 @@ pub struct AcpTestHarness {
 }
 
 impl AcpTestHarness {
-    /// Spawn the loom-acp binary inside `env`'s temp `LOOM_HOME`.
+    /// Spawn the loom-acp binary with `--home` pointed at `env`'s temp home.
     pub async fn spawn(env: &TestEnv, llm_url: &str) -> Self {
         let log_path = env.loom_home().join("loom-acp.log");
         let pid_path = env.loom_home().join("acp").join("loom-acp.pid");
@@ -53,6 +53,8 @@ impl AcpTestHarness {
             .env("OPENAI_API_KEY", "test-key")
             .env("OPENAI_MODEL", "openai/gpt-4o")
             .arg("acp")
+            .arg("--home")
+            .arg(env.loom_home())
             .arg("--log-file")
             .arg(&log_path)
             .arg("--log-level")

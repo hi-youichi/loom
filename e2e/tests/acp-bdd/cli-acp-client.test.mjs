@@ -36,8 +36,8 @@ function waitForServerLine(stream) {
   });
 }
 
-async function startServer(env) {
-  const child = spawn(loomBinary, ["server", "--host", "127.0.0.1", "--port", "0"], {
+async function startServer(env, home) {
+  const child = spawn(loomBinary, ["server", "--host", "127.0.0.1", "--port", "0", "--home", home], {
     cwd: repoRoot,
     env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -74,10 +74,10 @@ async function runCli(args, env) {
 
 async function withServer(run) {
   const home = await mkdtemp(path.join(tmpdir(), "loom-cli-acp-bdd-"));
-  const env = { ...process.env, LOOM_HOME: home };
-  const server = await startServer(env);
+  const env = { ...process.env };
+  const server = await startServer(env, home);
   try {
-    await run(server.wsUrl, env);
+    await run(server.wsUrl, env, home);
   } finally {
     await stop(server.child);
     await rm(home, { recursive: true, force: true });
@@ -85,8 +85,8 @@ async function withServer(run) {
 }
 
 test("BDD: Given a server, When I run loom --acp, Then the CLI client creates a session", async () => {
-  await withServer(async (wsUrl, env) => {
-    const result = await runCli(["--acp", "--json", "--acp-url", wsUrl], env);
+  await withServer(async (wsUrl, env, home) => {
+    const result = await runCli(["--home", home, "--acp", "--json", "--acp-url", wsUrl], env);
     assert.equal(result.code, 0, result.stderr);
     const frames = result.stdout.trim().split(/\r?\n/).map(JSON.parse);
     const sessionFrame = frames.find((frame) => frame.method === "session/new");
@@ -95,8 +95,8 @@ test("BDD: Given a server, When I run loom --acp, Then the CLI client creates a 
 });
 
 test("BDD: Given a session id, When I run loom --acp, Then the CLI client resumes the session", async () => {
-  await withServer(async (wsUrl, env) => {
-    const first = await runCli(["--acp", "--json", "--acp-url", wsUrl], env);
+  await withServer(async (wsUrl, env, home) => {
+    const first = await runCli(["--home", home, "--acp", "--json", "--acp-url", wsUrl], env);
     assert.equal(first.code, 0, first.stderr);
     const created = first.stdout.trim().split(/\r?\n/).map(JSON.parse)
       .find((frame) => frame.method === "session/new");
@@ -104,7 +104,7 @@ test("BDD: Given a session id, When I run loom --acp, Then the CLI client resume
     assert.ok(sessionId);
 
     const second = await runCli([
-      "--acp", "--json", "--acp-url", wsUrl, "--session-id", sessionId,
+      "--home", home, "--acp", "--json", "--acp-url", wsUrl, "--session-id", sessionId,
     ], env);
     assert.equal(second.code, 0, second.stderr);
     const loaded = second.stdout.trim().split(/\r?\n/).map(JSON.parse)
@@ -114,8 +114,8 @@ test("BDD: Given a session id, When I run loom --acp, Then the CLI client resume
 });
 
 test("BDD: Given --json, When I run loom --acp, Then every output line is JSON", async () => {
-  await withServer(async (wsUrl, env) => {
-    const result = await runCli(["--acp", "--json", "--acp-url", wsUrl], env);
+  await withServer(async (wsUrl, env, home) => {
+    const result = await runCli(["--home", home, "--acp", "--json", "--acp-url", wsUrl], env);
     assert.equal(result.code, 0, result.stderr);
     for (const line of result.stdout.trim().split(/\r?\n/)) {
       assert.doesNotThrow(() => JSON.parse(line));
@@ -128,8 +128,8 @@ test("BDD: Given a deterministic ACP server, When I run loom --acp with a prompt
   const home = await mkdtemp(path.join(tmpdir(), "loom-cli-acp-prompt-"));
   try {
     const result = await runCli([
-      "--acp", "--json", "--acp-url", fake.url, "hello",
-    ], { ...process.env, LOOM_HOME: home });
+      "--home", home, "--acp", "--json", "--acp-url", fake.url, "hello",
+    ], process.env);
     assert.equal(result.code, 0, result.stderr);
     const frames = result.stdout.trim().split(/\r?\n/).map(JSON.parse);
     const update = frames.find((frame) => frame.method === "session/update");

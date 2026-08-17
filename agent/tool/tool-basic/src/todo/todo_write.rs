@@ -169,7 +169,7 @@ mod tests {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("LOOM_HOME", dir.path());
+        config::home::set_override(Some(dir.path().to_path_buf()));
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
         let args = serde_json::json!({
             "todos": [
@@ -194,7 +194,7 @@ mod tests {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("LOOM_HOME", dir.path());
+        config::home::set_override(Some(dir.path().to_path_buf()));
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
         let result = tool.call(serde_json::json!({}), None).await;
         let err = result.unwrap_err();
@@ -209,7 +209,7 @@ mod tests {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("LOOM_HOME", dir.path());
+        config::home::set_override(Some(dir.path().to_path_buf()));
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
         let result = tool
             .call(serde_json::json!({ "todos": "not array" }), None)
@@ -225,7 +225,7 @@ mod tests {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("LOOM_HOME", dir.path());
+        config::home::set_override(Some(dir.path().to_path_buf()));
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
         let result = tool
             .call(
@@ -245,7 +245,7 @@ mod tests {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("LOOM_HOME", dir.path());
+        config::home::set_override(Some(dir.path().to_path_buf()));
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
         let result = tool
             .call(
@@ -265,7 +265,7 @@ mod tests {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("LOOM_HOME", dir.path());
+        config::home::set_override(Some(dir.path().to_path_buf()));
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
         let result = tool
             .call(serde_json::json!({ "todos": ["string item"] }), None)
@@ -281,7 +281,7 @@ mod tests {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("LOOM_HOME", dir.path());
+        config::home::set_override(Some(dir.path().to_path_buf()));
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));
         let args = serde_json::json!({
             "todos": [{ "id": "1", "content": "Only required" }]
@@ -301,7 +301,7 @@ mod tests {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("LOOM_HOME", dir.path());
+        config::home::set_override(Some(dir.path().to_path_buf()));
 
         let thread_id = "thread-789";
         let tool = TodoWriteTool::new(Arc::new(dir.path().to_path_buf()));

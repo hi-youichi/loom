@@ -54,6 +54,12 @@ use tool_core::active_operation::RunCancellation;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
+    // Apply the home override before anything else reads loom_home() —
+    // including the ACP branch below, which runs before config reporting.
+    if let Some(home) = &args.home {
+        config::home::set_override(Some(home.clone()));
+    }
+
     // Validate tier argument before proceeding
     if let Err(e) = run_flow::validate_tier_arg(&args.tier) {
         eprintln!("loom: {}", e);

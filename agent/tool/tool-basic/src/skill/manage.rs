@@ -101,7 +101,7 @@ fn validate_category(category: Option<&str>) -> Option<String> {
 /// `ToolSpec::description`.
 const DESCRIPTION: &str = "Manage skills (create, update, delete). \
 Skills are your procedural memory — reusable approaches for recurring task \
-types. New skills go to <LOOM_HOME>/skills/; existing skills can be \
+types. New skills go to {loom_home}/skills/; existing skills can be \
 modified wherever they live.\n\
 \n\
 Actions: create (full SKILL.md + optional category), \

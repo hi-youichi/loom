@@ -11,15 +11,15 @@ mod tests {
     fn setup_test_config() -> PathBuf {
         let temp_dir = env::temp_dir().join("telegram-bot-test");
         fs::create_dir_all(&temp_dir).ok();
-        
-        // Set LOOM_HOME to temp directory
-        env::set_var("LOOM_HOME", &temp_dir);
-        
+
+        // Point the home override at the temp directory
+        config::home::set_override(Some(temp_dir.clone()));
+
         temp_dir
     }
 
     fn cleanup_test_config(temp_dir: &PathBuf) {
-        env::remove_var("LOOM_HOME");
+        config::home::set_override(None);
         fs::remove_dir_all(temp_dir).ok();
     }
 

@@ -15,6 +15,7 @@ default = []
 tracing-init = ["dep:tracing-subscriber", "dep:tracing-appender", "dep:tracing-core", "dep:chrono"]
 
 [dependencies]
+loom-home = { path = "../loom-home" }
 toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

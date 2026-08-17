@@ -1270,18 +1270,15 @@ tools:
         let dir = tempfile::tempdir().unwrap();
         let prev_dir = std::env::current_dir().ok();
         let _ = std::env::set_current_dir(dir.path());
-        let prev_loom = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", dir.path());
+        let prev_loom = env_config::home::override_path();
+        env_config::home::set_override(Some(dir.path().to_path_buf()));
 
         let result = load_profile_by_name("nonexistent-agent-xyz");
 
         if let Some(d) = prev_dir {
             let _ = std::env::set_current_dir(d);
         }
-        match prev_loom {
-            Some(v) => std::env::set_var("LOOM_HOME", v),
-            None => std::env::remove_var("LOOM_HOME"),
-        }
+        env_config::home::set_override(prev_loom);
 
         assert!(result.is_none());
     }

@@ -1,9 +1,8 @@
-//! `TestEnv` — isolated temp `LOOM_HOME` for one e2e case.
+//! `TestEnv` — isolated temp Loom home for one e2e case.
 //!
 //! Each `TestEnv::setup()` produces a fresh `TempDir`. The caller is
-//! responsible for setting `LOOM_HOME` for the duration of the test (we
-//! can't atomically scope env vars across async boundaries reliably, so
-//! we use the simpler "set, run, restore" pattern in the test fn itself).
+//! responsible for applying the home override for the duration of the test
+//! (process-global override + explicit `--home` for spawned children).
 //!
 //! ```text
 //! let env = TestEnv::setup();
@@ -13,16 +12,18 @@
 //! }).await;
 //! ```
 //!
-//! The `loom acp` child spawned by `AcpTestHarness` inherits the test
-//! process's environment, so:
+//! The `loom acp` child spawned by `AcpTestHarness` receives `--home`
+//! explicitly (the override is process state and does not propagate via
+//! environment), so:
 //!
 //!   - sqlite checkpointer lands under `<tmp>/thread/<sid>/...`
 //!   - PID file at   `<tmp>/acp/loom-acp.pid`
 //!   - default log at `<tmp>/loom.log` (we override to `<tmp>/loom-acp.log`
 //!     via `--log-file` for determinism — see `AcpTestHarness::spawn`).
 //!
-//! All e2e tests that mutate `LOOM_HOME` MUST be marked `#[serial_test::serial]`
-//! to avoid cross-test contamination of the process-global env.
+//! All e2e tests that mutate the home override MUST be marked
+//! `#[serial_test::serial]` to avoid cross-test contamination of the
+//! process-global override.
 
 // Phase 1 only exercises a small subset; allow dead code for items that
 // Phase 2 / Phase 3 will use.
@@ -50,27 +51,26 @@ pub fn binary_path() -> PathBuf {
     target_dir.join(bin_name)
 }
 
-/// Set `LOOM_HOME` to `env.loom_home()`, run `fut`, restore prior value.
+/// Point the process-global home override at `env.loom_home()`, run `fut`,
+/// restore prior value.
 ///
-/// Env-var mutation is process-global, so concurrent tests that touch
-/// `LOOM_HOME` will race. The mega + micro e2e tests all carry
-/// `#[serial_test::serial]` to avoid that.
+/// The override is process-global, so concurrent tests that touch it will
+/// race. The mega + micro e2e tests all carry `#[serial_test::serial]` to
+/// avoid that. Spawned `loom` children receive `--home` explicitly and do
+/// not rely on this in-process override.
 pub async fn with_loom_home<F, T>(env: &TestEnv, fut: F) -> T
 where
     F: std::future::Future<Output = T>,
 {
-    let prev = std::env::var("LOOM_HOME").ok();
-    std::env::set_var("LOOM_HOME", env.loom_home());
+    let prev = config::home::override_path();
+    config::home::set_override(Some(env.loom_home().to_path_buf()));
     let result = fut.await;
-    match prev {
-        Some(v) => std::env::set_var("LOOM_HOME", v),
-        None => std::env::remove_var("LOOM_HOME"),
-    }
+    config::home::set_override(prev);
     result
 }
 
 pub struct TestEnv {
-    /// Root for `LOOM_HOME`; loom-acp will write `acp/`, `logs/`, `thread/`
+    /// Root for the Loom home; loom-acp will write `acp/`, `logs/`, `thread/`
     /// underneath. Held to keep the directory alive for the test's duration.
     pub home: TempDir,
     /// Working folder passed as `cwd` to `session/new`.
@@ -79,7 +79,7 @@ pub struct TestEnv {
 
 impl TestEnv {
     /// Build a fresh `TestEnv` rooted at a unique `TempDir`. The caller must
-    /// set `LOOM_HOME` (use `with_loom_home` to scope the env mutation).
+    /// set the process home override (use `with_loom_home` to scope it).
     pub fn setup() -> Self {
         let home = tempfile::Builder::new()
             .prefix("loom-acp-e2e-")
@@ -90,7 +90,7 @@ impl TestEnv {
         Self { home, cwd }
     }
 
-    /// Borrow the LOOM_HOME root (e.g. for `--log-file <tmp>/loom-acp.log`).
+    /// Borrow the loom home root (e.g. for `--log-file <tmp>/loom-acp.log`).
     pub fn loom_home(&self) -> &Path {
         self.home.path()
     }

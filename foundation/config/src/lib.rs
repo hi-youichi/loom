@@ -415,10 +415,10 @@ mod tests {
     fn load_and_apply_no_config_ok() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
         let empty_home = tempfile::tempdir().unwrap();
-        let prev_loom = env::var("LOOM_HOME").ok();
-        env::set_var("LOOM_HOME", empty_home.path());
+        let prev_loom = crate::home::override_path();
+        crate::home::set_override(Some(empty_home.path().to_path_buf()));
         let r = load_and_apply("loom", None::<&std::path::Path>);
-        restore_var("LOOM_HOME", prev_loom);
+        crate::home::set_override(prev_loom);
         assert!(r.is_ok());
     }
 
@@ -439,14 +439,14 @@ mod tests {
         )
         .unwrap();
 
-        let prev_loom = env::var("LOOM_HOME").ok();
-        env::set_var("LOOM_HOME", loom_home.path());
+        let prev_loom = crate::home::override_path();
+        crate::home::set_override(Some(loom_home.path().to_path_buf()));
         env::remove_var("CONFIG_TEST_PRIORITY");
 
         let _ = load_and_apply("loom", Some(dotenv_dir.path()));
         let val = env::var("CONFIG_TEST_PRIORITY").unwrap();
         env::remove_var("CONFIG_TEST_PRIORITY");
-        restore_var("LOOM_HOME", prev_loom);
+        crate::home::set_override(prev_loom);
 
         assert_eq!(val, "from_dotenv");
     }
@@ -463,14 +463,14 @@ mod tests {
 
         let empty_dir = tempfile::tempdir().unwrap();
 
-        let prev_loom = env::var("LOOM_HOME").ok();
-        env::set_var("LOOM_HOME", loom_home.path());
+        let prev_loom = crate::home::override_path();
+        crate::home::set_override(Some(loom_home.path().to_path_buf()));
         env::remove_var("CONFIG_TEST_LOOM_ONLY");
 
         let _ = load_and_apply("loom", Some(empty_dir.path()));
         let val = env::var("CONFIG_TEST_LOOM_ONLY").unwrap();
         env::remove_var("CONFIG_TEST_LOOM_ONLY");
-        restore_var("LOOM_HOME", prev_loom);
+        crate::home::set_override(prev_loom);
 
         assert_eq!(val, "from_config");
     }
@@ -486,13 +486,13 @@ mod tests {
         )
         .unwrap();
 
-        let prev_loom = env::var("LOOM_HOME").ok();
-        env::set_var("LOOM_HOME", loom_home.path());
+        let prev_loom = crate::home::override_path();
+        crate::home::set_override(Some(loom_home.path().to_path_buf()));
         env::remove_var("CONFIG_TEST_DOTENV_ONLY");
         let _ = load_and_apply("loom", Some(dotenv_dir.path()));
         let val = env::var("CONFIG_TEST_DOTENV_ONLY").unwrap();
         env::remove_var("CONFIG_TEST_DOTENV_ONLY");
-        restore_var("LOOM_HOME", prev_loom);
+        crate::home::set_override(prev_loom);
 
         assert_eq!(val, "from_dotenv_only");
     }
@@ -503,11 +503,11 @@ mod tests {
         let loom_home = tempfile::tempdir().unwrap();
         std::fs::write(loom_home.path().join("config.toml"), "invalid [[[\n").unwrap();
 
-        let prev_loom = env::var("LOOM_HOME").ok();
-        env::set_var("LOOM_HOME", loom_home.path());
+        let prev_loom = crate::home::override_path();
+        crate::home::set_override(Some(loom_home.path().to_path_buf()));
 
         let result = load_and_apply("loom", None::<&std::path::Path>);
-        restore_var("LOOM_HOME", prev_loom);
+        crate::home::set_override(prev_loom);
 
         assert!(matches!(result, Err(LoadError::XdgParse(_))));
     }
@@ -520,10 +520,10 @@ mod tests {
         let dotenv_dir = tempfile::tempdir().unwrap();
         std::fs::write(dotenv_dir.path().join(".env"), "K=V\n").unwrap();
 
-        let prev_loom = env::var("LOOM_HOME").ok();
-        env::set_var("LOOM_HOME", loom_home.path());
+        let prev_loom = crate::home::override_path();
+        crate::home::set_override(Some(loom_home.path().to_path_buf()));
         let paths = config_file_paths("loom", Some(dotenv_dir.path()));
-        restore_var("LOOM_HOME", prev_loom);
+        crate::home::set_override(prev_loom);
 
         assert!(paths.xdg.is_some());
         assert!(paths.dotenv.is_some());
@@ -533,10 +533,10 @@ mod tests {
     fn config_file_paths_returns_none_when_missing() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
         let empty = tempfile::tempdir().unwrap();
-        let prev_loom = env::var("LOOM_HOME").ok();
-        env::set_var("LOOM_HOME", empty.path());
+        let prev_loom = crate::home::override_path();
+        crate::home::set_override(Some(empty.path().to_path_buf()));
         let paths = config_file_paths("loom", Some(empty.path()));
-        restore_var("LOOM_HOME", prev_loom);
+        crate::home::set_override(prev_loom);
 
         assert!(paths.xdg.is_none());
         assert!(paths.dotenv.is_none());
@@ -552,13 +552,13 @@ mod tests {
         )
         .unwrap();
 
-        let prev_loom = env::var("LOOM_HOME").ok();
-        env::set_var("LOOM_HOME", loom_home.path());
+        let prev_loom = crate::home::override_path();
+        crate::home::set_override(Some(loom_home.path().to_path_buf()));
         env::remove_var("CONFIG_TEST_REPORT_LOG");
 
         let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
         env::remove_var("CONFIG_TEST_REPORT_LOG");
-        restore_var("LOOM_HOME", prev_loom);
+        crate::home::set_override(prev_loom);
 
         assert!(!report.entries.is_empty());
         let entry = report
@@ -581,13 +581,13 @@ mod tests {
         )
         .unwrap();
 
-        let prev_loom = env::var("LOOM_HOME").ok();
-        env::set_var("LOOM_HOME", loom_home.path());
+        let prev_loom = crate::home::override_path();
+        crate::home::set_override(Some(loom_home.path().to_path_buf()));
         env::remove_var("CONFIG_TEST_API_KEY");
 
         let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
         env::remove_var("CONFIG_TEST_API_KEY");
-        restore_var("LOOM_HOME", prev_loom);
+        crate::home::set_override(prev_loom);
 
         let entry = report
             .entries
@@ -707,8 +707,8 @@ model = "test-model"
         )
         .unwrap();
 
-        let prev_loom = env::var("LOOM_HOME").ok();
-        env::set_var("LOOM_HOME", loom_home.path());
+        let prev_loom = crate::home::override_path();
+        crate::home::set_override(Some(loom_home.path().to_path_buf()));
         env::remove_var("OPENAI_API_KEY");
         env::remove_var("OPENAI_BASE_URL");
         env::remove_var("MODEL");
@@ -722,7 +722,7 @@ model = "test-model"
         env::remove_var("OPENAI_API_KEY");
         env::remove_var("OPENAI_BASE_URL");
         env::remove_var("MODEL");
-        restore_var("LOOM_HOME", prev_loom);
+        crate::home::set_override(prev_loom);
 
         assert_eq!(api_key, "sk-test-provider");
         assert_eq!(base_url, "https://example.com/v1");
@@ -734,7 +734,7 @@ model = "test-model"
     }
 
     #[test]
-    fn provider_type_sets_llm_provider_env() {
+    fn provider_type_no_longer_sets_llm_provider_env() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
         let loom_home = tempfile::tempdir().unwrap();
         std::fs::write(
@@ -753,8 +753,8 @@ type = "bigmodel"
         )
         .unwrap();
 
-        let prev_loom = env::var("LOOM_HOME").ok();
-        env::set_var("LOOM_HOME", loom_home.path());
+        let prev_loom = crate::home::override_path();
+        crate::home::set_override(Some(loom_home.path().to_path_buf()));
         env::remove_var("OPENAI_API_KEY");
         env::remove_var("LLM_PROVIDER");
         env::remove_var("MODEL");
@@ -767,9 +767,12 @@ type = "bigmodel"
         env::remove_var("OPENAI_API_KEY");
         env::remove_var("LLM_PROVIDER");
         env::remove_var("MODEL");
-        restore_var("LOOM_HOME", prev_loom);
+        crate::home::set_override(prev_loom);
 
-        assert_eq!(llm_provider, "bigmodel");
+        assert!(
+            llm_provider.is_empty(),
+            "provider type is inferred from base_url (864ee2d9), must not set LLM_PROVIDER"
+        );
         assert_eq!(model, "glm-4-flash");
     }
 
@@ -793,15 +796,15 @@ model = "model-from-provider"
         let dotenv_dir = tempfile::tempdir().unwrap();
         std::fs::write(dotenv_dir.path().join(".env"), "MODEL=model-from-dotenv\n").unwrap();
 
-        let prev_loom = env::var("LOOM_HOME").ok();
-        env::set_var("LOOM_HOME", loom_home.path());
+        let prev_loom = crate::home::override_path();
+        crate::home::set_override(Some(loom_home.path().to_path_buf()));
         env::remove_var("MODEL");
 
         let _ = load_and_apply_with_report("loom", Some(dotenv_dir.path())).unwrap();
         let model = env::var("MODEL").unwrap_or_default();
 
         env::remove_var("MODEL");
-        restore_var("LOOM_HOME", prev_loom);
+        crate::home::set_override(prev_loom);
 
         assert_eq!(model, "model-from-dotenv");
     }
@@ -823,15 +826,15 @@ model = "model-from-provider"
         )
         .unwrap();
 
-        let prev_loom = env::var("LOOM_HOME").ok();
-        env::set_var("LOOM_HOME", loom_home.path());
+        let prev_loom = crate::home::override_path();
+        crate::home::set_override(Some(loom_home.path().to_path_buf()));
         env::set_var("MODEL", "model-from-env");
 
         let _ = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
         let model = env::var("MODEL").unwrap_or_default();
 
         env::remove_var("MODEL");
-        restore_var("LOOM_HOME", prev_loom);
+        crate::home::set_override(prev_loom);
 
         assert_eq!(model, "model-from-env");
     }
@@ -853,14 +856,14 @@ model = "other-model"
         )
         .unwrap();
 
-        let prev_loom = env::var("LOOM_HOME").ok();
-        env::set_var("LOOM_HOME", loom_home.path());
+        let prev_loom = crate::home::override_path();
+        crate::home::set_override(Some(loom_home.path().to_path_buf()));
         env::remove_var("MODEL");
 
         let _ = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
         let model = env::var("MODEL").ok();
 
-        restore_var("LOOM_HOME", prev_loom);
+        crate::home::set_override(prev_loom);
 
         assert!(model.is_none());
     }

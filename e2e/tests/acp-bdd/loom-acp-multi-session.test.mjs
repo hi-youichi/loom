@@ -163,9 +163,9 @@ test("BDD: a second ACP connection does not replace the first", { timeout: 20_00
 });
 
 test("BDD: session metadata survives a Loom server restart", { timeout: 25_000 }, async () => {
-  const loomHome = await mkdtemp(path.join(tmpdir(), "loom-acp-home-"));
+  const otherDir = await mkdtemp(path.join(tmpdir(), "loom-acp-other-"));
   const workspace = await realpath(await mkdtemp(path.join(tmpdir(), "loom-acp-persist-")));
-  const env = { ...process.env, LOOM_HOME: loomHome };
+  const env = { ...process.env };
   let fixture = await startFixture(env);
   let client = await AcpClient.connect(fixture.url);
   let sessionId;
@@ -180,14 +180,14 @@ test("BDD: session metadata survives a Loom server restart", { timeout: 25_000 }
     await client.initialize();
     await client.request("session/load", { sessionId, cwd: workspace, mcpServers: [] });
     await assert.rejects(
-      client.request("session/load", { sessionId, cwd: loomHome, mcpServers: [] }),
+      client.request("session/load", { sessionId, cwd: otherDir, mcpServers: [] }),
       (error) => error.rpc?.code === -32602,
     );
   } finally {
     client.close();
     await stopFixture(fixture.child);
     await Promise.all([
-      rm(loomHome, { recursive: true, force: true }),
+      rm(otherDir, { recursive: true, force: true }),
       rm(workspace, { recursive: true, force: true }),
     ]);
   }

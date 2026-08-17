@@ -88,7 +88,9 @@ pub struct ProviderDef {
     pub base_url: Option<String>,
     /// Default model name (mapped to `MODEL`).
     pub model: Option<String>,
-    /// Provider implementation type: `"openai"` (default), `"openai_compat"`, or `"bigmodel"` (alias; mapped to `LLM_PROVIDER`).
+    /// Provider implementation type: `"openai"` (default), `"openai_compat"`, or `"bigmodel"`.
+    /// Informational only — the client type is inferred from `base_url` (864ee2d9);
+    /// setting this no longer exports an `LLM_PROVIDER` env var.
     #[serde(rename = "type")]
     pub provider_type: Option<String>,
     /// Sampling temperature (mapped to `OPENAI_TEMPERATURE` as a decimal string).
@@ -321,16 +323,15 @@ pub fn load_full_config(app_name: &str) -> Result<FullConfig, LoadError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
 
     struct LoomHomeGuard {
-        prev: Option<String>,
+        prev: Option<std::path::PathBuf>,
     }
 
     impl LoomHomeGuard {
         fn set(value: &std::path::Path) -> Self {
-            let prev = env::var("LOOM_HOME").ok();
-            env::set_var("LOOM_HOME", value);
+            let prev = crate::home::override_path();
+            crate::home::set_override(Some(value.to_path_buf()));
             Self { prev }
         }
     }
@@ -338,9 +339,9 @@ mod tests {
     impl Drop for LoomHomeGuard {
         fn drop(&mut self) {
             if let Some(p) = self.prev.as_ref() {
-                env::set_var("LOOM_HOME", p);
+                crate::home::set_override(Some(p.to_path_buf()));
             } else {
-                env::remove_var("LOOM_HOME");
+                crate::home::set_override(None);
             }
         }
     }

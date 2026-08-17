@@ -10,13 +10,13 @@ pub fn setup_test_home() -> TempDir {
     let agents_dir = loom_dir.join("agents");
     fs::create_dir_all(&agents_dir).expect("Failed to create agents dir");
 
-    std::env::set_var("LOOM_HOME", temp_dir.path());
+    config::home::set_override(Some(temp_dir.path().to_path_buf()));
 
     temp_dir
 }
 
 pub fn cleanup_test_home(_temp_dir: &TempDir) {
-    std::env::remove_var("LOOM_HOME");
+    config::home::set_override(None);
     // TempDir will be automatically cleaned up when it goes out of scope
 }
 

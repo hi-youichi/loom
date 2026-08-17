@@ -116,23 +116,5 @@ pub fn default_providers_dir() -> std::path::PathBuf {
 }
 
 fn dirs_default_providers_dir() -> PathBuf {
-    let home = std::env::var("LOOM_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            home_dir()
-                .map(|h| h.join(".loom"))
-                .unwrap_or_else(|| PathBuf::from(".loom"))
-        });
-    home.join("providers")
-}
-
-fn home_dir() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        std::env::var("USERPROFILE").ok().map(PathBuf::from)
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        std::env::var("HOME").ok().map(PathBuf::from)
-    }
+    loom_home::loom_home().join("providers")
 }

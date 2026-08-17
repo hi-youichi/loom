@@ -64,6 +64,7 @@ members = [
     "foundation/loom-util",
 
     "foundation/loom-http-retry",
+    "foundation/loom-home",
 
     "foundation/pty-protocol",
 

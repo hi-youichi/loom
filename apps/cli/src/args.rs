@@ -6,8 +6,8 @@ use clap::{Parser, Subcommand};
 
 use crate::session::SessionArgs;
 
-/// Config directory: ~/.loom (or $LOOM_HOME). config.toml [env] is applied as env vars; project .env overrides.
-pub(crate) const CONFIG_DIR_HELP: &str = "\nConfiguration:\n  Config directory: ~/.loom (override with $LOOM_HOME).\n  File: config.toml with [env] table; values are applied as environment variables.\n  Project .env in working directory overrides config.toml.\n\nSession:\n  Use --session-id (-s) to resume a previous session. The session ID is printed at end of run.\n  Use 'loom session list' to browse all sessions, and 'loom session cat <ID>' to view content.";
+/// Config directory: ~/.loom (or --home DIR). config.toml [env] is applied as env vars; project .env overrides.
+pub(crate) const CONFIG_DIR_HELP: &str = "\nConfiguration:\n  Config directory: ~/.loom (override with --home DIR).\n  File: config.toml with [env] table; values are applied as environment variables.\n  Project .env in working directory overrides config.toml.\n\nSession:\n  Use --session-id (-s) to resume a previous session. The session ID is printed at end of run.\n  Use 'loom session list' to browse all sessions, and 'loom session cat <ID>' to view content.";
 
 #[derive(Parser, Debug, Default)]
 #[command(name = "loom")]
@@ -27,6 +27,11 @@ pub(crate) struct Args {
     /// Working folder (for file tools); default: current directory when not set
     #[arg(short, long, value_name = "DIR")]
     pub(crate) working_folder: Option<PathBuf>,
+
+    /// Loom home directory for config, state, and data (default: ~/.loom).
+    /// Replaces the old LOOM_HOME environment variable.
+    #[arg(long, global = true, value_name = "DIR")]
+    pub(crate) home: Option<PathBuf>,
 
     /// Attach image(s) to the user message. Repeatable. Routes through
     /// `decide_image_input_mode` (Hermes parity, `cli.py` #3): a

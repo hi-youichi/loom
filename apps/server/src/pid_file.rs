@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 const DEFAULT_PID_FILE: &str = "loom-server.pid";
 
-/// The server's default PID file: `$LOOM_HOME/loom-server.pid`.
+/// The server's default PID file: `{loom_home}/loom-server.pid`.
 pub fn default_path() -> PathBuf {
     config::home::loom_home().join(DEFAULT_PID_FILE)
 }

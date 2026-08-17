@@ -1,6 +1,6 @@
 //! Configuration loader with environment variable interpolation
 //!
-//! Loads configuration from `~/.loom/telegram-bot.toml` or `LOOM_HOME/telegram-bot.toml`.
+//! Loads configuration from `~/.loom/telegram-bot.toml` (relocated by `--home DIR`).
 
 use crate::config::error::ConfigError;
 use crate::config::types::TelegramBotConfig;

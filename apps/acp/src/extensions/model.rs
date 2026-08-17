@@ -2,7 +2,7 @@
 //! (`_loomdesk.dev/model/*`).
 //!
 //! Serves the model picker from the Loom config (`[[providers]]` +
-//! `[default]` in config.toml, resolved through LOOM_HOME/XDG). The default
+//! `[default]` in config.toml, resolved through the loom home directory/XDG). The default
 //! provider additionally gets a live `/v1/models` listing when credentials
 //! are available; every provider always exposes at least its declared or
 //! default model.

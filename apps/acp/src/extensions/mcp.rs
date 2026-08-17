@@ -533,12 +533,12 @@ mod tests {
     fn setup_env() -> (TempDir, TempDir) {
         let project_dir = TempDir::new().unwrap();
         let loom_home = TempDir::new().unwrap();
-        std::env::set_var("LOOM_HOME", loom_home.path());
+        config::home::set_override(Some(loom_home.path().to_path_buf()));
         (project_dir, loom_home)
     }
 
     fn restore_env() {
-        std::env::remove_var("LOOM_HOME");
+        config::home::set_override(None);
     }
 
     #[tokio::test]

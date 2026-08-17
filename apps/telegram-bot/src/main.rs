@@ -13,11 +13,19 @@ struct Args {
     /// Show version information
     #[arg(short = 'V', long = "version", action = clap::ArgAction::SetTrue)]
     version: bool,
+
+    /// Loom home directory for config, state, and data (default: ~/.loom).
+    #[arg(long, global = true, value_name = "DIR")]
+    home: Option<std::path::PathBuf>,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Args::parse();
+
+    if let Some(home) = &args.home {
+        config::home::set_override(Some(home.clone()));
+    }
 
     if args.version {
         println!("telegram-bot v{}", TELEGRAM_BOT_VERSION);

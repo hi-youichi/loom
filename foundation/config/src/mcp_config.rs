@@ -547,14 +547,14 @@ mod tests {
         let loom_home = dir.path().join("loom_home");
         std::fs::create_dir_all(&loom_home).unwrap();
         std::fs::write(loom_home.join("mcp.json"), "{}").unwrap();
-        let prev = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", &loom_home);
+        let prev = crate::home::override_path();
+        crate::home::set_override(Some(loom_home.clone()));
 
         let got = discover_mcp_config_path(Some(&override_path), Some(working.as_path()));
         if let Some(ref p) = prev {
-            std::env::set_var("LOOM_HOME", p);
+            crate::home::set_override(Some(p.to_path_buf()));
         } else {
-            std::env::remove_var("LOOM_HOME");
+            crate::home::set_override(None);
         }
 
         assert_eq!(got.as_deref(), Some(project_mcp.as_path()));
@@ -568,14 +568,14 @@ mod tests {
 
         let loom_home = dir.path().join("loom_home");
         std::fs::create_dir_all(&loom_home).unwrap();
-        let prev = std::env::var("LOOM_HOME").ok();
-        std::env::set_var("LOOM_HOME", &loom_home);
+        let prev = crate::home::override_path();
+        crate::home::set_override(Some(loom_home.clone()));
 
         let got = discover_mcp_config_path(None, Some(working.as_path()));
         if let Some(ref p) = prev {
-            std::env::set_var("LOOM_HOME", p);
+            crate::home::set_override(Some(p.to_path_buf()));
         } else {
-            std::env::remove_var("LOOM_HOME");
+            crate::home::set_override(None);
         }
 
         assert!(got.is_none());

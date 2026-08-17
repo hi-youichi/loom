@@ -407,10 +407,15 @@ fn resolve_loom_binary() -> BridgeResult<std::path::PathBuf> {
 }
 
 /// Spawn `loom server --host <host> --port <port>` as a detached child.
+///
+/// `home` (the `--home` override active in this process, if any) is passed
+/// explicitly: the override is process state, not an environment variable,
+/// so it does not propagate to children automatically.
 fn spawn_server(
     host: &str,
     port: u16,
     pid_file: Option<&Path>,
+    home: Option<&Path>,
 ) -> BridgeResult<std::process::Child> {
     let bin = resolve_loom_binary()?;
 
@@ -418,6 +423,9 @@ fn spawn_server(
 
     let mut cmd = std::process::Command::new(&bin);
     cmd.args(["server", "--host", host, "--port", &port.to_string()]);
+    if let Some(home) = home {
+        cmd.arg("--home").arg(home);
+    }
     if let Some(pid_file) = pid_file {
         cmd.arg("--pid-file").arg(pid_file);
     }
@@ -489,7 +497,7 @@ async fn ensure_server_ready(
     tracing::info!("loom-server not detected, auto-spawning");
     let (host, port) =
         parse_host_port(ws_url).ok_or_else(|| format!("cannot parse host:port from {ws_url}"))?;
-    let child = spawn_server(&host, port, pid_file)?;
+    let child = spawn_server(&host, port, pid_file, config::home::override_path().as_deref())?;
 
     let deadline = tokio::time::Instant::now() + SERVER_READY_TIMEOUT;
     loop {

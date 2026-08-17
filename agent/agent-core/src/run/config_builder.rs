@@ -26,7 +26,7 @@ use crate::load_agents_md;
 use super::profile_helper::load_profile_from_options;
 use crate::profile::AgentProfile;
 
-/// Reads memory prompt from LOOM_HOME/data/memory/.
+/// Reads memory prompt from {loom_home}/data/memory/.
 pub fn load_memory_prompt() -> Option<String> {
     let memory_dir = env_config::home::loom_home().join("data").join("memory");
     let store = memory_v2::MemoryStore::new(&memory_dir);

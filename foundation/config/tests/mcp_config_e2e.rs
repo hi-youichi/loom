@@ -7,11 +7,8 @@ use std::sync::Mutex;
 
 static LOOM_HOME_LOCK: Mutex<()> = Mutex::new(());
 
-fn restore_loom_home(prev: Option<String>) {
-    match prev {
-        Some(v) => std::env::set_var("LOOM_HOME", v),
-        None => std::env::remove_var("LOOM_HOME"),
-    }
+fn restore_loom_home(prev: Option<std::path::PathBuf>) {
+    config::home::set_override(prev);
 }
 
 #[test]
@@ -59,8 +56,8 @@ fn e2e_discover_then_load_project() {
     let loom_home = dir.path().join("loom_home");
     std::fs::create_dir_all(&loom_home).unwrap();
     std::fs::write(loom_home.join("mcp.json"), "{}").unwrap();
-    let prev = std::env::var("LOOM_HOME").ok();
-    std::env::set_var("LOOM_HOME", &loom_home);
+    let prev = config::home::override_path();
+    config::home::set_override(Some(loom_home.clone()));
 
     let path = discover_mcp_config_path(None::<&Path>, Some(working.as_path())).unwrap();
     restore_loom_home(prev);
@@ -96,8 +93,8 @@ fn e2e_discover_then_load_global() {
     let content = r#"{"mcpServers":{"global":{"command":"npx","args":["-y","mcp-server"]}}}"#;
     std::fs::write(&global_mcp, content).unwrap();
 
-    let prev = std::env::var("LOOM_HOME").ok();
-    std::env::set_var("LOOM_HOME", &loom_home);
+    let prev = config::home::override_path();
+    config::home::set_override(Some(loom_home.clone()));
 
     let path = discover_mcp_config_path(None::<&Path>, Some(working.as_path())).unwrap();
     restore_loom_home(prev);
@@ -138,8 +135,8 @@ fn e2e_discover_order_override_over_project() {
     std::fs::create_dir_all(&loom_home).unwrap();
     std::fs::write(loom_home.join("mcp.json"), "{}").unwrap();
 
-    let prev = std::env::var("LOOM_HOME").ok();
-    std::env::set_var("LOOM_HOME", &loom_home);
+    let prev = config::home::override_path();
+    config::home::set_override(Some(loom_home.clone()));
 
     let path = discover_mcp_config_path(Some(&override_path), Some(working.as_path())).unwrap();
     restore_loom_home(prev);
@@ -163,8 +160,8 @@ fn e2e_discover_order_project_over_global() {
     )
     .unwrap();
 
-    let prev = std::env::var("LOOM_HOME").ok();
-    std::env::set_var("LOOM_HOME", &loom_home);
+    let prev = config::home::override_path();
+    config::home::set_override(Some(loom_home.clone()));
 
     let path = discover_mcp_config_path(None::<&Path>, Some(working.as_path())).unwrap();
     restore_loom_home(prev);
@@ -216,8 +213,8 @@ fn e2e_discover_none_when_nothing_exists() {
 
     let loom_home = dir.path().join("loom_home");
     std::fs::create_dir_all(&loom_home).unwrap();
-    let prev = std::env::var("LOOM_HOME").ok();
-    std::env::set_var("LOOM_HOME", &loom_home);
+    let prev = config::home::override_path();
+    config::home::set_override(Some(loom_home.clone()));
 
     let path = discover_mcp_config_path(None::<&Path>, Some(working.as_path()));
     restore_loom_home(prev);

@@ -59,9 +59,9 @@ function waitForLine(stream, predicate, label) {
   });
 }
 
-async function startServer(env) {
+async function startServer(env, home) {
   requireLoomBinary();
-  const child = spawn(loomBinary, ["server", "--host", "127.0.0.1", "--port", "0"], {
+  const child = spawn(loomBinary, ["server", "--host", "127.0.0.1", "--port", "0", "--home", home], {
     cwd: repoRoot,
     env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -145,9 +145,9 @@ class JsonRpcLines {
   }
 }
 
-async function startBridge(wsUrl, env) {
+async function startBridge(wsUrl, env, home) {
   requireLoomBinary();
-  const child = spawn(loomBinary, ["acp", wsUrl], {
+  const child = spawn(loomBinary, ["acp", "--home", home, wsUrl], {
     cwd: repoRoot,
     env,
     stdio: ["pipe", "pipe", "pipe"],
@@ -158,10 +158,10 @@ async function startBridge(wsUrl, env) {
 
 async function withAcpScenario(run) {
   const home = await mkdtemp(path.join(tmpdir(), "loom-acp-bdd-"));
-  const env = { ...process.env, LOOM_HOME: home };
-  const server = await startServer(env);
+  const env = { ...process.env };
+  const server = await startServer(env, home);
   try {
-    await run(server, env);
+    await run(server, env, home);
   } finally {
     await server.close();
     await rm(home, { recursive: true, force: true });
@@ -194,8 +194,8 @@ function zedInitializeParams() {
 }
 
 test("BDD: Given a loom server, When I initialize through loom acp, Then ACP responds", async () => {
-  await withAcpScenario(async (server, env) => {
-    const bridge = await startBridge(server.wsUrl, env);
+  await withAcpScenario(async (server, env, home) => {
+    const bridge = await startBridge(server.wsUrl, env, home);
     try {
       const result = await bridge.request("initialize", initializeParams());
       assert.equal(typeof result.protocolVersion, "number");
@@ -207,15 +207,15 @@ test("BDD: Given a loom server, When I initialize through loom acp, Then ACP res
 });
 
 test("BDD: Given a session, When I restart loom acp, Then I can load it", async () => {
-  await withAcpScenario(async (server, env) => {
+  await withAcpScenario(async (server, env, home) => {
     const cwd = repoRoot;
-    const first = await startBridge(server.wsUrl, env);
+    const first = await startBridge(server.wsUrl, env, home);
     const created = await first.request("initialize", initializeParams())
       .then(() => first.request("session/new", { cwd, mcpServers: [] }));
     assert.ok(created.sessionId);
     await first.close();
 
-    const second = await startBridge(server.wsUrl, env);
+    const second = await startBridge(server.wsUrl, env, home);
     try {
       await second.request("initialize", initializeParams());
       const loaded = await second.request("session/load", {
@@ -231,9 +231,9 @@ test("BDD: Given a session, When I restart loom acp, Then I can load it", async 
 });
 
 test("Zed ACP smoke: two stdio bridges share one server without session takeover", async () => {
-  await withAcpScenario(async (server, env) => {
-    const first = await startBridge(server.wsUrl, env);
-    const second = await startBridge(server.wsUrl, env);
+  await withAcpScenario(async (server, env, home) => {
+    const first = await startBridge(server.wsUrl, env, home);
+    const second = await startBridge(server.wsUrl, env, home);
     try {
       await Promise.all([
         first.request("initialize", zedInitializeParams()),

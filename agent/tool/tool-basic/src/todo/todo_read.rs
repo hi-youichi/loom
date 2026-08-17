@@ -113,7 +113,7 @@ mod tests {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("LOOM_HOME", dir.path());
+        config::home::set_override(Some(dir.path().to_path_buf()));
         let tool = TodoReadTool::new(Arc::new(dir.path().to_path_buf()));
         let out = tool.call(serde_json::json!({}), None).await.unwrap();
         assert!(out.as_text().unwrap().starts_with("0 todos"));
@@ -128,7 +128,7 @@ mod tests {
         use tool_core::ToolCallContext;
         let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("LOOM_HOME", dir.path());
+        config::home::set_override(Some(dir.path().to_path_buf()));
 
         let thread_id = "test-thread-123";
         let path = crate::todo::todo_file_path(Some(thread_id)).unwrap();
@@ -157,7 +157,7 @@ mod tests {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("LOOM_HOME", dir.path());
+        config::home::set_override(Some(dir.path().to_path_buf()));
         let path = crate::todo::todo_file_path(None).unwrap();
         if let Some(p) = path.parent() {
             std::fs::create_dir_all(p).unwrap();
@@ -182,7 +182,7 @@ mod tests {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = crate::todo::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("LOOM_HOME", dir.path());
+        config::home::set_override(Some(dir.path().to_path_buf()));
         let path = crate::todo::todo_file_path(None).unwrap();
         if let Some(p) = path.parent() {
             std::fs::create_dir_all(p).unwrap();
