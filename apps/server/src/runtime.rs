@@ -27,7 +27,7 @@ pub struct ServerOptions {
     #[arg(long, value_name = "PATH")]
     pub pid_file: Option<PathBuf>,
 
-    /// Serve a built frontend (e.g. OpenChamber `packages/web/dist`) from this
+    /// Serve a built frontend (e.g. Loom Desk `packages/web/dist`) from this
     /// directory: static assets + SPA fallback on the same origin as the API.
     #[arg(long, value_name = "DIR")]
     pub static_dir: Option<PathBuf>,

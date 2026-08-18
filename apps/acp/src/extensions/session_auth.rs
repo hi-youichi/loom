@@ -1,6 +1,6 @@
-//! `session_auth` extension domain — UI password authentication for OpenChamber
+//! `session_auth` extension domain — UI password authentication for Loom Desk
 //!
-//! Provides password-based session authentication compatible with the OpenChamber frontend.
+//! Provides password-based session authentication compatible with the Loom Desk frontend.
 //! This extension handles password verification, session management, and token issuance.
 
 use async_trait::async_trait;
@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use super::auth;
 use super::{ExtensionContext, ExtensionError, ExtensionHandler};
 
-const ENV_UI_PASSWORD: &str = "OPENCHAMBER_UI_PASSWORD";
+const ENV_UI_PASSWORD: &str = "LOOMDESK_UI_PASSWORD";
 const MAX_PASSWORD_LENGTH: usize = 128;
 const MIN_PASSWORD_LENGTH: usize = 4;
 const MAX_SESSION_TOKENS: usize = 1000;
@@ -230,7 +230,7 @@ impl SessionAuthHandler {
                 message: "forbidden".into(),
                 data: Some(json!({
                     "reason": "password_not_configured",
-                    "message": "UI password authentication is not configured. Set OPENCHAMBER_UI_PASSWORD environment variable."
+                    "message": "UI password authentication is not configured. Set LOOMDESK_UI_PASSWORD environment variable."
                 })),
             });
         }

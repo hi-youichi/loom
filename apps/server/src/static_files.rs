@@ -1,4 +1,4 @@
-//! Static SPA serving — host a built frontend (OpenChamber `packages/web/dist`)
+//! Static SPA serving — host a built frontend (Loom Desk `packages/web/dist`)
 //! on the same origin as the API, replacing the Vite dev proxy in production.
 
 use std::path::{Path, PathBuf};
@@ -13,11 +13,11 @@ use axum::{
 };
 use tower_http::services::ServeDir;
 
-const DEFAULT_PWA_APP_NAME: &str = "OpenChamber - AI Coding Assistant";
+const DEFAULT_PWA_APP_NAME: &str = "Loom Desk - AI Coding Assistant";
 
 /// Path prefixes that must never fall through to the SPA `index.html` — they
 /// belong to the API surface. Mirrors the Express fallback regex in
-/// openchamber's `static-routes-runtime.js`.
+/// loomdesk's `static-routes-runtime.js`.
 const RESERVED_PREFIXES: &[&str] = &["/api", "/acp", "/global", "/metrics"];
 
 /// File extensions that must 404 instead of falling back to `index.html` — a
@@ -46,7 +46,7 @@ pub fn static_router(dist_dir: impl Into<PathBuf>) -> Router {
         .route("/", shell.clone())
         .route("/index.html", shell)
         // PWA manifest is generated on the fly (no static file in dist) —
-        // mirrors openchamber's Express `registerPwaManifestRoute` subset.
+        // mirrors loomdesk's Express `registerPwaManifestRoute` subset.
         .route("/manifest.webmanifest", get(pwa_manifest))
         // `fallback_service` (not `not_found_service`) keeps the fallback's
         // own status — `not_found_service` would force 404 on the shell.

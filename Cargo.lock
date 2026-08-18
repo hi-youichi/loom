@@ -5780,6 +5780,7 @@ dependencies = [
  "config",
  "fs4 0.12.0",
  "futures",
+ "jsonwebtoken",
  "loom-acp",
  "loom-llm",
  "loom-pty-protocol",

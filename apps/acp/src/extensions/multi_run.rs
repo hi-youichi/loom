@@ -450,7 +450,7 @@ impl MultiRunHandler {
             let session_id = match self.coordinator.create_session(
                 ctx,
                 &entry.config,
-                serde_json::json!({"openchamber":{"multirun":id}}),
+                serde_json::json!({"loomdesk":{"multirun":id}}),
             ) {
                 Ok(value) => value,
                 Err(error) => {
