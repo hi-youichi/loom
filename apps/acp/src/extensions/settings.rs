@@ -353,7 +353,10 @@ impl SettingsHandler {
     }
 
     /// Fan out `config.updated` on the global event bus after successful saves.
-    pub fn with_global_bus(mut self, bus: std::sync::Arc<crate::global_events::GlobalEventBus>) -> Self {
+    pub fn with_global_bus(
+        mut self,
+        bus: std::sync::Arc<crate::global_events::GlobalEventBus>,
+    ) -> Self {
         self.global_bus = Some(bus);
         self
     }

@@ -499,12 +499,11 @@ pub(crate) async fn run_git_apply(
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
-        cmd.spawn()
-            .map_err(|e| ExtensionError {
-                code: -32603,
-                message: "internal_error".into(),
-                data: Some(Value::String(format!("failed to spawn git apply: {e}"))),
-            })?
+        cmd.spawn().map_err(|e| ExtensionError {
+            code: -32603,
+            message: "internal_error".into(),
+            data: Some(Value::String(format!("failed to spawn git apply: {e}"))),
+        })?
     };
 
     let mut child = child;

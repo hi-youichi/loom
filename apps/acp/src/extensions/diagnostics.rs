@@ -683,9 +683,17 @@ fn redact_string(value: &str) -> String {
 }
 fn redact_token(value: &str) -> String {
     let lower = value.to_ascii_lowercase();
-    if ["token", "secret", "api_key", "apikey", "password", "credential", "bearer"]
-        .iter()
-        .any(|marker| lower.contains(marker))
+    if [
+        "token",
+        "secret",
+        "api_key",
+        "apikey",
+        "password",
+        "credential",
+        "bearer",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
         || looks_like_sensitive_path(value)
         || looks_like_api_key(value)
     {
@@ -774,10 +782,9 @@ fn scan_redactions(value: &Value, found: &mut HashSet<String>) {
                 scan_redactions(value, found)
             }
         }
-        Value::String(value)
-            if *value != redact_string(value) => {
-                found.insert("sensitive_value".into());
-            }
+        Value::String(value) if *value != redact_string(value) => {
+            found.insert("sensitive_value".into());
+        }
         _ => {}
     }
 }

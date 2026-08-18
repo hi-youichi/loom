@@ -501,7 +501,7 @@ fn delete(
     }
     let _ = ctx;
     serde_json::to_value(TunnelDeleteResponse { id, deleted: true })
-            .map_err(|e| internal(e.to_string()))
+        .map_err(|e| internal(e.to_string()))
 }
 
 fn doctor(registry: &TunnelRegistry, p: TunnelDoctorRequest) -> Result<Value, ExtensionError> {

@@ -57,12 +57,11 @@ impl ExtensionHandler for GlobalHandler {
                     #[serde(default)]
                     topics: Vec<String>,
                 }
-                let req: Req = serde_json::from_value(params)
-                    .map_err(|e| ExtensionError {
-                        code: -32602,
-                        message: "invalid_params".into(),
-                        data: Some(json!(e.to_string())),
-                    })?;
+                let req: Req = serde_json::from_value(params).map_err(|e| ExtensionError {
+                    code: -32602,
+                    message: "invalid_params".into(),
+                    data: Some(json!(e.to_string())),
+                })?;
                 if req.topics.is_empty() {
                     return Err(ExtensionError {
                         code: -32602,
@@ -70,14 +69,14 @@ impl ExtensionHandler for GlobalHandler {
                         data: Some(json!("topics must not be empty")),
                     });
                 }
-                let topics = self
-                    .bus
-                    .subscribe(connection, &req.topics)
-                    .map_err(|e| ExtensionError {
-                        code: -32602,
-                        message: "invalid_params".into(),
-                        data: Some(json!(e.to_string())),
-                    })?;
+                let topics =
+                    self.bus
+                        .subscribe(connection, &req.topics)
+                        .map_err(|e| ExtensionError {
+                            code: -32602,
+                            message: "invalid_params".into(),
+                            data: Some(json!(e.to_string())),
+                        })?;
                 Ok(json!({ "subscribed": true, "topics": topics }))
             }
             "unsubscribe" => {

@@ -99,7 +99,9 @@ pub async fn handle_checkout_branch(
         })),
         Err(e) => {
             if matches!(e.code, -32603) {
-                Err(ExtensionError::invalid_params("cannot checkout: dirty worktree or branch issue".to_string()))
+                Err(ExtensionError::invalid_params(
+                    "cannot checkout: dirty worktree or branch issue".to_string(),
+                ))
             } else {
                 Err(e)
             }

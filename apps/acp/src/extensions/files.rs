@@ -91,7 +91,10 @@ fn resolve_path(path: &str, working_directory: Option<&Path>) -> Result<PathBuf,
 /// `C:/repo/dir` from its directory store). Accept both forms, but keep the
 /// sandbox invariant: the resolved directory must stay inside the extension's
 /// working directory (spec: `invalid_params` when cwd is outside the worktree).
-fn resolve_exec_cwd(cwd: &str, working_directory: Option<&Path>) -> Result<PathBuf, ExtensionError> {
+fn resolve_exec_cwd(
+    cwd: &str,
+    working_directory: Option<&Path>,
+) -> Result<PathBuf, ExtensionError> {
     if cwd.is_empty() {
         return Err(ExtensionError::invalid_params("cwd must not be empty"));
     }
@@ -2016,7 +2019,9 @@ mod tests {
                 .unwrap()
                 .find_map(|e| {
                     e.ok().filter(|e| {
-                        e.file_name().to_string_lossy().eq_ignore_ascii_case("readme.md")
+                        e.file_name()
+                            .to_string_lossy()
+                            .eq_ignore_ascii_case("readme.md")
                     })
                 })
                 .expect("readme.md should exist");

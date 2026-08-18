@@ -58,7 +58,6 @@ pub enum ReviewTrigger {
     ManualOnly,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ReviewSeverity {

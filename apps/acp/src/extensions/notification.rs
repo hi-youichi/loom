@@ -101,7 +101,6 @@ pub enum NotificationChannel {
     Auto,
 }
 
-
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct NotificationTestRequest {
     #[serde(default)]
@@ -449,7 +448,7 @@ impl NotificationHandler {
             request.visible,
         );
         serde_json::to_value(NotificationSetVisibilityResponse { acknowledged: true })
-                .map_err(|e| internal(e.to_string()))
+            .map_err(|e| internal(e.to_string()))
     }
 
     fn apns_register(

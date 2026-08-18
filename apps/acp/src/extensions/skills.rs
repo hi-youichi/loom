@@ -33,7 +33,6 @@ pub enum SkillInstallSource {
     Local,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SkillChange {
@@ -527,9 +526,7 @@ impl ExtensionHandler for SkillsHandler {
                     }
                 };
                 if ctx.principal.trim().is_empty() {
-                    return Err(Self::forbidden(
-                        "skills:write authorization required",
-                    ));
+                    return Err(Self::forbidden("skills:write authorization required"));
                 }
                 if matches!(&request.source, SkillInstallSource::Local) {
                     let _ = Self::local_path(
@@ -599,9 +596,7 @@ impl ExtensionHandler for SkillsHandler {
                 let request: SkillsUninstallRequest = Self::parse(params)?;
                 let id = Self::id(&request.skill_id)?;
                 if ctx.principal.trim().is_empty() {
-                    return Err(Self::forbidden(
-                        "skills:write authorization required",
-                    ));
+                    return Err(Self::forbidden("skills:write authorization required"));
                 }
                 let lock = self.lock_for(&id)?;
                 let _guard = lock
@@ -619,9 +614,7 @@ impl ExtensionHandler for SkillsHandler {
                     .as_deref()
                     .is_some_and(|url| url.starts_with("builtin:"))
                 {
-                    return Err(Self::forbidden(
-                        "builtin skills cannot be uninstalled",
-                    ));
+                    return Err(Self::forbidden("builtin skills cannot be uninstalled"));
                 }
                 catalog.installed.remove(&id);
                 catalog.generation = catalog.generation.wrapping_add(1);

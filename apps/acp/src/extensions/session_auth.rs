@@ -68,7 +68,9 @@ impl SessionAuthStore {
             client_token,
         };
 
-        let mut sessions = self.sessions.lock()
+        let mut sessions = self
+            .sessions
+            .lock()
             .map_err(|_| internal_error("session store lock failed"))?;
 
         if sessions.len() >= MAX_SESSION_TOKENS {
@@ -83,7 +85,9 @@ impl SessionAuthStore {
             });
         }
 
-        let mut session_tokens = self.session_tokens.lock()
+        let mut session_tokens = self
+            .session_tokens
+            .lock()
             .map_err(|_| internal_error("session tokens lock failed"))?;
 
         sessions.insert(session_id.clone(), session_data);
@@ -114,11 +118,15 @@ impl SessionAuthStore {
     }
 
     pub fn revoke_session(&self, session_id: &str) -> Result<(), ExtensionError> {
-        let mut sessions = self.sessions.lock()
+        let mut sessions = self
+            .sessions
+            .lock()
             .map_err(|_| internal_error("session store lock failed"))?;
 
         if sessions.remove(session_id).is_some() {
-            let mut session_tokens = self.session_tokens.lock()
+            let mut session_tokens = self
+                .session_tokens
+                .lock()
                 .map_err(|_| internal_error("session tokens lock failed"))?;
             session_tokens.remove(session_id);
             Ok(())
@@ -128,13 +136,17 @@ impl SessionAuthStore {
     }
 
     pub fn revoke_all_sessions(&self) -> Result<u32, ExtensionError> {
-        let mut sessions = self.sessions.lock()
+        let mut sessions = self
+            .sessions
+            .lock()
             .map_err(|_| internal_error("session store lock failed"))?;
 
         let count = sessions.len() as u32;
         sessions.clear();
 
-        let mut session_tokens = self.session_tokens.lock()
+        let mut session_tokens = self
+            .session_tokens
+            .lock()
             .map_err(|_| internal_error("session tokens lock failed"))?;
         session_tokens.clear();
 
@@ -142,12 +154,16 @@ impl SessionAuthStore {
     }
 
     pub fn session_count(&self) -> usize {
-        self.sessions.lock()
+        self.sessions
+            .lock()
             .map(|sessions| sessions.len())
             .unwrap_or(0)
     }
 
-    fn cleanup_expired(&self, sessions: &mut HashMap<String, SessionData>) -> Result<(), ExtensionError> {
+    fn cleanup_expired(
+        &self,
+        sessions: &mut HashMap<String, SessionData>,
+    ) -> Result<(), ExtensionError> {
         let now = Instant::now();
         let expired_ids: Vec<String> = sessions
             .iter()
@@ -304,7 +320,8 @@ impl SessionAuthHandler {
             .map_err(|_| ExtensionError::invalid_params("invalid login params"))?;
 
         // Validate password length
-        if input.password.len() < MIN_PASSWORD_LENGTH || input.password.len() > MAX_PASSWORD_LENGTH {
+        if input.password.len() < MIN_PASSWORD_LENGTH || input.password.len() > MAX_PASSWORD_LENGTH
+        {
             return Err(ExtensionError::invalid_params("password length invalid"));
         }
 
@@ -324,7 +341,11 @@ impl SessionAuthHandler {
         let issue_client_token = input.issue_client_token.unwrap_or(false);
 
         // Generate session token
-        let session_token = format!("session-{}-{}", uuid::Uuid::new_v4(), chrono::Utc::now().timestamp());
+        let session_token = format!(
+            "session-{}-{}",
+            uuid::Uuid::new_v4(),
+            chrono::Utc::now().timestamp()
+        );
 
         // Generate principal based on existing connection principal or create new one
         let principal = if ctx.principal.trim().is_empty() {
@@ -335,7 +356,11 @@ impl SessionAuthHandler {
 
         // Handle client token if requested
         let client_token = if issue_client_token {
-            Some(format!("client-token-{}-{}", uuid::Uuid::new_v4(), chrono::Utc::now().timestamp()))
+            Some(format!(
+                "client-token-{}-{}",
+                uuid::Uuid::new_v4(),
+                chrono::Utc::now().timestamp()
+            ))
         } else {
             None
         };
@@ -348,7 +373,9 @@ impl SessionAuthHandler {
             client_token.clone(),
         )?;
 
-        let expires_at = (chrono::Utc::now() + chrono::Duration::seconds(SESSION_TTL_SECONDS as i64)).to_rfc3339();
+        let expires_at = (chrono::Utc::now()
+            + chrono::Duration::seconds(SESSION_TTL_SECONDS as i64))
+        .to_rfc3339();
 
         let response = SessionAuthResponse {
             authenticated: true,
@@ -404,11 +431,15 @@ impl SessionAuthHandler {
     async fn logout(&self, params: Value, ctx: &ExtensionContext) -> Result<Value, ExtensionError> {
         auth::check_server_policy(ctx, "session_auth", "logout")?;
 
-        let token = params.as_str()
+        let token = params
+            .as_str()
             .ok_or_else(|| ExtensionError::invalid_params("token required"))?;
 
         // Find session by token and revoke it
-        let sessions = self.store.sessions.lock()
+        let sessions = self
+            .store
+            .sessions
+            .lock()
             .map_err(|_| internal_error("session store lock failed"))?;
 
         let session_id_to_revoke = sessions
@@ -425,7 +456,11 @@ impl SessionAuthHandler {
         Ok(json!({ "logged_out": true }))
     }
 
-    async fn revoke_all(&self, _params: Value, ctx: &ExtensionContext) -> Result<Value, ExtensionError> {
+    async fn revoke_all(
+        &self,
+        _params: Value,
+        ctx: &ExtensionContext,
+    ) -> Result<Value, ExtensionError> {
         auth::check_server_policy(ctx, "session_auth", "revoke_all")?;
 
         let count = self.store.revoke_all_sessions()?;

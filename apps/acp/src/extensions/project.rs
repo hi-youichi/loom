@@ -318,16 +318,16 @@ impl FileProjectStore {
     fn load(path: &Path) -> ProjectStoreFile {
         match fs::read_to_string(path) {
             Ok(contents) if contents.trim().is_empty() => ProjectStoreFile::default(),
-            Ok(contents) => serde_json::from_str::<ProjectStoreFile>(&contents).unwrap_or_else(
-                |e| {
+            Ok(contents) => {
+                serde_json::from_str::<ProjectStoreFile>(&contents).unwrap_or_else(|e| {
                     tracing::warn!(
                         path = %path.display(),
                         error = %e,
                         "failed to parse projects store; starting empty"
                     );
                     ProjectStoreFile::default()
-                },
-            ),
+                })
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => ProjectStoreFile::default(),
             Err(e) => {
                 tracing::warn!(
@@ -892,14 +892,7 @@ impl ExtensionHandler for ProjectHandler {
                     Self::validate_config_update(config, ctx)?;
                 }
                 if let Some(profile) = &request.agent_profile {
-                    if ![
-                        "default",
-                        "architect",
-                        "planner",
-                        "coder",
-                    ]
-                    .contains(&profile.as_str())
-                    {
+                    if !["default", "architect", "planner", "coder"].contains(&profile.as_str()) {
                         return Err(ExtensionError::conflict(format!(
                             "unknown agent profile '{profile}'"
                         )));
@@ -1025,7 +1018,8 @@ fn secret_key(key: &str) -> bool {
 fn valid_project_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= MAX_PROJECT_ID_LEN
-        && id.bytes()
+        && id
+            .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'_' || b == b'-')
 }
 fn path_hash(path: &str) -> String {
@@ -1504,7 +1498,11 @@ mod tests {
         assert_eq!(fetched["iconImage"]["source"], "custom");
 
         handler
-            .handle("icon", serde_json::json!({ "id": id, "icon": "none" }), &ctx)
+            .handle(
+                "icon",
+                serde_json::json!({ "id": id, "icon": "none" }),
+                &ctx,
+            )
             .await
             .unwrap();
         let fetched = handler

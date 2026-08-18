@@ -262,8 +262,11 @@ impl ExtensionHandler for PreviewHandler {
         let request = Self::parse(params)?;
         Self::validate(&request)?;
         let url = format!("http://127.0.0.1:{}{}", request.port, request.path);
-        let parsed_url = reqwest::Url::parse(&url).map_err(|_| ExtensionError::invalid_params("path is not allowed"))?;
-        if parsed_url.host_str() != Some("127.0.0.1") || parsed_url.port_or_known_default() != Some(request.port) {
+        let parsed_url = reqwest::Url::parse(&url)
+            .map_err(|_| ExtensionError::invalid_params("path is not allowed"))?;
+        if parsed_url.host_str() != Some("127.0.0.1")
+            || parsed_url.port_or_known_default() != Some(request.port)
+        {
             return Err(Self::ssrf());
         }
         let mut builder = self
