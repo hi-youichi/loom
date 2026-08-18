@@ -38,6 +38,7 @@ pub mod scheduled_task;
 pub mod session_assist;
 pub mod session_auth;
 pub mod session_folder;
+pub mod session_history;
 pub mod settings;
 pub mod skills;
 pub mod small_model;
@@ -261,7 +262,6 @@ impl Default for ExtensionRegistry {
         Self::new()
     }
 }
-
 
 pub fn is_extension_message(line: &str) -> bool {
     line.contains(EXTENSION_PREFIX)

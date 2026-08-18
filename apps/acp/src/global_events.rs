@@ -55,7 +55,12 @@ impl GlobalEventBus {
     /// Fire-and-forget: slow consumers drop frames (events are change
     /// signals; consumers re-fetch authoritative state).
     pub fn publish(&self, topic: &str, event_type: &str, properties: Value) {
-        let registry = match self.connections.lock().expect("global bus poisoned").clone() {
+        let registry = match self
+            .connections
+            .lock()
+            .expect("global bus poisoned")
+            .clone()
+        {
             Some(registry) => registry,
             None => return,
         };

@@ -286,9 +286,11 @@ mod session_notifier_tests {
     fn sub_agent_tool_end_produces_plan_notification() {
         let ev = TypedAnyStreamEvent::React(sub_agent_todo_end());
         let notifs = send_and_collect(&ev);
-        let has_plan = notifs
-            .iter()
-            .any(|n| n.pointer("/update/sessionUpdate").and_then(|v| v.as_str()) == Some("plan"));
+        let has_plan = notifs.iter().any(|n| {
+            n.pointer("/Session/update/sessionUpdate")
+                .and_then(|v| v.as_str())
+                == Some("plan")
+        });
         assert!(
             has_plan,
             "sub-agent ToolEnd via TypedAnyStreamEvent::React should produce plan notification"
@@ -301,10 +303,14 @@ mod session_notifier_tests {
         let notifs = send_and_collect(&ev);
         let plan_notif = notifs
             .iter()
-            .find(|n| n.pointer("/update/sessionUpdate").and_then(|v| v.as_str()) == Some("plan"))
+            .find(|n| {
+                n.pointer("/Session/update/sessionUpdate")
+                    .and_then(|v| v.as_str())
+                    == Some("plan")
+            })
             .expect("should have plan notification");
         let entries = plan_notif
-            .pointer("/update/entries")
+            .pointer("/Session/update/entries")
             .and_then(|v| v.as_array())
             .expect("plan should have entries array");
         assert_eq!(entries.len(), 3);
@@ -350,7 +356,11 @@ mod session_notifier_tests {
 
         let plan_count = all_notifs
             .iter()
-            .filter(|n| n.pointer("/update/sessionUpdate").and_then(|v| v.as_str()) == Some("plan"))
+            .filter(|n| {
+                n.pointer("/Session/update/sessionUpdate")
+                    .and_then(|v| v.as_str())
+                    == Some("plan")
+            })
             .count();
         assert_eq!(
             plan_count, 2,

@@ -753,8 +753,7 @@ mod tests {
     async fn extension_context_without_session_or_param_has_no_directory() {
         let runtime = AcpRuntime::new().expect("runtime");
         let opened = runtime.open_connection("owner-a".into());
-        let ctx = extension_context_for(&runtime, &opened.connection, &serde_json::json!({}))
-            .await;
+        let ctx = extension_context_for(&runtime, &opened.connection, &serde_json::json!({})).await;
         assert!(ctx.working_directory.is_none());
     }
 }

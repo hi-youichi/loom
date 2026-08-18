@@ -122,4 +122,53 @@ impl NotificationRouter {
             .await
             .map_err(|_| NotificationRouteError::QueueClosed)
     }
+
+    /// Route a batched history replay as ONE custom notification
+    /// (`_loomdesk.dev/session-history/batch`) to the connection bound to
+    /// the session, replacing N `session/update` frames for a `session/load`
+    /// tail replay.
+    pub async fn send_history_batch(
+        &self,
+        session_id: &agent_client_protocol::schema::v1::SessionId,
+        updates: Vec<agent_client_protocol::schema::v1::SessionUpdate>,
+    ) -> Result<(), NotificationRouteError> {
+        let session_id = SessionId::new(session_id.to_string());
+        let connection_id = self
+            .bindings
+            .connection_for(&session_id)
+            .ok_or_else(|| NotificationRouteError::Unbound(session_id.clone()))?;
+        let connection = self
+            .connections
+            .get(&connection_id)
+            .filter(|connection| connection.is_active())
+            .ok_or_else(|| NotificationRouteError::ConnectionUnavailable(connection_id.clone()))?;
+        if !connection.is_initialized() {
+            return Err(ConnectionStateError::NotInitialized.into());
+        }
+        let update_values: Vec<serde_json::Value> = updates
+            .iter()
+            .map(|update| {
+                serde_json::to_value(update)
+                    .map_err(|error| {
+                        tracing::error!(
+                            session_id = %session_id,
+                            %error,
+                            "Failed to serialize batched history update"
+                        )
+                    })
+                    .unwrap_or(serde_json::Value::Null)
+            })
+            .collect();
+        connection
+            .outbound_tx
+            .send(ConnectionOutbound::GlobalNotification {
+                method: crate::stream_bridge::HISTORY_BATCH_METHOD.to_string(),
+                params: serde_json::json!({
+                    "sessionId": session_id.to_string(),
+                    "updates": update_values,
+                }),
+            })
+            .await
+            .map_err(|_| NotificationRouteError::QueueClosed)
+    }
 }

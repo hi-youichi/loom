@@ -58,7 +58,7 @@ pub struct AcpRuntime {
     prompt_executor: Arc<dyn AcpPromptExecutor>,
     prompt_capacity: Arc<Semaphore>,
     metrics: Arc<AcpRuntimeMetrics>,
-    updates_tx: mpsc::Sender<SessionNotification>,
+    updates_tx: mpsc::Sender<crate::stream_bridge::SessionUpdateEnvelope>,
     flush_waiters: Arc<Mutex<std::collections::HashMap<String, oneshot::Sender<()>>>>,
     #[allow(clippy::type_complexity)]
     session_bridges: Arc<Mutex<HashMap<String, Vec<Arc<dyn ClientBridgeTrait>>>>>,
@@ -83,12 +83,14 @@ impl AcpRuntime {
         let (updates_tx, mut updates_rx) = mpsc::channel(256);
         let global_bus = Arc::new(crate::global_events::GlobalEventBus::new());
         let mut extension_registry = ExtensionRegistry::new();
-        register_default_extensions(&mut extension_registry, global_bus.clone());
+        let extension_handles =
+            register_default_extensions(&mut extension_registry, global_bus.clone());
         let extensions = Arc::new(extension_registry);
         let agent = Arc::new(LoomAcpAgent::new_with_extension_registry(
             extensions.clone(),
             Some(updates_tx.clone()),
         )?);
+        extension_handles.session_history.bind(&agent);
         let bindings = Arc::new(SessionBindings::new());
         let connections = Arc::new(ConnectionRegistry::default());
         global_bus.bind_registry(connections.clone());
@@ -131,7 +133,28 @@ impl AcpRuntime {
             // suppressed: a `session/load` replay is a read, not a mutation.
             let mut replaying_sessions: std::collections::HashSet<String> =
                 std::collections::HashSet::new();
-            while let Some(update) = updates_rx.recv().await {
+            while let Some(envelope) = updates_rx.recv().await {
+                let update = match envelope {
+                    crate::stream_bridge::SessionUpdateEnvelope::Session(notification) => {
+                        notification
+                    }
+                    crate::stream_bridge::SessionUpdateEnvelope::HistoryBatch {
+                        session_id,
+                        updates,
+                    } => {
+                        // Batched `session/load` tail replay: one envelope →
+                        // one `_loomdesk.dev/session-history/batch` custom
+                        // notification per bound connection. A load is a read,
+                        // so no cross-connection `session.updated` broadcast.
+                        if let Err(error) = router.send_history_batch(&session_id, updates).await {
+                            metrics_for_router
+                                .route_failures
+                                .fetch_add(1, Ordering::Relaxed);
+                            tracing::debug!(%error, "ACP history batch could not be routed");
+                        }
+                        continue;
+                    }
+                };
                 let update_session_id = update.session_id.to_string();
                 if update_session_id.starts_with("__loom_flush__") {
                     if let Some(waiter) = flush_waiters.lock().await.remove(&update_session_id) {
@@ -263,7 +286,12 @@ impl AcpRuntime {
                 TextContent::new(String::new()),
             ))),
         );
-        if self.updates_tx.send(marker).await.is_err() {
+        if self
+            .updates_tx
+            .send(crate::stream_bridge::SessionUpdateEnvelope::Session(marker))
+            .await
+            .is_err()
+        {
             self.flush_waiters.lock().await.remove(&marker_id);
             return Err("ACP notification ingress is closed".into());
         }

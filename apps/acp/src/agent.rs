@@ -10,7 +10,7 @@ use crate::extensions::{register::register_default_extensions, ExtensionRegistry
 use crate::session::{SessionId as OurSessionId, SessionLifecycle, SessionStore};
 use crate::session_config_store::SessionConfigStore;
 use crate::session_repository::SessionRepository;
-use crate::stream_bridge::SessionNotifier;
+use crate::stream_bridge::{SessionNotifier, SessionUpdateEnvelope};
 use crate::tools::{create_acp_tools, ClientBridgeTrait, NoOpClientBridge};
 use agent::state::ReActState;
 use agent_client_protocol::schema::v1::{
@@ -24,7 +24,7 @@ use agent_client_protocol::schema::v1::{
     ForkSessionResponse, InitializeRequest, InitializeResponse, ListSessionsRequest,
     ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
     NewSessionResponse, PromptRequest, PromptResponse, ResumeSessionRequest, ResumeSessionResponse,
-    SessionConfigOptionValue, SessionId, SessionNotification, SetSessionConfigOptionRequest,
+    SessionConfigOptionValue, SessionId, SessionUpdate, SetSessionConfigOptionRequest,
     SetSessionConfigOptionResponse, SetSessionModeRequest, SetSessionModeResponse, StopReason,
     Usage,
 };
@@ -38,9 +38,10 @@ use agent::run::{build_react_config, run_agent_from_config, RunCmd, RunError, Ru
 use agent::run::{RunCompletion, RunOptions};
 use chrono::DateTime;
 use config::load_full_config;
-use loom_llm::message::UserContent;
+use loom_llm::message::{Message, UserContent};
 use rusqlite::Connection;
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
@@ -60,6 +61,66 @@ fn canonicalize_existing_directory(
             .data("cwd must be an existing absolute directory"));
     }
     Ok(canonical)
+}
+
+/// Tail size for the `session/load` history replay, from
+/// `LOOM_ACP_LOAD_HISTORY_TAIL` (message count; default 50; 0 = replay all).
+/// Earlier history is paged in through `_loomdesk.dev/session-history/page`.
+fn load_history_tail_limit() -> usize {
+    std::env::var("LOOM_ACP_LOAD_HISTORY_TAIL")
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(50)
+}
+
+/// Start index of the tail slice `session/load` replays. Extended backward
+/// past leading `Tool` messages so the owning `Assistant` (with the matching
+/// tool_calls) is included, and further back to the turn's `User` message so
+/// the replayed tail starts on a turn boundary: ACP clients group assistant
+/// replies under their user-message anchor and silently drop anchor-less
+/// assistant messages, which would otherwise render the whole tail invisible.
+/// `tail` is a floor, not a ceiling — a long tool-heavy turn may replay more.
+fn history_tail_start(messages: &[Message], tail: usize) -> usize {
+    if tail == 0 || messages.len() <= tail {
+        return 0;
+    }
+    let mut start = messages.len() - tail;
+    while start > 0 && matches!(messages[start], Message::Tool { .. }) {
+        start -= 1;
+    }
+    if start > 0 && matches!(messages[start], Message::Assistant { .. }) {
+        while start > 0 && !matches!(messages[start], Message::User(_)) {
+            start -= 1;
+        }
+    }
+    start
+}
+
+/// Read-only snapshot for `_loomdesk.dev/session-history/info`.
+pub struct SessionHistoryInfo {
+    pub session_id: String,
+    pub total_messages: usize,
+    /// Raw-message index where client-visible history currently begins.
+    /// Sessions that never had a truncated replay (live sessions) report
+    /// `total_messages` here.
+    pub loaded_start_index: usize,
+    pub has_more: bool,
+}
+
+/// One replayable message from `_loomdesk.dev/session-history/page`.
+pub struct SessionHistoryMessage {
+    /// Raw index in the checkpoint message list (stable across pages).
+    pub index: usize,
+    pub role: &'static str,
+    pub updates: Vec<SessionUpdate>,
+}
+
+/// One backward page from `_loomdesk.dev/session-history/page`.
+pub struct SessionHistoryPage {
+    pub session_id: String,
+    pub total_messages: usize,
+    pub has_more: bool,
+    pub messages: Vec<SessionHistoryMessage>,
 }
 
 #[async_trait::async_trait]
@@ -128,7 +189,7 @@ pub struct LoomAcpAgent {
     pub(crate) agent_registry: AgentRegistry,
     pub(crate) config_store: SessionConfigStore,
     pub(crate) session_repository: SessionRepository,
-    pub(crate) session_update_tx: Option<mpsc::Sender<SessionNotification>>,
+    pub(crate) session_update_tx: Option<mpsc::Sender<SessionUpdateEnvelope>>,
     pub(crate) model_provider: Arc<dyn ModelProvider>,
     pub(crate) extension_registry: Arc<ExtensionRegistry>,
 }
@@ -157,7 +218,7 @@ impl LoomAcpAgent {
 
     pub(crate) fn new_with_extension_registry(
         extension_registry: Arc<ExtensionRegistry>,
-        session_update_tx: Option<mpsc::Sender<SessionNotification>>,
+        session_update_tx: Option<mpsc::Sender<SessionUpdateEnvelope>>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let db_path = checkpoint_sqlite_store::default_memory_db_path();
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
@@ -179,7 +240,7 @@ impl LoomAcpAgent {
     }
 
     pub fn with_session_update_tx(
-        tx: mpsc::Sender<SessionNotification>,
+        tx: mpsc::Sender<SessionUpdateEnvelope>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut extension_registry = ExtensionRegistry::new();
         register_default_extensions(
@@ -1364,9 +1425,21 @@ impl LoomAcpAgent {
                     "Checkpoint found, replaying session history"
                 );
 
+                let replay_start = history_tail_start(&state.messages, load_history_tail_limit());
+                if replay_start > 0 {
+                    tracing::info!(
+                        session_id = %session_id,
+                        thread_id = %entry.thread_id,
+                        total = state.messages.len(),
+                        replay_start,
+                        "Tail-truncating history replay; earlier pages via _loomdesk.dev/session-history/page"
+                    );
+                }
+                entry.history_cursor.store(replay_start, Ordering::Release);
+
                 if let Some(ref tx) = self.session_update_tx {
                     let notifier = SessionNotifier::new(tx.clone(), session_id.clone());
-                    notifier.send_history(&state.messages).await;
+                    notifier.send_history(&state.messages[replay_start..]).await;
                 } else {
                     tracing::warn!(
                         session_id = %session_id,
@@ -1484,6 +1557,125 @@ impl LoomAcpAgent {
                 })?;
         }
         Ok(response)
+    }
+
+    // -----------------------------------------------------------------
+    // Session history paging (`_loomdesk.dev/session-history/*`)
+    // -----------------------------------------------------------------
+
+    async fn read_checkpoint_messages(&self, thread_id: &str) -> Result<Vec<Message>, String> {
+        let db_path = checkpoint_sqlite_store::default_memory_db_path();
+        let serializer = Arc::new(JsonSerializer);
+        let checkpointer: Arc<dyn Checkpointer<ReActState>> = Arc::new(
+            SqliteSaver::new(db_path.to_string_lossy().as_ref(), serializer)
+                .map_err(|e| format!("failed to create checkpointer: {e}"))?,
+        );
+        let config = RunnableConfig {
+            thread_id: Some(thread_id.to_string()),
+            checkpoint_id: None,
+            checkpoint_ns: String::new(),
+            user_id: None,
+            resume_from_node_id: None,
+            depth: None,
+            acp_session_id: None,
+            resume_value: None,
+            resume_values_by_namespace: Default::default(),
+            resume_values_by_interrupt_id: Default::default(),
+        };
+        match checkpointer.get_tuple(&config).await {
+            Ok(Some((checkpoint, _metadata))) => Ok(checkpoint.channel_values.messages),
+            Ok(None) => Ok(Vec::new()),
+            Err(e) => Err(format!("checkpoint read failed: {e}")),
+        }
+    }
+
+    pub async fn session_history_info(
+        &self,
+        session_id: &str,
+    ) -> Result<SessionHistoryInfo, String> {
+        let entry = self
+            .sessions
+            .get(&OurSessionId::new(session_id.to_string()))
+            .ok_or_else(|| format!("session not found: {session_id}"))?;
+        let total = self.read_checkpoint_messages(&entry.thread_id).await?.len();
+        let raw = entry.history_cursor.load(Ordering::Acquire);
+        let loaded_start = if raw == usize::MAX {
+            total
+        } else {
+            raw.min(total)
+        };
+        Ok(SessionHistoryInfo {
+            session_id: session_id.to_string(),
+            total_messages: total,
+            loaded_start_index: loaded_start,
+            has_more: loaded_start > 0,
+        })
+    }
+
+    pub async fn session_history_page(
+        &self,
+        session_id: &str,
+        limit: usize,
+    ) -> Result<SessionHistoryPage, String> {
+        let entry = self
+            .sessions
+            .get(&OurSessionId::new(session_id.to_string()))
+            .ok_or_else(|| format!("session not found: {session_id}"))?;
+        let messages = self.read_checkpoint_messages(&entry.thread_id).await?;
+        let total = messages.len();
+        let limit = limit.clamp(1, 200);
+
+        // Serialize concurrent pages on the control lock so overlapping page
+        // requests cannot consume the same slice twice.
+        let _guard = entry
+            .control_lock
+            .lock()
+            .map_err(|_| "session control lock poisoned".to_string())?;
+        let raw = entry.history_cursor.load(Ordering::Acquire);
+        let cursor = if raw == usize::MAX {
+            total
+        } else {
+            raw.min(total)
+        };
+        if cursor == 0 {
+            return Ok(SessionHistoryPage {
+                session_id: session_id.to_string(),
+                total_messages: total,
+                has_more: false,
+                messages: Vec::new(),
+            });
+        }
+        let mut start = cursor.saturating_sub(limit);
+        while start > 0 && matches!(messages[start], Message::Tool { .. }) {
+            start -= 1;
+        }
+
+        let mut owned = messages[start..cursor].to_vec();
+        loom_llm::message::strip_background_review_in_messages(&mut owned);
+        let mut page: Vec<SessionHistoryMessage> = Vec::with_capacity(owned.len());
+        for (offset, message) in owned.iter().enumerate() {
+            let Some(updates) = SessionNotifier::message_session_updates(message) else {
+                continue;
+            };
+            let role = match message {
+                Message::User(_) => "user",
+                Message::Assistant(_) => "assistant",
+                Message::Tool { .. } => "tool",
+                Message::System(_) => "system",
+            };
+            page.push(SessionHistoryMessage {
+                index: start + offset,
+                role,
+                updates,
+            });
+        }
+        entry.history_cursor.store(start, Ordering::Release);
+        Ok(SessionHistoryPage {
+            session_id: session_id.to_string(),
+            total_messages: total,
+            has_more: start > 0,
+            messages: page,
+        })
     }
 
     pub async fn resume_session_for_owner(
@@ -1916,8 +2108,9 @@ fn persist_session_title(
     session_id: &str,
     ev: &TypedAnyStreamEvent,
 ) {
-    if let TypedAnyStreamEvent::React(stream_event::StreamEvent::Updates { node_id, state, .. }) =
-        ev
+    if let TypedAnyStreamEvent::React(stream_event::StreamEvent::Updates {
+        node_id, state, ..
+    }) = ev
     {
         if node_id == "title" {
             if let Some(title) = state.summary.as_ref().filter(|t| !t.trim().is_empty()) {
@@ -2581,5 +2774,82 @@ mod tests {
         assert!(session.resume.is_some());
         assert!(session.close.is_some());
         assert!(session.delete.is_some());
+    }
+
+    fn tool_msg(id: &str) -> Message {
+        Message::Tool {
+            tool_call_id: id.to_string(),
+            content: tool_core::ToolCallContent::Text("ok".to_string()),
+        }
+    }
+
+    #[test]
+    fn history_tail_start_replays_everything_when_short() {
+        let messages = vec![Message::user("hi"), Message::assistant("hello")];
+        assert_eq!(history_tail_start(&messages, 50), 0);
+        assert_eq!(history_tail_start(&messages, 0), 0);
+    }
+
+    #[test]
+    fn history_tail_start_truncates_on_plain_boundary() {
+        let mut messages = Vec::new();
+        for i in 0..10 {
+            messages.push(Message::user(format!("q{i}")));
+            messages.push(Message::assistant(format!("a{i}")));
+        }
+        // tail=4 lands on an assistant message; no backward extension needed.
+        assert_eq!(history_tail_start(&messages, 4), 16);
+    }
+
+    #[test]
+    fn history_tail_start_extends_back_past_leading_tool_messages() {
+        // [u, a(tool_calls), tool, u, a, u, a, ...] — a tail that would
+        // start at a Tool message must include the owning Assistant instead.
+        let messages = vec![
+            Message::user("q0"),
+            Message::assistant_with_tool_calls(
+                String::new(),
+                vec![loom_llm::message::AssistantToolCall {
+                    id: "tc-1".to_string(),
+                    name: "read".to_string(),
+                    arguments: "{}".to_string(),
+                }],
+            ),
+            tool_msg("tc-1"),
+            Message::user("q1"),
+            Message::assistant("a1"),
+            Message::user("q2"),
+            Message::assistant("a2"),
+        ];
+        // tail=5 → naive start is index 2 (Tool) → past the Tool (1) to the
+        // Assistant, then to the turn's User at 0.
+        assert_eq!(history_tail_start(&messages, 5), 0);
+        // tail=6 lands on the Assistant with tool_calls at index 1 → extends
+        // back to the User at 0 so the replay starts on a turn boundary.
+        assert_eq!(history_tail_start(&messages, 6), 0);
+        // tail=4 lands on the User at index 3 — already a turn boundary.
+        assert_eq!(history_tail_start(&messages, 4), 3);
+    }
+
+    #[test]
+    fn history_tail_start_extends_mid_turn_tail_to_user_anchor() {
+        // Long tool-heavy turn: the naive tail cut lands between the user
+        // message and its many assistant/tool replies. Clients drop
+        // anchor-less assistant messages, so the tail MUST reach back to
+        // the owning User even though it exceeds the configured floor.
+        let mut messages = vec![Message::user("q0"), Message::assistant("a0")];
+        for i in 1..=6 {
+            messages.push(Message::user(format!("q{i}")));
+            messages.push(Message::assistant(format!("a{i}-part1")));
+            messages.push(tool_msg(&format!("tc-{i}")));
+            messages.push(Message::assistant(format!("a{i}-part2")));
+        }
+        // 2 + 6*4 = 26 messages; tail=8 → naive start=18 lands mid-turn on an
+        // Assistant of q5's turn → extends back to the User of q5 (index 18
+        // is a-part2 of q4? indices: q5 starts at 18) — verify exact boundary.
+        let q5_index = 2 + 4 * 4; // q5 = messages[18]
+        assert_eq!(history_tail_start(&messages, 8), q5_index);
+        // tail smaller than one turn still replays the entire owning turn.
+        assert_eq!(history_tail_start(&messages, 3), 22);
     }
 }

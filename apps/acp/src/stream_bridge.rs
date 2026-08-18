@@ -43,7 +43,6 @@ use agent_client_protocol::schema::v1::{
 use loom_llm::message::Message;
 use loom_util::text::truncate::truncate_tail;
 use serde_json::Value;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 use stream_event::StreamEvent;
@@ -58,12 +57,55 @@ pub const REPLAY_BEGIN_MARKER_PREFIX: &str = "__loom_replay_begin__";
 /// Ingress marker sent after a `send_history` replay batch.
 pub const REPLAY_END_MARKER_PREFIX: &str = "__loom_replay_end__";
 
+/// JSON-RPC method of the batched history-replay notification.
+pub const HISTORY_BATCH_METHOD: &str = "_loomdesk.dev/session-history/batch";
+
+/// Element type flowing through the session-update channel from
+/// `SessionNotifier` to the `AcpRuntime` ingress loop.
+///
+/// `Session` is the standard per-notification path (live streaming,
+/// replay markers). `HistoryBatch` carries an entire `session/load` tail
+/// replay as ONE envelope; the runtime forwards it to the bound connection
+/// as a single [`HISTORY_BATCH_METHOD`] JSON-RPC notification instead of N
+/// `session/update` frames.
+// 544-byte largest variant is fine here: envelopes move through a bounded
+// mpsc channel (one memmove per send), and boxing would add an allocation
+// per live-streaming notification on the hot path.
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, serde::Serialize)]
+pub enum SessionUpdateEnvelope {
+    Session(SessionNotification),
+    HistoryBatch {
+        session_id: SessionId,
+        updates: Vec<SessionUpdate>,
+    },
+}
+
+/// Whether `send_history` packs the replay into a single batch notification
+/// (default) or falls back to per-update `session/update` notifications
+/// (`LOOM_ACP_LOAD_HISTORY_BATCH=0`).
+pub fn history_batch_enabled() -> bool {
+    std::env::var("LOOM_ACP_LOAD_HISTORY_BATCH")
+        .map(|value| value.trim() != "0")
+        .unwrap_or(true)
+}
+
+impl SessionUpdateEnvelope {
+    /// Session id the envelope is scoped to (both variants carry one).
+    pub fn session_id(&self) -> &SessionId {
+        match self {
+            Self::Session(notification) => &notification.session_id,
+            Self::HistoryBatch { session_id, .. } => session_id,
+        }
+    }
+}
+
 fn replay_marker(prefix: &str, session_id: &SessionId) -> SessionNotification {
     SessionNotification::new(
         SessionId::new(format!("{prefix}{session_id}")),
-        SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
-            TextContent::new(String::new()),
-        ))),
+        SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(TextContent::new(
+            String::new(),
+        )))),
     )
 }
 
@@ -536,7 +578,7 @@ pub fn name_to_tool_kind(name: &str) -> ToolKind {
 }
 
 pub struct SessionNotifier {
-    tx: mpsc::Sender<SessionNotification>,
+    tx: mpsc::Sender<SessionUpdateEnvelope>,
     session_id: SessionId,
     current_message_id: Mutex<Option<String>>,
     /// Context window size in tokens; when set, usage_update notifications are emitted.
@@ -550,7 +592,7 @@ pub struct SessionNotifier {
 }
 
 impl SessionNotifier {
-    pub fn new(tx: mpsc::Sender<SessionNotification>, session_id: SessionId) -> Self {
+    pub fn new(tx: mpsc::Sender<SessionUpdateEnvelope>, session_id: SessionId) -> Self {
         Self {
             tx,
             session_id,
@@ -631,7 +673,7 @@ impl SessionNotifier {
         for u in updates {
             let u = self.inject_message_id(u);
             if let Some(notif) = stream_update_to_session_notification(&self.session_id, &u) {
-                if let Err(e) = self.tx.send(notif).await {
+                if let Err(e) = self.tx.send(SessionUpdateEnvelope::Session(notif)).await {
                     tracing::error!(session_id = %self.session_id, error = %e, "Failed to send stream event notification");
                 }
             }
@@ -657,7 +699,7 @@ impl SessionNotifier {
         for u in updates {
             let u = self.inject_message_id(u);
             if let Some(notif) = stream_update_to_session_notification(&self.session_id, &u) {
-                match self.tx.try_send(notif) {
+                match self.tx.try_send(SessionUpdateEnvelope::Session(notif)) {
                     Ok(_) => {
                         tracing::trace!(
                             session_id = %self.session_id,
@@ -729,13 +771,99 @@ impl SessionNotifier {
             &StreamUpdate::Plan { entries },
         );
         if let Some(notif) = notif {
-            if let Err(e) = self.tx.try_send(notif) {
+            if let Err(e) = self.tx.try_send(SessionUpdateEnvelope::Session(notif)) {
                 tracing::warn!(
                     session_id = %self.session_id,
                     error = %e,
                     "Failed to send plan notification"
                 );
             }
+        }
+    }
+
+    /// Convert one persisted LLM message into the ordered ACP session
+    /// updates used for history replay (both the `session/load` tail replay
+    /// and the `_loomdesk.dev/session-history/page` extension response).
+    ///
+    /// Returns `None` for System messages and empty assistant turns — they
+    /// carry nothing user-visible for a replaying client.
+    pub fn message_session_updates(message: &Message) -> Option<Vec<SessionUpdate>> {
+        match message {
+            Message::User(content) => Some(vec![SessionUpdate::UserMessageChunk(
+                ContentChunk::new(ContentBlock::Text(TextContent::new(
+                    content.as_text().to_string(),
+                )))
+                .message_id(Some(MessageId::new(Uuid::new_v4().to_string()))),
+            )]),
+            Message::Assistant(payload) => {
+                let is_empty_assistant = payload.content.trim().is_empty()
+                    && payload
+                        .reasoning_content
+                        .as_ref()
+                        .is_none_or(|s| s.trim().is_empty())
+                    && payload.tool_calls.is_empty();
+                if is_empty_assistant {
+                    return None;
+                }
+
+                let mut updates = Vec::new();
+
+                // Reasoning first so thinking renders above the assistant
+                // reply, matching live streaming order where ReasoningDelta
+                // arrives before TextDelta.
+                if let Some(ref reasoning) = payload.reasoning_content {
+                    if !reasoning.trim().is_empty() {
+                        updates.push(SessionUpdate::AgentThoughtChunk(
+                            ContentChunk::new(reasoning.clone().into())
+                                .message_id(Some(MessageId::new(Uuid::new_v4().to_string()))),
+                        ));
+                    }
+                }
+
+                updates.push(SessionUpdate::AgentMessageChunk(
+                    ContentChunk::new(payload.content.clone().into())
+                        .message_id(Some(MessageId::new(Uuid::new_v4().to_string()))),
+                ));
+
+                for tc in &payload.tool_calls {
+                    let args = serde_json::from_str::<Value>(&tc.arguments).ok();
+                    let tool_call = create_tool_call(&tc.id, &tc.name, args.as_ref(), None);
+                    updates.push(SessionUpdate::ToolCall(tool_call));
+                }
+
+                Some(updates)
+            }
+            Message::Tool {
+                tool_call_id,
+                content,
+            } => {
+                let id = ToolCallId::new(tool_call_id.clone());
+                let acp_content = match content {
+                    tool_core::ToolCallContent::Text(t) => {
+                        ToolCallContent::from(ContentBlock::Text(TextContent::new(t.clone())))
+                    }
+                    tool_core::ToolCallContent::Diff {
+                        path,
+                        old_text,
+                        new_text,
+                    } => ToolCallContent::Diff(
+                        Diff::new(path.clone(), new_text.clone()).old_text(old_text.clone()),
+                    ),
+                    tool_core::ToolCallContent::Terminal { terminal_id } => {
+                        ToolCallContent::Terminal(Terminal::new(TerminalId::new(
+                            terminal_id.clone(),
+                        )))
+                    }
+                };
+                let fields = ToolCallUpdateFields::new()
+                    .status(ToolCallStatus::Completed)
+                    .content(vec![acp_content])
+                    .raw_output(tool_call_content_to_raw_output(content));
+                Some(vec![SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+                    id, fields,
+                ))])
+            }
+            Message::System(_) => None,
         }
     }
 
@@ -750,9 +878,11 @@ impl SessionNotifier {
         // replayed message (a load is a read, not a mutation).
         let _ = self
             .tx
-            .send(replay_marker(REPLAY_BEGIN_MARKER_PREFIX, &self.session_id))
+            .send(SessionUpdateEnvelope::Session(replay_marker(
+                REPLAY_BEGIN_MARKER_PREFIX,
+                &self.session_id,
+            )))
             .await;
-        let mut tool_calls_map: HashMap<String, (String, Option<Value>)> = HashMap::new();
         let mut sent_count: usize = 0;
         let mut skipped_system: usize = 0;
 
@@ -770,6 +900,7 @@ impl SessionNotifier {
         loom_llm::message::strip_background_review_in_messages(&mut owned);
         let messages: &[Message] = &owned;
 
+        let mut replay_updates: Vec<SessionUpdate> = Vec::new();
         for (idx, message) in messages.iter().enumerate() {
             let msg_type = match message {
                 Message::User(_) => "user",
@@ -777,107 +908,12 @@ impl SessionNotifier {
                 Message::Tool { .. } => "tool",
                 Message::System(_) => "system",
             };
-            let notifications = match message {
-                Message::User(content) => vec![SessionNotification::new(
-                    self.session_id.clone(),
-                    SessionUpdate::UserMessageChunk(
-                        ContentChunk::new(ContentBlock::Text(TextContent::new(
-                            content.as_text().to_string(),
-                        )))
-                        .message_id(Some(MessageId::new(Uuid::new_v4().to_string()))),
-                    ),
-                )],
-                Message::Assistant(payload) => {
-                    let is_empty_assistant = payload.content.trim().is_empty()
-                        && payload
-                            .reasoning_content
-                            .as_ref()
-                            .is_none_or(|s| s.trim().is_empty())
-                        && payload.tool_calls.is_empty();
-                    if is_empty_assistant {
-                        continue;
+            let updates = match Self::message_session_updates(message) {
+                Some(updates) => updates,
+                None => {
+                    if matches!(message, Message::System(_)) {
+                        skipped_system += 1;
                     }
-
-                    for tc in &payload.tool_calls {
-                        tool_calls_map.insert(
-                            tc.id.clone(),
-                            (tc.name.clone(), serde_json::from_str(&tc.arguments).ok()),
-                        );
-                    }
-
-                    let msg_id = Uuid::new_v4().to_string();
-                    let mut notifs = Vec::new();
-
-                    // Send reasoning content (ACP agent_thought_chunk) first so thinking
-                    // renders above the assistant reply, matching live streaming order
-                    // where ReasoningDelta arrives before TextDelta.
-                    if let Some(ref reasoning) = payload.reasoning_content {
-                        if !reasoning.trim().is_empty() {
-                            let reasoning_msg_id = Uuid::new_v4().to_string();
-                            notifs.push(SessionNotification::new(
-                                self.session_id.clone(),
-                                SessionUpdate::AgentThoughtChunk(
-                                    ContentChunk::new(reasoning.clone().into())
-                                        .message_id(Some(MessageId::new(reasoning_msg_id))),
-                                ),
-                            ));
-                        }
-                    }
-
-                    notifs.push(SessionNotification::new(
-                        self.session_id.clone(),
-                        SessionUpdate::AgentMessageChunk(
-                            ContentChunk::new(payload.content.clone().into())
-                                .message_id(Some(MessageId::new(msg_id))),
-                        ),
-                    ));
-
-                    for tc in &payload.tool_calls {
-                        let args = serde_json::from_str::<Value>(&tc.arguments).ok();
-                        let tool_call = create_tool_call(&tc.id, &tc.name, args.as_ref(), None);
-                        notifs.push(SessionNotification::new(
-                            self.session_id.clone(),
-                            SessionUpdate::ToolCall(tool_call),
-                        ));
-                    }
-
-                    notifs
-                }
-                Message::Tool {
-                    tool_call_id,
-                    content,
-                } => {
-                    let id = ToolCallId::new(tool_call_id.clone());
-                    let acp_content = match content {
-                        tool_core::ToolCallContent::Text(t) => {
-                            ToolCallContent::from(ContentBlock::Text(TextContent::new(t.clone())))
-                        }
-                        tool_core::ToolCallContent::Diff {
-                            path,
-                            old_text,
-                            new_text,
-                        } => ToolCallContent::Diff(
-                            Diff::new(path.clone(), new_text.clone()).old_text(old_text.clone()),
-                        ),
-                        tool_core::ToolCallContent::Terminal { terminal_id } => {
-                            ToolCallContent::Terminal(Terminal::new(TerminalId::new(
-                                terminal_id.clone(),
-                            )))
-                        }
-                    };
-                    let fields = ToolCallUpdateFields::new()
-                        .status(ToolCallStatus::Completed)
-                        .content(vec![acp_content])
-                        .raw_output(tool_call_content_to_raw_output(content));
-                    let tool_call_update = ToolCallUpdate::new(id, fields);
-
-                    vec![SessionNotification::new(
-                        self.session_id.clone(),
-                        SessionUpdate::ToolCallUpdate(tool_call_update),
-                    )]
-                }
-                Message::System(_) => {
-                    skipped_system += 1;
                     continue;
                 }
             };
@@ -886,13 +922,39 @@ impl SessionNotifier {
                 session_id = %self.session_id,
                 index = idx,
                 msg_type = msg_type,
-                notification_count = notifications.len(),
+                notification_count = updates.len(),
                 "Replaying history message"
             );
 
-            for notif in notifications {
-                if let Err(e) = self.tx.send(notif).await {
-                    tracing::error!(session_id = %self.session_id, index = idx, msg_type = msg_type, error = %e, "Failed to send session update during history replay");
+            replay_updates.extend(updates);
+        }
+
+        if history_batch_enabled() {
+            // One envelope → one `_loomdesk.dev/session-history/batch`
+            // JSON-RPC notification on the wire. The client applies the
+            // whole tail in a single commit instead of N frames.
+            let update_count = replay_updates.len();
+            if let Err(e) = self
+                .tx
+                .send(SessionUpdateEnvelope::HistoryBatch {
+                    session_id: self.session_id.clone(),
+                    updates: replay_updates,
+                })
+                .await
+            {
+                tracing::error!(
+                    session_id = %self.session_id,
+                    error = %e,
+                    "Failed to send batched history replay"
+                );
+            } else {
+                sent_count = update_count;
+            }
+        } else {
+            for update in replay_updates {
+                let notif = SessionNotification::new(self.session_id.clone(), update);
+                if let Err(e) = self.tx.send(SessionUpdateEnvelope::Session(notif)).await {
+                    tracing::error!(session_id = %self.session_id, error = %e, "Failed to send session update during history replay");
                 } else {
                     sent_count += 1;
                 }
@@ -908,7 +970,10 @@ impl SessionNotifier {
         );
         let _ = self
             .tx
-            .send(replay_marker(REPLAY_END_MARKER_PREFIX, &self.session_id))
+            .send(SessionUpdateEnvelope::Session(replay_marker(
+                REPLAY_END_MARKER_PREFIX,
+                &self.session_id,
+            )))
             .await;
     }
 
@@ -919,7 +984,7 @@ impl SessionNotifier {
                 mode_id.to_string(),
             ))),
         );
-        if let Err(e) = self.tx.send(notif).await {
+        if let Err(e) = self.tx.send(SessionUpdateEnvelope::Session(notif)).await {
             tracing::error!(session_id = %self.session_id, error = %e, "Failed to send current mode update");
         }
     }
@@ -931,7 +996,7 @@ impl SessionNotifier {
                 mode_id.to_string(),
             ))),
         );
-        let _ = self.tx.try_send(notif);
+        let _ = self.tx.try_send(SessionUpdateEnvelope::Session(notif));
     }
 
     pub fn try_send_session_info_update(&self, title: &str) {
@@ -939,7 +1004,7 @@ impl SessionNotifier {
             self.session_id.clone(),
             SessionUpdate::SessionInfoUpdate(SessionInfoUpdate::new().title(title.to_string())),
         );
-        let _ = self.tx.try_send(notif);
+        let _ = self.tx.try_send(SessionUpdateEnvelope::Session(notif));
     }
 
     /// Send a session metadata update with an `_meta` payload (no title change).
@@ -952,7 +1017,7 @@ impl SessionNotifier {
             self.session_id.clone(),
             SessionUpdate::SessionInfoUpdate(info),
         );
-        if let Err(e) = self.tx.try_send(notif) {
+        if let Err(e) = self.tx.try_send(SessionUpdateEnvelope::Session(notif)) {
             tracing::warn!(
                 session_id = %self.session_id,
                 error = %e,
@@ -1083,7 +1148,7 @@ impl SessionNotifier {
             meta: Some(extended_meta),
         };
         if let Some(notif) = stream_update_to_session_notification(&self.session_id, &update) {
-            if let Err(e) = self.tx.send(notif).await {
+            if let Err(e) = self.tx.send(SessionUpdateEnvelope::Session(notif)).await {
                 tracing::error!(session_id = %self.session_id, error = %e,
                     "Failed to send high-freq usage update");
             }
@@ -1279,13 +1344,13 @@ mod token_usage_meta_tests {
     use super::*;
     use crate::agent::capture_turn_usage;
     use crate::agent::TurnUsage;
-    use std::collections::HashMap;
+
     use stream_event::StreamEvent;
 
     /// Capture should leave the snapshot empty when no LLM usage has been observed.
     #[test]
     fn snapshot_meta_is_none_when_acc_is_empty() {
-        let (tx, _rx) = mpsc::channel::<SessionNotification>(8);
+        let (tx, _rx) = mpsc::channel::<SessionUpdateEnvelope>(8);
         let acc: Arc<Mutex<TurnUsage>> = Arc::new(Mutex::new(TurnUsage::default()));
         let notifier = SessionNotifier::new(tx, SessionId::new("sess"))
             .with_context_window_size(8192)
@@ -1296,7 +1361,7 @@ mod token_usage_meta_tests {
     /// Capture then snapshot: meta must contain all four billing fields.
     #[test]
     fn snapshot_meta_includes_all_billing_fields_after_capture() {
-        let (tx, _rx) = mpsc::channel::<SessionNotification>(8);
+        let (tx, _rx) = mpsc::channel::<SessionUpdateEnvelope>(8);
         let acc: Arc<Mutex<TurnUsage>> = Arc::new(Mutex::new(TurnUsage::default()));
         let notifier = SessionNotifier::new(tx, SessionId::new("sess"))
             .with_context_window_size(8192)
@@ -1330,7 +1395,7 @@ mod token_usage_meta_tests {
     /// Multi-turn accumulation must monotonically grow the snapshot.
     #[test]
     fn snapshot_meta_grows_across_multiple_llm_calls() {
-        let (tx, _rx) = mpsc::channel::<SessionNotification>(8);
+        let (tx, _rx) = mpsc::channel::<SessionUpdateEnvelope>(8);
         let acc: Arc<Mutex<TurnUsage>> = Arc::new(Mutex::new(TurnUsage::default()));
         let notifier = SessionNotifier::new(tx, SessionId::new("sess"))
             .with_context_window_size(8192)
@@ -1366,7 +1431,7 @@ mod token_usage_meta_tests {
     /// when the notifier is wired with an accumulator and a Usage event arrives.
     #[tokio::test]
     async fn notifier_emits_usage_update_with_token_usage_meta() {
-        let (tx, mut rx) = mpsc::channel::<SessionNotification>(8);
+        let (tx, mut rx) = mpsc::channel::<SessionUpdateEnvelope>(8);
         let acc: Arc<Mutex<TurnUsage>> = Arc::new(Mutex::new(TurnUsage::default()));
         let notifier = SessionNotifier::new(tx, SessionId::new("sess"))
             .with_context_window_size(8192)
@@ -1388,7 +1453,9 @@ mod token_usage_meta_tests {
         // Drain and inspect the last notification.
         let mut last: Option<SessionNotification> = None;
         while let Ok(n) = rx.try_recv() {
-            last = Some(n);
+            if let SessionUpdateEnvelope::Session(session_notif) = n {
+                last = Some(session_notif);
+            }
         }
         let notif = last.expect("at least one notification");
         let raw = serde_json::to_value(&notif).expect("serialize notification");
@@ -1411,7 +1478,7 @@ mod token_usage_meta_tests {
     /// without `_meta.token_usage` (backward compatibility).
     #[tokio::test]
     async fn notifier_without_acc_omits_token_usage_meta() {
-        let (tx, mut rx) = mpsc::channel::<SessionNotification>(8);
+        let (tx, mut rx) = mpsc::channel::<SessionUpdateEnvelope>(8);
         let notifier =
             SessionNotifier::new(tx, SessionId::new("sess")).with_context_window_size(8192);
 
@@ -1429,7 +1496,9 @@ mod token_usage_meta_tests {
 
         let mut last: Option<SessionNotification> = None;
         while let Ok(n) = rx.try_recv() {
-            last = Some(n);
+            if let SessionUpdateEnvelope::Session(session_notif) = n {
+                last = Some(session_notif);
+            }
         }
         let notif = last.expect("at least one notification");
         let raw = serde_json::to_value(&notif).expect("serialize");
@@ -1441,13 +1510,5 @@ mod token_usage_meta_tests {
             !has_token_usage,
             "_meta.token_usage must not be present without acc"
         );
-    }
-
-    /// `HashMap` import used to silence unused-import warnings in test builds.
-    #[test]
-    fn _hashmap_import_is_used() {
-        let mut m: HashMap<String, u64> = HashMap::new();
-        m.insert("k".to_string(), 1);
-        assert_eq!(m.len(), 1);
     }
 }

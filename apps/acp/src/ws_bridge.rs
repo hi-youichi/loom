@@ -497,7 +497,12 @@ async fn ensure_server_ready(
     tracing::info!("loom-server not detected, auto-spawning");
     let (host, port) =
         parse_host_port(ws_url).ok_or_else(|| format!("cannot parse host:port from {ws_url}"))?;
-    let child = spawn_server(&host, port, pid_file, config::home::override_path().as_deref())?;
+    let child = spawn_server(
+        &host,
+        port,
+        pid_file,
+        config::home::override_path().as_deref(),
+    )?;
 
     let deadline = tokio::time::Instant::now() + SERVER_READY_TIMEOUT;
     loop {

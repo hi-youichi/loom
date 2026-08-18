@@ -101,6 +101,13 @@ pub struct SessionEntry {
     /// Serializes short prompt/lifecycle/binding transitions.
     pub control_lock: Arc<std::sync::Mutex<()>>,
     pub lifecycle: Arc<std::sync::RwLock<SessionLifecycle>>,
+    /// Raw-message index boundary of history already delivered to clients.
+    /// `session/load` stores its tail-truncated replay start index here;
+    /// the `_loomdesk.dev/session-history/page` extension pages backward
+    /// from it. `usize::MAX` means no truncated replay happened yet (fresh
+    /// or live session — nothing earlier to fetch). Shared via Arc so entry
+    /// clones observe the same cursor.
+    pub history_cursor: Arc<std::sync::atomic::AtomicUsize>,
     /// MCP servers from ACP session/new or session/load, pre-converted to Loom's [`config::McpServerDef`].
     pub mcp_servers: Vec<config::McpServerDef>,
     pub mcp_runtime: Arc<SessionMcpRuntime>,
@@ -404,6 +411,7 @@ impl SessionStore {
             cancellation: Arc::new(SessionCancellationState::default()),
             control_lock: Arc::new(std::sync::Mutex::new(())),
             lifecycle: Arc::new(std::sync::RwLock::new(SessionLifecycle::Idle)),
+            history_cursor: Arc::new(std::sync::atomic::AtomicUsize::new(usize::MAX)),
             mcp_servers: Vec::new(),
             mcp_runtime: SessionMcpRuntime::new(),
         };
@@ -625,7 +633,10 @@ impl SessionStore {
         if let Some(entry) = recover_read(&self.inner).get(session_id).cloned() {
             let _control = entry.control_lock.lock().unwrap_or_else(|e| e.into_inner());
             let mut lifecycle = recover_write(&entry.lifecycle);
-            if matches!(*lifecycle, SessionLifecycle::Loading | SessionLifecycle::Idle) {
+            if matches!(
+                *lifecycle,
+                SessionLifecycle::Loading | SessionLifecycle::Idle
+            ) {
                 *lifecycle = target;
                 return true;
             }
@@ -701,6 +712,7 @@ impl Clone for SessionEntry {
             cancellation: Arc::clone(&self.cancellation),
             control_lock: Arc::clone(&self.control_lock),
             lifecycle: Arc::clone(&self.lifecycle),
+            history_cursor: Arc::clone(&self.history_cursor),
             mcp_servers: self.mcp_servers.clone(),
             mcp_runtime: Arc::clone(&self.mcp_runtime),
         }

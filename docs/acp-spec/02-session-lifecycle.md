@@ -173,6 +173,14 @@ pub struct SessionConfig {
 5. **历史内容通过 `session/update` notification 推送**（`user_message_chunk`、`agent_message_chunk` 等）
 6. **不能把历史记录当作当前 generation 仍在运行的证据**——当前运行状态必须来自 live generation state
 
+> **尾部重放（tail replay，2025-08）**：第 5 步默认仅重放最近 50 条原始消息
+> （`LOOM_ACP_LOAD_HISTORY_TAIL` 可调，`0` = 全量），截断起点记入
+> `SessionEntry.history_cursor`；边界自动向前扩展，绝不以 `Tool` 消息开头
+> （工具结果必须跟随其发起的 `Assistant`）。更早历史由客户端按需通过
+> [`_loomdesk.dev/session-history/page`](extensions/36-session-history.md) 分页拉取。
+> 线上形态为单条 `_loomdesk.dev/session-history/batch` 批量通知
+> （`LOOM_ACP_LOAD_HISTORY_BATCH=0` 回退逐条），replay 标记与缓冲抑制行为不变。
+
 ### Rust 类型
 
 ```rust

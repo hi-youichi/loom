@@ -7,6 +7,7 @@
 
 use std::path::PathBuf;
 
+use crate::stream_bridge::SessionUpdateEnvelope;
 use agent::run::ResolvedModelConfig;
 use agent::state::ReActState;
 use agent::ReactBuildConfig;
@@ -121,7 +122,7 @@ pub fn spawn_inprocess_review(
     review_memory: bool,
     review_skills: bool,
     trigger: String,
-    tx: Option<mpsc::Sender<SessionNotification>>,
+    tx: Option<mpsc::Sender<SessionUpdateEnvelope>>,
     session_id: Option<SessionId>,
 ) {
     // Per-session dedup: skip if a review is already in flight for this
@@ -249,7 +250,7 @@ pub fn spawn_inprocess_review(
 ///
 /// No-op when either `tx` or `session_id` is `None` (non-ACP embedding).
 fn notify_completion(
-    tx: Option<&mpsc::Sender<SessionNotification>>,
+    tx: Option<&mpsc::Sender<SessionUpdateEnvelope>>,
     session_id: Option<&SessionId>,
     thread_id: &str,
     outcome: Result<&ReviewOutcome, ()>,
@@ -279,7 +280,7 @@ fn notify_completion(
         session_id.clone(),
         agent_client_protocol::schema::v1::SessionUpdate::AgentMessageChunk(chunk),
     );
-    if let Err(e) = tx.try_send(msg_notif) {
+    if let Err(e) = tx.try_send(SessionUpdateEnvelope::Session(msg_notif)) {
         warn!(thread_id = %thread_id, error = %e, "Failed to send review summary chunk");
     }
 
@@ -582,9 +583,9 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn notify_completion_emits_chunk_and_session_info_with_meta() {
-        use agent_client_protocol::schema::v1::{SessionId, SessionNotification, SessionUpdate};
+        use agent_client_protocol::schema::v1::{SessionId, SessionUpdate};
 
-        let (tx, mut rx) = mpsc::channel::<SessionNotification>(4);
+        let (tx, mut rx) = mpsc::channel::<SessionUpdateEnvelope>(4);
         let session_id = SessionId::new("test-session-1");
 
         let outcome = ReviewOutcome {
@@ -617,6 +618,9 @@ mod tests {
 
         // First notification: AgentMessageChunk with the summary line.
         let first = rx.recv().await.expect("chunk notification");
+        let SessionUpdateEnvelope::Session(first) = first else {
+            panic!("expected Session envelope");
+        };
         match first.update {
             SessionUpdate::AgentMessageChunk(chunk) => {
                 let text = match chunk.content {
@@ -653,6 +657,9 @@ mod tests {
 
         // Second notification: SessionInfoUpdate with _meta.review.
         let second = rx.recv().await.expect("session_info notification");
+        let SessionUpdateEnvelope::Session(second) = second else {
+            panic!("expected Session envelope");
+        };
         match second.update {
             SessionUpdate::SessionInfoUpdate(info) => {
                 let m = info.meta.expect("meta must be present");
@@ -686,7 +693,7 @@ mod tests {
         // Both args None → must not panic.
         notify_completion(None, None, "thread-2", Ok(&outcome), 0);
         // tx without session_id → also a no-op (we don't know who to address).
-        let (tx, _rx) = mpsc::channel::<SessionNotification>(1);
+        let (tx, _rx) = mpsc::channel::<SessionUpdateEnvelope>(1);
         notify_completion(Some(&tx), None, "thread-2", Ok(&outcome), 0);
     }
 }
