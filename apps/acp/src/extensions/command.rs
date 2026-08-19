@@ -236,6 +236,7 @@ impl CommandHandler {
             .filter(|r| r.item.scope == CommandScope::Global || r.project == project)
             .map(|r| r.item.clone())
             .collect();
+        items.extend(builtin_commands());
         items.sort_by(|a, b| a.id.cmp(&b.id));
         let (offset, generation) = match cursor {
             Some(cursor)
@@ -595,4 +596,76 @@ fn internal_error(message: &str) -> ExtensionError {
         message: "internal_error".into(),
         data: Some(Value::String(message.into())),
     }
+}
+
+/// Built-in slash commands, synthesized per request (not stored, not
+/// user-mutable). Names mirror the opencode runtime's shipped set so the FE
+/// command palette keeps its baseline after the opencode removal.
+fn builtin_commands() -> Vec<CommandItem> {
+    const EPOCH: DateTime<Utc> = DateTime::UNIX_EPOCH;
+    fn cmd(id: &str, name: &str, description: &str, template: &str) -> CommandItem {
+        CommandItem {
+            id: id.into(),
+            name: name.into(),
+            description: description.into(),
+            prompt_template: template.into(),
+            enabled: true,
+            scope: CommandScope::Global,
+            agent_mode: None,
+            icon: None,
+            shortcut: None,
+            created_at: EPOCH,
+            updated_at: EPOCH,
+        }
+    }
+    vec![
+        cmd(
+            "builtin_new",
+            "/new",
+            "Clear context and start a new chat",
+            "Start a new conversation with no prior context.",
+        ),
+        cmd(
+            "builtin_share",
+            "/share",
+            "Create a shareable link for this conversation",
+            "Generate a shareable link for this conversation.",
+        ),
+        cmd(
+            "builtin_undo",
+            "/undo",
+            "Undo the last user message and its response",
+            "Undo the previous turn: revert to the state before my last message.",
+        ),
+        cmd(
+            "builtin_redo",
+            "/redo",
+            "Redo the last undone user message",
+            "Redo the previously undone turn.",
+        ),
+        cmd(
+            "builtin_summarize",
+            "/summarize",
+            "Summarize the conversation so far",
+            "Summarize this conversation so far as a set of concise bullet points, then list any open questions or pending work.",
+        ),
+        cmd(
+            "builtin_plan",
+            "/plan",
+            "Enter plan mode to design before executing",
+            "Switch to plan mode: analyze the task, propose an implementation plan, and wait for approval before making changes.",
+        ),
+        cmd(
+            "builtin_commit",
+            "/commit",
+            "Generate a commit for the current changes",
+            "Review the current working tree diff, stage the relevant changes, and create a conventional-commit describing them.",
+        ),
+        cmd(
+            "builtin_review",
+            "/review",
+            "Review recent code changes",
+            "Review the recent changes in this repository. Focus on correctness, edge cases, and consistency with the existing code style.",
+        ),
+    ]
 }
