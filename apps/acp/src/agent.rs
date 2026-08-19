@@ -960,6 +960,8 @@ impl LoomAcpAgent {
                 agent_client_protocol::Error::new(-32602, "content_blocks parse failed")
             })?;
 
+        self.seed_session_title_from_prompt(&args.session_id, &user_content);
+
         if let loom_llm::message::UserContent::Text(ref text) = user_content {
             if let Some(cmd) = agent::commands::parse(text) {
                 match cmd {
@@ -1769,6 +1771,56 @@ impl LoomAcpAgent {
         Ok(DeleteSessionResponse::new())
     }
 
+    /// Seed a missing session title from the first user prompt so the
+    /// sidebar never shows "untitled" when the fire-and-forget first-turn
+    /// LLM title generation fails, is cancelled, or the process exits
+    /// before the background task completes. The LLM-generated title
+    /// overwrites the seed via `persist_session_title`.
+    fn seed_session_title_from_prompt(
+        &self,
+        session_id: &agent_client_protocol::schema::v1::SessionId,
+        content: &loom_llm::message::UserContent,
+    ) {
+        let Some(title) = seed_title_text(content) else {
+            return;
+        };
+        let existing = match self.session_repository.get(&session_id.0) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                tracing::warn!(
+                    session_id = %session_id,
+                    error = %error,
+                    "failed to read session metadata for title seeding"
+                );
+                return;
+            }
+        };
+        let has_title = existing
+            .as_ref()
+            .and_then(|metadata| metadata.title.as_deref())
+            .map(|title| !title.trim().is_empty())
+            .unwrap_or(false);
+        if has_title {
+            return;
+        }
+        if let Err(error) = self.session_repository.set_title(&session_id.0, &title) {
+            tracing::warn!(
+                session_id = %session_id,
+                error = %error,
+                "failed to seed session title"
+            );
+            return;
+        }
+        tracing::debug!(
+            session_id = %session_id,
+            title = %title,
+            "seeded session title from first prompt"
+        );
+        if let Some(sender) = self.session_update_tx.clone() {
+            SessionNotifier::new(sender, session_id.clone()).try_send_session_info_update(&title);
+        }
+    }
+
     pub async fn list_sessions(
         &self,
         args: ListSessionsRequest,
@@ -2160,6 +2212,31 @@ pub(crate) struct TurnUsage {
     pub(crate) cached_tokens: u64,
 }
 
+/// Derive a fallback title from the first user prompt: skips slash
+/// commands, normalizes whitespace (including newlines) to a single line,
+/// and clamps to the same 50-char budget as LLM-generated titles.
+fn seed_title_text(content: &loom_llm::message::UserContent) -> Option<String> {
+    let joined = match content {
+        loom_llm::message::UserContent::Text(text) => text.clone(),
+        loom_llm::message::UserContent::Multimodal(parts) => parts
+            .iter()
+            .filter_map(|part| match part {
+                loom_llm::message::ContentPart::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    };
+    if agent::commands::parse(&joined).is_some() {
+        return None;
+    }
+    let normalized = joined.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        return None;
+    }
+    Some(agent::agent::react::title_generator::clamp_summary_chars(&normalized))
+}
+
 /// Persist the fire-and-forget first-turn title event
 /// (`Updates { node_id: "title" }`) into the session repository so
 /// `session/list` can serve the title across restarts. The push to the
@@ -2414,6 +2491,55 @@ async fn resolve_context_window_size(model: Option<&str>) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn seed_title_text_normalizes_and_skips_commands() {
+        use loom_llm::message::UserContent;
+
+        let multiline = UserContent::Text("  fix the\nlogin   bug please ".to_string());
+        assert_eq!(
+            seed_title_text(&multiline).as_deref(),
+            Some("fix the login bug please")
+        );
+
+        assert_eq!(seed_title_text(&UserContent::Text("/reset".to_string())), None);
+        assert_eq!(seed_title_text(&UserContent::Text("   ".to_string())), None);
+
+        let long = UserContent::Text("x".repeat(80));
+        assert_eq!(
+            seed_title_text(&long).map(|title| title.chars().count()),
+            Some(50)
+        );
+        assert!(seed_title_text(&long).unwrap().ends_with("..."));
+    }
+
+    #[test]
+    fn seed_title_text_joins_multimodal_text_parts() {
+        use loom_llm::message::{ContentPart, UserContent};
+
+        let content = UserContent::Multimodal(vec![
+            ContentPart::Text {
+                text: "look at this".to_string(),
+            },
+            ContentPart::ImageUrl {
+                url: "https://example.com/a.png".to_string(),
+                detail: None,
+            },
+            ContentPart::Text {
+                text: "screenshot".to_string(),
+            },
+        ]);
+        assert_eq!(
+            seed_title_text(&content).as_deref(),
+            Some("look at this screenshot")
+        );
+
+        let image_only = UserContent::Multimodal(vec![ContentPart::ImageUrl {
+            url: "https://example.com/a.png".to_string(),
+            detail: None,
+        }]);
+        assert_eq!(seed_title_text(&image_only), None);
+    }
 
     #[test]
     fn test_session_config_select_option_structure() {
