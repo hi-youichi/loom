@@ -1902,6 +1902,67 @@ impl LoomAcpAgent {
             .collect();
         Ok(ListSessionsResponse::new(sessions))
     }
+
+    /// Global sidebar listing with archival filter and keyset pagination on
+    /// `updated_at`. Returns the page plus the cursor for the next page
+    /// (`None` when exhausted). Data source: the `acp_sessions` table.
+    pub async fn list_global_sessions_for_owner(
+        &self,
+        owner_principal: &str,
+        archived: bool,
+        cwd: Option<&str>,
+        limit: usize,
+        before_updated_at: Option<&str>,
+    ) -> agent_client_protocol::Result<(
+        Vec<crate::session_repository::SessionMetadata>,
+        Option<String>,
+    )> {
+        let page_limit = limit.saturating_add(1);
+        let mut rows = self
+            .session_repository
+            .list_for_owner_paged(
+                owner_principal,
+                archived,
+                cwd,
+                page_limit,
+                before_updated_at,
+            )
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to list global sessions: {error}"))
+            })?;
+        let has_more = rows.len() >= page_limit;
+        if has_more {
+            rows.truncate(limit);
+        }
+        let next_cursor = has_more
+            .then(|| {
+                rows.last()
+                    .and_then(|metadata| metadata.updated_at.clone())
+                    .or_else(|| rows.last().and_then(|m| m.created_at.clone()))
+            })
+            .flatten();
+        Ok((rows, next_cursor))
+    }
+
+    /// Archive or restore a session owned by `owner_principal`. Returns the
+    /// updated metadata, or `None` when the session is unknown or owned by
+    /// another principal.
+    pub async fn archive_session_for_owner(
+        &self,
+        owner_principal: &str,
+        session_id: &str,
+        archived: bool,
+    ) -> agent_client_protocol::Result<
+        Option<crate::session_repository::SessionMetadata>,
+    > {
+        self.session_repository
+            .set_archived(session_id, owner_principal, archived)
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to update archive state: {error}"))
+            })
+    }
 }
 
 /// Session information for ACP session/list response.

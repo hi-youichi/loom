@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::global_events::GlobalEventBus;
 
 use super::session_history::SessionHistoryHandler;
+use super::session_list::SessionListHandler;
 use super::ExtensionRegistry;
 
 /// Handlers produced by [`register_default_extensions`] that need
@@ -10,6 +11,7 @@ use super::ExtensionRegistry;
 /// has been injected into it).
 pub struct ExtensionRegistryHandles {
     pub session_history: Arc<SessionHistoryHandler>,
+    pub session_list: Arc<SessionListHandler>,
 }
 
 /// Register every extension domain implemented in this crate.
@@ -115,6 +117,9 @@ pub fn register_default_extensions(
         "dictation",
         Arc::new(super::dictation::DictationHandler::default()),
     );
+    let session_list = Arc::new(SessionListHandler::new().with_global_bus(global_bus.clone()));
+    registry.register("session", session_list.clone());
+
     registry.register(
         "global",
         Arc::new(super::global::GlobalHandler::new(global_bus)),
@@ -123,5 +128,8 @@ pub fn register_default_extensions(
     let session_history = Arc::new(SessionHistoryHandler::new());
     registry.register("session-history", session_history.clone());
 
-    ExtensionRegistryHandles { session_history }
+    ExtensionRegistryHandles {
+        session_history,
+        session_list,
+    }
 }

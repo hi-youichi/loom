@@ -43,7 +43,9 @@ docs/acp-spec/
     ├── 32-small-model.md
     ├── 33-auto-review.md
     ├── 34-preview.md
-    └── 35-terminal.md
+    ├── 35-terminal.md
+    ├── 36-session-history.md
+    └── 37-session-list.md
 ```
 
 ## 现有实现状态
@@ -72,7 +74,7 @@ docs/acp-spec/
 | WebSocket /acp | ✅ 已实现 | `apps/server/src/handlers/acp.rs` |
 | AcpHub 多连接 | ✅ 已实现 | `apps/server/src/acp_hub.rs` |
 | stdio bridge | ✅ 已实现 | `apps/acp/src/ws_bridge.rs` |
-| _loomdesk.dev/* | ⚠️ 框架已实现，传输层未接线 | `apps/acp/src/extensions/`（31 个域 handler 已注册，`wrap_incoming_stream` 无生产调用方；详见 `docs/dev/acp/02-adding-methods.md` §4）|
+| _loomdesk.dev/* | ⚠️ 框架已实现，传输层未接线 | `apps/acp/src/extensions/`（32 个域 handler 已注册，`wrap_incoming_stream` 无生产调用方；详见 `docs/dev/acp/02-adding-methods.md` §4）|
 
 ## 协议版本
 
@@ -114,7 +116,7 @@ Loom 在 `initialize` 返回的 `agentCapabilities`：
 }
 ```
 
-扩展能力放在 `agentCapabilities._meta["loomdesk.dev"]`，内容为 `ExtensionRegistry` 的 capability 快照（31 个域，随域注册自动生成，见 `agent.rs::initialize()`）。注意扩展方法当前未接入传输层分发（见上表 `_loomdesk.dev/*` 行）。
+扩展能力放在 `agentCapabilities._meta["loomdesk.dev"]`，内容为 `ExtensionRegistry` 的 capability 快照（32 个域，随域注册自动生成，见 `agent.rs::initialize()`）。注意扩展方法当前未接入传输层分发（见上表 `_loomdesk.dev/*` 行）。
 
 **注意**: `session/fork` handler 已实现并在 `stdio_loop.rs` 注册，但 `initialize` 响应的 `sessionCapabilities` 未包含 `fork` 字段。这是已知代码 bug（`agent.rs:436-440`），标准客户端不会调用 fork。
 

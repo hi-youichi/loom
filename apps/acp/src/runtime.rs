@@ -91,6 +91,7 @@ impl AcpRuntime {
             Some(updates_tx.clone()),
         )?);
         extension_handles.session_history.bind(&agent);
+        extension_handles.session_list.bind(&agent);
         let bindings = Arc::new(SessionBindings::new());
         let connections = Arc::new(ConnectionRegistry::default());
         global_bus.bind_registry(connections.clone());
