@@ -13,7 +13,9 @@ thirdparty
 .cursor
 
 tmp/
+.tmp/
 test-output*.txt
+e2e/trace-out.txt
 idea/
 lancedb_data/
 author-name.txt
