@@ -121,25 +121,10 @@ impl GithubHandler {
             .as_deref()
             .ok_or_else(|| ExtensionError::invalid_params("owner/repo cannot be inferred"))?;
         let _ = boundary::validate_path(".", Some(dir))?;
-        let mut remote_cmd = tokio::process::Command::new("git");
-        remote_cmd
-            .args(["remote", "get-url", "origin"])
-            .current_dir(dir);
-        #[cfg(windows)]
-        {
-            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-            remote_cmd.creation_flags(CREATE_NO_WINDOW);
-        }
-        let output = remote_cmd
-            .output()
+        let output = loom_git::facade::run_raw(Some(dir), &["remote", "get-url", "origin"])
             .await
             .map_err(|_| Self::internal("unable to inspect git remote"))?;
-        if !output.status.success() {
-            return Err(ExtensionError::invalid_params(
-                "unable to infer GitHub repository",
-            ));
-        }
-        let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let raw = output.trim().to_string();
         let raw = raw.trim_end_matches(".git");
         let path = raw
             .strip_prefix("https://github.com/")

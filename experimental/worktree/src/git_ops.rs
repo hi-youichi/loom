@@ -33,15 +33,7 @@ type Result<T> = std::result::Result<T, GitWorktreeError>;
 
 /// Run a git command in the given directory, returning stdout.
 pub(crate) fn run_git(workdir: &Path, args: &[&str]) -> Result<std::process::Output> {
-    let mut git_cmd = std::process::Command::new("git");
-    git_cmd.current_dir(workdir).args(args);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        git_cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-    let output = git_cmd.output().map_err(|e| {
+    let output = loom_git::cli::run_process_sync(workdir, args).map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             GitWorktreeError::GitNotFound
         } else {
@@ -121,39 +113,33 @@ pub fn worktree_add(
     detached: bool,
     base_ref: &str,
 ) -> Result<()> {
-    let mut args = vec!["worktree", "add"];
+    let mut args: Vec<String> = vec!["worktree".into(), "add".into()];
 
     if detached {
-        args.push("--detach");
+        args.push("--detach".into());
     } else if let Some(branch) = branch_name {
-        args.push("-b");
-        // Safe: branch name is generated internally
-        let b = branch.to_string();
-        args.push(Box::leak(b.into_boxed_str()));
+        args.push("-b".into());
+        args.push(branch.to_string());
     }
 
-    // Target path
-    let tp = target_path.to_string_lossy().to_string();
-    args.push(Box::leak(tp.into_boxed_str()));
+    args.push(target_path.to_string_lossy().into_owned());
+    args.push(base_ref.to_string());
 
-    // Base ref (last positional arg)
-    let br = base_ref.to_string();
-    args.push(Box::leak(br.into_boxed_str()));
-
-    run_git(repo_root, &args)?;
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_git(repo_root, &arg_refs)?;
     Ok(())
 }
 
 /// Remove a git worktree.
 pub fn worktree_remove(path: &Path, force: bool) -> Result<()> {
     let repo_root = resolve_repo_root(path).unwrap_or_else(|_| path.to_path_buf());
-    let mut args = vec!["worktree", "remove"];
+    let mut args: Vec<String> = vec!["worktree".into(), "remove".into()];
     if force {
-        args.push("--force");
+        args.push("--force".into());
     }
-    let p = path.to_string_lossy().to_string();
-    args.push(Box::leak(p.into_boxed_str()));
-    run_git(&repo_root, &args)?;
+    args.push(path.to_string_lossy().into_owned());
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_git(&repo_root, &arg_refs)?;
     Ok(())
 }
 
@@ -211,12 +197,12 @@ pub fn changed_files(worktree_path: &Path) -> Result<Vec<String>> {
 /// Enable sparse checkout for a worktree (requires git >= 2.25).
 pub fn enable_sparse_checkout(worktree_path: &Path, paths: &[String]) -> Result<()> {
     run_git(worktree_path, &["sparse-checkout", "init", "--cone"])?;
-    let mut args = vec!["sparse-checkout", "set"];
-    let owned: Vec<String> = paths.iter().map(|s| s.as_str().to_string()).collect();
-    for p in &owned {
-        args.push(Box::leak(p.clone().into_boxed_str()));
+    let mut args: Vec<String> = vec!["sparse-checkout".into(), "set".into()];
+    for p in paths {
+        args.push(p.clone());
     }
-    run_git(worktree_path, &args)?;
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run_git(worktree_path, &arg_refs)?;
     Ok(())
 }
 

@@ -4,6 +4,8 @@ resolver = "2"
 
 members = [
 
+    "foundation/git",
+
     "foundation/llm",
 
     "experimental/tool/lsp",

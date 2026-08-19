@@ -4,7 +4,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::process::Command;
 
 use super::auth;
 use super::pagination::{PaginatedResult, PaginationParams};
@@ -173,54 +172,19 @@ struct WorktreeBranchEntry {
 
 // ── Git CLI helpers ────────────────────────────────────────────────────
 
-fn git_cmd_ctx(ctx: &ExtensionContext) -> Command {
-    let mut cmd = Command::new("git");
-    if let Some(dir) = &ctx.working_directory {
-        cmd.current_dir(dir);
-    }
-    // No console when server runs detached (pm2): avoid flashing windows.
-    #[cfg(windows)]
-    {
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-    cmd
-}
-
-fn git_cmd_at(path: &Path) -> Command {
-    let mut cmd = Command::new("git");
-    cmd.current_dir(path);
-    #[cfg(windows)]
-    {
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-    cmd
-}
-
 async fn run_git(ctx: &ExtensionContext, args: &[&str]) -> Result<String, ExtensionError> {
-    let output = git_cmd_ctx(ctx)
-        .args(args)
-        .output()
-        .await
-        .map_err(|e| ExtensionError {
-            code: -32603,
-            message: "internal_error".into(),
-            data: Some(Value::String(format!("failed to spawn git: {e}"))),
-        })?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("not a git repository") || stderr.contains("fatal: not a git") {
-            return Err(ExtensionError::not_found("not a git repository"));
+    let result = loom_git::facade::run_raw(ctx.working_directory.as_deref(), args).await;
+    match result {
+        Err(e) if matches!(e.kind(), loom_git::GitErrorKind::NotFound) => {
+            Err(ExtensionError::not_found(e.message().to_string()))
         }
-        return Err(ExtensionError {
+        Err(e) => Err(ExtensionError {
             code: -32603,
             message: "internal_error".into(),
-            data: Some(Value::String(stderr.to_string())),
-        });
+            data: Some(Value::String(e.data())),
+        }),
+        Ok(out) => Ok(out),
     }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 fn require_param<T: for<'de> Deserialize<'de>>(
@@ -347,18 +311,8 @@ fn parse_worktree_porcelain(output: &str) -> Vec<RawWorktreeEntry> {
 }
 
 async fn check_worktree_dirty(path: &Path) -> bool {
-    match git_cmd_at(path)
-        .args(["status", "--porcelain"])
-        .output()
-        .await
-    {
-        Ok(output) => {
-            if output.status.success() {
-                !String::from_utf8_lossy(&output.stdout).trim().is_empty()
-            } else {
-                false
-            }
-        }
+    match loom_git::facade::run_raw(Some(path), &["status", "--porcelain"]).await {
+        Ok(output) => !output.trim().is_empty(),
         Err(_) => false,
     }
 }

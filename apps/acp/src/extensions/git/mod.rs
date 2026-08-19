@@ -9,9 +9,8 @@ pub mod status;
 pub mod worktree;
 
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
-use tokio::process::Command;
 
 pub(crate) use super::{ExtensionContext, ExtensionError, ExtensionHandler};
 
@@ -247,230 +246,35 @@ impl ExtensionHandler for GitHandler {
 }
 
 // ── Shared types and helpers ───────────────────────────────────────────
+// Typed structs live in foundation/git (`loom_git::types`), matching this
+// extension's JSON contract byte-for-byte; re-exported so handlers keep
+// `use super::*` imports unchanged.
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum GitFileStatus {
-    Unmodified,
-    Modified,
-    Added,
-    Deleted,
-    Renamed,
-    Copied,
-    Unmerged,
-    Untracked,
-    Ignored,
-}
+pub use loom_git::types::{
+    classify_remote_url, sanitize_remote_url, ConflictFile, ConflictHunk, ConflictLine,
+    ConflictLineKind, FetchedRef, GitBranch, GitCommitInfo, GitDiffHunk, GitDiffLine,
+    GitDiffLineKind, GitDiffStat, GitDiffSummary, GitFileStatus, GitIdentity, GitInProgress,
+    GitOperation, GitRemote, GitStashEntry, GitStatus, GitStatusFile, IdentityScope, RemoteUrlType,
+};
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum GitOperation {
-    Merge,
-    Rebase,
-    CherryPick,
-    Revert,
-    Bisect,
-}
+pub(crate) use loom_git::cli::parsers::{parse_diff_output, parse_porcelain_status_v2};
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitStatusFile {
-    pub path: String,
-    pub index_status: GitFileStatus,
-    pub working_status: GitFileStatus,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitInProgress {
-    pub operation: GitOperation,
-    pub conflict_files: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitStatus {
-    pub branch: String,
-    pub upstream: Option<String>,
-    pub ahead: u32,
-    pub behind: u32,
-    pub files: Vec<GitStatusFile>,
-    pub in_progress: Option<GitInProgress>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum GitDiffLineKind {
-    Context,
-    Addition,
-    Deletion,
-    NoNewline,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitDiffLine {
-    pub kind: GitDiffLineKind,
-    pub content: String,
-    pub old_line: Option<u32>,
-    pub new_line: Option<u32>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitDiffHunk {
-    pub old_path: String,
-    pub new_path: String,
-    pub old_start: u32,
-    pub old_lines: u32,
-    pub new_start: u32,
-    pub new_lines: u32,
-    pub header: String,
-    pub lines: Vec<GitDiffLine>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitDiffStat {
-    pub files_changed: u32,
-    pub insertions: u32,
-    pub deletions: u32,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitDiffSummary {
-    pub hunks: Vec<GitDiffHunk>,
-    pub stat: GitDiffStat,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitCommitInfo {
-    pub sha: String,
-    pub parents: Vec<String>,
-    pub author: String,
-    pub author_email: String,
-    pub author_date: String,
-    pub committer: String,
-    pub committer_email: String,
-    pub committer_date: String,
-    pub message: String,
-    pub refs: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitBranch {
-    pub name: String,
-    pub is_current: bool,
-    pub is_remote: bool,
-    pub upstream: Option<String>,
-    pub ahead: u32,
-    pub behind: u32,
-    pub last_commit_sha: String,
-    pub last_commit_date: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RemoteUrlType {
-    Https,
-    Ssh,
-    File,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitRemote {
-    pub name: String,
-    pub url: String,
-    pub url_type: RemoteUrlType,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitStashEntry {
-    pub index: u32,
-    pub message: String,
-    pub date: String,
-    pub branch: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum IdentityScope {
-    Global,
-    Repo,
-    Worktree,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitIdentity {
-    pub profile_id: String,
-    pub name: String,
-    pub email: String,
-    pub scope: IdentityScope,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchedRef {
-    #[serde(rename = "ref")]
-    pub ref_name: String,
-    pub old_sha: String,
-    pub new_sha: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ConflictLineKind {
-    Ours,
-    Theirs,
-    ConflictMarker,
-    Context,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConflictLine {
-    pub kind: ConflictLineKind,
-    pub content: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConflictFile {
-    pub path: String,
-    pub hunks: Vec<ConflictHunk>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConflictHunk {
-    pub ours_start: u32,
-    pub theirs_start: u32,
-    pub lines: Vec<ConflictLine>,
+pub(crate) fn ext_err_from_git(e: loom_git::GitError) -> ExtensionError {
+    use loom_git::GitErrorKind as K;
+    match e.kind() {
+        K::NotFound => ExtensionError::not_found(e.message().to_string()),
+        K::InvalidParams => ExtensionError::invalid_params(e.message().to_string()),
+        K::Conflict => ExtensionError::conflict(e.message().to_string()),
+        K::Forbidden => ExtensionError::forbidden(e.message().to_string()),
+        _ => ExtensionError {
+            code: -32603,
+            message: "internal_error".into(),
+            data: Some(Value::String(e.data())),
+        },
+    }
 }
 
 // ── Git CLI helpers ────────────────────────────────────────────────────
-
-pub(crate) fn git_cmd(ctx: &ExtensionContext) -> Command {
-    let mut cmd = Command::new("git");
-    if let Some(dir) = &ctx.working_directory {
-        cmd.current_dir(dir);
-    }
-    // The loom server may run detached (e.g. under pm2) with no console of its
-    // own; without CREATE_NO_WINDOW every git invocation would allocate a new
-    // visible console window that flashes open and closes on exit.
-    #[cfg(windows)]
-    {
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-    cmd
-}
 
 pub(crate) fn require_git_scope(ctx: &ExtensionContext, scope: &str) -> Result<(), ExtensionError> {
     super::auth::check_server_policy(ctx, "git", scope)
@@ -481,76 +285,18 @@ pub(crate) async fn run_git_apply(
     args: &[&str],
     patch: &str,
 ) -> Result<(), ExtensionError> {
-    use tokio::io::AsyncWriteExt;
-
-    let child = {
-        let mut cmd = tokio::process::Command::new("git");
-        cmd.args(args)
-            .current_dir(
-                ctx.working_directory
-                    .as_deref()
-                    .unwrap_or(std::path::Path::new(".")),
-            )
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
-        #[cfg(windows)]
-        {
-            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-            cmd.creation_flags(CREATE_NO_WINDOW);
-        }
-        cmd.spawn().map_err(|e| ExtensionError {
-            code: -32603,
-            message: "internal_error".into(),
-            data: Some(Value::String(format!("failed to spawn git apply: {e}"))),
-        })?
-    };
-
-    let mut child = child;
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(patch.as_bytes()).await.ok();
-    }
-    let output = child.wait_with_output().await.map_err(|e| ExtensionError {
-        code: -32603,
-        message: "internal_error".into(),
-        data: Some(Value::String(format!("git apply failed: {e}"))),
-    })?;
-
-    if !output.status.success() {
-        return Err(ExtensionError::invalid_params("patch could not be applied"));
-    }
-    Ok(())
+    loom_git::facade::run_apply_raw(ctx.working_directory.as_deref(), args, patch)
+        .await
+        .map_err(ext_err_from_git)
 }
 
 pub(crate) async fn run_git(
     ctx: &ExtensionContext,
     args: &[&str],
 ) -> Result<String, ExtensionError> {
-    let output = git_cmd(ctx)
-        .args(args)
-        .output()
+    loom_git::facade::run_raw(ctx.working_directory.as_deref(), args)
         .await
-        .map_err(|e| ExtensionError {
-            code: -32603,
-            message: "internal_error".into(),
-            data: Some(Value::String(format!("failed to spawn git: {e}"))),
-        })?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("not a git repository") || stderr.contains("fatal: not a git") {
-            return Err(ExtensionError::not_found("not a git repository"));
-        }
-        if stderr.contains("does not exist") || stderr.contains("unknown revision") {
-            return Err(ExtensionError::not_found(&*stderr));
-        }
-        return Err(ExtensionError {
-            code: -32603,
-            message: "internal_error".into(),
-            data: Some(Value::String(stderr.to_string())),
-        });
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        .map_err(ext_err_from_git)
 }
 
 pub(crate) fn require_param<T: for<'de> Deserialize<'de>>(
@@ -571,35 +317,6 @@ pub(crate) fn optional_param_str(params: &Value, key: &str) -> Option<String> {
         .and_then(|v| serde_json::from_value(v.clone()).ok())
 }
 
-pub(crate) fn sanitize_remote_url(url: &str) -> String {
-    if let Some(at_pos) = url.find("://") {
-        let scheme = &url[..at_pos + 3];
-        let rest = &url[at_pos + 3..];
-        if let Some(at) = rest.find('@') {
-            return format!("{scheme}{}", &rest[at + 1..]);
-        }
-    }
-    if url.starts_with("git@") {
-        return url.to_string();
-    }
-    if let Some(rest) = url.strip_prefix("ssh://") {
-        if let Some(at) = rest.find('@') {
-            return format!("ssh://{}", &rest[at + 1..]);
-        }
-    }
-    url.to_string()
-}
-
-pub(crate) fn classify_remote_url(url: &str) -> RemoteUrlType {
-    if url.starts_with("https://") || url.starts_with("http://") {
-        RemoteUrlType::Https
-    } else if url.starts_with("git@") || url.starts_with("ssh://") {
-        RemoteUrlType::Ssh
-    } else {
-        RemoteUrlType::File
-    }
-}
-
 pub(crate) fn validate_git_path(path: &str, _ctx: &ExtensionContext) -> Result<(), ExtensionError> {
     if path.is_empty() {
         return Err(ExtensionError::invalid_params("path is empty"));
@@ -610,295 +327,6 @@ pub(crate) fn validate_git_path(path: &str, _ctx: &ExtensionContext) -> Result<(
         )));
     }
     Ok(())
-}
-
-pub(crate) fn parse_porcelain_status_v2(output: &str) -> GitStatus {
-    let mut branch = String::new();
-    let mut upstream: Option<String> = None;
-    let mut ahead = 0u32;
-    let mut behind = 0u32;
-    let mut files = Vec::new();
-    let mut in_progress: Option<GitInProgress> = None;
-    let mut conflict_files = Vec::new();
-
-    for line in output.lines() {
-        if let Some(rest) = line.strip_prefix("# branch.head ") {
-            branch = rest.to_string();
-        } else if let Some(rest) = line.strip_prefix("# branch.upstream ") {
-            upstream = Some(rest.to_string());
-        } else if let Some(rest) = line.strip_prefix("# branch.ab ") {
-            let parts: Vec<&str> = rest.split_whitespace().collect();
-            for p in parts {
-                if let Some(n) = p.strip_prefix('+') {
-                    ahead = n.parse().unwrap_or(0);
-                } else if let Some(n) = p.strip_prefix('-') {
-                    behind = n.parse().unwrap_or(0);
-                }
-            }
-        } else if line.starts_with("u ") {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                let path = parts.last().unwrap_or(&"").to_string();
-                conflict_files.push(path.clone());
-                files.push(GitStatusFile {
-                    path,
-                    index_status: GitFileStatus::Unmerged,
-                    working_status: GitFileStatus::Unmerged,
-                });
-            }
-        } else if line.starts_with("1 ") {
-            let tokens: Vec<&str> = line.splitn(9, ' ').collect();
-            if tokens.len() < 9 {
-                continue;
-            }
-            let xy = tokens.get(1).unwrap_or(&"..");
-            let index_status = parse_xy_status(xy.chars().next().unwrap_or('.'));
-            let working_status = parse_xy_status(xy.chars().nth(1).unwrap_or('.'));
-            let path_part = tokens.get(8).unwrap_or(&"");
-
-            if matches!(index_status, GitFileStatus::Unmerged)
-                || matches!(working_status, GitFileStatus::Unmerged)
-            {
-                conflict_files.push(path_part.to_string());
-            }
-
-            files.push(GitStatusFile {
-                path: path_part.to_string(),
-                index_status,
-                working_status,
-            });
-        } else if line.starts_with("2 ") {
-            let tokens: Vec<&str> = line.splitn(11, ' ').collect();
-            if tokens.len() < 11 {
-                continue;
-            }
-            let xy = tokens.get(1).unwrap_or(&"..");
-            let index_status = parse_xy_status(xy.chars().next().unwrap_or('.'));
-            let working_status = parse_xy_status(xy.chars().nth(1).unwrap_or('.'));
-            let path_field = tokens.get(10).unwrap_or(&"");
-            let path_part = path_field.split('\t').next().unwrap_or(path_field);
-
-            if matches!(index_status, GitFileStatus::Unmerged)
-                || matches!(working_status, GitFileStatus::Unmerged)
-            {
-                conflict_files.push(path_part.to_string());
-            }
-
-            files.push(GitStatusFile {
-                path: path_part.to_string(),
-                index_status,
-                working_status,
-            });
-        } else if let Some(path) = line.strip_prefix("? ") {
-            let path = path.trim();
-            files.push(GitStatusFile {
-                path: path.to_string(),
-                index_status: GitFileStatus::Untracked,
-                working_status: GitFileStatus::Untracked,
-            });
-        }
-    }
-
-    if !conflict_files.is_empty() {
-        in_progress = Some(GitInProgress {
-            operation: GitOperation::Merge,
-            conflict_files,
-        });
-    }
-
-    GitStatus {
-        branch,
-        upstream,
-        ahead,
-        behind,
-        files,
-        in_progress,
-    }
-}
-
-fn parse_xy_status(c: char) -> GitFileStatus {
-    match c {
-        '.' => GitFileStatus::Unmodified,
-        'M' => GitFileStatus::Modified,
-        'A' => GitFileStatus::Added,
-        'D' => GitFileStatus::Deleted,
-        'R' => GitFileStatus::Renamed,
-        'C' => GitFileStatus::Copied,
-        'U' => GitFileStatus::Unmerged,
-        '?' => GitFileStatus::Untracked,
-        '!' => GitFileStatus::Ignored,
-        _ => GitFileStatus::Unmodified,
-    }
-}
-
-pub(crate) fn parse_diff_output(diff_text: &str, stat_text: &str) -> GitDiffSummary {
-    let mut hunks = Vec::new();
-    let mut current_hunk_lines: Vec<GitDiffLine> = Vec::new();
-    let mut old_path = String::new();
-    let mut new_path = String::new();
-    let mut old_start = 0u32;
-    let mut old_lines = 0u32;
-    let mut new_start = 0u32;
-    let mut new_lines = 0u32;
-    let mut header = String::new();
-    let mut in_hunk = false;
-    let mut old_line_counter = 0u32;
-    let mut new_line_counter = 0u32;
-
-    for line in diff_text.lines() {
-        if let Some(rest) = line.strip_prefix("--- ") {
-            old_path = rest.trim_start_matches("a/").to_string();
-        } else if let Some(rest) = line.strip_prefix("+++ ") {
-            new_path = rest.trim_start_matches("b/").to_string();
-        } else if line.starts_with("@@") {
-            if in_hunk && !current_hunk_lines.is_empty() {
-                hunks.push(GitDiffHunk {
-                    old_path: old_path.clone(),
-                    new_path: new_path.clone(),
-                    old_start,
-                    old_lines,
-                    new_start,
-                    new_lines,
-                    header: header.clone(),
-                    lines: std::mem::take(&mut current_hunk_lines),
-                });
-            }
-            header = line.to_string();
-            if let Some((o, n)) = parse_hunk_header(line) {
-                old_start = o.0;
-                old_lines = o.1;
-                new_start = n.0;
-                new_lines = n.1;
-                old_line_counter = o.0;
-                new_line_counter = n.0;
-            }
-            in_hunk = true;
-        } else if in_hunk {
-            if let Some(rest) = line.strip_prefix('+') {
-                current_hunk_lines.push(GitDiffLine {
-                    kind: GitDiffLineKind::Addition,
-                    content: rest.to_string(),
-                    old_line: None,
-                    new_line: Some(new_line_counter),
-                });
-                new_line_counter += 1;
-            } else if let Some(rest) = line.strip_prefix('-') {
-                current_hunk_lines.push(GitDiffLine {
-                    kind: GitDiffLineKind::Deletion,
-                    content: rest.to_string(),
-                    old_line: Some(old_line_counter),
-                    new_line: None,
-                });
-                old_line_counter += 1;
-            } else if line.starts_with("\\ No newline") {
-                current_hunk_lines.push(GitDiffLine {
-                    kind: GitDiffLineKind::NoNewline,
-                    content: line.to_string(),
-                    old_line: None,
-                    new_line: None,
-                });
-            } else if let Some(rest) = line.strip_prefix(' ') {
-                current_hunk_lines.push(GitDiffLine {
-                    kind: GitDiffLineKind::Context,
-                    content: rest.to_string(),
-                    old_line: Some(old_line_counter),
-                    new_line: Some(new_line_counter),
-                });
-                old_line_counter += 1;
-                new_line_counter += 1;
-            }
-        }
-    }
-    if in_hunk && !current_hunk_lines.is_empty() {
-        hunks.push(GitDiffHunk {
-            old_path,
-            new_path,
-            old_start,
-            old_lines,
-            new_start,
-            new_lines,
-            header,
-            lines: current_hunk_lines,
-        });
-    }
-
-    let stat = parse_diff_stat(stat_text);
-    GitDiffSummary { hunks, stat }
-}
-
-fn parse_hunk_header(line: &str) -> Option<((u32, u32), (u32, u32))> {
-    let start = line.find("@@ ")?;
-    let end = line[3..].find(" @@")?;
-    let core = &line[start + 3..start + 3 + end];
-    let parts: Vec<&str> = core.split_whitespace().collect();
-    if parts.len() < 2 {
-        return None;
-    }
-    let old_part = parts[0].strip_prefix('-')?;
-    let new_part = parts[1].strip_prefix('+')?;
-    let old_nums: Vec<u32> = old_part.split(',').filter_map(|s| s.parse().ok()).collect();
-    let new_nums: Vec<u32> = new_part.split(',').filter_map(|s| s.parse().ok()).collect();
-    let old_start = *old_nums.first()?;
-    let old_lines = old_nums.get(1).copied().unwrap_or(1);
-    let new_start = *new_nums.first()?;
-    let new_lines = new_nums.get(1).copied().unwrap_or(1);
-    Some(((old_start, old_lines), (new_start, new_lines)))
-}
-
-fn parse_diff_stat(stat_text: &str) -> GitDiffStat {
-    let mut files_changed = 0u32;
-    let mut insertions = 0u32;
-    let mut deletions = 0u32;
-    let mut last_data_line = "";
-
-    for line in stat_text.lines().rev() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with("diff ") {
-            continue;
-        }
-        if trimmed.contains("file")
-            || (trimmed.contains("insertion") || trimmed.contains("deletion"))
-        {
-            last_data_line = trimmed;
-            break;
-        }
-        files_changed += 1;
-    }
-
-    if last_data_line.is_empty() {
-        return GitDiffStat {
-            files_changed,
-            insertions,
-            deletions,
-        };
-    }
-
-    let mut last_num = 0u32;
-    for token in last_data_line.split_whitespace() {
-        if let Ok(n) = token.parse::<u32>() {
-            last_num = n;
-        } else if token.contains("file") {
-            files_changed = last_num;
-        } else if token.contains("insertion") {
-            insertions = last_num;
-        } else if token.contains("deletion") {
-            deletions = last_num;
-        }
-    }
-
-    if files_changed == 0 && !hunks_text_is_empty(stat_text) {
-        files_changed = 1;
-    }
-
-    GitDiffStat {
-        files_changed,
-        insertions,
-        deletions,
-    }
-}
-
-fn hunks_text_is_empty(s: &str) -> bool {
-    s.lines().all(|l| l.trim().is_empty())
 }
 
 pub(crate) fn encode_cursor_offset(offset: usize) -> Option<String> {
