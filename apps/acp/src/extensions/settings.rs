@@ -458,6 +458,25 @@ fn path(path: &str) -> Result<Vec<String>, ExtensionError> {
     Ok(segments)
 }
 
+/// `~/.config/loomdesk/AGENTS.md` — the global behavior prompt (renamed from
+/// the legacy opencode path; Express reads the same file).
+const MAX_AGENTS_MD_BYTES: usize = 1024 * 1024;
+
+fn agents_md_path() -> std::path::PathBuf {
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".into());
+    std::path::PathBuf::from(home)
+        .join(".config")
+        .join("loomdesk")
+        .join("AGENTS.md")
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct WriteAgentsMdRequest {
+    content: String,
+}
+
 fn validate_keys(keys: &[String]) -> Result<Vec<String>, ExtensionError> {
     let mut normalized = Vec::with_capacity(keys.len());
     for key in keys {
@@ -545,6 +564,8 @@ impl ExtensionHandler for SettingsHandler {
             "load" => "load",
             "save" => "save",
             "restart_opencode" => "restart_opencode",
+            "read_agents_md" => "load",
+            "write_agents_md" => "save",
             _ => return Err(ExtensionError::method_not_found()),
         };
         if !self.authorizer.capability_enabled(capability) {
@@ -671,12 +692,52 @@ impl ExtensionHandler for SettingsHandler {
                 })
                 .map_err(|error| Self::internal(error.to_string()))
             }
+            "read_agents_md" => {
+                let path = agents_md_path();
+                match std::fs::read_to_string(&path) {
+                    Ok(content) => Ok(serde_json::json!({
+                        "content": content,
+                        "exists": true,
+                    })),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        Ok(serde_json::json!({ "content": "", "exists": false }))
+                    }
+                    Err(error) => Err(Self::internal(format!(
+                        "failed to read AGENTS.md: {error}"
+                    ))),
+                }
+            }
+            "write_agents_md" => {
+                let request: WriteAgentsMdRequest = Self::parse(params)?;
+                if request.content.len() > MAX_AGENTS_MD_BYTES {
+                    return Err(ExtensionError::invalid_params(format!(
+                        "content exceeds maximum size of {MAX_AGENTS_MD_BYTES} bytes"
+                    )));
+                }
+                let path = agents_md_path();
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|error| Self::internal(format!(
+                            "failed to create config directory: {error}"
+                        )))?;
+                }
+                std::fs::write(&path, &request.content).map_err(|error| {
+                    Self::internal(format!("failed to write AGENTS.md: {error}"))
+                })?;
+                Ok(serde_json::json!({ "ok": true }))
+            }
             _ => Err(ExtensionError::method_not_found()),
         }
     }
 
     fn capabilities(&self) -> Value {
-        serde_json::json!({ "load": true, "save": true, "restart_opencode": true })
+        serde_json::json!({
+            "load": true,
+            "save": true,
+            "restart_opencode": true,
+            "read_agents_md": true,
+            "write_agents_md": true,
+        })
     }
 }
 
