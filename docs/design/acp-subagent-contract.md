@@ -4,7 +4,7 @@
 > **日期**：2026-08-19
 > **范围**：将 Loom 已有的 in-process 子代理执行引擎升级为 ACP 一等公民 —— tool call metadata 透传、`parentID` 子会话、`agent/list` + subagent 模式、级联删除，对齐 OpenChamber 前端已有的 task/子会话契约
 > **相关代码**：`agent/agent-core/src/tools/agent/`（mod.rs、runner.rs、worktree.rs、registry.rs、build_config.rs）、`apps/acp/src/stream_bridge.rs`、`apps/acp/src/session_repository.rs`、`apps/acp/src/agent.rs`、`apps/acp/src/agent_registry.rs`、`apps/acp/src/extensions/agent_profile.rs`
-> **相关文档**：[02-session-lifecycle.md](../acp-spec/02-session-lifecycle.md)、[05-session-update.md](../acp-spec/05-session-update.md)、[acp-cli-extension.md](./acp-cli-extension.md)、[openchamber-projects-integration.md](./openchamber-projects-integration.md)
+> **相关文档**：[02-session-lifecycle.md](../acp-spec/02-session-lifecycle.md)、[05-session-update.md](../acp-spec/05-session-update.md)、[acp-cli-extension.md](./acp-cli-extension.md)、[openchamber-projects-integration.md](./openchamber-projects-integration.md)、[subagent-interaction-gap.md](./subagent-interaction-gap.md)（前端消费侧差距审计）
 
 ## 1. 背景与问题
 
