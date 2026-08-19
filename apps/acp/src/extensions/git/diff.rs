@@ -11,26 +11,13 @@ pub async fn handle_diff(params: Value, ctx: &ExtensionContext) -> Result<Value,
     let path: Option<String> = optional_param_str(&params, "path");
     let unified: u32 = params.get("unified").and_then(|v| v.as_u64()).unwrap_or(3) as u32;
 
-    let unified_str = unified.to_string();
-    let unified_arg = format!("--unified={unified_str}");
-    let mut args: Vec<&str> = vec!["diff", &unified_arg];
-    if staged {
-        args.push("--cached");
-    }
-    args.push("--no-color");
-    if let Some(ref p) = path {
-        args.push("--");
-        args.push(p);
-    }
-
-    let diff_text = run_git(ctx, &args).await?;
-    let stat_args: Vec<&str> = if staged {
-        vec!["diff", "--stat", "--cached"]
-    } else {
-        vec!["diff", "--stat"]
-    };
-    let stat_text = run_git(ctx, &stat_args).await?;
-    let summary = parse_diff_output(&diff_text, &stat_text);
+    let repo_dir = ctx
+        .working_directory
+        .clone()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let summary = loom_git::facade::diff(&repo_dir, staged, path.as_deref(), unified)
+        .await
+        .map_err(ext_err_from_git)?;
     Ok(serde_json::to_value(summary).unwrap_or(Value::Null))
 }
 
@@ -45,16 +32,13 @@ pub async fn handle_file_diff(
         .unwrap_or(false);
     let unified: u32 = params.get("unified").and_then(|v| v.as_u64()).unwrap_or(3) as u32;
 
-    let unified_str = unified.to_string();
-    let unified_arg = format!("--unified={unified_str}");
-    let mut args: Vec<&str> = vec!["diff", &unified_arg, "--no-color"];
-    if staged {
-        args.push("--cached");
-    }
-    args.push("--");
-    args.push(&file_path);
-
-    let diff_text = run_git(ctx, &args).await?;
+    let repo_dir = ctx
+        .working_directory
+        .clone()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let summary = loom_git::facade::diff(&repo_dir, staged, Some(&file_path), unified)
+        .await
+        .map_err(ext_err_from_git)?;
 
     let original = if staged {
         let show_arg = format!(":{file_path}");
@@ -69,11 +53,6 @@ pub async fn handle_file_diff(
         Some(p) if p.exists() => std::fs::read_to_string(p).unwrap_or_default(),
         _ => String::new(),
     };
-
-    let stat_text = run_git(ctx, &["diff", "--stat", "--", &file_path])
-        .await
-        .unwrap_or_default();
-    let summary = parse_diff_output(&diff_text, &stat_text);
 
     Ok(serde_json::json!({
         "filePath": file_path,

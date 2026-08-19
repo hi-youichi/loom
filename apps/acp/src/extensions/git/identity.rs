@@ -88,13 +88,19 @@ pub async fn handle_identity_list(
         })
         .collect();
 
-    let repo_name = run_git(ctx, &["config", "user.name"])
+    let repo_dir = ctx
+        .working_directory
+        .clone()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let repo_name = loom_git::facade::config_get(&repo_dir, "user.name")
         .await
         .ok()
+        .flatten()
         .map(|s| s.trim().to_string());
-    let repo_email = run_git(ctx, &["config", "user.email"])
+    let repo_email = loom_git::facade::config_get(&repo_dir, "user.email")
         .await
         .ok()
+        .flatten()
         .map(|s| s.trim().to_string());
     if let (Some(name), Some(email)) = (repo_name, repo_email) {
         if !name.is_empty() && !email.is_empty() {
@@ -132,12 +138,17 @@ pub async fn handle_identity_get(
     ctx: &ExtensionContext,
 ) -> Result<Value, ExtensionError> {
     let path: Option<String> = optional_param_str(&params, "path");
-
-    let name = run_git(ctx, &["config", "user.name"])
+    let repo_dir = ctx
+        .working_directory
+        .clone()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let name = loom_git::facade::config_get(&repo_dir, "user.name")
         .await
+        .unwrap_or_default()
         .unwrap_or_default();
-    let email = run_git(ctx, &["config", "user.email"])
+    let email = loom_git::facade::config_get(&repo_dir, "user.email")
         .await
+        .unwrap_or_default()
         .unwrap_or_default();
 
     if name.trim().is_empty() && email.trim().is_empty() {
@@ -164,6 +175,8 @@ pub async fn handle_identity_get_global(
     ctx: &ExtensionContext,
 ) -> Result<Value, ExtensionError> {
     let _ = params;
+    // libgit2 config reads resolve repo→global cascade; global-only read uses
+    // the CLI backend path (global flag) — keep the dedicated global query.
     let name = run_git(ctx, &["config", "--global", "user.name"])
         .await
         .unwrap_or_default();

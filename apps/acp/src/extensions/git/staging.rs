@@ -10,7 +10,13 @@ pub async fn handle_stage_file(
     require_git_scope(ctx, "git:stage")?;
     let file_path: String = require_param(&params, "filePath")?;
     validate_git_path(&file_path, ctx)?;
-    run_git(ctx, &["add", &file_path]).await?;
+    let repo_dir = ctx
+        .working_directory
+        .clone()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    loom_git::facade::stage_file(&repo_dir, &file_path)
+        .await
+        .map_err(ext_err_from_git)?;
     Ok(serde_json::json!({"filePath": file_path, "staged": true}))
 }
 
@@ -20,6 +26,10 @@ pub async fn handle_stage_files(
 ) -> Result<Value, ExtensionError> {
     require_git_scope(ctx, "git:stage")?;
     let file_paths: Vec<String> = require_param(&params, "filePaths")?;
+    let repo_dir = ctx
+        .working_directory
+        .clone()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
     let mut staged = Vec::new();
     let mut failed = Vec::new();
     for fp in &file_paths {
@@ -27,7 +37,7 @@ pub async fn handle_stage_files(
             failed.push(fp.clone());
             continue;
         }
-        match run_git(ctx, &["add", fp]).await {
+        match loom_git::facade::stage_file(&repo_dir, fp).await {
             Ok(_) => staged.push(fp.clone()),
             Err(_) => failed.push(fp.clone()),
         }
@@ -45,7 +55,13 @@ pub async fn handle_unstage_file(
     require_git_scope(ctx, "git:stage")?;
     let file_path: String = require_param(&params, "filePath")?;
     validate_git_path(&file_path, ctx)?;
-    run_git(ctx, &["restore", "--staged", &file_path]).await?;
+    let repo_dir = ctx
+        .working_directory
+        .clone()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    loom_git::facade::unstage_file(&repo_dir, &file_path)
+        .await
+        .map_err(ext_err_from_git)?;
     Ok(serde_json::json!({"filePath": file_path, "unstaged": true}))
 }
 
@@ -55,6 +71,10 @@ pub async fn handle_unstage_files(
 ) -> Result<Value, ExtensionError> {
     require_git_scope(ctx, "git:stage")?;
     let file_paths: Vec<String> = require_param(&params, "filePaths")?;
+    let repo_dir = ctx
+        .working_directory
+        .clone()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
     let mut unstaged = Vec::new();
     let mut failed = Vec::new();
     for fp in &file_paths {
@@ -62,7 +82,7 @@ pub async fn handle_unstage_files(
             failed.push(fp.clone());
             continue;
         }
-        match run_git(ctx, &["restore", "--staged", fp]).await {
+        match loom_git::facade::unstage_file(&repo_dir, fp).await {
             Ok(_) => unstaged.push(fp.clone()),
             Err(_) => failed.push(fp.clone()),
         }
@@ -152,63 +172,26 @@ pub async fn handle_commit(params: Value, ctx: &ExtensionContext) -> Result<Valu
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let staged_check = run_git(ctx, &["diff", "--cached", "--name-only"]).await?;
-    if staged_check.trim().is_empty() {
-        return Err(ExtensionError::invalid_params("no staged changes"));
-    }
-
-    let mut args = vec!["commit", "-m", &message];
-    if amend {
-        args.push("--amend");
-    }
-    if signoff {
-        args.push("--signoff");
-    }
-    let _ = run_git(ctx, &args).await?;
-
-    let sha = run_git(ctx, &["rev-parse", "HEAD"]).await?;
-    let branch = run_git(ctx, &["rev-parse", "--abbrev-ref", "HEAD"]).await?;
-    let stat = run_git(ctx, &["show", "--stat", "--format=", "HEAD"]).await?;
-
-    let (insertions, deletions, files_changed) = parse_commit_stat(&stat);
+    let repo_dir = ctx
+        .working_directory
+        .clone()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let req = loom_git::types::CommitRequest {
+        message,
+        amend,
+        signoff,
+    };
+    let result = loom_git::facade::commit(&repo_dir, req)
+        .await
+        .map_err(ext_err_from_git)?;
 
     Ok(serde_json::json!({
-        "sha": sha.trim(),
-        "branch": branch.trim(),
-        "message": message,
-        "filesChanged": files_changed,
-        "insertions": insertions,
-        "deletions": deletions,
+        "sha": result.sha,
+        "branch": result.branch,
+        "message": result.message,
+        "filesChanged": result.files_changed,
+        "insertions": result.insertions,
+        "deletions": result.deletions,
+        "unsigned": result.unsigned,
     }))
-}
-
-fn parse_commit_stat(stat: &str) -> (u32, u32, u32) {
-    let mut files_changed = 0u32;
-    let mut insertions = 0u32;
-    let mut deletions = 0u32;
-
-    for line in stat.lines().rev() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if trimmed.contains("file") || trimmed.contains("insertion") || trimmed.contains("deletion")
-        {
-            let mut last_num = 0u32;
-            for token in trimmed.split_whitespace() {
-                if let Ok(n) = token.parse::<u32>() {
-                    last_num = n;
-                } else if token.contains("file") {
-                    files_changed = last_num;
-                } else if token.contains("insertion") {
-                    insertions = last_num;
-                } else if token.contains("deletion") {
-                    deletions = last_num;
-                }
-            }
-            break;
-        }
-        files_changed += 1;
-    }
-    (insertions, deletions, files_changed)
 }

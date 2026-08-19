@@ -22,48 +22,14 @@ pub async fn handle_branches(
         .unwrap_or(50);
 
     let skip = decode_cursor_offset(&cursor);
-    let format_str = "%(refname:short)%00%(HEAD)%00%(upstream:short)%00%(objectname:short)%00%(committerdate:iso)";
-    let format_arg = format!("--format={format_str}");
 
-    let local = run_git(ctx, &["for-each-ref", &format_arg, "refs/heads/"]).await?;
-    let mut output = local;
-
-    if remote {
-        let remote_output = run_git(ctx, &["for-each-ref", &format_arg, "refs/remotes/"]).await?;
-        output.push_str(&remote_output);
-    }
-
-    let current_branch = run_git(ctx, &["rev-parse", "--abbrev-ref", "HEAD"])
+    let repo_dir = ctx
+        .working_directory
+        .clone()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let branches = loom_git::facade::branches(&repo_dir, remote)
         .await
-        .unwrap_or_default();
-
-    let mut branches: Vec<GitBranch> = Vec::new();
-    for line in output.lines() {
-        let parts: Vec<&str> = line.splitn(5, '\0').collect();
-        if parts.len() < 5 {
-            continue;
-        }
-        let name = parts[0].to_string();
-        let is_current = parts[1] == "*" || name == current_branch.trim();
-        let upstream = if parts[2].is_empty() {
-            None
-        } else {
-            Some(parts[2].to_string())
-        };
-        let last_commit_sha = parts[3].to_string();
-        let last_commit_date = parts[4].to_string();
-
-        branches.push(GitBranch {
-            name: name.clone(),
-            is_current,
-            is_remote: name.contains('/'),
-            upstream,
-            ahead: 0,
-            behind: 0,
-            last_commit_sha,
-            last_commit_date,
-        });
-    }
+        .map_err(ext_err_from_git)?;
 
     let total = branches.len();
     let end = (skip + limit).min(total);

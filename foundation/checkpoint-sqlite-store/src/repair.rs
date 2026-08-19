@@ -40,7 +40,13 @@ pub fn is_malformed_db_error(e: &rusqlite::Error) -> bool {
 /// kept on disk so the user can recover state if they have a recent
 /// backup.
 pub fn repair_state_db_schema(path: &Path) -> Result<rusqlite::Connection, String> {
-    let conn = rusqlite::Connection::open(path);
+    // `Connection::open` can succeed for an existing non-SQLite file because
+    // SQLite defers validating the file header until the first statement.
+    // Validate it before treating the connection as healthy.
+    let conn = rusqlite::Connection::open(path).and_then(|conn| {
+        conn.query_row("PRAGMA schema_version", [], |_| Ok(()))?;
+        Ok(conn)
+    });
     match conn {
         Ok(c) => Ok(c),
         Err(e) if is_malformed_db_error(&e) => {
