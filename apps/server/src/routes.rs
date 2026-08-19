@@ -10,7 +10,11 @@ use axum::{
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
-use crate::auth::{log_authorization_header, require_valid_token};
+use crate::auth::{
+    log_authorization_header,
+    record_acp_auth_verdict,
+    require_valid_token,
+};
 use crate::handlers;
 use crate::state::SharedState;
 use crate::static_files;
@@ -30,9 +34,18 @@ pub fn build_router(state: SharedState) -> Router {
 /// the app shell before any credentials exist (loomdesk's public-shell
 /// model); API routes keep full enforcement.
 pub fn build_router_with_static(state: SharedState, static_dir: Option<PathBuf>) -> Router {
-    let api = Router::new()
-        // ─── ACP WebSocket ───────────────────────────────────────
+    // `/acp` allows unauthenticated upgrades so browser clients can probe
+    // auth state through the pre-auth initialize handshake (an HTTP 401 at
+    // upgrade time is invisible to the WebSocket API). The per-connection
+    // verdict is stamped by `record_acp_auth_verdict`; unauthenticated
+    // sockets only ever see the structured `-32001` auth error.
+    let acp = Router::new()
         .route("/acp", get(handlers::acp::connect))
+        .layer(middleware::from_fn(record_acp_auth_verdict))
+        .layer(middleware::from_fn(log_authorization_header))
+        .with_state(state.clone());
+
+    let api = Router::new()
         // ─── Health ──────────────────────────────────────────────
         .route("/api/health", get(handlers::health::get_api_health))
         .route("/global/health", get(handlers::health::get_global_health))
@@ -43,8 +56,8 @@ pub fn build_router_with_static(state: SharedState, static_dir: Option<PathBuf>)
         .with_state(state);
 
     let app = match static_dir {
-        Some(dir) => api.merge(static_files::static_router(dir)),
-        None => api,
+        Some(dir) => acp.merge(api).merge(static_files::static_router(dir)),
+        None => acp.merge(api),
     };
 
     // ─── CORS ────────────────────────────────────────────────

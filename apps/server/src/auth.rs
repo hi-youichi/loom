@@ -1,20 +1,26 @@
 //! Authorization middleware.
 //!
-//! Two credential modes, combinable:
+//! Three credential modes, combinable:
 //!
 //! 1. `LOOM_AUTH_TOKEN` — programmatic `Authorization: Bearer <token>`.
-//! 2. `LOOMDESK_JWT_SECRET` — verify the `oc_ui_session` cookie minted by the
-//!    Loom Desk Express ui-auth controller (HS256 JWT, `type: ui-session`).
-//!    Login, logout, rate limiting, and passkeys live in Express; loom.exe
-//!    only verifies signatures. Note: if Express rotates its JWT secret
-//!    (global sign-out), loom.exe must be restarted to pick up the new value.
+//! 2. UI session JWTs (`oc_ui_session` cookie or `_loomdesk.dev/auth/*`
+//!    pre-auth protocol messages). The HS256 secret is resolved from
+//!    `LOOMDESK_JWT_SECRET`, `OPENCODE_JWT_SECRET`, or the shared Loom Desk
+//!    data-dir file `<data-dir>/jwt-secret` (same file the Express ui-auth
+//!    controller generates), so cookies minted by Express and tokens minted
+//!    over the ACP pre-auth protocol verify interchangeably.
+//! 3. `LOOMDESK_UI_PASSWORD` — password login over the `/acp` pre-auth
+//!    protocol (`_loomdesk.dev/auth/login`), mirroring Express `POST
+//!    /auth/session` (scrypt verify + per-IP rate limiting + JWT mint).
 //!
-//! When neither variable is set, development mode allows all requests.
+//! When no token/secret/password is configured, development mode allows all
+//! requests.
 
 use axum::{
     extract::Request,
     http::{
         header::COOKIE,
+        HeaderMap,
         StatusCode,
     },
     middleware::Next,
@@ -34,8 +40,20 @@ pub const AUTH_TOKEN_ENV: &str = "LOOM_AUTH_TOKEN";
 /// `<data-dir>/jwt-secret`). Unset/empty ⇒ cookie auth not enforced.
 pub const JWT_SECRET_ENV: &str = "LOOMDESK_JWT_SECRET";
 
+/// Legacy alias Express reads first for the JWT secret.
+pub const JWT_SECRET_ENV_LEGACY: &str = "OPENCODE_JWT_SECRET";
+
+/// Environment variable holding the Loom Desk UI password (same variable the
+/// Express server reads; `options.uiPassword` in Express maps to it).
+pub const UI_PASSWORD_ENV: &str = "LOOMDESK_UI_PASSWORD";
+
 /// Session cookie name minted by Express ui-auth (`SESSION_COOKIE_NAME`).
 pub const UI_SESSION_COOKIE: &str = "oc_ui_session";
+
+/// UI session TTL, matching Express `SESSION_TTL_MS`.
+const SESSION_TTL_SECS: u64 = 12 * 60 * 60;
+/// Trusted-device session TTL, matching Express `TRUSTED_DEVICE_SESSION_TTL_MS`.
+const TRUSTED_DEVICE_TTL_SECS: u64 = 7 * 24 * 60 * 60;
 
 fn authorization_scheme(value: &str) -> &str {
     value.split_ascii_whitespace().next().unwrap_or("unknown")
@@ -75,12 +93,252 @@ fn configured_token() -> Option<String> {
         .filter(|t| !t.is_empty())
 }
 
-/// Read the configured Express JWT secret from the environment, if any.
+/// The Loom Desk data dir shared with the Express server
+/// (`LOOMDESK_DATA_DIR` or `~/.config/loomdesk`).
+fn loomdesk_data_dir() -> std::path::PathBuf {
+    if let Ok(dir) = std::env::var("LOOMDESK_DATA_DIR") {
+        if !dir.trim().is_empty() {
+            return std::path::PathBuf::from(dir.trim());
+        }
+    }
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".to_string());
+    std::path::PathBuf::from(home).join(".config").join("loomdesk")
+}
+
+/// Read the configured Express JWT secret: `LOOMDESK_JWT_SECRET` /
+/// `OPENCODE_JWT_SECRET` env override first, then the shared data-dir file
+/// the Express ui-auth controller generates (`<data-dir>/jwt-secret`, hex).
 fn configured_jwt_secret() -> Option<String> {
-    std::env::var(JWT_SECRET_ENV)
+    if let Some(secret) = std::env::var(JWT_SECRET_ENV)
         .ok()
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
+    {
+        return Some(secret);
+    }
+    if let Some(secret) = std::env::var(JWT_SECRET_ENV_LEGACY)
+        .ok()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+    {
+        return Some(secret);
+    }
+    std::fs::read_to_string(loomdesk_data_dir().join("jwt-secret"))
+        .ok()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+}
+
+/// Resolve the signing secret, generating and persisting a fresh one (same
+/// format Express writes: 32 random bytes as hex, mode 0600) when none exists
+/// yet. Called only on the mint path (password login); verification keeps
+/// using [`configured_jwt_secret`] so a loom-only install without logins
+/// never materializes a secret file.
+fn ensure_jwt_secret_for_minting() -> Option<String> {
+    if let Some(secret) = configured_jwt_secret() {
+        return Some(secret);
+    }
+    let secret = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
+    let dir = loomdesk_data_dir();
+    if let Err(error) = std::fs::create_dir_all(&dir)
+        .and_then(|_| std::fs::write(dir.join("jwt-secret"), &secret))
+    {
+        tracing::warn!(%error, "failed to persist generated JWT secret");
+        return None;
+    }
+    tracing::info!(dir = %dir.display(), "generated and persisted JWT secret");
+    Some(secret)
+}
+
+/// Verify a login candidate against the configured UI password using scrypt
+/// with a random per-process salt (same construction as Express `ui-auth`).
+fn verify_ui_password(candidate: &str) -> bool {
+    let Some(expected) = configured_ui_password() else {
+        return false;
+    };
+    use scrypt::{scrypt, Params};
+    let params = Params::new(14, 8, 1, 64).expect("scrypt params");
+    // Two UUIDv4s = 32 bytes of crypto randomness in hex; uuid is already a
+    // workspace dependency and this is only salt material.
+    let salt = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple())
+        .into_bytes();
+    let mut expected_hash = [0u8; 64];
+    if scrypt(expected.as_bytes(), &salt, &params, &mut expected_hash).is_err() {
+        return false;
+    }
+    let mut candidate_hash = [0u8; 64];
+    if scrypt(candidate.trim().as_bytes(), &salt, &params, &mut candidate_hash).is_err() {
+        return false;
+    }
+    token_eq(&expected_hash, &candidate_hash)
+}
+
+/// Read the configured UI password from the environment, if any.
+fn configured_ui_password() -> Option<String> {
+    std::env::var(UI_PASSWORD_ENV)
+        .ok()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+}
+
+/// Whether the UI password gate is configured (drives `auth/status` and the
+/// availability of `_loomdesk.dev/auth/login`).
+pub fn ui_password_configured() -> bool {
+    configured_ui_password().is_some()
+}
+
+/// Mint a UI session JWT (HS256, `type: ui-session`) with the same claim shape
+/// the Express controller emits (`jose` `.setIssuedAt().setExpirationTime`).
+fn mint_ui_session_jwt(secret: &str, ttl_secs: u64) -> Option<String> {
+    let now = chrono::Utc::now().timestamp();
+    let claims = serde_json::json!({
+        "type": "ui-session",
+        "iat": now,
+        "exp": now + ttl_secs as i64,
+    });
+    jsonwebtoken::encode(
+        &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+        &claims,
+        &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .ok()
+}
+
+/// Outcome of a pre-auth password login attempt.
+pub struct LoginOutcome {
+    pub ok: bool,
+    pub session_token: Option<String>,
+    pub expires_at_unix: Option<u64>,
+    pub retry_after_secs: Option<u64>,
+}
+
+/// Attempt a UI password login over the pre-auth protocol: rate limit →
+/// scrypt verify → mint JWT. Mirrors Express `handleSessionCreate`.
+pub fn attempt_ui_login(password: &str, trust_device: bool, peer_ip: &str) -> LoginOutcome {
+    if !login_rate_allow(peer_ip) {
+        return LoginOutcome {
+            ok: false,
+            session_token: None,
+            expires_at_unix: None,
+            retry_after_secs: Some(login_rate_retry_after(peer_ip)),
+        };
+    }
+    if !verify_ui_password(password) {
+        login_rate_record_failure(peer_ip);
+        return LoginOutcome { ok: false, session_token: None, expires_at_unix: None, retry_after_secs: None };
+    }
+    login_rate_clear(peer_ip);
+    let ttl = if trust_device { TRUSTED_DEVICE_TTL_SECS } else { SESSION_TTL_SECS };
+    let Some(secret) = ensure_jwt_secret_for_minting() else {
+        tracing::error!("password login succeeded but no JWT secret available");
+        return LoginOutcome { ok: false, session_token: None, expires_at_unix: None, retry_after_secs: None };
+    };
+    let token = mint_ui_session_jwt(&secret, ttl);
+    LoginOutcome {
+        ok: token.is_some(),
+        session_token: token,
+        expires_at_unix: Some((chrono::Utc::now().timestamp() as u64) + ttl),
+        retry_after_secs: None,
+    }
+}
+
+/// Verify a session token minted over the pre-auth protocol (or by Express).
+pub fn ui_session_token_valid(token: &str) -> bool {
+    configured_jwt_secret()
+        .map(|secret| is_valid_ui_session(token, &secret))
+        .unwrap_or(false)
+}
+
+// ─── Login rate limiting (per-IP, mirrors Express ui-auth) ────────────────
+
+const RATE_LIMIT_WINDOW_MS: u64 = 5 * 60 * 1000;
+const RATE_LIMIT_LOCKOUT_MS: u64 = 15 * 60 * 1000;
+const RATE_LIMIT_CLEANUP_MS: u64 = 60 * 60 * 1000;
+const RATE_LIMIT_DEFAULT_MAX_ATTEMPTS: u32 = 10;
+
+#[derive(Clone, Debug)]
+struct RateRecord {
+    count: u32,
+    last_attempt_ms: u64,
+    locked_until_ms: Option<u64>,
+}
+
+static LOGIN_RATE_LIMITS: std::sync::LazyLock<parking_lot::Mutex<std::collections::HashMap<String, RateRecord>>> =
+    std::sync::LazyLock::new(|| parking_lot::Mutex::new(std::collections::HashMap::new()));
+
+fn now_ms() -> u64 {
+    chrono::Utc::now().timestamp_millis().max(0) as u64
+}
+
+fn login_rate_max_attempts() -> u32 {
+    std::env::var("LOOMDESK_RATE_LIMIT_MAX_ATTEMPTS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(RATE_LIMIT_DEFAULT_MAX_ATTEMPTS)
+}
+
+fn login_rate_allow(peer_ip: &str) -> bool {
+    let mut limits = LOGIN_RATE_LIMITS.lock();
+    sweep_stale_records(&mut limits);
+    let now = now_ms();
+    let Some(record) = limits.get(peer_ip) else {
+        return true;
+    };
+    if let Some(locked_until) = record.locked_until_ms {
+        if now < locked_until {
+            return false;
+        }
+        limits.remove(peer_ip);
+        return true;
+    }
+    now.saturating_sub(record.last_attempt_ms) > RATE_LIMIT_WINDOW_MS
+        || record.count < login_rate_max_attempts()
+}
+
+fn login_rate_retry_after(peer_ip: &str) -> u64 {
+    let limits = LOGIN_RATE_LIMITS.lock();
+    limits
+        .get(peer_ip)
+        .and_then(|r| r.locked_until_ms)
+        .map(|until| until.saturating_sub(now_ms()).div_ceil(1000))
+        .filter(|secs| *secs > 0)
+        .unwrap_or(RATE_LIMIT_LOCKOUT_MS.div_ceil(1000))
+}
+
+fn login_rate_record_failure(peer_ip: &str) {
+    let mut limits = LOGIN_RATE_LIMITS.lock();
+    let now = now_ms();
+    let max_attempts = login_rate_max_attempts();
+    let entry = limits.entry(peer_ip.to_string()).or_insert(RateRecord {
+        count: 0,
+        last_attempt_ms: now,
+        locked_until_ms: None,
+    });
+    if now.saturating_sub(entry.last_attempt_ms) > RATE_LIMIT_WINDOW_MS {
+        entry.count = 0;
+    }
+    entry.count += 1;
+    entry.last_attempt_ms = now;
+    if entry.count > max_attempts {
+        entry.locked_until_ms = Some(now + RATE_LIMIT_LOCKOUT_MS);
+    }
+}
+
+fn login_rate_clear(peer_ip: &str) {
+    LOGIN_RATE_LIMITS.lock().remove(peer_ip);
+}
+
+fn sweep_stale_records(
+    limits: &mut std::collections::HashMap<String, RateRecord>,
+) {
+    let now = now_ms();
+    limits.retain(|_, record| {
+        let expired = record.locked_until_ms.is_some_and(|until| now >= until);
+        let stale = now.saturating_sub(record.last_attempt_ms) > RATE_LIMIT_CLEANUP_MS;
+        !expired && !stale
+    });
 }
 
 /// Extract the bearer token from an `Authorization` header value. Accepts
@@ -104,8 +362,8 @@ fn bearer_from_header(value: Option<&str>) -> Option<String> {
 /// Express sets the value with `encodeURIComponent`; JWT base64url characters
 /// (`A-Za-z0-9-_` and `.`) are never percent-encoded by it, so the raw value
 /// equals the encoded value and no percent-decoding is needed.
-fn ui_session_cookie_value<B>(req: &axum::http::Request<B>) -> Option<&str> {
-    req.headers()
+fn ui_session_cookie_from_headers(headers: &HeaderMap) -> Option<&str> {
+    headers
         .get(COOKIE)
         .and_then(|value| value.to_str().ok())?
         .split(';')
@@ -147,37 +405,55 @@ fn token_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
+/// Evaluate credentials from request headers alone. Same rules as
+/// [`require_valid_token`]: dev mode (nothing configured) allows all;
+/// otherwise a matching bearer token or a valid UI session cookie is
+/// required. Used both by the HTTP middleware and by the `/acp` WebSocket
+/// pre-auth gate, which cannot surface an HTTP 401 to browser clients
+/// (the WebSocket API hides upgrade status codes).
+pub fn credentials_valid(headers: &HeaderMap) -> bool {
+    let loom_token = configured_token();
+    let jwt_secret = configured_jwt_secret();
+    let ui_password = configured_ui_password();
+
+    // Development mode: nothing gates the gateway.
+    if loom_token.is_none() && jwt_secret.is_none() && ui_password.is_none() {
+        return true;
+    }
+
+    if let Some(expected) = &loom_token {
+        let header = headers
+            .get(AUTHORIZATION)
+            .and_then(|v| v.to_str().ok());
+        if let Some(provided) = bearer_from_header(header) {
+            if token_eq(provided.as_bytes(), expected.as_bytes()) {
+                return true;
+            }
+        }
+    }
+
+    if let Some(secret) = &jwt_secret {
+        if let Some(cookie_value) = ui_session_cookie_from_headers(headers) {
+            if is_valid_ui_session(cookie_value, secret) {
+                return true;
+            }
+        }
+    }
+
+    // Password gate configured (and no credential presented above): the
+    // socket enters the pre-auth handshake and must login via
+    // `_loomdesk.dev/auth/login` to mint a session token.
+    false
+}
+
 /// Auth enforcement.
 ///
 /// When neither `LOOM_AUTH_TOKEN` nor `LOOMDESK_JWT_SECRET` is set →
 /// development mode (allow all). Otherwise a request must present either a
 /// matching Bearer token or a valid `oc_ui_session` session cookie.
 pub async fn require_valid_token(req: Request, next: Next) -> Response {
-    let loom_token = configured_token();
-    let jwt_secret = configured_jwt_secret();
-
-    if loom_token.is_none() && jwt_secret.is_none() {
+    if credentials_valid(req.headers()) {
         return next.run(req).await;
-    }
-
-    if let Some(expected) = &loom_token {
-        let header = req
-            .headers()
-            .get(AUTHORIZATION)
-            .and_then(|v| v.to_str().ok());
-        if let Some(provided) = bearer_from_header(header) {
-            if token_eq(provided.as_bytes(), expected.as_bytes()) {
-                return next.run(req).await;
-            }
-        }
-    }
-
-    if let Some(secret) = &jwt_secret {
-        if let Some(cookie_value) = ui_session_cookie_value(&req) {
-            if is_valid_ui_session(cookie_value, secret) {
-                return next.run(req).await;
-            }
-        }
     }
 
     (
@@ -187,10 +463,26 @@ pub async fn require_valid_token(req: Request, next: Next) -> Response {
         .into_response()
 }
 
+/// Per-connection credential verdict stamped onto `/acp` upgrade requests by
+/// [`record_acp_auth_verdict`]. `true` = authenticated (or development mode).
+#[derive(Clone, Copy, Debug)]
+pub struct AcpAuthVerdict(pub bool);
+
+/// `/acp` auth middleware: instead of rejecting unauthenticated upgrades with
+/// an HTTP 401 (invisible to browser WebSocket clients), the upgrade is
+/// allowed and the verdict travels in the request extensions. The handler
+/// then runs the pre-auth handshake for unauthenticated sockets (see
+/// `handlers::acp::handle_pre_auth_socket`).
+pub async fn record_acp_auth_verdict(mut req: Request, next: Next) -> Response {
+    let verdict = AcpAuthVerdict(credentials_valid(req.headers()));
+    req.extensions_mut().insert(verdict);
+    next.run(req).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::Request as HttpRequest;
+    use axum::http::HeaderMap;
 
     const SECRET: &str = "test-secret";
 
@@ -214,17 +506,14 @@ mod tests {
 
     #[test]
     fn ui_session_cookie_is_extracted_from_cookie_header() {
-        let req = HttpRequest::builder()
-            .header(COOKIE, "other=1; oc_ui_session=abc.def.ghi; more=2")
-            .body(())
-            .unwrap();
-        assert_eq!(ui_session_cookie_value(&req), Some("abc.def.ghi"));
+        let mut headers = HeaderMap::new();
+        headers.insert(COOKIE, "other=1; oc_ui_session=abc.def.ghi; more=2".parse().unwrap());
+        assert_eq!(ui_session_cookie_from_headers(&headers), Some("abc.def.ghi"));
     }
 
     #[test]
     fn missing_cookie_yields_none() {
-        let req = HttpRequest::builder().body(()).unwrap();
-        assert_eq!(ui_session_cookie_value(&req), None);
+        assert_eq!(ui_session_cookie_from_headers(&HeaderMap::new()), None);
     }
 
     #[test]

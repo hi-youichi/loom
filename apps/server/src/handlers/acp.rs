@@ -9,22 +9,31 @@ use std::time::Duration;
 
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    extract::State,
+    extract::{ConnectInfo, Extension, State},
     http::{header::AUTHORIZATION, header::ORIGIN, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
 use futures::{SinkExt, StreamExt};
+use std::net::SocketAddr;
 use tokio::sync::mpsc;
 
 use crate::acp_hub::SessionOwner;
+use crate::auth::{attempt_ui_login, LoginOutcome, ui_password_configured, ui_session_token_valid, AcpAuthVerdict};
 use crate::state::SharedState;
 
 /// Max ACP WS message / frame size.
 const MAX_MESSAGE_BYTES: usize = 1024 * 1024; // 1 MiB
 
+/// JSON-RPC error code for "authentication required" in the `/acp` pre-auth
+/// handshake. Pairs with `data.authRequired` so clients can distinguish a
+/// locked gate from an unreachable server.
+pub const AUTH_REQUIRED_ERROR_CODE: i64 = -32001;
+
 /// Upgrade an HTTP request to an ACP JSON-RPC WebSocket.
 pub async fn connect(
     State(state): State<SharedState>,
+    Extension(verdict): Extension<AcpAuthVerdict>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
@@ -32,10 +41,202 @@ pub async fn connect(
         return StatusCode::FORBIDDEN.into_response();
     }
     let owner = extract_owner(&headers);
-    tracing::info!(principal = %owner.principal, "ACP WS upgrade request");
+    tracing::info!(
+        principal = %owner.principal,
+        authenticated = verdict.0,
+        "ACP WS upgrade request"
+    );
     ws.max_message_size(MAX_MESSAGE_BYTES)
         .max_frame_size(MAX_MESSAGE_BYTES)
-        .on_upgrade(move |socket| handle_socket(state, owner, socket))
+        .on_upgrade(move |socket| {
+            Box::pin(async move {
+                if verdict.0 {
+                    handle_socket(state, owner, socket).await
+                } else {
+                    handle_pre_auth_socket(state, peer.ip().to_string(), socket).await
+                }
+            })
+        })
+}
+
+/// Pre-auth handshake for unauthenticated sockets.
+///
+/// The upgrade itself was allowed (browser WebSocket clients cannot observe
+/// HTTP 401s on upgrades), so the gate lives in the protocol. Sockets loop
+/// here until they present valid credentials:
+///
+/// - `initialize` → structured `-32001 { authRequired: true }` error (keeps
+///   auth-state probes working without leaking protocol details).
+/// - `_loomdesk.dev/auth/status` → gate configuration (password configured,
+///   passkey availability). Read-only, safe pre-auth.
+/// - `_loomdesk.dev/auth/login` → scrypt password verify + per-IP rate
+///   limiting + JWT mint; success hands the socket to [`handle_socket`].
+/// - `_loomdesk.dev/auth/authenticate` → session-token verify (tokens minted
+///   here or Express cookies share one HS256 secret); success likewise
+///   upgrades to [`handle_socket`].
+///
+/// Any other method closes the socket immediately. No ACP hub state is
+/// touched until authentication succeeds.
+async fn handle_pre_auth_socket(state: SharedState, peer_ip: String, mut socket: WebSocket) {
+    loop {
+        let first = tokio::time::timeout(PRE_AUTH_IDLE_TIMEOUT, socket.recv()).await;
+        let text = match first {
+            Ok(Some(Ok(Message::Text(text)))) => text,
+            _ => {
+                let _ = socket.send(Message::Close(None)).await;
+                return;
+            }
+        };
+        match pre_auth_dispatch(&peer_ip, &text).await {
+            PreAuthOutcome::Respond(payload) => {
+                if socket.send(Message::Text(payload)).await.is_err() {
+                    return;
+                }
+            }
+            PreAuthOutcome::RespondAndAuthenticate(payload) => {
+                if socket.send(Message::Text(payload)).await.is_err() {
+                    return;
+                }
+                tracing::info!(peer = %peer_ip, "ACP pre-auth socket authenticated");
+                handle_socket(state, SessionOwner::anonymous(), socket).await;
+                return;
+            }
+            PreAuthOutcome::Close => {
+                let _ = socket.send(Message::Close(None)).await;
+                return;
+            }
+        }
+    }
+}
+
+/// Idle timeout for the pre-auth loop: covers both "connected but sent
+/// nothing" and the single-probe pattern (probe clients close after the
+/// first response anyway).
+const PRE_AUTH_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
+
+#[derive(Debug)]
+enum PreAuthOutcome {
+    Respond(String),
+    RespondAndAuthenticate(String),
+    Close,
+}
+
+async fn pre_auth_dispatch(
+    peer_ip: &str,
+    text: &str,
+) -> PreAuthOutcome {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
+        return PreAuthOutcome::Close;
+    };
+    let id = value.get("id").cloned().unwrap_or(serde_json::Value::Null);
+    let method = value.get("method").and_then(|m| m.as_str()).unwrap_or("");
+    let params = value.get("params").cloned().unwrap_or(serde_json::Value::Null);
+
+    match method {
+        "initialize" => PreAuthOutcome::Respond(auth_error_response(&id)),
+        "_loomdesk.dev/auth/status" => {
+            let password_configured = ui_password_configured();
+            PreAuthOutcome::Respond(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": {
+                        "passwordConfigured": password_configured,
+                        "passkeyEnabled": false,
+                        "hasPasskeys": false,
+                        "passkeyCount": 0,
+                        "rpId": serde_json::Value::Null,
+                    }
+                })
+                .to_string(),
+            )
+        }
+        "_loomdesk.dev/auth/login" => {
+            let password = params.get("password").and_then(|p| p.as_str()).unwrap_or("");
+            let trust_device = params.get("trustDevice").and_then(|t| t.as_bool()).unwrap_or(false);
+            let outcome = tokio::task::spawn_blocking({
+                let password = password.to_string();
+                let peer_ip = peer_ip.to_string();
+                move || attempt_ui_login(&password, trust_device, &peer_ip)
+            })
+            .await
+            .unwrap_or(LoginOutcome {
+                ok: false,
+                session_token: None,
+                expires_at_unix: None,
+                retry_after_secs: None,
+            });
+            if outcome.ok {
+                // Token only — the socket itself stays pre-auth; clients
+                // present the minted token via `authenticate` to upgrade.
+                // (Login sockets are single-request probes that close on
+                // response, so upgrading here would strand them.)
+                PreAuthOutcome::Respond(
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": {
+                            "authenticated": true,
+                            "sessionToken": outcome.session_token,
+                            "expiresAt": outcome.expires_at_unix,
+                        }
+                    })
+                    .to_string(),
+                )
+            } else if let Some(retry_after) = outcome.retry_after_secs {
+                PreAuthOutcome::Respond(
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {
+                            "code": 429,
+                            "message": "Too many login attempts, please try again later",
+                            "data": { "retryAfter": retry_after }
+                        }
+                    })
+                    .to_string(),
+                )
+            } else {
+                PreAuthOutcome::Respond(
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": 401, "message": "Invalid credentials" }
+                    })
+                    .to_string(),
+                )
+            }
+        }
+        "_loomdesk.dev/auth/authenticate" => {
+            let token = params.get("sessionToken").and_then(|t| t.as_str()).unwrap_or("");
+            if !token.is_empty() && ui_session_token_valid(token) {
+                PreAuthOutcome::RespondAndAuthenticate(
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": { "authenticated": true }
+                    })
+                    .to_string(),
+                )
+            } else {
+                PreAuthOutcome::Respond(auth_error_response(&id))
+            }
+        }
+        _ => PreAuthOutcome::Close,
+    }
+}
+
+fn auth_error_response(id: &serde_json::Value) -> String {
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {
+            "code": AUTH_REQUIRED_ERROR_CODE,
+            "message": "authentication required",
+            "data": { "authRequired": true, "realm": "loomdesk-ui" }
+        }
+    })
+    .to_string()
 }
 
 /// Browsers always send Origin on a WebSocket upgrade. Native CLI clients do
@@ -210,6 +411,47 @@ async fn handle_socket(state: SharedState, owner: SessionOwner, socket: WebSocke
 mod tests {
     use super::*;
     use axum::http::HeaderMap;
+
+    #[test]
+    fn auth_error_response_formats_initialize_error_with_echoed_id() {
+        let response = auth_error_response(&serde_json::json!(42));
+        let value: serde_json::Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(value["jsonrpc"], "2.0");
+        assert_eq!(value["id"], 42);
+        assert_eq!(value["error"]["code"], AUTH_REQUIRED_ERROR_CODE);
+        assert_eq!(value["error"]["data"]["authRequired"], true);
+    }
+
+    #[tokio::test]
+    async fn pre_auth_dispatch_routes_methods() {
+        // Non-JSON and unknown methods close the socket.
+        assert!(matches!(
+            pre_auth_dispatch("127.0.0.1", "not json").await,
+            PreAuthOutcome::Close
+        ));
+        assert!(matches!(
+            pre_auth_dispatch(
+                "127.0.0.1",
+                r#"{"jsonrpc":"2.0","id":1,"method":"session/new"}"#
+            )
+            .await,
+            PreAuthOutcome::Close
+        ));
+        // `initialize` answers with the auth-required error.
+        match pre_auth_dispatch(
+            "127.0.0.1",
+            r#"{"jsonrpc":"2.0","id":7,"method":"initialize","params":{}}"#,
+        )
+        .await
+        {
+            PreAuthOutcome::Respond(payload) => {
+                let value: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                assert_eq!(value["id"], 7);
+                assert_eq!(value["error"]["code"], AUTH_REQUIRED_ERROR_CODE);
+            }
+            other => panic!("expected Respond, got {other:?}"),
+        }
+    }
 
     #[test]
     fn origin_and_auth_tests() {

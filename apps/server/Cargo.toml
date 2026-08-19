@@ -38,6 +38,7 @@ futures = { workspace = true }
 serde = { workspace = true }
 serde_json = "1"
 jsonwebtoken = "9.3"
+scrypt = "0.11"
 toml = "0.8"
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
