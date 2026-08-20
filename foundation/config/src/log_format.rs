@@ -117,7 +117,14 @@ struct ThreadIdVisitor {
 impl tracing_core::field::Visit for ThreadIdVisitor {
     fn record_debug(&mut self, field: &tracing_core::Field, value: &dyn std::fmt::Debug) {
         if field.name() == "thread_id" {
-            self.thread_id = Some(format!("{:?}", value));
+            let formatted = format!("{:?}", value);
+            // `thread_id = ?Option<String>` yields `Some("x")`; unwrap so logs show the
+            // raw id. `None` carries no id — leave the visitor untouched so the
+            // formatter falls back to span scope / OS thread id.
+            match formatted.as_str() {
+                "None" => {}
+                _ => self.thread_id = Some(unwrap_option_debug(&formatted)),
+            }
         }
     }
 
@@ -133,6 +140,22 @@ fn extract_thread_id_from_event(event: &tracing_core::Event<'_>) -> Option<Strin
     let mut visitor = ThreadIdVisitor { thread_id: None };
     event.record(&mut visitor);
     visitor.thread_id
+}
+
+/// Unwraps the `Some(...)`/`"..."` Debug wrappers produced by
+/// `thread_id = ?Option<String>` event fields: `Some("x")` -> `x`.
+/// Strings that are not Option-wrapped are returned unchanged.
+fn unwrap_option_debug(formatted: &str) -> String {
+    let inner = formatted
+        .strip_prefix("Some(")
+        .and_then(|rest| rest.strip_suffix(')'))
+        .unwrap_or(formatted)
+        .trim();
+    inner
+        .strip_prefix('"')
+        .and_then(|r| r.strip_suffix('"'))
+        .unwrap_or(inner)
+        .to_string()
 }
 
 impl<S, N> FormatEvent<S, N> for TextWithSpanIds
@@ -475,6 +498,47 @@ mod tests {
             output.contains("thread_id=event-direct"),
             "event thread_id field should win over span field, got: {output}"
         );
+    }
+
+    /// Regression test: `thread_id = ?Option<String>` (Debug format) must surface
+    /// the unwrapped id (`session-...`), not `Some("session-...")`, and a `None`
+    /// value must not hijack the fallback chain.
+    #[test]
+    fn event_option_thread_id_is_unwrapped() {
+        let sink = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let writer = {
+            let sink = Arc::clone(&sink);
+            move || VecWriter(Arc::clone(&sink))
+        };
+
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .event_format(TextWithSpanIds::default())
+                .with_writer(writer)
+                .with_ansi(false),
+        );
+
+        tracing::subscriber::with_default(subscriber, || {
+            let tid: Option<String> = Some("session-opt-789".to_string());
+            tracing::debug!(thread_id = ?tid, "option field");
+            let none_tid: Option<String> = None;
+            tracing::debug!(thread_id = ?none_tid, "none field");
+        });
+
+        let output = String::from_utf8(sink.lock().unwrap().clone()).unwrap();
+        assert!(
+            output.contains("thread_id=session-opt-789"),
+            "Some(..) must be unwrapped, got: {output}"
+        );
+        for line in output.lines() {
+            // Timestamp contains no space, so the segment after the first space
+            // is the thread_id prefix — it must never leak `Some(`.
+            let after_ts = line.split_once(' ').map(|(_, rest)| rest).unwrap_or("");
+            assert!(
+                !after_ts.starts_with("thread_id=Some(") && !after_ts.starts_with("thread_id=None"),
+                "thread_id prefix must not be Option-wrapped, got: {line}"
+            );
+        }
     }
 
     #[test]

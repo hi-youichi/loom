@@ -69,7 +69,12 @@ pub async fn generate_title(
             }
         }
         Err(e) => {
-            warn!("Title generation failed: {e}");
+            warn!(
+                provider = %provider.provider_name(),
+                model = %provider.default_model(),
+                error = %e,
+                "Title generation failed"
+            );
             None
         }
     }

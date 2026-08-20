@@ -27,7 +27,7 @@ module.exports = {
     {
       name: "loom-dev",
       script: LOOM_ROOT + "/target/debug/loom.exe",
-      args: "server --port 3031 --home .loom-home --pid-file .loom-home/loom-server.pid",
+      args: "server --port 3031 --home .loom-home --pid-file .loom-home/loom-server.pid --log-level trace --log-file .loom-home/loom-dev.log",
       cwd: LOOM_ROOT,
       time: true,
       max_restarts: 10,

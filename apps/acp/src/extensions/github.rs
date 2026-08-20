@@ -30,7 +30,25 @@ struct State {
 struct Flow {
     #[allow(dead_code)]
     user_code: String,
+    device_code: String,
+    #[allow(dead_code)]
+    scopes: Vec<String>,
     expires: std::time::Instant,
+}
+
+/// Public OAuth app used by the desktop client; override with
+/// GITHUB_DEVICE_CLIENT_ID when self-hosting a fork.
+fn device_client_id() -> String {
+    std::env::var("GITHUB_DEVICE_CLIENT_ID")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| "Iv1.b507a08c87ecfe98".to_string())
+}
+
+#[allow(dead_code)]
+fn active_token(state: &State) -> Option<String> {
+    let _ = state;
+    std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.trim().is_empty())
 }
 
 impl GithubHandler {
@@ -304,51 +322,163 @@ impl ExtensionHandler for GithubHandler {
                 if scopes.is_empty() {
                     return Err(ExtensionError::invalid_params("scopes must not be empty"));
                 }
-                let code = format!(
-                    "loom-{}",
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_nanos()
-                );
+                let response = self
+                    .client
+                    .post("https://github.com/login/device/code")
+                    .header("Accept", "application/json")
+                    .header("User-Agent", "loom-acp")
+                    .form(&[
+                        ("client_id", device_client_id()),
+                        ("scope", scopes.join(" ")),
+                    ])
+                    .send()
+                    .await
+                    .map_err(|_| Self::internal("device code request failed"))?;
+                let body: Value = response
+                    .json()
+                    .await
+                    .map_err(|_| Self::internal("invalid device code response"))?;
+                let device_code = body
+                    .get("device_code")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| Self::internal("device_code missing from response"))?
+                    .to_string();
+                let user_code = body
+                    .get("user_code")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                let verification_uri = body
+                    .get("verification_uri")
+                    .and_then(Value::as_str)
+                    .unwrap_or("https://github.com/login/device")
+                    .to_string();
+                let expires_in = body
+                    .get("expires_in")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(900);
+                let interval = body.get("interval").and_then(Value::as_u64).unwrap_or(5);
+                let code = format!("loom-{}", uuid::Uuid::new_v4());
                 self.state.write().await.flows.insert(
                     code.clone(),
                     Flow {
-                        user_code: "ABCD-1234".into(),
-                        expires: std::time::Instant::now() + std::time::Duration::from_secs(900),
+                        user_code: user_code.clone(),
+                        device_code,
+                        scopes,
+                        expires: std::time::Instant::now()
+                            + std::time::Duration::from_secs(expires_in),
                     },
                 );
-                Ok(
-                    json!({"deviceCode": code, "userCode": "ABCD-1234", "verificationUri": "https://github.com/login/device", "verificationUriComplete": "https://github.com/login/device?user_code=ABCD-1234", "expiresIn": 900, "interval": 5}),
-                )
+                Ok(json!({
+                    "deviceCode": code,
+                    "userCode": user_code,
+                    "verificationUri": verification_uri,
+                    "verificationUriComplete": format!("{verification_uri}?user_code={user_code}"),
+                    "expiresIn": expires_in,
+                    "interval": interval,
+                }))
             }
             "auth_complete" => {
                 let code = Self::text(&map, "deviceCode")?;
-                let mut state = self.state.write().await;
-                let flow = state
-                    .flows
-                    .get(&code)
-                    .ok_or_else(|| ExtensionError::invalid_params("invalid deviceCode"))?;
-                if flow.expires <= std::time::Instant::now() {
-                    return Ok(
-                        json!({"status":"expired","account":null,"error":"device flow expired"}),
-                    );
+                let (device_code, expires) = {
+                    let state = self.state.read().await;
+                    let flow = state
+                        .flows
+                        .get(&code)
+                        .ok_or_else(|| ExtensionError::invalid_params("invalid deviceCode"))?;
+                    (flow.device_code.clone(), flow.expires)
+                };
+                if expires <= std::time::Instant::now() {
+                    return Ok(json!({
+                        "status": "expired",
+                        "account": Value::Null,
+                        "error": "device flow expired",
+                    }));
                 }
-                let token = std::env::var("GITHUB_TOKEN")
-                    .map_err(|_| ExtensionError::invalid_params("authorization is pending"))?;
-                state.active = Some(
-                    token
-                        .chars()
-                        .rev()
-                        .take(4)
-                        .collect::<String>()
-                        .chars()
-                        .rev()
-                        .collect(),
-                );
-                drop(state);
-                self.notify(true, self.state.read().await.active.clone());
-                Ok(json!({"status":"complete","account":null,"error":null}))
+                let response = self
+                    .client
+                    .post("https://github.com/login/oauth/access_token")
+                    .header("Accept", "application/json")
+                    .header("User-Agent", "loom-acp")
+                    .form(&[
+                        ("client_id", device_client_id()),
+                        ("device_code", device_code),
+                        (
+                            "grant_type",
+                            "urn:ietf:params:oauth:grant-type:device_code".to_string(),
+                        ),
+                    ])
+                    .send()
+                    .await
+                    .map_err(|_| Self::internal("token request failed"))?;
+                let body: Value = response
+                    .json()
+                    .await
+                    .map_err(|_| Self::internal("invalid token response"))?;
+                let error = body.get("error").and_then(Value::as_str);
+                match error {
+                    Some("authorization_pending") => Ok(json!({
+                        "status": "pending",
+                        "account": Value::Null,
+                        "error": null,
+                    })),
+                    Some("slow_down") => Ok(json!({
+                        "status": "pending",
+                        "account": Value::Null,
+                        "error": "slow_down",
+                    })),
+                    Some(other) => Ok(json!({
+                        "status": "error",
+                        "account": Value::Null,
+                        "error": other,
+                    })),
+                    None => {
+                        let access_token = body
+                            .get("access_token")
+                            .and_then(Value::as_str)
+                            .ok_or_else(|| Self::internal("access_token missing"))?
+                            .to_string();
+                        let user_resp = self
+                            .client
+                            .get("https://api.github.com/user")
+                            .bearer_auth(&access_token)
+                            .header("User-Agent", "loom-acp")
+                            .header("Accept", "application/vnd.github+json")
+                            .send()
+                            .await;
+                        let user = match user_resp {
+                            Ok(r) => r.json::<Value>().await.ok(),
+                            Err(_) => None,
+                        };
+                        let account = user
+                            .as_ref()
+                            .map(|u| {
+                                json!({
+                                    "id": u.get("id"),
+                                    "login": u.get("login"),
+                                    "avatarUrl": u.get("avatar_url"),
+                                })
+                            })
+                            .unwrap_or(Value::Null);
+                        let login = user
+                            .as_ref()
+                            .and_then(|u| u.get("login"))
+                            .and_then(Value::as_str)
+                            .unwrap_or("github")
+                            .to_string();
+                        // loom picks the token up from the environment on the
+                        // next start; surface it so the host can persist it.
+                        self.state.write().await.active = Some(login.clone());
+                        self.state.write().await.flows.remove(&code);
+                        self.notify(true, Some(login.clone()));
+                        Ok(json!({
+                            "status": "complete",
+                            "account": account,
+                            "error": null,
+                            "accessToken": access_token,
+                        }))
+                    }
+                }
             }
             "auth_disconnect" => {
                 let mut state = self.state.write().await;

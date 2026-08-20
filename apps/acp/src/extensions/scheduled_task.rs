@@ -83,6 +83,9 @@ pub enum TaskChangeType {
     Completed,
     Failed,
     Cancelled,
+    Created,
+    Updated,
+    Deleted,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -91,7 +94,8 @@ pub struct TaskChangedNotification {
     #[serde(rename = "runId", skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
     pub change: TaskChangeType,
-    pub status: TaskRunStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<TaskRunStatus>,
 }
 
 fn store_path(ctx: &ExtensionContext) -> PathBuf {
@@ -238,7 +242,17 @@ fn build_notification(
         id: task_id.to_string(),
         run_id: run_id.map(|s| s.to_string()),
         change,
-        status,
+        status: Some(status),
+    };
+    serde_json::to_value(&notif).unwrap_or(Value::Null)
+}
+
+fn build_crud_notification(task_id: &str, change: TaskChangeType) -> Value {
+    let notif = TaskChangedNotification {
+        id: task_id.to_string(),
+        run_id: None,
+        change,
+        status: None,
     };
     serde_json::to_value(&notif).unwrap_or(Value::Null)
 }
@@ -255,6 +269,9 @@ impl ExtensionHandler for ScheduledTaskHandler {
             "list" => handle_list(params, ctx).await,
             "run" => handle_run(params, ctx).await,
             "cancel" => handle_cancel(params, ctx).await,
+            "create" => handle_create(params, ctx).await,
+            "update" => handle_update(params, ctx).await,
+            "delete" => handle_delete(params, ctx).await,
             _ => Err(ExtensionError::method_not_found()),
         }
     }
@@ -262,9 +279,133 @@ impl ExtensionHandler for ScheduledTaskHandler {
     fn capabilities(&self) -> Value {
         serde_json::json!({
             "list": true,
-            "run": true
+            "run": true,
+            "cancel": true,
+            "create": true,
+            "update": true,
+            "delete": true
         })
     }
+}
+
+fn parse_task_input(params: &Value) -> Result<(String, String, bool, String), ExtensionError> {
+    let name = require_param_str(params, "name")?;
+    let schedule = require_param_str(params, "schedule")?;
+    if schedule.trim().is_empty() {
+        return Err(ExtensionError::invalid_params("schedule must not be empty"));
+    }
+    let description = optional_param_str(params, "description").unwrap_or_default();
+    let enabled = params
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    Ok((name, description, enabled, schedule))
+}
+
+async fn handle_create(params: Value, ctx: &ExtensionContext) -> Result<Value, ExtensionError> {
+    auth::check_server_policy(ctx, "scheduled-task", "create")?;
+
+    let (name, description, enabled, schedule) = parse_task_input(&params)?;
+
+    let mut store = load_store(ctx)?;
+
+    if store.tasks.iter().any(|t| t.name == name) {
+        return Err(ExtensionError::conflict(format!(
+            "name_conflict: a task named '{name}' already exists"
+        )));
+    }
+
+    let task = ScheduledTask {
+        id: format!("task-{}", uuid::Uuid::new_v4()),
+        name,
+        description,
+        enabled,
+        schedule,
+        last_run: None,
+        last_run_status: None,
+        next_run: None,
+    };
+    let value = serde_json::to_value(&task).map_err(|e| ExtensionError {
+        code: -32603,
+        message: "internal_error".into(),
+        data: Some(Value::String(format!("failed to serialize task: {e}"))),
+    })?;
+    let id = task.id.clone();
+    store.tasks.push(task);
+    save_store(ctx, &mut store)?;
+
+    Ok(serde_json::json!({
+        "task": value,
+        "notification": build_crud_notification(&id, TaskChangeType::Created),
+    }))
+}
+
+async fn handle_update(params: Value, ctx: &ExtensionContext) -> Result<Value, ExtensionError> {
+    auth::check_server_policy(ctx, "scheduled-task", "update")?;
+
+    let id = require_param_str(&params, "id")?;
+    let mut store = load_store(ctx)?;
+
+    let new_name = optional_param_str(&params, "name");
+    if let Some(ref name) = new_name {
+        if store.tasks.iter().any(|t| t.name == *name && t.id != id) {
+            return Err(ExtensionError::conflict(format!(
+                "name_conflict: a task named '{name}' already exists"
+            )));
+        }
+    }
+
+    let task = store
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == id)
+        .ok_or_else(|| ExtensionError::not_found(format!("task '{id}' not found")))?;
+
+    if let Some(name) = new_name {
+        task.name = name;
+    }
+    if params.get("description").map(|v| v.is_string()).unwrap_or(false) {
+        task.description = optional_param_str(&params, "description").unwrap_or_default();
+    }
+    if let Some(enabled) = params.get("enabled").and_then(|v| v.as_bool()) {
+        task.enabled = enabled;
+    }
+    if let Some(schedule) = optional_param_str(&params, "schedule") {
+        task.schedule = schedule;
+    }
+
+    let value = serde_json::to_value(&*task).map_err(|e| ExtensionError {
+        code: -32603,
+        message: "internal_error".into(),
+        data: Some(Value::String(format!("failed to serialize task: {e}"))),
+    })?;
+    save_store(ctx, &mut store)?;
+
+    Ok(serde_json::json!({
+        "task": value,
+        "notification": build_crud_notification(&id, TaskChangeType::Updated),
+    }))
+}
+
+async fn handle_delete(params: Value, ctx: &ExtensionContext) -> Result<Value, ExtensionError> {
+    auth::check_server_policy(ctx, "scheduled-task", "delete")?;
+
+    let id = require_param_str(&params, "id")?;
+    let mut store = load_store(ctx)?;
+
+    let existed = store
+        .tasks
+        .iter()
+        .position(|t| t.id == id)
+        .ok_or_else(|| ExtensionError::not_found(format!("task '{id}' not found")))?;
+    store.tasks.remove(existed);
+    store.runs.retain(|r| r.task_id != id);
+    save_store(ctx, &mut store)?;
+
+    Ok(serde_json::json!({
+        "deleted": true,
+        "notification": build_crud_notification(&id, TaskChangeType::Deleted),
+    }))
 }
 
 async fn handle_list(params: Value, ctx: &ExtensionContext) -> Result<Value, ExtensionError> {

@@ -50,6 +50,20 @@ pub fn build_router_with_static(state: SharedState, static_dir: Option<PathBuf>)
         .route("/api/health", get(handlers::health::get_api_health))
         .route("/global/health", get(handlers::health::get_global_health))
         .route("/metrics", get(handlers::health::get_acp_metrics))
+        // ─── System (migrated from Express) ────────────────────
+        .route("/api/system/info", get(handlers::system::get_system_info))
+        .route(
+            "/api/system/free-port",
+            get(handlers::system::get_free_port),
+        )
+        .route(
+            "/api/system/probe-url",
+            get(handlers::system::get_probe_url),
+        )
+        .route(
+            "/api/system/shutdown",
+            axum::routing::post(handlers::system::post_shutdown),
+        )
         // ─── Auth middleware ─────────────────────────────────────
         .layer(middleware::from_fn(require_valid_token))
         .layer(middleware::from_fn(log_authorization_header))

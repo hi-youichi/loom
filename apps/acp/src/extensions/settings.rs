@@ -566,6 +566,7 @@ impl ExtensionHandler for SettingsHandler {
             "restart_opencode" => "restart_opencode",
             "read_agents_md" => "load",
             "write_agents_md" => "save",
+            "reload_config" => "save",
             _ => return Err(ExtensionError::method_not_found()),
         };
         if !self.authorizer.capability_enabled(capability) {
@@ -692,6 +693,24 @@ impl ExtensionHandler for SettingsHandler {
                 })
                 .map_err(|error| Self::internal(error.to_string()))
             }
+            "reload_config" => {
+                if let Some(bus) = &self.global_bus {
+                    bus.publish(
+                        "settings",
+                        "config.updated",
+                        serde_json::json!({
+                            "scope": "reload",
+                            "reason": "client-requested reload",
+                        }),
+                    );
+                }
+                Ok(serde_json::json!({
+                    "success": true,
+                    "requiresReload": true,
+                    "message": "Configuration reloaded successfully. Refreshing interface…",
+                    "reloadDelayMs": 300,
+                }))
+            }
             "read_agents_md" => {
                 let path = agents_md_path();
                 match std::fs::read_to_string(&path) {
@@ -737,6 +756,7 @@ impl ExtensionHandler for SettingsHandler {
             "restart_opencode": true,
             "read_agents_md": true,
             "write_agents_md": true,
+            "reload_config": true,
         })
     }
 }

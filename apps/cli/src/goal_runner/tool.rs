@@ -277,6 +277,7 @@ impl CodingTool for LoomTool {
             cancellation: opts.cancellation.clone(),
             any_stream_event_sender: opts.any_stream_event_sender.clone(),
             llm_override: None,
+            thread_id: opts.thread_id.clone(),
         };
         let result = run_agent_from_config(&config, &RunCmd::React, params, on_event)
             .await

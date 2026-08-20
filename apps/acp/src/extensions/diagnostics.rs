@@ -390,10 +390,24 @@ impl DiagnosticsHandler {
     }
     fn capability(&self, method: &str, ctx: &ExtensionContext) -> Result<(), ExtensionError> {
         let _ = ctx;
-        if method != "logs" && method != "export" {
+        if method != "logs" && method != "export" && method != "info" {
             return Err(ExtensionError::method_not_found());
         }
         Ok(())
+    }
+    fn info(&self) -> Result<Value, ExtensionError> {
+        static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let start = START.get_or_init(std::time::Instant::now);
+        Ok(serde_json::json!({
+            "loomdeskVersion": env!("CARGO_PKG_VERSION"),
+            "runtime": "loom",
+            "pid": std::process::id(),
+            "startedAt": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0)
+                .saturating_sub(start.elapsed().as_millis() as u64),
+        }))
     }
     fn logs(&self, raw: Value) -> Result<Value, ExtensionError> {
         Self::check_limit(&raw)?;
@@ -624,11 +638,12 @@ impl ExtensionHandler for DiagnosticsHandler {
         match method {
             "logs" => self.logs(params),
             "export" => self.export(params, ctx),
+            "info" => self.info(),
             _ => Err(ExtensionError::method_not_found()),
         }
     }
     fn capabilities(&self) -> Value {
-        serde_json::json!({ "logs": true, "export": true })
+        serde_json::json!({ "logs": true, "export": true, "info": true })
     }
 }
 

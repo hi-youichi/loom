@@ -259,12 +259,10 @@ where
                 let connection = conn_for_prompt.clone();
                 let _ = conn.clone().spawn(async move {
                     let session_id = LoomSessionId::new(req.session_id.to_string());
-                    let result = if runtime.bindings.connection_for(&session_id).as_deref()
-                        != Some(connection.id.as_str())
-                    {
+                    let result = if !runtime.bindings.is_connection_bound_to_session(&session_id, &connection.id) {
                         Err(agent_client_protocol::Error::new(
                             -32011,
-                            "session is attached to another connection",
+                            "session is not bound to this connection",
                         ))
                     } else {
                         match connection.require_capabilities().await {
@@ -312,12 +310,10 @@ where
                 let connection = conn_for_fork.clone();
                 async move {
                     let source_id = LoomSessionId::new(req.session_id.to_string());
-                    let result = if runtime.bindings.connection_for(&source_id).as_deref()
-                        != Some(connection.id.as_str())
-                    {
+                    let result = if !runtime.bindings.is_connection_bound_to_session(&source_id, &connection.id) {
                         Err(agent_client_protocol::Error::new(
                             -32011,
-                            "session is attached to another connection",
+                            "session is not bound to this connection",
                         ))
                     } else {
                         runtime.agent.fork_session(req).await
@@ -375,9 +371,7 @@ where
                                     return Ok(());
                                 }
                             };
-                        let previous = runtime
-                            .bindings
-                            .rebind_session(&session_id, connection.id.clone());
+                        runtime.bindings.add_connection_to_session(&session_id, connection.id.clone());
                         connection.note_session(session_id.as_str()).await;
                         let result = runtime
                             .agent
@@ -407,12 +401,7 @@ where
                                 previous_lifecycle
                                     .unwrap_or(SessionLifecycle::Idle),
                             );
-                            runtime.bindings.unbind_session(&session_id);
-                            if let Some(previous) = previous {
-                                runtime
-                                    .bindings
-                                    .rebind_session(&session_id, previous.clone());
-                            }
+                            runtime.bindings.remove_connection_from_session(&session_id, &connection.id);
                         }
                         let _ = responder.respond_with_result(result);
                         Ok(())
@@ -453,9 +442,7 @@ where
                                 return Ok(());
                             }
                         };
-                    let previous = runtime
-                        .bindings
-                        .rebind_session(&session_id, connection.id.clone());
+                    runtime.bindings.add_connection_to_session(&session_id, connection.id.clone());
                     let result = runtime
                         .agent
                         .resume_session_for_owner(req, &connection.principal)
@@ -468,12 +455,7 @@ where
                             .agent
                             .sessions()
                             .restore_lifecycle(&session_id, previous_lifecycle);
-                        runtime.bindings.unbind_session(&session_id);
-                        if let Some(previous) = previous {
-                            runtime
-                                .bindings
-                                .rebind_session(&session_id, previous.clone());
-                        }
+                        runtime.bindings.remove_connection_from_session(&session_id, &connection.id);
                     }
                     let _ = responder.respond_with_result(result);
                     Ok(())
@@ -489,17 +471,13 @@ where
                 let connection = conn_for_close.clone();
                 async move {
                     let session_id = LoomSessionId::new(req.session_id.to_string());
-                    let result = match runtime.bindings.connection_for(&session_id) {
-                        Some(bound) if bound != connection.id => Err(
-                            agent_client_protocol::Error::new(
-                                -32011,
-                                "session is attached to another connection",
-                            ),
-                        ),
-                        _ => runtime
-                            .agent
-                            .close_session_for_owner(req, &connection.principal)
-                            .await,
+                    let result = if !runtime.bindings.is_connection_bound_to_session(&session_id, &connection.id) {
+                        Err(agent_client_protocol::Error::new(
+                            -32011,
+                            "session is not bound to this connection",
+                        ))
+                    } else {
+                        runtime.agent.close_session_for_owner(req, &connection.principal).await
                     };
                     if result.is_ok() {
                         runtime.bindings.unbind_session(&session_id);
@@ -519,17 +497,13 @@ where
                 let connection = conn_for_delete.clone();
                 async move {
                     let session_id = LoomSessionId::new(req.session_id.to_string());
-                    let result = match runtime.bindings.connection_for(&session_id) {
-                        Some(bound) if bound != connection.id => Err(
-                            agent_client_protocol::Error::new(
-                                -32011,
-                                "session is attached to another connection",
-                            ),
-                        ),
-                        _ => runtime
-                            .agent
-                            .delete_session_for_owner(req, &connection.principal)
-                            .await,
+                    let result = if !runtime.bindings.is_connection_bound_to_session(&session_id, &connection.id) {
+                        Err(agent_client_protocol::Error::new(
+                            -32011,
+                            "session is not bound to this connection",
+                        ))
+                    } else {
+                        runtime.agent.delete_session_for_owner(req, &connection.principal).await
                     };
                     if result.is_ok() {
                         runtime.bindings.unbind_session(&session_id);
@@ -565,10 +539,8 @@ where
                 let connection = conn_for_config.clone();
                 async move {
                     let session_id = LoomSessionId::new(req.session_id.to_string());
-                    let result = if runtime.bindings.connection_for(&session_id).as_deref()
-                        != Some(connection.id.as_str())
-                    {
-                        Err(agent_client_protocol::Error::new(-32011, "session is attached to another connection"))
+                    let result = if !runtime.bindings.is_connection_bound_to_session(&session_id, &connection.id) {
+                        Err(agent_client_protocol::Error::new(-32011, "session is not bound to this connection"))
                     } else {
                         runtime.agent.set_session_config_option(req).await
                     };
@@ -586,10 +558,8 @@ where
                 let connection = conn_for_mode.clone();
                 async move {
                     let session_id = LoomSessionId::new(req.session_id.to_string());
-                    let result = if runtime.bindings.connection_for(&session_id).as_deref()
-                        != Some(connection.id.as_str())
-                    {
-                        Err(agent_client_protocol::Error::new(-32011, "session is attached to another connection"))
+                    let result = if !runtime.bindings.is_connection_bound_to_session(&session_id, &connection.id) {
+                        Err(agent_client_protocol::Error::new(-32011, "session is not bound to this connection"))
                     } else {
                         runtime.agent.set_session_mode(req).await
                     };
@@ -605,9 +575,7 @@ where
                 let connection = conn_for_cancel.clone();
                 async move {
                     let session_id = LoomSessionId::new(notif.session_id.to_string());
-                    if runtime.bindings.connection_for(&session_id).as_deref()
-                        == Some(connection.id.as_str())
-                    {
+                    if runtime.bindings.is_connection_bound_to_session(&session_id, &connection.id) {
                         if let Err(e) = runtime.agent.cancel(notif).await {
                             tracing::error!(error = ?e, "cancel notification handler failed");
                         }

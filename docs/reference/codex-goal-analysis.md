@@ -1,672 +1,501 @@
-# Codex Goal 系统分析
+# Codex Goal 功能源码导读
 
-> 基于 OpenAI Codex CLI 源代码（`codex-rs`）的完整分析，涵盖 `/goal` 斜杠命令的架构、数据流、状态机、记账系统和交互设计。
+> **状态**：源码分析完成（基于 OpenAI Codex `main` 快照）
 >
-> 用于指导 Loom 的 `/goal` 斜杠命令实现。
-
-**创建时间**：2025-08-25｜**最后更新**：2025-08-25
-
----
-
-## 目录
-
-1. [架构总览](#1-架构总览)
-2. [数据模型](#2-数据模型)
-3. [状态机](#3-状态机)
-4. [核心流程](#4-核心流程)
-5. [Model 工具](#5-model-工具)
-6. [外部 API](#6-外部-api)
-7. [记账系统](#7-记账系统)
-8. [Prompt 系统](#8-prompt-系统)
-9. [TUI 交互](#9-tui-交互)
-10. [关键设计原则](#10-关键设计原则)
-11. [文件清单](#11-文件清单)
+> **源码快照**：`e3e5ad28470f6a225301518c30a66e749a880164`（2026-08-20 本地读取）
+>
+> **上游仓库**：[openai/codex](https://github.com/openai/codex)
+>
+> **用途**：解释 Codex 的持久化 goal、自动 continuation、token/time 记账、模型工具和 app-server API；本文是源码事实记录，不等同于 Loom 的实现说明。
+>
+> **相关 Loom 文档**：[Goal 系统工作流](../design/goal-system-workflow.md)、[Session Goal 集成](../design/session-goal-integration.md)、[Goal 用户指南](../user-guide/09-goal-task-experimental.md)
 
 ---
 
-## 1. 架构总览
+## 1. 一句话结论
 
-Codex Goal 系统分 6 层，自底向上：
+Codex Goal 不是一个更长的 prompt，而是一个跨 turn 持久化的运行时扩展：用户或模型创建一个 thread goal 后，Codex 将其写入独立 SQLite 数据库；每次 turn、tool、token usage 和 idle 生命周期事件都会经过 goal extension；当线程空闲且 goal 仍为 `active` 时，extension 自动启动一个新的 continuation turn，直到模型明确完成、经过系统/用量限制，或被用户暂停/清除。
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│  TUI 层 (tui/)                                              │
-│  /goal 斜杠命令解析、状态栏显示、摘要面板、编辑对话框       │
-│  slash_command.rs / goal_menu.rs / goal_status.rs           │
-│  goal_display.rs / goal_files.rs                            │
-├──────────────────────────────────────────────────────────────┤
-│  扩展层 (ext/goal/)                                         │
-│  生命周期钩子、运行时、Model 工具、记账、提示注入、事件     │
-│  extension.rs / runtime.rs / api.rs / tool.rs               │
-│  accounting.rs / steering.rs / events.rs                    │
-│  analytics.rs / metrics.rs / spec.rs                        │
-├──────────────────────────────────────────────────────────────┤
-│  Prompt 层 (prompts/)                                       │
-│  continuation / budget_limit / objective_updated 三个模板   │
-│  goals.rs + templates/goals/continuation.md                 │
-│  templates/goals/budget_limit.md + objective_updated.md     │
-├──────────────────────────────────────────────────────────────┤
-│  State 层 (state/)                                          │
-│  GoalStore — 1728 行，CRUD + accounting 原子操作            │
-│  runtime/goals.rs                                           │
-├──────────────────────────────────────────────────────────────┤
-│  SQLite 层                                                  │
-│  thread_goals 表 + thread_goal_continuation_deferrals 表   │
-│  state/goals_migrations/*.sql                               │
-├──────────────────────────────────────────────────────────────┤
-│  协议层 (protocol/)                                         │
-│  ThreadGoal / ThreadGoalStatus / ThreadGoalUpdatedEvent     │
-└──────────────────────────────────────────────────────────────┘
+实现可以抽象为三条闭环：
+
+```text
+持久化闭环：app-server/TUI → GoalService → GoalStore → goals_1.sqlite
+运行时闭环：thread/turn/tool hooks → GoalAccountingState → GoalStore.account_thread_goal_usage
+续跑闭环：thread idle → GoalRuntimeHandle.continue_if_idle → start_turn_if_idle → continuation prompt
 ```
 
-### 1.1 模块职责
+最重要的边界是：
 
-| 模块 | 路径 | 行数 | 职责 |
-|---|---|---|---|
-| **GoalStore** | `state/src/runtime/goals.rs` | 1728 | SQLite 数据访问（CRUD + accounting） |
-| **GoalExtension** | `ext/goal/src/extension.rs` | ~300 | 6 个生命周期钩子 + 3 个 Model 工具注册 |
-| **GoalRuntimeHandle** | `ext/goal/src/runtime.rs` | ~400 | 运行时核心：记账、continuation、steering |
-| **GoalAccountingState** | `ext/goal/src/accounting.rs` | ~350 | 内存记账：token + 墙钟时间 |
-| **GoalToolExecutor** | `ext/goal/src/tool.rs` | ~350 | 3 个 Model 工具的实现 |
-| **GoalService** | `ext/goal/src/api.rs` | ~300 | 外部 API（TUI/IDE 调用） |
-| **GoalEventEmitter** | `ext/goal/src/events.rs` | ~50 | 事件发射 |
-| **GoalSteering** | `ext/goal/src/steering.rs` | ~100 | 提示注入 |
-| **GoalAnalytics** | `ext/goal/src/analytics.rs` | ~100 | 分析事件追踪 |
-| **GoalMetrics** | `ext/goal/src/metrics.rs` | ~100 | OTel 指标 |
-| **GoalSpec** | `ext/goal/src/spec.rs` | ~120 | 工具 JSON Schema 定义 |
-| **GoalPrompts** | `prompts/src/goals.rs` | ~100 | Prompt 模板渲染 |
-| **GoalPromptsTemplates** | `prompts/templates/goals/*.md` | 3 个 | Prompt 模板文件 |
-| **SlashCommand** | `tui/src/slash_command.rs` | ~15 | /goal 命令注册 |
-| **GoalMenu** | `tui/src/chatwidget/goal_menu.rs` | ~150 | 交互：摘要/编辑/pause/resume |
-| **GoalStatus** | `tui/src/chatwidget/goal_status.rs` | ~150 | 状态栏指示器 |
-| **GoalDisplay** | `tui/src/goal_display.rs` | ~100 | 格式化显示 |
-| **GoalFiles** | `tui/src/goal_files.rs` | ~200 | 大目标文件化 |
+| 问题 | Codex 的答案 |
+|---|---|
+| 谁定义目标 | 用户或明确要求下的模型；模型不能从普通任务自行推断要创建 goal |
+| 谁能改变状态 | 模型工具只能标记 `complete`/`blocked`；用户 API 可设置 objective、pause/resume 等状态；系统可设置 `budget_limited`/`usage_limited` |
+| 谁决定自动续跑 | `GoalRuntimeHandle::continue_if_idle`，且只续跑 `active` goal |
+| 如何避免重复收费 | 每个 thread 一个 accounting semaphore；快照写入成功后才推进内存基线 |
+| 如何避免旧写覆盖新 goal | SQL 更新带 `expected_goal_id` 条件 |
+| goal 是否属于 prompt 历史 | 是。设置 goal 会写入 rollout；continuation 以 steering `ResponseItem` 启动新的 turn |
 
----
+## 2. 源码目录与职责
 
-## 2. 数据模型
+以下路径均相对于上游仓库的 `codex-rs/`。
 
-### 2.1 SQLite 表结构
+| 层 | 源文件 | 主要职责 |
+|---|---|---|
+| Extension 装配 | `ext/goal/src/extension.rs` | 注册 thread、turn、token、tool 生命周期 hooks，并暴露三个模型工具 |
+| Runtime 编排 | `ext/goal/src/runtime.rs` | 串行化 goal state、外部修改、错误停止、idle continuation、steering |
+| 内存记账 | `ext/goal/src/accounting.rs` | 保存当前 turn token 快照、上次记账基线、active goal 和墙钟时间 |
+| 外部服务 | `ext/goal/src/api.rs` | 给 TUI/app-server 使用的 get/set/clear API；把持久化变化应用到 runtime |
+| 模型工具 | `ext/goal/src/tool.rs` | `get_goal`、`create_goal`、`update_goal` 的参数校验与执行 |
+| 工具 schema | `ext/goal/src/spec.rs` | Responses API tool schema 与模型可见的行为约束 |
+| Prompt/steering | `ext/goal/templates/goals/*.md`、`ext/goal/src/steering.rs` | continuation、预算到达、objective 修改时的提示 |
+| 状态模型 | `state/src/model/thread_goal.rs` | 状态枚举、`ThreadGoal` 领域模型、SQLite row 转换 |
+| 状态存储 | `state/src/runtime/goals.rs` | CRUD、CAS 更新、原子 usage accounting、deferral |
+| 数据库 | `state/goals_migrations/*.sql`、`state/src/sqlite.rs` | 独立 goals DB 和表结构 |
+| app-server | `app-server/src/request_processors/thread_goal_processor.rs` | JSON-RPC set/get/clear、持久化 rollout、通知顺序 |
+| TUI | `tui/src/chatwidget/goal_menu.rs`、`goal_status.rs`、`goal_display.rs`、`goal_files.rs` | `/goal` 菜单、状态栏、编辑/暂停/恢复和大 objective 文件 |
+| 测试 | `ext/goal/tests/*`、`state/src/runtime/goals.rs` 内测试 | accounting、后端生命周期、并发/CAS/预算边界 |
 
-```sql
--- 主表
-CREATE TABLE thread_goals (
-    thread_id TEXT PRIMARY KEY NOT NULL,       -- 线程 ID
-    goal_id TEXT NOT NULL,                     -- UUID，每次替换生成新 ID
-    objective TEXT NOT NULL,                   -- 目标描述
-    status TEXT NOT NULL CHECK(status IN (
-        'active', 'paused', 'blocked',
-        'usage_limited', 'budget_limited', 'complete'
-    )),
-    token_budget INTEGER,                      -- 可选的 token 预算
-    tokens_used INTEGER NOT NULL DEFAULT 0,    -- 已用 token
-    time_used_seconds INTEGER NOT NULL DEFAULT 0, -- 已用时间（秒）
-    created_at_ms INTEGER NOT NULL,            -- 创建时间戳
-    updated_at_ms INTEGER NOT NULL             -- 更新时间戳
-);
+Extension 的安装入口在 `app-server/src/extensions.rs`。配置通过 `GoalExtensionConfig { enabled, max_goal_token_budget }` 传入；feature flag 在 `features/src/lib.rs` 中定义为 `goals`。
 
--- 延迟 continuation 表（防止自动续跑）
-CREATE TABLE thread_goal_continuation_deferrals (
-    thread_id TEXT PRIMARY KEY NOT NULL
-    REFERENCES thread_goals(thread_id) ON DELETE CASCADE
-);
-```
+## 3. 数据模型与存储
 
-### 2.2 协议层结构
+### 3.1 `ThreadGoal`
+
+`state/src/model/thread_goal.rs` 定义的核心模型如下：
 
 ```rust
 pub struct ThreadGoal {
-    pub thread_id: String,
+    pub thread_id: ThreadId,
+    pub goal_id: String,
     pub objective: String,
     pub status: ThreadGoalStatus,
     pub token_budget: Option<i64>,
     pub tokens_used: i64,
     pub time_used_seconds: i64,
-    pub created_at: i64,
-    pub updated_at: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 ```
 
-### 2.3 状态枚举
+`goal_id` 是每次新建/替换时生成的 UUID。它不是 thread id：同一个 thread 的新一代 goal 会有新的 `goal_id`，这正是 stale-write protection 的版本标识。
+
+### 3.2 状态枚举
 
 ```rust
-pub enum ThreadGoalStatus {
-    Active,        // 活跃（正在运行）
-    Paused,        // 暂停（用户控制）
-    Blocked,       // 卡住（model 标记，需 3 轮重复阻塞）
-    UsageLimited,  // 用量超限（系统自动）
-    BudgetLimited, // 预算用尽（系统自动）
-    Complete,      // 完成（model 标记）
+Active,
+Paused,
+Blocked,
+UsageLimited,
+BudgetLimited,
+Complete,
+```
+
+状态属性来自 `ThreadGoalStatus`：
+
+| 状态 | 含义 | 自动 continuation | 典型控制者 |
+|---|---|---:|---|
+| `active` | 目标正在追踪，允许 turn 结束后续跑 | 是 | 用户、模型创建、resume |
+| `paused` | 用户暂时停止 | 否 | 用户 |
+| `blocked` | 当前 turn 错误或模型在严格规则下确认无法继续 | 否 | 系统或模型 |
+| `usage_limited` | provider/账户用量限制阻止继续 | 否 | 系统 |
+| `budget_limited` | goal 的 token budget 已达到 | 否 | 系统；模型也不能直接设置 |
+| `complete` | 模型确认 objective 已完成 | 否 | 模型或用户/API |
+
+代码中的 `is_terminal()` 只把 `budget_limited` 和 `complete` 视为 terminal；`blocked`、`usage_limited` 仍保留为可由用户恢复/处理的停止原因。
+
+### 3.3 SQLite 表
+
+goal 使用独立数据库文件 `goals_1.sqlite`，而非普通 thread state 表。runtime 在 `state/src/runtime.rs` 中打开该数据库，并把 `GoalStore` 作为 `StateRuntime::thread_goals()` 暴露。
+
+```sql
+CREATE TABLE thread_goals (
+    thread_id TEXT PRIMARY KEY NOT NULL,
+    goal_id TEXT NOT NULL,
+    objective TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN (
+        'active', 'paused', 'blocked',
+        'usage_limited', 'budget_limited', 'complete'
+    )),
+    token_budget INTEGER,
+    tokens_used INTEGER NOT NULL DEFAULT 0,
+    time_used_seconds INTEGER NOT NULL DEFAULT 0,
+    created_at_ms INTEGER NOT NULL,
+    updated_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE thread_goal_continuation_deferrals (
+    thread_id TEXT PRIMARY KEY NOT NULL
+        REFERENCES thread_goals(thread_id) ON DELETE CASCADE
+);
+```
+
+每个 thread 同时只有一个 goal。`insert_thread_goal` 的 SQL 只在没有旧 goal，或旧 goal 为 `complete` 时插入；普通未完成 goal 不会被模型工具静默替换。外部用户/API 要替换 objective 则走 `GoalService::set_thread_goal`，更新同一条记录或调用 `replace_thread_goal`。
+
+`replace_thread_goal_snapshot` 用于 fork/恢复类场景：它会完整覆盖 goal snapshot，并同时写入 continuation deferral，防止复制出来的 thread 在用户第一次显式操作前自动续跑。
+
+## 4. 生命周期装配：Extension 如何接入 Agent
+
+`GoalExtension::install_with_backend` 注册六类能力：
+
+```rust
+registry.thread_lifecycle_contributor(extension.clone());
+registry.config_contributor(extension.clone());
+registry.turn_lifecycle_contributor(extension.clone());
+registry.token_usage_contributor(extension.clone());
+registry.tool_lifecycle_contributor(extension.clone());
+registry.tool_contributor(extension);
+```
+
+### 4.1 Thread start/resume/idle/stop
+
+`on_thread_start` 做四件事：
+
+1. 从 host config 读取 `enabled` 和最大 token budget；
+2. 只有持久化 thread 且不是 review sub-agent 时才允许 goal tools；
+3. 在 thread-local `ExtensionData` 中创建/复用 `GoalAccountingState` 和 `GoalRuntimeHandle`；
+4. 把 runtime 注册到 `GoalService`，使 app-server 外部请求可以找到同一个 runtime。
+
+`on_thread_resume` 调用 `restore_after_resume`。若持久化 goal 为 `active`，恢复 idle 墙钟基线并将其重新标记为 active；否则清除内存中的 active 标记。
+
+`on_thread_idle` 调用 `continue_if_idle`。这是自动续跑的唯一主要入口：它读取数据库中的最新状态、检查 deferral 和 live thread，然后尝试 `start_turn_if_idle`。
+
+`on_thread_stop` 从 `GoalService` 的 weak runtime registry 注销 runtime，避免外部 API 持有失效句柄。
+
+### 4.2 Turn start/stop/abort/error
+
+| Hook | 作用 |
+|---|---|
+| `on_turn_start` | 清除 continuation deferral，建立 token baseline；Plan mode 不为 goal 记 token；若 goal 为 `active` 或 `budget_limited`，把当前 turn 关联到 goal |
+| `on_turn_stop` | 记账当前 active goal，再移除 turn accounting 状态 |
+| `on_turn_abort` | 与 stop 类似，冲账后结束 turn；不会自行把 goal 标成 blocked |
+| `on_turn_error` | 普通不可恢复错误 → `blocked`；`UsageLimitExceeded` → `usage_limited` |
+
+错误停止时，runtime 先取得 `goal_state_lock`，再记账和更新状态；这样外部 pause/clear 与错误处理不会交错产生错误的 continuation。
+
+### 4.3 Token usage 与 tool finish
+
+`on_token_usage` 只更新内存中的当前累计 token snapshot，不直接写数据库。
+
+`on_tool_finish` 对完成的 tool 或 handler 已执行的失败 tool 记为 goal progress；blocked、未执行 handler 的失败、aborted 不计为 progress。`update_goal` 本身被排除，避免“标记完成”这个动作把自己的 tool 调用再算成一段工作。
+
+tool finish 使用 `BudgetLimitedGoalDisposition::KeepActive`：如果这一刻越过 token budget，数据库会转为 `budget_limited`，但当前 turn 不被强制打断；runtime 只向正在运行的 turn 注入一次 budget steering。turn 结束后的继续逻辑不会再自动启动新 turn。
+
+## 5. 运行时状态与并发控制
+
+### 5.1 `GoalRuntimeHandle`
+
+runtime 内部保存：
+
+```rust
+struct GoalRuntimeInner {
+    thread_id: ThreadId,
+    state_dbs: Arc<StateRuntime>,
+    thread_manager: Weak<ThreadManager>,
+    accounting_state: Arc<GoalAccountingState>,
+    enabled: AtomicBool,
+    tools_available_for_thread: bool,
+    goal_state_lock: Semaphore,
 }
 ```
 
----
+### 5.2 两把锁的职责
 
-## 3. 状态机
-
-### 3.1 状态转移图
-
-```
-                    ┌─────────────────────────────────────────┐
-                    │                                         │
-                    v                                         │
-  (无 goal) ──> Active ──> Paused ──> Active                  │
-                    │        │         │                       │
-                    │        │         └───────────────────────┘
-                    │        │
-                    │        └──> Blocked ──> Active
-                    │                  │
-                    │                  └──> (用户清除)
-                    │
-                    ├──> BudgetLimited (token_budget 耗尽)
-                    │         │
-                    │         ├──> Complete (model 标记完成)
-                    │         └──> (用户清除)
-                    │
-                    ├──> UsageLimited (系统用量超限)
-                    │         │
-                    │         ├──> Active (用户 resume)
-                    │         └──> (用户清除)
-                    │
-                    └──> Complete (model 调用 update_goal)
-                              │
-                              ├──> Active (新 goal 替换，需 insert)
-                              └──> (用户清除)
-```
-
-### 3.2 状态控制权
-
-| 状态 | 进入方式 | 控制者 |
+| 锁 | 覆盖范围 | 解决的问题 |
 |---|---|---|
-| `Active` | model 创建、用户 resume | model 活跃运行 |
-| `Paused` | 用户 /goal pause | 用户 |
-| `Blocked` | model 调用 `update_goal(status: blocked)` | model（需 3 轮校验） |
-| `UsageLimited` | 系统自动（turn error 时） | 系统 |
-| `BudgetLimited` | 系统自动（token 超 budget） | 系统 |
-| `Complete` | model 调用 `update_goal(status: complete)` | model |
+| `goal_state_lock`（1 permit） | 读 goal → 外部写入/状态更新 → 启动 continuation 的窗口 | 防止 idle continuation 读到旧 goal 后，用户 clear/set 再启动旧目标 |
+| `progress_accounting_lock`（1 permit） | 取 snapshot → SQLite 更新成功 → 推进内存 baseline | 防止多个 tool finish/turn stop 同时消费同一 token/time delta |
 
-### 3.3 不对称控制规则
+`continue_if_idle` 明确持有 `goal_state_lock` 直到 `start_turn_if_idle` 返回；`GoalService::set_thread_goal` 和 `clear_thread_goal` 也在 prepare/write 窗口持有它。两把锁不要混为一谈：前者保护状态与调度，后者保护计量。
 
-**Model 可以做的事情**：
-- `create_goal` — 创建新 goal（仅当旧 goal 为 `complete` 或无 goal 时）
-- `update_goal(status: complete)` — 标记完成
-- `update_goal(status: blocked)` — 标记阻塞（3 轮校验）
+### 5.3 Continuation deferral
 
-**Model 不可以做的事情**：
-- ~~不能 pause/resume~~
-- ~~不能设置 budget~~
-- ~~不能清除 goal~~
+fork 可以将当前 goal snapshot 复制到新 thread，但同时写入 `thread_goal_continuation_deferrals`。`continue_if_idle` 发现该行就跳过自动续跑；新 thread 的下一次 `on_turn_start` 删除 deferral。这样 fork 不会在客户端尚未发出显式 turn 时自行开始工作。
 
-**用户/系统可以做的事情**：
-- `/goal <description>` — 设置新 goal
-- `/goal pause` — 暂停
-- `/goal resume` — 恢复
-- `/goal edit` — 编辑 objective
-- `/goal clear` — 清除
-- 系统自动 → `BudgetLimited` / `UsageLimited`
+## 6. Progress Accounting：token 与时间如何计算
 
----
-
-## 4. 核心流程
-
-### 4.1 Goal 创建流程（model 发起）
-
-```
-model 调用 create_goal(objective, token_budget?)
-  │
-  ├─→ 验证 objective 长度、格式
-  ├─→ 验证 token_budget 为正数
-  ├─→ GoalStore.insert_thread_goal()
-  │     └─→ INSERT ... ON CONFLICT ... WHERE status = 'complete'
-  │           └─→ 如果旧 goal 不是 complete，返回 None（创建失败）
-  ├─→ 填充空 thread preview
-  ├─→ 标记当前 turn 的 goal active
-  ├─→ 发出 ThreadGoalUpdated 事件
-  └─→ 返回 goal + remaining_tokens
-```
-
-### 4.2 Goal 创建流程（用户通过 /goal 发起）
-
-```
-用户输入 /goal 完成项目迁移
-  │
-  ├─→ GoalService.set_thread_goal(thread_id, objective, status=Active)
-  │     ├─→ 获取 goal_state_permit（防止并发 mutation）
-  │     ├─→ prepare_external_goal_mutation()
-  │     │     ├─→ 如果当前有活跃 turn，先 account progress
-  │     │     └─→ 如果空闲，account idle progress
-  │     ├─→ 如果有旧 goal，update（带 expected_goal_id）
-  │     └─→ 如果没有旧 goal，replace（全新创建）
-  ├─→ apply_external_goal_set()
-  │     ├─→ 如果 objective 变更，注入 objective_updated_steering
-  │     └─→ 如果 goal 为 active，尝试 continue_if_idle()
-  └─→ 返回 GoalSetOutcome → 发送 ThreadGoalUpdated 事件
-```
-
-### 4.3 自动 Continuation 流程
-
-```
-线程空闲（on_thread_idle 钩子）
-  │
-  ├─→ 获取 goal_state_permit（信号量串行化）
-  ├─→ 检查 continuation_deferral（有则跳过）
-  ├─→ 读取当前 goal
-  ├─→ 检查 goal.status == Active
-  ├─→ 构建 continuation_steering_item（注入 completion audit prompt）
-  ├─→ thread.try_start_turn_if_idle(vec![item])
-  │     └─→ 启动新 turn，item 作为系统提示注入
-  └─→ 检查当前 turn 是否关联了 goal
-        └─→ 如果否，clear_active_goal()
-```
-
-### 4.4 Progress Accounting 流程
-
-```
-触发时机：
-  1. on_tool_finish — 每次工具调用完成
-  2. on_turn_stop — turn 结束
-  3. on_turn_abort — turn 中止
-  4. prepare_external_goal_mutation — 外部修改
-
-流程：
-  │
-  ├─→ 获取 progress_accounting_permit（Semaphore 1，串行化）
-  ├─→ 取 ProgressSnapshot
-  │     ├─→ token_delta = current - last_accounted
-  │     └─→ time_delta = wall_clock elapsed
-  ├─→ GoalStore.account_thread_goal_usage()
-  │     └─→ UPDATE tokens_used += delta, time_used_seconds += delta
-  │         ├─→ 如果 token_budget 不为空且 tokens_used >= budget
-  │         │     └─→ status = 'budget_limited'
-  │         └─→ RETURNING 更新后的行
-  ├─→ 如果 status 变为 BudgetLimited
-  │     └─→ 注入 budget_limit_steering_item（引导收尾）
-  ├─→ 更新内存基线
-  └─→ 发出 ThreadGoalUpdated 事件
-```
-
-### 4.5 Goal 完成审计流程
-
-```
-model 标记 complete 前，continuation prompt 强制执行：
-
-  1. 从 objective 和引用的文件中推导具体需求
-  2. 保留原始范围，不重新定义成功标准
-  3. 对每个需求：
-     ├─→ 识别权威证据来源（文件、命令输出、测试结果等）
-     ├─→ 检查当前状态是否满足
-     └─→ 分类：已证明 / 矛盾 / 不完整 / 证据不足 / 缺失
-  4. 验证范围必须匹配需求范围（窄检查不能支撑宽结论）
-  5. 测试/检查结果仅当确认覆盖了相关需求才视为证据
-  6. 不确定的证据视为未完成
-
-只有全部需求都被当前证据证明满足，才可调用 update_goal(complete)。
-```
-
-### 4.6 Blocked 审计流程
-
-```
-model 标记 blocked 需要满足：
-  ├─× 第一次遇到阻塞 → 不能标记
-  ├─× 工作困难/缓慢/不确定 → 不能标记
-  ├─× 需要澄清 → 不能标记
-  ├─× 预算用尽 → 不能标记
-  └─● 同一阻塞条件重复 ≥ 3 轮（含原始 turn + 自动 continuation）
-       └─→ 用户 resume 后，重新开始 3 轮计数
-```
-
----
-
-## 5. Model 工具
-
-### 5.1 工具定义
-
-3 个工具，均在 `ext/goal/src/spec.rs` 中定义：
-
-```rust
-pub const GET_GOAL_TOOL_NAME: &str = "get_goal";
-pub const CREATE_GOAL_TOOL_NAME: &str = "create_goal";
-pub const UPDATE_GOAL_TOOL_NAME: &str = "update_goal";
-```
-
-### 5.2 get_goal
-
-- **描述**：获取当前 thread 的 goal，包括状态、预算、token 和时间用量
-- **参数**：无
-- **返回**：`GoalToolResponse { goal, remaining_tokens }`
-
-### 5.3 create_goal
-
-- **描述**：创建新 goal（仅当用户/系统明确要求时）
-- **参数**：
-  - `objective`（必填）：具体目标
-  - `token_budget`（可选）：正整数 token 预算
-- **限制**：旧 goal 必须是 `complete` 状态才允许替换
-- **返回**：`GoalToolResponse { goal, remaining_tokens }`
-
-### 5.4 update_goal
-
-- **描述**：更新现有 goal 状态
-- **参数**：
-  - `status`（必填）：只能是 `complete` 或 `blocked`
-- **限制**：
-  - 不能 pause/resume/budget-limit/usage-limit
-  - `complete` 时返回 `completion_budget_report`
-  - `blocked` 需要 3 轮重复阻塞校验
-
-### 5.5 工具返回结构
-
-```rust
-struct GoalToolResponse {
-    goal: Option<ThreadGoal>,
-    remaining_tokens: Option<i64>,          // 剩余 token 预算
-    completion_budget_report: Option<String>, // 完成时包含 token 使用总结
-}
-```
-
----
-
-## 6. 外部 API
-
-### 6.1 GoalService
-
-`ext/goal/src/api.rs` 中的 `GoalService` 提供外部（TUI/IDE）调用的 API：
-
-```rust
-impl GoalService {
-    // 获取 goal
-    pub async fn get_thread_goal(&self, state_db, thread_id) -> Result<Option<ThreadGoal>>
-
-    // 设置 goal（创建/替换/更新）
-    pub async fn set_thread_goal(&self, state_db, request: GoalSetRequest) -> GoalSetOutcome
-
-    // 清除 goal
-    pub async fn clear_thread_goal(&self, state_db, thread_id) -> Result<bool>
-
-    // 恢复线程运行时
-    pub async fn restore_thread_runtime_after_resume(&self, thread_id) -> Result<()>
-
-    // 在 fork 前 flush 进度
-    pub async fn flush_thread_goal_progress_for_fork(&self, thread_id) -> Result<()>
-}
-```
-
-### 6.2 GoalSetRequest
-
-```rust
-pub struct GoalSetRequest<'a> {
-    pub thread_id: ThreadId,
-    pub objective: GoalObjectiveUpdate<'a>,  // Keep 或 Set(&str)
-    pub status: Option<ThreadGoalStatus>,
-    pub token_budget: GoalTokenBudgetUpdate,  // Keep 或 Set(Option<i64>)
-}
-```
-
-### 6.3 并发安全
-
-- `goal_state_permit`（Semaphore 1）：确保外部 mutation 和 idle continuation 不会交错
-- `progress_accounting_permit`（Semaphore 1）：确保 tool finish 和 turn stop 不会并发写入
-- `expected_goal_id`：stale update protection，防止并发覆盖
-
----
-
-## 7. 记账系统
-
-### 7.1 内存结构
+### 6.1 内存 accounting state
 
 ```rust
 struct GoalAccountingState {
     inner: Mutex<GoalAccountingInner>,
-    progress_accounting_lock: Semaphore,  // 串行化 progress accounting
+    progress_accounting_lock: Semaphore,
 }
 
 struct GoalAccountingInner {
     current_turn_id: Option<String>,
-    turns: HashMap<String, GoalTurnAccounting>,   // 每个 turn 的记账
-    wall_clock: GoalWallClockAccounting,           // 墙钟时间追踪
-    budget_limit_reported_goal_id: Option<String>, // 防止重复注入
-}
-
-struct GoalTurnAccounting {
-    current_token_usage: TokenUsage,           // 当前 token 用量
-    last_accounted_token_usage: TokenUsage,    // 上次记账时的基线
-    active_goal_id: Option<String>,            // 当前 turn 关联的 goal
-    account_tokens: bool,                      // 是否记账 token（Plan mode 不记）
+    turns: HashMap<String, GoalTurnAccounting>,
+    wall_clock: GoalWallClockAccounting,
+    budget_limit_reported_goal_id: Option<String>,
 }
 ```
 
-### 7.2 Token 计算公式
+每个 turn 保存 `current_token_usage`、`last_accounted_token_usage`、`active_goal_id` 和 `account_tokens`。Plan mode 设置 `account_tokens = false`，因此计划讨论不会消耗 goal token budget。
+
+### 6.2 Token 公式
+
+每次 token usage 到达时，先计算相对上次 baseline 的字段差，再使用：
 
 ```rust
-pub fn goal_token_delta_for_usage(usage: &TokenUsage) -> i64 {
-    usage.input_tokens
-        .saturating_sub(usage.cached_input_tokens)  // 仅计算非缓存 input
-        .saturating_add(usage.output_tokens.max(0))  // output token
-}
+goal_tokens = (input_tokens - cached_input_tokens) + max(output_tokens, 0)
 ```
 
-### 7.3 墙钟时间追踪
+源码使用 saturating arithmetic。`cache_write_input_tokens`、reasoning output 等字段参与差分对象，但最终 goal 公式只把非 cached input 与 output 纳入计量。这是 goal budget accounting，不是 billing report。
 
-```rust
-struct GoalWallClockAccounting {
-    last_accounted_at: Instant,  // 上次记账时的时间点
-    active_goal_id: Option<String>,
-}
+当 goal 在当前 turn 中途创建或重新激活时，`mark_current_turn_goal_active` 会把 token baseline 重置到当前累计值，避免把 goal 开始前的 token 追记到新 goal。
+
+### 6.3 墙钟时间
+
+`GoalWallClockAccounting` 用 `Instant` 保存最近一次记账时间和 active goal id：
+
+- goal 变为 active 时重置 baseline；
+- active turn 或 idle 外部 mutation 时计算 elapsed seconds；
+- pause/blocked/complete/usage-limited 时清除 active goal 并重置 baseline；
+- 只在 active goal 被标记时计时，普通 idle 不计入。
+
+因此 `time_used_seconds` 是 goal active 期间的墙钟时间，不是 thread 从创建到现在的总存活时间。
+
+### 6.4 原子 SQL 记账
+
+`GoalStore::account_thread_goal_usage` 在一个 `UPDATE ... RETURNING` 中完成：
+
+```text
+tokens_used += max(token_delta, 0)
+time_used_seconds += max(time_delta_seconds, 0)
+若当前状态允许且 tokens_used + token_delta >= token_budget：status = budget_limited
+WHERE thread_id = ? AND 状态匹配 AND（可选）goal_id = expected_goal_id
 ```
 
-- 每次 mark_active_goal 时重置基线
-- 每次 accounting 时计算 `elapsed_since_last_accounted`
-- 不计入 idle 时间（仅当 goal active 时计时）
+`GoalAccountingMode` 决定允许冲账的状态：
 
-### 7.4 AccountingMode
-
-```rust
-pub enum GoalAccountingMode {
-    ActiveStatusOnly,    // 仅活跃状态（'active'）
-    ActiveOnly,          // 活跃 + budget_limited
-    ActiveOrComplete,    // 活跃 + budget_limited + complete（完成时结算）
-    ActiveOrStopped,     // 所有非 complete 状态（暂停/阻塞后结算）
-}
-```
-
----
-
-## 8. Prompt 系统
-
-### 8.1 Continuation Prompt
-
-**文件名**：`prompts/templates/goals/continuation.md`
-
-**用途**：自动 continuation 时注入，引导模型继续工作。
-
-**核心指令**：
-
-1. **保持范围完整**：不要缩小 objective，不要重新定义成功标准
-2. **基于证据工作**：检查当前状态，不依赖历史记忆
-3. **Fidelity**：对齐 = 向最终状态移动，不是最小稳定子集
-4. **完成审计**：标记 complete 前必须逐项验证
-5. **Blocked 审计**：3 轮重复阻塞才能标记
-6. **进度可视化**：如果 `update_plan` 可用，用 plan 展示多步工作
-
-### 8.2 Budget Limit Prompt
-
-**文件名**：`prompts/templates/goals/budget_limit.md`
-
-**用途**：预算用尽时注入，引导模型优雅收尾。
-
-**核心指令**：
-- 不开始新实质性工作
-- 总结有用进度
-- 指出剩余工作或阻塞
-- 给用户清晰的下一步
-
-### 8.3 Objective Updated Prompt
-
-**文件名**：`prompts/templates/goals/objective_updated.md`
-
-**用途**：用户编辑 goal objective 时注入。
-
-**核心指令**：
-- 新 objective 覆盖旧的
-- 调整当前 turn 方向
-- 不要继续做只服务于旧目标的工作
-
-### 8.4 注入机制
-
-所有 prompt 通过 `InternalModelContextFragment` 注入：
-
-```rust
-pub(crate) fn continuation_steering_item(goal: &ThreadGoal) -> ResponseItem {
-    ContextualUserFragment::into(InternalModelContextFragment::new(
-        InternalContextSource::from_static("goal"),
-        prompt_text,
-    ))
-}
-```
-
-注入源标记为 `goal`，模型知道这是系统级别的提示。
-
----
-
-## 9. TUI 交互
-
-### 9.1 /goal 斜杠命令
-
-```rust
-pub enum SlashCommand {
-    Goal,  // 支持 inline args
-}
-```
-
-| 命令 | 行为 |
-|---|---|
-| `/goal` | 显示当前 goal 摘要 |
-| `/goal <description>` | 设置新 goal |
-| `/goal edit` | 弹出编辑框修改 objective |
-| `/goal pause` | 暂停 (active → paused) |
-| `/goal resume` | 恢复 (paused/blocked/usage_limited → active) |
-| `/goal clear` | 清除 goal |
-
-### 9.2 状态摘要显示
-
-```
-Goal
-────────────────────────────────────────
-Status: active
-Objective: 将项目从 JS 迁移到 TS
-Time used: 2m
-Tokens used: 12.5K
-Token budget: 50K
-
-Commands: /goal edit, /goal pause, /goal clear
-```
-
-### 9.3 状态栏指示器
-
-在 TUI 底部状态栏显示紧凑状态：
-
-| 状态 | 显示 | 示例 |
+| Mode | 允许状态 | 用途 |
 |---|---|---|
-| Active | 活跃，带用时或 budget | `12.5K / 50K` 或 `2m` |
-| Paused | 暂停 | `paused` |
-| Blocked | 卡住 | `stalled` |
-| UsageLimited | 用量超限 | `usage limited` |
-| BudgetLimited | 预算用尽 | `limited by budget` |
-| Complete | 完成，带用时或 token | `40K tokens` 或 `10h 12m` |
+| `ActiveStatusOnly` | active | 只处理仍为 active 的正常进度 |
+| `ActiveOnly` | active、budget_limited | tool/turn 结束，允许记下越界前后最后一段 in-flight 使用量 |
+| `ActiveOrComplete` | active、budget_limited、complete | 模型完成时，补齐完成 tool/turn 的最后使用量 |
+| `ActiveOrStopped` | active、paused、blocked、usage_limited、budget_limited | 错误/停止路径补齐 in-flight 使用量 |
 
-### 9.4 大目标文件化
+SQL 没有更新行时返回 `Unchanged`，内存基线只在 `Updated` 后推进。这样即使 goal 已被替换，旧 turn 产生的 usage 也不会写入新 goal。
 
-当 objective 超过 `MAX_THREAD_GOAL_OBJECTIVE_CHARS` 时，自动写入文件：
+## 7. 状态机与状态控制权
 
+### 7.1 典型转移
+
+```text
+无 goal ──(insert/外部 set)──> active
+active ──(用户 pause)───────> paused
+paused ──(用户 resume/set)──> active
+active ──(模型 update_goal)─> complete 或 blocked
+active ──(token budget)─────> budget_limited
+active ──(provider 用量)────> usage_limited
+active ──(不可恢复 turn error) -> blocked
+任意已存在 goal ──(clear)──> 无 goal
 ```
-Read the Codex goal objective file at /path/to/attachments/{uuid}/goal-objective.md before continuing.
+
+### 7.2 模型工具的非对称权限
+
+`spec.rs` 不只是 JSON schema，也把状态机规则写进模型可见 description：
+
+- `create_goal` 只在用户或 system/developer 明确要求时调用；普通任务不能自行创建 goal；
+- `create_goal` 不能覆盖 unfinished goal；已有 goal 必须先完成，或由用户/API 修改；
+- `update_goal` 只能传 `complete` 或 `blocked`；
+- `blocked` 要求同一阻塞条件连续至少三次 goal turn，并且确实无法取得进展；
+- 第一次遇到困难、需要澄清、工作很慢、预算快用完，都不能标成 blocked/complete；
+- pause、resume、budget-limited、usage-limited 由用户或系统控制。
+
+这里的“blocked 三次”主要是模型自律规则，工具 schema 本身不计数；状态数据库也不会因为一次 `update_goal(blocked)` 自动验证三轮，continuation prompt 将该规则持续注入模型上下文。
+
+## 8. 三个 Model Tool
+
+### 8.1 `get_goal`
+
+无参数，返回当前 thread 的 goal；没有 goal 时 `goal: null`。响应还包含 `remaining_tokens`：
+
+```text
+remaining_tokens = max(token_budget - tokens_used, 0)
 ```
 
----
+### 8.2 `create_goal`
 
-## 10. 关键设计原则
+参数：
 
-### 10.1 不对称控制
+```json
+{
+  "objective": "具体且可验证的目标",
+  "token_budget": 200000
+}
+```
 
-Model 只能创建和完成，不能 pause/resume/budget。这是最核心的安全设计。
+objective 会 trim 并通过 `validate_thread_goal_objective`；budget 必须为正数且不能超过 config 的 `max_goal_token_budget`。成功后写入 active goal，若当前有 turn 则把当前 turn 关联到新 goal，并在 objective 为空时尝试填充 thread preview。
 
-### 10.2 Stale Update Protection
+### 8.3 `update_goal`
 
-每次替换生成新 UUID `goal_id`，更新时传入 `expected_goal_id` 校验。防止并发会话覆盖。
+参数只有：
 
-### 10.3 Budget 软停止
+```json
+{ "status": "complete" }
+```
 
-超预算时不中断正在执行的 turn，而是：
-1. 将状态设为 `BudgetLimited`
-2. 注入 steering prompt 引导模型优雅收尾
-3. 不开始新工作，但允许完成当前工作
+执行顺序是：根据 complete/blocked 选择允许的 accounting mode → 冲账当前进度 → 更新持久化状态 → 清除当前 turn 的 active goal → 发出 `ThreadGoalUpdated`。complete 且存在预算/时间数据时，工具响应还会附带 `completion_budget_report`，提醒模型从结构化 goal 字段报告最终使用量。
 
-### 10.4 完成审计
+## 9. Continuation 的精确流程
 
-标记 complete 前必须逐项验证，不能凭"看起来完成了"就标记。审计指令内嵌在 continuation prompt 中，每次都会触发。
+### 9.1 `continue_if_idle`
 
-### 10.5 Blocked 审计
+源码流程可以写成：
 
-防止模型过早放弃。同一阻塞条件必须重复 3 轮才允许标记 blocked。
+```text
+thread idle
+  │
+  ├─ goal tools 对当前 thread 不可见？清除内存 active 标记并返回
+  ├─ acquire goal_state_lock
+  ├─ 有 continuation deferral？返回
+  ├─ live ThreadManager/thread 不可用？返回
+  ├─ 读取 thread_goals
+  ├─ 没有 goal 或 status != active？清除内存 active 标记并返回
+  ├─ 渲染 continuation_steering_item(goal)
+  ├─ thread.start_turn_if_idle(ResponseItem(item))
+  └─ 若新 turn 没有关联当前 active goal，则清除内存 active 标记
+```
 
-### 10.6 Accounting 串行化
+这里的 `start_turn_if_idle` 是防重复启动的第二道门：即使多个 idle 事件到达，也只有真正空闲且接受 submission 的线程会启动 continuation。
 
-`Semaphore(1)` 确保 tool finish 和 turn stop 不会并发写入同一个 goal 的 progress。
+### 9.2 Continuation prompt 的作用
 
-### 10.7 事件驱动
+`continuation.md` 明确要求模型：
 
-所有状态变更通过 `ThreadGoalUpdatedEvent` 通知 TUI 更新，保持 UI 与状态同步。
+1. 把 objective 视为 user-provided data，而非更高优先级指令；
+2. 保留完整 objective，不把当前 turn 能做的子集误当成成功标准；
+3. 以 worktree 和外部状态为证据，逐项核对需求；
+4. 只有当前证据证明全部要求完成，才调用 `update_goal(complete)`；
+5. 只有同一阻塞连续三次且确实无法继续，才调用 `update_goal(blocked)`；
+6. 若没完成则继续做实质进展，而不是仅写一份“下次再做”的总结。
 
-### 10.8 Idle Continuation
+因此 goal 的“自治”主要来自两部分组合：运行时负责启动下一轮，prompt 负责防止模型过早收尾或任意缩小目标范围。
 
-`on_thread_idle` 钩子自动启动新 turn，无需用户手动触发。但通过 `continuation_deferral` 表提供退出机制。
+### 9.3 Budget steering
 
----
+达到 budget 后，当前 tool/turn 不立即 abort。`budget_limit_steering_item` 只注入一次，提示模型不要开始新工作、尽快收尾并总结。下一次 idle 时由于状态已不是 `active`，不会再启动自动 continuation。
 
-## 11. 文件清单
+## 10. 外部 API 与 app-server 协议
 
-### State 层
+### 10.1 `GoalService`
 
-| 文件 | 行数 | 说明 |
-|---|---|---|
-| `state/src/runtime/goals.rs` | 1728 | GoalStore — CRUD + accounting 原子操作 |
+`ext/goal/src/api.rs` 提供：
 
-### 扩展层
+```rust
+get_thread_goal(state_db, thread_id)
+set_thread_goal(state_db, GoalSetRequest)
+clear_thread_goal(state_db, thread_id)
+restore_thread_runtime_after_resume(thread_id)
+flush_thread_goal_progress_for_fork(thread_id)
+```
 
-| 文件 | 行数 | 说明 |
-|---|---|---|
-| `ext/goal/src/extension.rs` | ~300 | 生命周期钩子 + 工具注册 |
-| `ext/goal/src/runtime.rs` | ~400 | 运行时核心 |
-| `ext/goal/src/accounting.rs` | ~350 | 内存记账 |
-| `ext/goal/src/tool.rs` | ~350 | Model 工具实现 |
-| `ext/goal/src/api.rs` | ~300 | 外部 API |
-| `ext/goal/src/spec.rs` | ~120 | 工具 JSON Schema |
-| `ext/goal/src/steering.rs` | ~100 | 提示注入 |
-| `ext/goal/src/events.rs` | ~50 | 事件发射 |
-| `ext/goal/src/analytics.rs` | ~100 | 分析事件 |
-| `ext/goal/src/metrics.rs` | ~100 | OTel 指标 |
+`GoalSetRequest` 将字段区分为 `Keep` 与 `Set`，避免更新 status 时意外清空 objective/budget。set/clear 前会：
 
-### Prompt 层
+1. 获取 `goal_state_permit`；
+2. 冲账当前 turn 或 idle 墙钟进度；
+3. 以 `expected_goal_id` 更新已有 goal；
+4. 释放锁后应用 runtime effects，例如 resume、objective steering 或 clear active 标记。
 
-| 文件 | 说明 |
+### 10.2 app-server 方法
+
+当前 app-server 暴露：
+
+| 方法/通知 | 语义 |
 |---|---|
-| `prompts/src/goals.rs` | Prompt 模板渲染 |
-| `prompts/templates/goals/continuation.md` | 自动 continuation 提示 |
-| `prompts/templates/goals/budget_limit.md` | 预算超限提示 |
-| `prompts/templates/goals/objective_updated.md` | 目标更新提示 |
+| `thread/goal/set` | 创建或更新 materialized thread 的单个持久化 goal |
+| `thread/goal/get` | 获取 goal；无 goal 返回 `goal: null` |
+| `thread/goal/clear` | 删除 goal；实际删除时发 `thread/goal/cleared` |
+| `thread/goal/updated` | goal 改变时通知，包含完整 goal |
+| `thread/goal/cleared` | goal 删除通知 |
 
-### TUI 层
+协议层使用 camelCase：`tokenBudget`、`tokensUsed`、`timeUsedSeconds`；SQLite 状态使用 snake_case。app-server 在 `thread_goal_processor.rs` 中负责转换。
 
-| 文件 | 说明 |
+`thread/goal/set` 的关键限制：feature `goals` 必须开启；ephemeral thread 不支持 goal；目标所属 rollout 不存在时会先 reconcile；goal-first thread materialize 时，会按顺序写入 settings snapshot 和 goal rollout item，避免恢复时缺少初始设置。
+
+### 10.3 事件顺序
+
+live thread 有 listener channel 时，app-server 先把 goal update/clear 排入 listener；channel 不可用才直接发送 server notification。这样 turn/item 事件与 goal 事件尽量保持 thread 内顺序，而不是让客户端看到数据库已变、rollout 还没变的逆序状态。
+
+## 11. Fork、恢复与生命周期边界
+
+### Fork
+
+fork 前调用 `flush_thread_goal_progress_for_fork`，在复制 source snapshot 前冲掉尚未写入数据库的 token/time。若请求要求延迟 continuation，复制 snapshot 时写 deferral；fork 后第一轮显式 turn start 才清除。
+
+### Resume
+
+恢复 thread 后，app-server 发 goal snapshot；runtime 的 `restore_after_resume` 只把 active goal 重新连接到 idle accounting。paused、blocked、usage-limited、budget-limited、complete 都不会因为进程恢复自动变 active。
+
+### Sub-agent 与 Plan mode
+
+- review sub-agent 不暴露 goal tools；
+- ephemeral thread 不支持持久化 goal；
+- Plan mode 可以执行 turn，但 `account_tokens = false`，且 turn start 不会把 goal 标记为当前 active goal。
+
+## 12. 可观测性与事件
+
+goal extension 同时持有 `GoalAnalytics`、`GoalMetrics` 与 `GoalEventEmitter`：
+
+- created、cleared、status changed、usage accounted 等行为写 analytics/metrics；
+- 每次成功 usage accounting 或状态变化可发 `ThreadGoalUpdated`；
+- 工具调用也通过 event emitter 发出带 `call_id`/`turn_id` 的 goal 更新；
+- budget steering 通过 `budget_limit_reported_goal_id` 去重，目标换代后重新允许报告。
+
+这意味着客户端不要只监听 `/goal` 命令结果；正确的 UI 应以 `thread/goal/updated` 和 `thread/goal/cleared` 为最终状态源。
+
+## 13. 测试覆盖与阅读入口
+
+源码测试重点不是单纯 CRUD，而是边界和并发：
+
+| 测试区域 | 覆盖内容 |
 |---|---|
-| `tui/src/slash_command.rs` | `/goal` 命令注册 |
-| `tui/src/chatwidget/goal_menu.rs` | goal 摘要/编辑/交互 |
-| `tui/src/chatwidget/goal_status.rs` | 状态栏指示器 |
-| `tui/src/goal_display.rs` | 格式化显示 |
-| `tui/src/goal_files.rs` | 大目标文件化 |
+| `state/src/runtime/goals.rs` | replace/insert/update、预算立即触顶、旧 goal version 忽略、并发 partial update、terminal 状态保护、多个 token delta 相加 |
+| `ext/goal/tests/accounting.rs` | token 差分、cached input、Plan mode、墙钟 baseline、budget disposition |
+| `ext/goal/tests/goal_extension_backend.rs` | lifecycle hooks、idle continuation、工具调用、错误停止、外部 set/clear |
+| `tui/src/chatwidget/tests/goal_menu.rs` | active/paused/blocked/budget-limited 菜单与用户动作 |
+| `app-server/tests/suite/v2/thread_fork.rs` | fork goal snapshot、延迟 continuation、source progress flush |
+| `app-server/tests/suite/v2/thread_resume.rs` | 恢复时 goal snapshot、feature gate、预算配置、materialized thread |
 
-### 数据库
+建议的源码阅读顺序：
 
-| 文件 | 说明 |
+1. `state/src/model/thread_goal.rs`：先明确领域对象和状态；
+2. `state/src/runtime/goals.rs`：看 SQL 的 CAS、预算和 accounting mode；
+3. `ext/goal/src/accounting.rs`：看内存基线如何避免重复记账；
+4. `ext/goal/src/runtime.rs`：看锁、idle continuation 和外部 mutation；
+5. `ext/goal/src/extension.rs`：把所有 hooks 串起来；
+6. `ext/goal/src/tool.rs`/`spec.rs`：理解模型能做什么、不能做什么；
+7. `app-server/src/request_processors/thread_goal_processor.rs`：理解客户端协议和事件顺序。
+
+## 14. 对 Loom 移植的关键启示
+
+这些是从 Codex 源码得到的可迁移原则，不是对 Loom 当前代码的断言：
+
+| Codex 原则 | 移植时必须保留的语义 |
 |---|---|
-| `state/goals_migrations/*.sql` | 表结构定义 |
+| 持久化 goal 与 runtime 分离 | metadata/DB 是事实源；内存 runtime 只保存短期 baseline 和调度状态 |
+| goal id CAS | 所有冲账和状态写回都带 generation/goal id，防止旧 turn 写到新 goal |
+| 状态锁 + accounting 锁 | 调度一致性与计量一致性分别串行化，不能仅靠“通常按顺序执行” |
+| `start_turn_if_idle` | continuation 必须是受 idle 条件保护的幂等提交，而不是普通异步 spawn |
+| budget KeepActive steering | 达到预算时优先引导收尾，不在 tool hook 中粗暴中断当前工作 |
+| deferral | fork、恢复、外部 mutation 场景要有明确的“下一次显式 turn 前不自动续跑”标记 |
+| completion/blocked prompt 规则 | 运行时只能提供机会；成功标准和 blocked 门槛必须反复注入模型上下文 |
+| 独立 app-server 通知 | UI 订阅完整 goal snapshot，而不是从零散命令结果猜状态 |
+
+Loom 当前的具体差异和落地计划见 [session-goal-integration.md](../design/session-goal-integration.md)；不要直接把本文的 `ThreadGoal` 字段替换成 Loom metadata，而应先确认两边的生命周期、checkpoint usage 和事件顺序是否等价。
+
+## 15. 上游源码链接
+
+以下链接固定到本文使用的 commit，便于未来对照变化：
+
+- [goal extension](https://github.com/openai/codex/tree/e3e5ad28470f6a225301518c30a66e749a880164/codex-rs/ext/goal)
+- [extension.rs](https://github.com/openai/codex/blob/e3e5ad28470f6a225301518c30a66e749a880164/codex-rs/ext/goal/src/extension.rs)
+- [runtime.rs](https://github.com/openai/codex/blob/e3e5ad28470f6a225301518c30a66e749a880164/codex-rs/ext/goal/src/runtime.rs)
+- [accounting.rs](https://github.com/openai/codex/blob/e3e5ad28470f6a225301518c30a66e749a880164/codex-rs/ext/goal/src/accounting.rs)
+- [api.rs](https://github.com/openai/codex/blob/e3e5ad28470f6a225301518c30a66e749a880164/codex-rs/ext/goal/src/api.rs)
+- [tool.rs](https://github.com/openai/codex/blob/e3e5ad28470f6a225301518c30a66e749a880164/codex-rs/ext/goal/src/tool.rs)
+- [spec.rs](https://github.com/openai/codex/blob/e3e5ad28470f6a225301518c30a66e749a880164/codex-rs/ext/goal/src/spec.rs)
+- [GoalStore](https://github.com/openai/codex/blob/e3e5ad28470f6a225301518c30a66e749a880164/codex-rs/state/src/runtime/goals.rs)
+- [ThreadGoal model](https://github.com/openai/codex/blob/e3e5ad28470f6a225301518c30a66e749a880164/codex-rs/state/src/model/thread_goal.rs)
+- [app-server processor](https://github.com/openai/codex/blob/e3e5ad28470f6a225301518c30a66e749a880164/codex-rs/app-server/src/request_processors/thread_goal_processor.rs)
+- [continuation prompt](https://github.com/openai/codex/blob/e3e5ad28470f6a225301518c30a66e749a880164/codex-rs/ext/goal/templates/goals/continuation.md)

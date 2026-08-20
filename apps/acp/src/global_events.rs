@@ -21,7 +21,14 @@ use crate::connection_registry::ConnectionRegistry;
 pub const GLOBAL_UPDATE_METHOD: &str = "_loomdesk.dev/global/update";
 
 /// Known topics. Subscriptions may also use `"*"` for everything.
-pub const TOPICS: &[&str] = &["session", "settings", "git", "notification"];
+pub const TOPICS: &[&str] = &[
+    "session",
+    "settings",
+    "git",
+    "notification",
+    "terminal",
+    "event",
+];
 
 #[derive(Debug, thiserror::Error)]
 pub enum GlobalEventError {

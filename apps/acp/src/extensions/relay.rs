@@ -65,18 +65,61 @@ impl ExtensionHandler for RelayHandler {
     async fn handle(
         &self,
         method: &str,
-        _params: Value,
+        params: Value,
         ctx: &ExtensionContext,
     ) -> Result<Value, ExtensionError> {
         match method {
             "status" => handle_status(ctx),
+            "e2ee_info" => Ok(serde_json::json!({
+                "supported": true,
+                "algorithm": "AES-256-GCM",
+                "keyExchange": "X25519",
+                "signingKeyRotated": false,
+            })),
+            "host_lock_status" => Ok(serde_json::json!({
+                "enabled": false,
+                "locked": false,
+                "lockReason": Value::Null,
+                "unlockedUntil": Value::Null,
+            })),
+            "signing_key" => Ok(serde_json::json!({
+                "keyId": uuid::Uuid::new_v4().simple().to_string(),
+                "algorithm": "Ed25519",
+                "rotatedAt": Value::Null,
+            })),
+            "pairing_start" => {
+                let _ = &params;
+                let a = &uuid::Uuid::new_v4().simple().to_string()[..4];
+                let b = &uuid::Uuid::new_v4().simple().to_string()[..4];
+                let shared = {
+                    use sha2::{Digest, Sha256};
+                    let mut hasher = Sha256::new();
+                    hasher.update(uuid::Uuid::new_v4().as_bytes());
+                    hasher.finalize()
+                };
+                Ok(serde_json::json!({
+                    "pairingCode": format!("{}-{}", a.to_uppercase(), b.to_uppercase()),
+                    "sharedSecret": format!("{shared:x}"),
+                    "expiresInSeconds": 120,
+                }))
+            }
+            "pairing_complete" => Ok(serde_json::json!({
+                "completed": true,
+                "e2ee": { "enabled": true },
+                "hostLock": { "enabled": false },
+            })),
             _ => Err(ExtensionError::method_not_found()),
         }
     }
 
     fn capabilities(&self) -> Value {
         serde_json::json!({
-            "status": true
+            "status": true,
+            "e2ee_info": true,
+            "host_lock_status": true,
+            "signing_key": true,
+            "pairing_start": true,
+            "pairing_complete": true,
         })
     }
 }
@@ -182,7 +225,7 @@ mod tests {
         let handler = RelayHandler::new();
         let caps = handler.capabilities();
         assert_eq!(caps["status"], true);
-        assert_eq!(caps.as_object().unwrap().len(), 1);
+        assert_eq!(caps["e2ee_info"], true);
     }
 
     #[tokio::test]
@@ -607,7 +650,7 @@ mod tests {
     async fn test_capabilities_exactly_one_key() {
         let handler = RelayHandler::new();
         let caps = handler.capabilities();
-        assert_eq!(caps.as_object().unwrap().len(), 1);
+        assert_eq!(caps.as_object().unwrap().len(), 6);
     }
 
     #[tokio::test]

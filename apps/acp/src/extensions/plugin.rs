@@ -1,362 +1,539 @@
-use std::collections::HashMap;
-use std::path::{Component, Path};
-use std::sync::{Arc, Mutex, RwLock};
+use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
-use async_trait::async_trait;
-use chrono::Utc;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
+use serde_json::{json, Value};
 
-use super::boundary;
-use super::pagination::{PaginatedResult, PaginationParams};
+use super::config_store as store;
 use super::{ExtensionContext, ExtensionError, ExtensionHandler};
 
-const DEFAULT_LIMIT: usize = 50;
-const MAX_LIMIT: usize = 100;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PluginItem {
-    pub id: String,
-    pub name: String,
-    pub version: String,
-    pub description: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub author: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub homepage: Option<String>,
-    pub enabled: bool,
-    pub installed: bool,
-    pub state: PluginState,
-    pub capabilities: Vec<PluginCapability>,
-    pub mcp_servers: Vec<String>,
-    pub commands: Vec<String>,
-    pub hooks: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error_message: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub installed_at: Option<String>,
-    pub updated_at: String,
+fn param_str(params: &Value, key: &str) -> Option<String> {
+    params
+        .get(key)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum PluginState {
-    Active,
-    Inactive,
-    Error,
-    Installing,
+fn require_param(params: &Value, key: &str) -> Result<String, ExtensionError> {
+    param_str(params, key)
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| {
+            ExtensionError::invalid_params(format!("missing required parameter: {key}"))
+        })
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum PluginCapability {
-    Mcp,
-    Command,
-    Hook,
+fn internal(message: impl Into<String>) -> ExtensionError {
+    ExtensionError {
+        code: -32603,
+        message: "internal_error".into(),
+        data: Some(Value::String(message.into())),
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct PluginListRequest {
-    #[serde(default)]
-    pub cursor: Option<String>,
-    #[serde(default)]
-    pub limit: Option<usize>,
+fn mutation_envelope(message: &str) -> Value {
+    store::mutation_envelope(message)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct PluginInstallRequest {
-    pub source: PluginSource,
-    pub identifier: String,
-    #[serde(default)]
-    pub client_request_id: Option<String>,
-    #[serde(default)]
-    pub version: Option<String>,
-    #[serde(default = "default_true")]
-    pub auto_enable: bool,
+fn parse_spec_kind(spec: &str) -> &'static str {
+    let trimmed = spec.trim();
+    if trimmed.starts_with('/')
+        || trimmed.starts_with("./")
+        || trimmed.starts_with("../")
+        || trimmed.starts_with("~/")
+        || (trimmed.len() > 2 && trimmed.as_bytes()[1] == b':' && trimmed.as_bytes()[2] == b'\\')
+    {
+        "path"
+    } else {
+        "npm"
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum PluginSource {
-    Registry,
-    Url,
-    Path,
+fn split_spec_version(spec: &str) -> (String, Option<String>) {
+    // Handle @scope/name@version while keeping the leading @scope.
+    let trimmed = spec.trim();
+    if let Some(rest) = trimmed.strip_prefix('@') {
+        if let Some(idx) = rest.rfind('@') {
+            if idx > 0 {
+                return (
+                    format!("@{}", &rest[..idx]),
+                    Some(rest[idx + 1..].to_string()),
+                );
+            }
+        }
+        (trimmed.to_string(), None)
+    } else if let Some(idx) = trimmed.rfind('@') {
+        (
+            trimmed[..idx].to_string(),
+            Some(trimmed[idx + 1..].to_string()),
+        )
+    } else {
+        (trimmed.to_string(), None)
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct PluginUninstallRequest {
-    pub id: String,
-    #[serde(default)]
-    pub client_request_id: Option<String>,
-    #[serde(default = "default_true")]
-    pub cleanup: bool,
+fn entry_id(scope: &str, spec: &str) -> String {
+    URL_SAFE_NO_PAD.encode(format!("config:{scope}:{spec}"))
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct PluginEnableRequest {
-    pub id: String,
+fn file_id(scope: &str, file_name: &str) -> String {
+    URL_SAFE_NO_PAD.encode(format!("file:{scope}:{file_name}"))
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct PluginDisableRequest {
-    pub id: String,
+const PLUGIN_FILE_RE: &str = r"^[a-z0-9][a-z0-9-_.]*\.(js|ts|mjs|cjs)$";
+
+fn valid_plugin_file_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    if !lower.contains('.') {
+        return false;
+    }
+    let head_ok = lower
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
+    let body_ok = lower.chars().all(|c| {
+        c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_' | '.')
+    });
+    let ext_ok = [".js", ".ts", ".mjs", ".cjs"]
+        .iter()
+        .any(|ext| lower.ends_with(ext));
+    head_ok && body_ok && ext_ok && !name.contains("..")
 }
 
-#[derive(Debug, Clone, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct CleanupDetail {
-    pub removed: Vec<String>,
-    pub failed: Vec<String>,
+fn plugin_file_dir(scope: &str, ctx: &ExtensionContext) -> Result<PathBuf, ExtensionError> {
+    if scope == "project" {
+        let wd = ctx
+            .working_directory
+            .as_deref()
+            .map(std::path::Path::to_path_buf)
+            .ok_or_else(|| ExtensionError::invalid_params("working directory required"))?;
+        return Ok(wd.join(store::LOOMDESK_DIR_NAME).join("plugins"));
+    }
+    Ok(store::loomdesk_config_dir()
+        .map_err(|e| internal(e.message))?
+        .join("plugins"))
 }
 
-#[derive(Debug, Clone, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct CleanupResult {
-    pub mcp_servers: CleanupDetail,
-    pub commands: CleanupDetail,
-    pub hooks: CleanupDetail,
+fn plugin_entries(layers: &store::ConfigLayers) -> Vec<Value> {
+    for config in [
+        &layers.custom_config,
+        &layers.project_config,
+        &layers.user_config,
+    ] {
+        if let Some(Value::Array(items)) = config.get("plugin") {
+            return items.clone();
+        }
+    }
+    Vec::new()
 }
 
 #[derive(Default)]
-pub struct PluginStore {
-    items: RwLock<HashMap<String, PluginItem>>,
-    idempotency: Mutex<HashMap<String, (String, String, Value)>>,
-    locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+struct RegistryCacheEntry {
+    fetched_at: Option<Instant>,
+    body: Option<Value>,
 }
 
+#[derive(Default)]
 pub struct PluginHandler {
-    store: Arc<PluginStore>,
-}
-
-fn default_true() -> bool {
-    true
+    registry_cache: Mutex<std::collections::HashMap<String, RegistryCacheEntry>>,
+    in_flight: Mutex<std::collections::HashMap<String, Value>>,
 }
 
 impl PluginHandler {
-    pub fn new() -> Self {
-        Self {
-            store: Arc::new(PluginStore::default()),
+    fn list(&self, ctx: &ExtensionContext) -> Result<Value, ExtensionError> {
+        let wd = store::working_dir_or_error(ctx).map_err(|e| internal(e.message))?;
+        let layers = store::read_config_layers(Some(&wd)).map_err(|e| internal(e.message))?;
+        let entries = plugin_entries(&layers);
+        let sources = [
+            layers.custom_path.clone(),
+            layers.project_path.clone(),
+            Some(layers.user_path.clone()),
+        ];
+        let source_path = entries_path(&sources);
+
+        let mut out = Vec::new();
+        for item in &entries {
+            let (spec, options) = match item {
+                Value::String(spec) => (spec.clone(), None),
+                Value::Array(pair) if pair.len() == 2 => {
+                    let spec = pair[0].as_str().unwrap_or_default().to_string();
+                    let options = pair[1].as_object().cloned();
+                    (spec, options)
+                }
+                _ => continue,
+            };
+            let scope = scope_of_entry(item, &layers);
+            out.push(json!({
+                "id": entry_id(&scope, &spec),
+                "spec": spec,
+                "options": options,
+                "scope": scope,
+                "kind": "config",
+                "parsedKind": parse_spec_kind(&spec),
+                "sourcePath": source_path,
+            }));
         }
-    }
 
-    pub fn with_store(store: Arc<PluginStore>) -> Self {
-        Self { store }
-    }
-
-    fn internal(message: impl Into<String>) -> ExtensionError {
-        ExtensionError {
-            code: -32603,
-            message: "internal_error".into(),
-            data: Some(Value::String(message.into())),
+        let mut files = Vec::new();
+        for scope in ["user", "project"] {
+            let Ok(dir) = plugin_file_dir(scope, ctx) else {
+                continue;
+            };
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    if !valid_plugin_file_name(&name) {
+                        continue;
+                    }
+                    files.push(json!({
+                        "id": file_id(scope, &name),
+                        "fileName": name,
+                        "scope": scope,
+                        "kind": "file",
+                        "absolutePath": entry.path().to_string_lossy(),
+                    }));
+                }
+            }
         }
+        files.sort_by(|a, b| a["fileName"].as_str().cmp(&b["fileName"].as_str()));
+
+        Ok(json!({ "entries": out, "files": files }))
     }
 
-    fn not_found(message: impl Into<String>) -> ExtensionError {
-        ExtensionError {
-            code: -32004,
-            message: "not_found".into(),
-            data: Some(Value::String(message.into())),
+    fn entry_get(&self, ctx: &ExtensionContext, id: &str) -> Result<Value, ExtensionError> {
+        let items = self.list(ctx)?;
+        items["entries"]
+            .as_array()
+            .and_then(|arr| arr.iter().find(|e| e["id"].as_str() == Some(id)))
+            .cloned()
+            .ok_or_else(|| ExtensionError::not_found(format!("plugin entry not found: {id}")))
+    }
+
+    fn entry_create(
+        &self,
+        ctx: &ExtensionContext,
+        params: &Value,
+    ) -> Result<Value, ExtensionError> {
+        let spec = require_param(params, "spec")?;
+        let scope = param_str(params, "scope").unwrap_or_else(|| "user".into());
+        let options = params.get("options").and_then(|v| v.as_object()).cloned();
+
+        if parse_spec_kind(&spec) == "path" {
+            let path = PathBuf::from(&spec);
+            if !path.exists() {
+                return Err(ExtensionError::invalid_params(format!(
+                    "plugin path does not exist: {spec}"
+                )));
+            }
         }
-    }
 
-    fn conflict(message: impl Into<String>) -> ExtensionError {
-        ExtensionError {
-            code: -32003,
-            message: "conflict".into(),
-            data: Some(Value::String(message.into())),
-        }
-    }
-
-    fn parse<T: for<'de> Deserialize<'de>>(params: Value) -> Result<T, ExtensionError> {
-        if !params.is_object() {
-            return Err(ExtensionError::invalid_params("params must be an object"));
-        }
-        serde_json::from_value(params)
-            .map_err(|error| ExtensionError::invalid_params(error.to_string()))
-    }
-
-    fn required(value: &str, field: &str) -> Result<String, ExtensionError> {
-        let value = value.trim();
-        if value.is_empty() || value.chars().any(char::is_control) {
-            return Err(ExtensionError::invalid_params(format!(
-                "{field} must not be empty"
+        let wd = store::working_dir_or_error(ctx).map_err(|e| internal(e.message))?;
+        let layers = store::read_config_layers(Some(&wd)).map_err(|e| internal(e.message))?;
+        let mut existing = plugin_entries(&layers);
+        if existing
+            .iter()
+            .any(|e| matches!(e, Value::String(s) if *s == spec)
+                || matches!(e, Value::Array(p) if !p.is_empty() && p[0].as_str() == Some(&spec)))
+        {
+            return Err(ExtensionError::conflict(format!(
+                "plugin already configured: {spec}"
             )));
         }
-        Ok(value.to_owned())
+        existing.push(match &options {
+            None => Value::String(spec.clone()),
+            Some(opts) => json!([spec, opts]),
+        });
+
+        let (mut config, path) = store::get_json_write_target(
+            &layers,
+            scope == "project" && wd.join(store::LOOMDESK_DIR_NAME).exists(),
+        );
+        config.insert("plugin".into(), Value::Array(existing));
+        store::write_config(&config, &path).map_err(|e| internal(e.message))?;
+        Ok(mutation_envelope(&format!(
+            "Plugin {spec} added successfully. Reloading interface…"
+        )))
     }
 
-    fn optional(value: Option<&str>, field: &str) -> Result<Option<String>, ExtensionError> {
-        value.map(|value| Self::required(value, field)).transpose()
-    }
-
-    fn lock_for(&self, key: &str) -> Result<Arc<Mutex<()>>, ExtensionError> {
-        let mut locks = self
-            .store
-            .locks
-            .lock()
-            .map_err(|_| Self::internal("plugin lock unavailable"))?;
-        Ok(locks
-            .entry(key.to_owned())
-            .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone())
-    }
-
-    fn authorize(ctx: &ExtensionContext) -> Result<(), ExtensionError> {
-        if ctx.principal.trim().is_empty() {
-            Err(ExtensionError::forbidden(
-                "plugin write authorization required",
-            ))
-        } else {
-            Ok(())
-        }
-    }
-
-    fn fingerprint<T: Serialize>(request: &T) -> Result<String, ExtensionError> {
-        serde_json::to_string(request).map_err(|error| Self::internal(error.to_string()))
-    }
-
-    fn replay(
+    fn entry_update(
         &self,
-        key: Option<&str>,
-        principal: &str,
-        fingerprint: &str,
-    ) -> Result<Option<Value>, ExtensionError> {
-        let Some(key) = key.map(str::trim).filter(|key| !key.is_empty()) else {
-            return Ok(None);
+        ctx: &ExtensionContext,
+        params: &Value,
+    ) -> Result<Value, ExtensionError> {
+        let id = require_param(params, "id")?;
+        let current = self.entry_get(ctx, &id)?;
+        let old_spec = current["spec"].as_str().unwrap_or_default().to_string();
+        let scope = current["scope"].as_str().unwrap_or("user").to_string();
+        let spec = param_str(params, "spec").unwrap_or_else(|| old_spec.clone());
+        let options = match params.get("options") {
+            Some(Value::Object(map)) => Some(map.clone()),
+            Some(Value::Null) => None,
+            _ => current["options"].as_object().cloned(),
         };
-        let records = self
-            .store
-            .idempotency
-            .lock()
-            .map_err(|_| Self::internal("idempotency store unavailable"))?;
-        match records.get(key) {
-            Some((owner, request, result)) if owner == principal && request == fingerprint => {
-                Ok(Some(result.clone()))
-            }
-            Some(_) => Err(Self::conflict(
-                "clientRequestId is already bound to another request",
-            )),
-            None => Ok(None),
-        }
+
+        let wd = store::working_dir_or_error(ctx).map_err(|e| internal(e.message))?;
+        let layers = store::read_config_layers(Some(&wd)).map_err(|e| internal(e.message))?;
+        let mut entries = plugin_entries(&layers);
+        let target_idx = entries.iter().position(|e| {
+            matches!(e, Value::String(s) if *s == old_spec)
+                || matches!(e, Value::Array(p) if !p.is_empty() && p[0].as_str() == Some(&old_spec))
+        });
+        let Some(idx) = target_idx else {
+            return Err(ExtensionError::not_found("plugin entry vanished"));
+        };
+        entries[idx] = match &options {
+            None => Value::String(spec.clone()),
+            Some(opts) => json!([spec, opts]),
+        };
+
+        let path = current["sourcePath"].as_str().map(PathBuf::from);
+        let path = path
+            .filter(|p| p.exists())
+            .unwrap_or_else(|| layers.user_path.clone());
+        let mut config = store::read_config_file(Some(&path)).map_err(|e| internal(e.message))?;
+        config.insert("plugin".into(), Value::Array(entries));
+        store::write_config(&config, &path).map_err(|e| internal(e.message))?;
+        let _ = scope;
+        Ok(mutation_envelope(&format!(
+            "Plugin {spec} updated successfully. Reloading interface…"
+        )))
     }
 
-    fn remember(
+    fn entry_delete(
         &self,
-        key: Option<&str>,
-        principal: &str,
-        fingerprint: &str,
-        result: &Value,
-    ) -> Result<(), ExtensionError> {
-        let Some(key) = key.map(str::trim).filter(|key| !key.is_empty()) else {
-            return Ok(());
-        };
-        self.store
-            .idempotency
-            .lock()
-            .map_err(|_| Self::internal("idempotency store unavailable"))?
-            .insert(
-                key.to_owned(),
-                (principal.to_owned(), fingerprint.to_owned(), result.clone()),
-            );
-        Ok(())
-    }
+        ctx: &ExtensionContext,
+        params: &Value,
+    ) -> Result<Value, ExtensionError> {
+        let id = require_param(params, "id")?;
+        let current = self.entry_get(ctx, &id)?;
+        let spec = current["spec"].as_str().unwrap_or_default().to_string();
 
-    fn validate_request_id(value: Option<&str>) -> Result<(), ExtensionError> {
-        if let Some(value) = value {
-            Self::required(value, "clientRequestId")?;
-        }
-        Ok(())
-    }
-
-    fn validate_path(identifier: &str, ctx: &ExtensionContext) -> Result<(), ExtensionError> {
-        let base = ctx
-            .working_directory
-            .as_deref()
-            .ok_or_else(|| ExtensionError::directory_boundary_violation(identifier))?;
-        let path = Path::new(identifier);
-        if path.is_absolute()
-            || path
-                .components()
-                .any(|component| matches!(component, Component::ParentDir))
-        {
-            return Err(ExtensionError::directory_boundary_violation(identifier));
-        }
-        boundary::validate_path(identifier, Some(base))
-            .map(|_| ())
-            .map_err(|error| {
-                if error.code == -32003 {
-                    Self::not_found(format!("path does not exist: {identifier}"))
-                } else {
-                    error
-                }
+        let wd = store::working_dir_or_error(ctx).map_err(|e| internal(e.message))?;
+        let layers = store::read_config_layers(Some(&wd)).map_err(|e| internal(e.message))?;
+        let entries = plugin_entries(&layers);
+        let kept: Vec<Value> = entries
+            .into_iter()
+            .filter(|e| {
+                !(matches!(e, Value::String(s) if *s == spec)
+                    || matches!(e, Value::Array(p) if !p.is_empty() && p[0].as_str() == Some(&spec)))
             })
+            .collect();
+
+        let path = current["sourcePath"].as_str().map(PathBuf::from);
+        let path = path
+            .filter(|p| p.exists())
+            .unwrap_or_else(|| layers.user_path.clone());
+        let mut config = store::read_config_file(Some(&path)).map_err(|e| internal(e.message))?;
+        if kept.is_empty() {
+            config.remove("plugin");
+        } else {
+            config.insert("plugin".into(), Value::Array(kept));
+        }
+        store::write_config(&config, &path).map_err(|e| internal(e.message))?;
+        Ok(mutation_envelope(&format!(
+            "Plugin {spec} removed successfully. Reloading interface…"
+        )))
     }
 
-    fn page(items: Vec<PluginItem>, request: PluginListRequest) -> Result<Value, ExtensionError> {
-        let pagination = PaginationParams {
-            cursor: request.cursor,
-            limit: request.limit,
-        };
-        if pagination.limit == Some(0) {
-            return Err(ExtensionError::invalid_params(
-                "limit must be greater than zero",
-            ));
-        }
-        let limit = pagination.limit_or_default(DEFAULT_LIMIT, MAX_LIMIT);
-        let offset = pagination
-            .decode_cursor::<OffsetCursor>()?
-            .map(|cursor| cursor.offset)
-            .unwrap_or(0);
-        if offset > items.len() {
-            return Err(ExtensionError::invalid_params("cursor is out of range"));
-        }
-        Ok(PaginatedResult::from_slice(items, offset, limit).to_json())
+    fn file_read(&self, ctx: &ExtensionContext, id: &str) -> Result<Value, ExtensionError> {
+        let listing = self.list(ctx)?;
+        let file = listing["files"]
+            .as_array()
+            .and_then(|arr| arr.iter().find(|f| f["id"].as_str() == Some(id)))
+            .cloned()
+            .ok_or_else(|| ExtensionError::not_found("plugin file not found"))?;
+        let path = file["absolutePath"].as_str().unwrap_or_default();
+        let content = std::fs::read_to_string(path)
+            .map_err(|_| ExtensionError::not_found("plugin file read failed"))?;
+        Ok(json!({
+            "fileName": file["fileName"],
+            "scope": file["scope"],
+            "content": content,
+        }))
     }
 
-    fn install_item(identifier: &str, request: &PluginInstallRequest) -> PluginItem {
-        let now = Utc::now().to_rfc3339();
-        PluginItem {
-            id: identifier.to_owned(),
-            name: identifier
-                .rsplit('/')
-                .next()
-                .unwrap_or(identifier)
-                .to_owned(),
-            version: request.version.clone().unwrap_or_else(|| "latest".into()),
-            description: String::new(),
-            author: None,
-            homepage: None,
-            enabled: request.auto_enable,
-            installed: true,
-            state: if request.auto_enable {
-                PluginState::Active
-            } else {
-                PluginState::Inactive
-            },
-            capabilities: vec![],
-            mcp_servers: vec![],
-            commands: vec![],
-            hooks: vec![],
-            error_message: None,
-            installed_at: Some(now.clone()),
-            updated_at: now,
+    fn file_write(
+        &self,
+        ctx: &ExtensionContext,
+        params: &Value,
+        create: bool,
+    ) -> Result<Value, ExtensionError> {
+        let file_name = require_param(params, "fileName")?;
+        if !valid_plugin_file_name(&file_name) {
+            return Err(ExtensionError::invalid_params(format!(
+                "invalid plugin file name (expected {PLUGIN_FILE_RE})"
+            )));
         }
+        let content = param_str(params, "content").unwrap_or_default();
+        let scope = param_str(params, "scope").unwrap_or_else(|| "user".into());
+        let dir = plugin_file_dir(&scope, ctx)?;
+        let path = dir.join(&file_name);
+        if create && path.exists() {
+            return Err(ExtensionError::conflict(format!(
+                "plugin file already exists: {file_name}"
+            )));
+        }
+        if !create && !path.exists() {
+            return Err(ExtensionError::not_found("plugin file not found"));
+        }
+        std::fs::create_dir_all(&dir).map_err(|e| internal(e.to_string()))?;
+        std::fs::write(&path, content).map_err(|e| internal(e.to_string()))?;
+        Ok(mutation_envelope(&format!(
+            "Plugin file {file_name} saved. Reloading interface…"
+        )))
+    }
+
+    fn file_delete(&self, ctx: &ExtensionContext, id: &str) -> Result<Value, ExtensionError> {
+        let listing = self.list(ctx)?;
+        let file = listing["files"]
+            .as_array()
+            .and_then(|arr| arr.iter().find(|f| f["id"].as_str() == Some(id)))
+            .cloned()
+            .ok_or_else(|| ExtensionError::not_found("plugin file not found"))?;
+        let path = file["absolutePath"].as_str().unwrap_or_default();
+        std::fs::remove_file(path).map_err(|e| internal(e.to_string()))?;
+        Ok(mutation_envelope("Plugin file deleted."))
+    }
+
+    async fn registry(
+        &self,
+        params: &Value,
+    ) -> Result<Value, ExtensionError> {
+        let specs: Vec<String> = params
+            .get("specs")
+            .and_then(|v| v.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if specs.is_empty() {
+            return Err(ExtensionError::invalid_params("specs must not be empty"));
+        }
+
+        let mut results = Vec::new();
+        for spec in specs {
+            if parse_spec_kind(&spec) == "path" {
+                let path = PathBuf::from(&spec);
+                results.push(json!({
+                    "kind": "path",
+                    "spec": spec,
+                    "exists": path.exists(),
+                }));
+                continue;
+            }
+            let (name, version) = split_spec_version(&spec);
+            match self.fetch_npm_metadata(&name, version).await {
+                Ok(meta) => results.push(meta),
+                Err(message) => results.push(json!({
+                    "kind": "npm",
+                    "spec": spec,
+                    "error": message,
+                })),
+            }
+        }
+        Ok(json!({ "results": results }))
+    }
+
+    async fn fetch_npm_metadata(
+        &self,
+        name: &str,
+        version: Option<String>,
+    ) -> Result<Value, String> {
+        let cache_key = format!("{name}@{}", version.as_deref().unwrap_or("latest"));
+        {
+            let cache = self.registry_cache.lock().map_err(|e| e.to_string())?;
+            if let Some(entry) = cache.get(&cache_key) {
+                if let (Some(at), Some(body)) = (entry.fetched_at, entry.body.as_ref()) {
+                    if at.elapsed() < Duration::from_secs(3600) {
+                        return Ok(body.clone());
+                    }
+                }
+            }
+            if let Some(body) = self
+                .in_flight
+                .lock()
+                .ok()
+                .and_then(|map| map.get(&cache_key).cloned())
+            {
+                return Ok(body);
+            }
+        }
+
+        let url = format!("https://registry.npmjs.org/{}", name);
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
+        if !response.status().is_success() {
+            return Err(format!("npm registry returned {}", response.status()));
+        }
+        let body: Value = response.json().await.map_err(|e| e.to_string())?;
+        let latest = body
+            .get("dist-tags")
+            .and_then(|t| t.get("latest"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let target_version = version.clone().or_else(|| latest.clone());
+        let current_version = body
+            .get("version")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let versions: Vec<String> = body
+            .get("versions")
+            .and_then(|v| v.as_object())
+            .map(|map| map.keys().cloned().collect())
+            .unwrap_or_default();
+        let result = json!({
+            "kind": "npm",
+            "spec": format!("{name}@{}", target_version.as_deref().unwrap_or("")),
+            "name": name,
+            "currentVersion": current_version,
+            "latestVersion": latest,
+            "versions": if versions.len() > 50 { versions[versions.len()-50..].to_vec() } else { versions },
+        });
+
+        if let Ok(mut cache) = self.registry_cache.lock() {
+            cache.insert(
+                cache_key.clone(),
+                RegistryCacheEntry {
+                    fetched_at: Some(Instant::now()),
+                    body: Some(result.clone()),
+                },
+            );
+        }
+        Ok(result)
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct OffsetCursor {
-    offset: usize,
+fn entries_path(sources: &[Option<PathBuf>]) -> Value {
+    for source in sources.iter().flatten() {
+        if source.exists() {
+            return Value::String(source.to_string_lossy().into_owned());
+        }
+    }
+    Value::Null
 }
 
-#[async_trait]
+fn scope_of_entry(entry: &Value, layers: &store::ConfigLayers) -> String {
+    // Heuristic: entries are stored in a single layer file per config; we
+    // cannot tell per-entry scope from the array alone, so report the layer
+    // that carries the `plugin` section.
+    let _ = entry;
+    if layers.custom_path.is_some() {
+        "custom".into()
+    } else if layers.project_path.is_some() && layers.project_config.contains_key("plugin") {
+        "project".into()
+    } else {
+        "user".into()
+    }
+}
+
+#[async_trait::async_trait]
 impl ExtensionHandler for PluginHandler {
     async fn handle(
         &self,
@@ -365,220 +542,43 @@ impl ExtensionHandler for PluginHandler {
         ctx: &ExtensionContext,
     ) -> Result<Value, ExtensionError> {
         match method {
-            "list" => {
-                let request: PluginListRequest = Self::parse(params)?;
-                let mut items = self
-                    .store
-                    .items
-                    .read()
-                    .map_err(|_| Self::internal("plugin catalog unavailable"))?
-                    .values()
-                    .cloned()
-                    .collect::<Vec<_>>();
-                items.sort_by_key(|item| (item.name.to_ascii_lowercase(), item.id.clone()));
-                Self::page(items, request)
+            "list" => self.list(ctx),
+            "entry_get" => {
+                let id = require_param(&params, "id")?;
+                self.entry_get(ctx, &id)
             }
-            "install" => {
-                let request: PluginInstallRequest = Self::parse(params)?;
-                let identifier = Self::required(&request.identifier, "identifier")?;
-                Self::validate_request_id(request.client_request_id.as_deref())?;
-                Self::optional(request.version.as_deref(), "version")?;
-                Self::authorize(ctx)?;
-                match &request.source {
-                    PluginSource::Url => {
-                        let Some((scheme, authority)) = identifier.split_once("://") else {
-                            return Err(ExtensionError::invalid_params(
-                                "identifier must be an https URL",
-                            ));
-                        };
-                        let host = authority.split('/').next().unwrap_or_default();
-                        if !scheme.eq_ignore_ascii_case("https")
-                            || host.is_empty()
-                            || host.contains('@')
-                            || identifier.chars().any(char::is_whitespace)
-                        {
-                            return Err(ExtensionError::invalid_params(
-                                "identifier must be an https URL without credentials",
-                            ));
-                        }
-                    }
-                    PluginSource::Path => Self::validate_path(&identifier, ctx)?,
-                    PluginSource::Registry => {}
-                }
-                let fingerprint = Self::fingerprint(&request)?;
-                let request_lock = request
-                    .client_request_id
-                    .as_deref()
-                    .filter(|value| !value.trim().is_empty())
-                    .map(|key| self.lock_for(key))
-                    .transpose()?;
-                let _request_guard = request_lock
-                    .as_ref()
-                    .map(|lock| {
-                        lock.lock()
-                            .map_err(|_| Self::internal("plugin transaction unavailable"))
-                    })
-                    .transpose()?;
-                if let Some(result) = self.replay(
-                    request.client_request_id.as_deref(),
-                    &ctx.principal,
-                    &fingerprint,
-                )? {
-                    return Ok(result);
-                }
-                let lock = self.lock_for(&identifier)?;
-                let _guard = lock
-                    .lock()
-                    .map_err(|_| Self::internal("plugin transaction unavailable"))?;
-                if self
-                    .store
-                    .items
-                    .read()
-                    .map_err(|_| Self::internal("plugin catalog unavailable"))?
-                    .contains_key(&identifier)
-                {
-                    return Err(Self::conflict("plugin is already installed"));
-                }
-                let item = Self::install_item(&identifier, &request);
-                let result = serde_json::to_value(&item)
-                    .map_err(|error| Self::internal(error.to_string()))?;
-                self.store
-                    .items
-                    .write()
-                    .map_err(|_| Self::internal("plugin catalog unavailable"))?
-                    .insert(identifier, item);
-                self.remember(
-                    request.client_request_id.as_deref(),
-                    &ctx.principal,
-                    &fingerprint,
-                    &result,
-                )?;
-                Ok(result)
+            "entry_create" => self.entry_create(ctx, &params),
+            "entry_update" => self.entry_update(ctx, &params),
+            "entry_delete" => {
+                self.entry_delete(ctx, &params)
             }
-            "uninstall" => {
-                let request: PluginUninstallRequest = Self::parse(params)?;
-                let id = Self::required(&request.id, "id")?;
-                Self::validate_request_id(request.client_request_id.as_deref())?;
-                Self::authorize(ctx)?;
-                let fingerprint = Self::fingerprint(&request)?;
-                let request_lock = request
-                    .client_request_id
-                    .as_deref()
-                    .filter(|value| !value.trim().is_empty())
-                    .map(|key| self.lock_for(key))
-                    .transpose()?;
-                let _request_guard = request_lock
-                    .as_ref()
-                    .map(|lock| {
-                        lock.lock()
-                            .map_err(|_| Self::internal("plugin transaction unavailable"))
-                    })
-                    .transpose()?;
-                if let Some(result) = self.replay(
-                    request.client_request_id.as_deref(),
-                    &ctx.principal,
-                    &fingerprint,
-                )? {
-                    return Ok(result);
-                }
-                let lock = self.lock_for(&id)?;
-                let _guard = lock
-                    .lock()
-                    .map_err(|_| Self::internal("plugin transaction unavailable"))?;
-                let item = self
-                    .store
-                    .items
-                    .write()
-                    .map_err(|_| Self::internal("plugin catalog unavailable"))?
-                    .remove(&id)
-                    .ok_or_else(|| Self::not_found("plugin not found"))?;
-                let cleanup = request.cleanup.then(|| CleanupResult {
-                    mcp_servers: CleanupDetail {
-                        removed: item.mcp_servers,
-                        failed: vec![],
-                    },
-                    commands: CleanupDetail {
-                        removed: item.commands,
-                        failed: vec![],
-                    },
-                    hooks: CleanupDetail {
-                        removed: item.hooks,
-                        failed: vec![],
-                    },
-                });
-                let result = serde_json::json!({"id": id, "deleted": true, "cleanup": cleanup, "errors": []});
-                self.remember(
-                    request.client_request_id.as_deref(),
-                    &ctx.principal,
-                    &fingerprint,
-                    &result,
-                )?;
-                Ok(result)
+            "file_read" => {
+                let id = require_param(&params, "id")?;
+                self.file_read(ctx, &id)
             }
-            "enable" => self.toggle(params, ctx, true),
-            "disable" => self.toggle(params, ctx, false),
+            "file_create" => self.file_write(ctx, &params, true),
+            "file_update" => self.file_write(ctx, &params, false),
+            "file_delete" => {
+                let id = require_param(&params, "id")?;
+                self.file_delete(ctx, &id)
+            }
+            "registry" => self.registry(&params).await,
             _ => Err(ExtensionError::method_not_found()),
         }
     }
 
     fn capabilities(&self) -> Value {
-        serde_json::json!({"list": true, "install": true, "uninstall": true, "enable": true, "disable": true})
-    }
-}
-
-impl PluginHandler {
-    fn toggle(
-        &self,
-        params: Value,
-        ctx: &ExtensionContext,
-        enabled: bool,
-    ) -> Result<Value, ExtensionError> {
-        let id = if enabled {
-            Self::parse::<PluginEnableRequest>(params)?.id
-        } else {
-            Self::parse::<PluginDisableRequest>(params)?.id
-        };
-        let id = Self::required(&id, "id")?;
-        Self::authorize(ctx)?;
-        let lock = self.lock_for(&id)?;
-        let _guard = lock
-            .lock()
-            .map_err(|_| Self::internal("plugin transaction unavailable"))?;
-        let mut items = self
-            .store
-            .items
-            .write()
-            .map_err(|_| Self::internal("plugin catalog unavailable"))?;
-        let item = items
-            .get_mut(&id)
-            .ok_or_else(|| Self::not_found("plugin not found"))?;
-        item.enabled = enabled;
-        item.state = if enabled {
-            PluginState::Active
-        } else {
-            PluginState::Inactive
-        };
-        item.error_message = None;
-        item.updated_at = Utc::now().to_rfc3339();
-        if enabled {
-            Ok(serde_json::json!({
-                "id": id,
-                "enabled": item.enabled,
-                "state": item.state,
-                "errorMessage": item.error_message
-            }))
-        } else {
-            Ok(serde_json::json!({
-                "id": id,
-                "enabled": item.enabled,
-                "state": item.state
-            }))
-        }
-    }
-}
-
-impl Default for PluginHandler {
-    fn default() -> Self {
-        Self::new()
+        json!({
+            "list": true,
+            "entry_get": true,
+            "entry_create": true,
+            "entry_update": true,
+            "entry_delete": true,
+            "file_read": true,
+            "file_create": true,
+            "file_update": true,
+            "file_delete": true,
+            "registry": true,
+        })
     }
 }

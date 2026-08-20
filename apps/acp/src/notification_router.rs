@@ -75,56 +75,123 @@ impl NotificationRouter {
         &self,
         session_id: &SessionId,
     ) -> Result<(), NotificationRouteError> {
-        let connection_id = self
+        let connection_ids = self
             .bindings
-            .connection_for(session_id)
-            .ok_or_else(|| NotificationRouteError::Unbound(session_id.clone()))?;
-        let connection = self
-            .connections
-            .get(&connection_id)
-            .filter(|connection| connection.is_active())
-            .ok_or(NotificationRouteError::ConnectionUnavailable(connection_id))?;
-        let (ack_tx, ack_rx) = oneshot::channel();
-        connection
-            .outbound_tx
-            .send(ConnectionOutbound::Barrier(ack_tx))
-            .await
-            .map_err(|_| NotificationRouteError::QueueClosed)?;
-        ack_rx
-            .await
-            .map_err(|_| NotificationRouteError::FlushDropped)
+            .connections_for(session_id);
+        
+        if connection_ids.is_empty() {
+            return Err(NotificationRouteError::Unbound(session_id.clone()));
+        }
+
+        let mut last_error = None;
+        let mut success_count = 0;
+
+        for connection_id in connection_ids {
+            let connection = self
+                .connections
+                .get(&connection_id)
+                .filter(|connection| connection.is_active());
+            
+            if let Some(connection) = connection {
+                let (ack_tx, ack_rx) = oneshot::channel();
+                match connection
+                    .outbound_tx
+                    .send(ConnectionOutbound::Barrier(ack_tx))
+                    .await
+                {
+                    Ok(()) => {
+                        if ack_rx.await.map_err(|_| NotificationRouteError::FlushDropped).is_ok() {
+                            success_count += 1;
+                        } else {
+                            last_error = Some(Err(NotificationRouteError::FlushDropped));
+                        }
+                    }
+                    Err(_) => {
+                        last_error = Some(Err(NotificationRouteError::QueueClosed));
+                    }
+                }
+            } else {
+                last_error = Some(Err(NotificationRouteError::ConnectionUnavailable(
+                    connection_id.clone()
+                )));
+            }
+        }
+
+        if success_count > 0 {
+            Ok(())
+        } else {
+            last_error.unwrap_or(Err(NotificationRouteError::Unbound(session_id.clone())))
+        }
     }
 
     async fn route(
         &self,
         notification: SessionNotification,
-        enqueued: Option<oneshot::Sender<()>>,
+        mut enqueued: Option<oneshot::Sender<()>>,
     ) -> Result<(), NotificationRouteError> {
         let session_id = SessionId::new(notification.session_id.to_string());
-        let connection_id = self
+        let connection_ids = self
             .bindings
-            .connection_for(&session_id)
-            .ok_or_else(|| NotificationRouteError::Unbound(session_id.clone()))?;
-        let connection = self
-            .connections
-            .get(&connection_id)
-            .filter(|connection| connection.is_active())
-            .ok_or_else(|| NotificationRouteError::ConnectionUnavailable(connection_id.clone()))?;
-        if !connection.is_initialized() {
-            return Err(ConnectionStateError::NotInitialized.into());
+            .connections_for(&session_id);
+        
+        if connection_ids.is_empty() {
+            return Err(NotificationRouteError::Unbound(session_id.clone()));
         }
-        connection
-            .outbound_tx
-            .send(ConnectionOutbound::Notification {
-                value: notification,
-                enqueued,
-            })
-            .await
-            .map_err(|_| NotificationRouteError::QueueClosed)
+
+        let mut last_error = None;
+        let mut success_count = 0;
+
+        for (index, connection_id) in connection_ids.iter().enumerate() {
+            let connection = self
+                .connections
+                .get(connection_id)
+                .filter(|connection| connection.is_active());
+            
+            if let Some(connection) = connection {
+                if !connection.is_initialized() {
+                    last_error = Some(Err(NotificationRouteError::ConnectionState(
+                        ConnectionStateError::NotInitialized
+                    )));
+                    continue;
+                }
+                
+                // Create notification clone for each connection
+                let notification_clone = notification.clone();
+                let enqueued_for_connection = if index == connection_ids.len() - 1 && enqueued.is_some() {
+                    enqueued.take() // Take the sender for the last connection only
+                } else {
+                    None
+                };
+                
+                match connection
+                    .outbound_tx
+                    .send(ConnectionOutbound::Notification {
+                        value: notification_clone,
+                        enqueued: enqueued_for_connection,
+                    })
+                    .await
+                {
+                    Ok(()) => success_count += 1,
+                    Err(_) => {
+                        last_error = Some(Err(NotificationRouteError::QueueClosed));
+                    }
+                }
+            } else {
+                last_error = Some(Err(NotificationRouteError::ConnectionUnavailable(
+                    connection_id.clone()
+                )));
+            }
+        }
+
+        if success_count > 0 {
+            Ok(())
+        } else {
+            last_error.unwrap_or(Err(NotificationRouteError::Unbound(session_id.clone())))
+        }
     }
 
     /// Route a batched history replay as ONE custom notification
-    /// (`_loomdesk.dev/session-history/batch`) to the connection bound to
+    /// (`_loomdesk.dev/session-history/batch`) to the connections bound to
     /// the session, replacing N `session/update` frames for a `session/load`
     /// tail replay.
     pub async fn send_history_batch(
@@ -133,18 +200,14 @@ impl NotificationRouter {
         updates: Vec<agent_client_protocol::schema::v1::SessionUpdate>,
     ) -> Result<(), NotificationRouteError> {
         let session_id = SessionId::new(session_id.to_string());
-        let connection_id = self
+        let connection_ids = self
             .bindings
-            .connection_for(&session_id)
-            .ok_or_else(|| NotificationRouteError::Unbound(session_id.clone()))?;
-        let connection = self
-            .connections
-            .get(&connection_id)
-            .filter(|connection| connection.is_active())
-            .ok_or_else(|| NotificationRouteError::ConnectionUnavailable(connection_id.clone()))?;
-        if !connection.is_initialized() {
-            return Err(ConnectionStateError::NotInitialized.into());
+            .connections_for(&session_id);
+        
+        if connection_ids.is_empty() {
+            return Err(NotificationRouteError::Unbound(session_id.clone()));
         }
+
         let update_values: Vec<serde_json::Value> = updates
             .iter()
             .map(|update| {
@@ -159,16 +222,51 @@ impl NotificationRouter {
                     .unwrap_or(serde_json::Value::Null)
             })
             .collect();
-        connection
-            .outbound_tx
-            .send(ConnectionOutbound::GlobalNotification {
-                method: crate::stream_bridge::HISTORY_BATCH_METHOD.to_string(),
-                params: serde_json::json!({
-                    "sessionId": session_id.to_string(),
-                    "updates": update_values,
-                }),
-            })
-            .await
-            .map_err(|_| NotificationRouteError::QueueClosed)
+
+        let mut last_error = None;
+        let mut success_count = 0;
+
+        for connection_id in connection_ids {
+            let connection = self
+                .connections
+                .get(&connection_id)
+                .filter(|connection| connection.is_active());
+            
+            if let Some(connection) = connection {
+                if !connection.is_initialized() {
+                    last_error = Some(Err(NotificationRouteError::ConnectionState(
+                        ConnectionStateError::NotInitialized
+                    )));
+                    continue;
+                }
+                
+                match connection
+                    .outbound_tx
+                    .send(ConnectionOutbound::GlobalNotification {
+                        method: crate::stream_bridge::HISTORY_BATCH_METHOD.to_string(),
+                        params: serde_json::json!({
+                            "sessionId": session_id.to_string(),
+                            "updates": update_values.clone(),
+                        }),
+                    })
+                    .await
+                {
+                    Ok(()) => success_count += 1,
+                    Err(_) => {
+                        last_error = Some(Err(NotificationRouteError::QueueClosed));
+                    }
+                }
+            } else {
+                last_error = Some(Err(NotificationRouteError::ConnectionUnavailable(
+                    connection_id.clone()
+                )));
+            }
+        }
+
+        if success_count > 0 {
+            Ok(())
+        } else {
+            last_error.unwrap_or(Err(NotificationRouteError::Unbound(session_id.clone())))
+        }
     }
 }

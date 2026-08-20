@@ -15,6 +15,8 @@ pub mod agent_profile;
 pub mod auto_review;
 pub mod client_auth;
 pub mod command;
+pub mod config_entity;
+pub mod config_store;
 pub mod connection;
 pub mod diagnostics;
 pub mod dictation;

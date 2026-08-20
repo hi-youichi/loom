@@ -60,8 +60,8 @@ pub use agent::{dup, got, tot};
 // Run orchestration (merged from loom crate)
 pub use run::{
     build_react_config, load_memory_prompt, resolve_model_config, run_agent_from_config,
-    run_agent_from_config_traced, AgentRunResult, ResolvedModelConfig, RunCmd, RunCompletion,
-    RunError, RunOptions, RunParams, TypedAnyStreamEvent, DEFAULT_WORKING_FOLDER,
+    AgentRunResult, ResolvedModelConfig, RunCmd, RunCompletion, RunError, RunOptions, RunParams,
+    TypedAnyStreamEvent, DEFAULT_WORKING_FOLDER,
 };
 
 // Runner common

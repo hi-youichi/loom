@@ -234,13 +234,16 @@ fn extract_title_from_react_event(
     ev: &StreamEvent<agent::state::ReActState>,
 ) -> Option<StreamUpdate> {
     match ev {
-        StreamEvent::Updates { node_id, state, .. } if node_id == "title" => state
-            .summary
-            .as_ref()
-            .map(|title| StreamUpdate::SessionInfoUpdate {
-                title: title.clone(),
-                meta: None,
-            }),
+        StreamEvent::Updates { node_id, state, .. } if node_id == "title" => {
+            tracing::debug!("Title update event detected, extracting title from state");
+            state.summary.as_ref().map(|title| {
+                tracing::debug!(title = %title, "Successfully extracted title from ReAct event");
+                StreamUpdate::SessionInfoUpdate {
+                    title: title.clone(),
+                    meta: None,
+                }
+            })
+        }
         _ => None,
     }
 }
@@ -589,6 +592,9 @@ pub struct SessionNotifier {
     usage_acc: Option<Arc<Mutex<TurnUsage>>>,
     /// High-frequency usage tracker for real-time token updates.
     high_freq_tracker: Arc<Mutex<Option<HighFreqUsageTracker>>>,
+    /// Buffer for tool call events to ensure they are sent after text content,
+    /// maintaining consistent order with history replay.
+    pending_tool_calls: Mutex<Vec<StreamUpdate>>,
 }
 
 impl SessionNotifier {
@@ -600,6 +606,7 @@ impl SessionNotifier {
             context_window_size: None,
             usage_acc: None,
             high_freq_tracker: Arc::new(Mutex::new(None)),
+            pending_tool_calls: Mutex::new(Vec::new()),
         }
     }
 
@@ -670,8 +677,25 @@ impl SessionNotifier {
             }
         }
 
+        // 处理工具调用顺序控制
+        let has_text_content = updates.iter().any(|u| matches!(u, 
+            StreamUpdate::AgentMessageChunk { .. } | StreamUpdate::AgentThoughtChunk { .. }
+        ));
+
+        // 如果当前事件包含文本内容，先发送缓冲的工具调用
+        if has_text_content {
+            self.flush_pending_tool_calls().await;
+        }
+
         for u in updates {
             let u = self.inject_message_id(u);
+            
+            // 缓冲工具调用事件，延迟发送
+            if matches!(u, StreamUpdate::ToolCallStarted { .. }) {
+                self.buffer_tool_call(u);
+                continue;
+            }
+            
             if let Some(notif) = stream_update_to_session_notification(&self.session_id, &u) {
                 if let Err(e) = self.tx.send(SessionUpdateEnvelope::Session(notif)).await {
                     tracing::error!(session_id = %self.session_id, error = %e, "Failed to send stream event notification");
@@ -1004,7 +1028,13 @@ impl SessionNotifier {
             self.session_id.clone(),
             SessionUpdate::SessionInfoUpdate(SessionInfoUpdate::new().title(title.to_string())),
         );
-        let _ = self.tx.try_send(SessionUpdateEnvelope::Session(notif));
+        if let Err(e) = self.tx.try_send(SessionUpdateEnvelope::Session(notif)) {
+            tracing::warn!(
+                session_id = %self.session_id,
+                error = %e,
+                "Failed to send session title update"
+            );
+        }
     }
 
     /// Send a session metadata update with an `_meta` payload (no title change).
@@ -1125,6 +1155,33 @@ impl SessionNotifier {
         let tracker = self.high_freq_tracker.lock().unwrap();
         tracker.is_some()
     }
+
+    /// Buffer a tool call event for delayed sending to maintain proper order.
+    fn buffer_tool_call(&self, update: StreamUpdate) {
+        let mut pending = self.pending_tool_calls.lock().unwrap();
+        pending.push(update);
+    }
+
+    /// Send all buffered tool call events and clear the buffer.
+    async fn flush_pending_tool_calls(&self) {
+        let pending = {
+            let mut buffer = self.pending_tool_calls.lock().unwrap();
+            std::mem::take(&mut *buffer)
+        };
+
+        for update in pending {
+            if let Some(notif) = stream_update_to_session_notification(&self.session_id, &update) {
+                if let Err(e) = self.tx.send(SessionUpdateEnvelope::Session(notif)).await {
+                    tracing::error!(
+                        session_id = %self.session_id,
+                        error = %e,
+                        "Failed to send buffered tool call notification"
+                    );
+                }
+            }
+        }
+    }
+
     /// Send usage update notification with enhanced metadata.
     async fn send_usage_update(&self, used: u64, size: u64, increment: u64) {
         let meta = self.snapshot_token_usage_meta();

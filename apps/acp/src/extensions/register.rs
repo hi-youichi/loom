@@ -26,6 +26,10 @@ pub fn register_default_extensions(
     );
     registry.register("worktree", Arc::new(super::worktree::WorktreeHandler));
     registry.register("mcp", Arc::new(super::mcp::McpHandler));
+    registry.register(
+        "config_entity",
+        Arc::new(super::config_entity::ConfigEntityHandler::new()),
+    );
     registry.register("model", Arc::new(super::model::ModelHandler::new()));
     registry.register("goal", Arc::new(super::goal::GoalHandler));
     registry.register(
@@ -106,11 +110,19 @@ pub fn register_default_extensions(
         "preview",
         Arc::new(super::preview::PreviewHandler::default()),
     );
+    let terminal_manager = Arc::new(crate::terminal::TerminalManager::default());
+    {
+        let mgr = terminal_manager.clone();
+        let bus = global_bus.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                mgr.set_bus(bus).await;
+            });
+        }
+    }
     registry.register(
         "terminal-ext",
-        Arc::new(super::terminal_ext::TerminalExtHandler::new(Arc::new(
-            crate::terminal::TerminalManager::default(),
-        ))),
+        Arc::new(super::terminal_ext::TerminalExtHandler::new(terminal_manager)),
     );
     registry.register("tts", Arc::new(super::tts::TtsHandler::default()));
     registry.register(

@@ -1164,7 +1164,45 @@ impl FilesHandler {
             )));
         }
 
-        Ok(serde_json::json!({ "path": p.path, "revealed": true }))
+        #[cfg(target_os = "windows")]
+        let reveal_result = {
+            let arg = if resolved.is_dir() {
+                resolved.as_os_str().to_string_lossy().into_owned()
+            } else {
+                match resolved.parent() {
+                    Some(parent) => parent.as_os_str().to_string_lossy().into_owned(),
+                    None => resolved.as_os_str().to_string_lossy().into_owned(),
+                }
+            };
+            tokio::process::Command::new("explorer.exe")
+                .arg(&arg)
+                .spawn()
+                .map(|_| ())
+        };
+        #[cfg(not(target_os = "windows"))]
+        let reveal_result = {
+            use tokio::io::AsyncWriteExt;
+            let mut child = if cfg!(target_os = "macos") {
+                tokio::process::Command::new("open").arg(&resolved).spawn()
+            } else {
+                tokio::process::Command::new("xdg-open").arg(&resolved).spawn()
+            }?;
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(b"").await;
+            }
+            child.wait().await.map(|_| ())
+        };
+
+        match reveal_result {
+            Ok(()) => Ok(serde_json::json!({ "path": p.path, "revealed": true })),
+            Err(e) => Err(ExtensionError {
+                code: -32603,
+                message: "internal_error".into(),
+                data: Some(Value::String(format!(
+                    "failed to open system file manager: {e}"
+                ))),
+            }),
+        }
     }
 
     async fn handle_exec_commands(

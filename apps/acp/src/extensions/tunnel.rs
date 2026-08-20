@@ -592,6 +592,61 @@ fn doctor(registry: &TunnelRegistry, p: TunnelDoctorRequest) -> Result<Value, Ex
     .map_err(|e| internal(format!("doctor serialization failed: {e}")))
 }
 
+fn find_executable_on_path(name: &str) -> Option<String> {
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        let candidate = if cfg!(windows) {
+            dir.join(format!("{name}.exe"))
+        } else {
+            dir.join(name)
+        };
+        if candidate.is_file() {
+            return Some(candidate.to_string_lossy().into_owned());
+        }
+    }
+    None
+}
+
+fn providers() -> Result<Value, ExtensionError> {
+    let cloudflared = find_executable_on_path("cloudflared");
+    let ngrok = find_executable_on_path("ngrok");
+    Ok(json!({
+        "providers": [
+            {
+                "name": "cloudflare",
+                "available": cloudflared.is_some(),
+                "executablePath": cloudflared,
+                "managedConfig": { "protocol": "quic", "edge": "auto" },
+            },
+            {
+                "name": "ngrok",
+                "available": ngrok.is_some(),
+                "executablePath": ngrok,
+                "managedConfig": { "region": "auto" },
+            },
+        ]
+    }))
+}
+
+fn managed_config(provider: &str) -> Result<Value, ExtensionError> {
+    match provider {
+        "cloudflare" => Ok(json!({
+            "provider": "cloudflare",
+            "protocol": "quic",
+            "edge": "auto",
+            "transport": { "reconnect": true },
+        })),
+        "ngrok" => Ok(json!({
+            "provider": "ngrok",
+            "region": "auto",
+            "inspect": false,
+        })),
+        _ => Err(ExtensionError::not_found(format!(
+            "unknown tunnel provider: {provider}"
+        ))),
+    }
+}
+
 #[async_trait]
 impl ExtensionHandler for TunnelHandler {
     async fn handle(
@@ -633,11 +688,26 @@ impl ExtensionHandler for TunnelHandler {
                 })?;
                 doctor(&self.registry, request)
             }
+            "providers" => {
+                check_capability(ctx, method)?;
+                authorized(ctx, method, false)?;
+                providers()
+            }
+            "managed_config" => {
+                check_capability(ctx, method)?;
+                authorized(ctx, method, false)?;
+                ensure_object(&params, "managed_config")?;
+                let provider = params
+                    .get("provider")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("cloudflare");
+                managed_config(provider)
+            }
             _ => Err(ExtensionError::method_not_found()),
         }
     }
 
     fn capabilities(&self) -> Value {
-        json!({"list": true, "create": true, "delete": true, "doctor": true})
+        json!({"list": true, "create": true, "delete": true, "doctor": true, "providers": true, "managed_config": true})
     }
 }

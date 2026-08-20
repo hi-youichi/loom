@@ -144,6 +144,14 @@ struct NotificationStore {
     apns: Vec<ApnsRecord>,
     visibility: HashMap<(String, String, Option<String>), bool>,
     last_test: HashMap<String, Instant>,
+    session_auto_accept: HashMap<String, bool>,
+    session_activity: HashMap<String, SessionActivity>,
+}
+
+#[derive(Debug, Clone)]
+struct SessionActivity {
+    state: String,
+    attention: bool,
 }
 
 pub struct NotificationHandler {
@@ -333,12 +341,113 @@ impl ExtensionHandler for NotificationHandler {
                 require_context(ctx)?;
                 self.test(params, ctx)
             }
+            "auto_accept_get" => {
+                require_context(ctx)?;
+                let session_id = params
+                    .get("sessionId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let state = self.state.lock().map_err(|e| internal(e.to_string()))?;
+                let enabled = state
+                    .session_auto_accept
+                    .get(&session_id)
+                    .copied()
+                    .unwrap_or(false);
+                Ok(serde_json::json!({
+                    "sessionId": session_id,
+                    "enabled": enabled,
+                }))
+            }
+            "auto_accept_set" => {
+                require_context(ctx)?;
+                let session_id = params
+                    .get("sessionId")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.trim().is_empty())
+                    .ok_or_else(|| ExtensionError::invalid_params("sessionId is required"))?
+                    .to_string();
+                let enabled = params
+                    .get("enabled")
+                    .and_then(|v| v.as_bool())
+                    .ok_or_else(|| ExtensionError::invalid_params("enabled is required"))?;
+                let mut state = self.state.lock().map_err(|e| internal(e.to_string()))?;
+                state.session_auto_accept.insert(session_id.clone(), enabled);
+                Ok(serde_json::json!({
+                    "success": true,
+                    "sessionId": session_id,
+                    "enabled": enabled,
+                }))
+            }
+            "session_activity" => {
+                require_context(ctx)?;
+                let state = self.state.lock().map_err(|e| internal(e.to_string()))?;
+                let sessions: Vec<Value> = state
+                    .session_activity
+                    .iter()
+                    .map(|(session_id, activity)| {
+                        serde_json::json!({
+                            "sessionId": session_id,
+                            "state": activity.state,
+                            "attention": activity.attention,
+                        })
+                    })
+                    .collect();
+                Ok(serde_json::json!({ "sessions": sessions }))
+            }
+            "view" => {
+                require_context(ctx)?;
+                let session_id = params
+                    .get("sessionId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let mut state = self.state.lock().map_err(|e| internal(e.to_string()))?;
+                if let Some(activity) = state.session_activity.get_mut(&session_id) {
+                    activity.attention = false;
+                }
+                Ok(serde_json::json!({ "success": true }))
+            }
+            "unview" => {
+                require_context(ctx)?;
+                let session_id = params
+                    .get("sessionId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let mut state = self.state.lock().map_err(|e| internal(e.to_string()))?;
+                if let Some(activity) = state.session_activity.get_mut(&session_id) {
+                    activity.attention = true;
+                }
+                Ok(serde_json::json!({ "success": true }))
+            }
+            "message_sent" => {
+                require_context(ctx)?;
+                let session_id = params
+                    .get("sessionId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let mut state = self.state.lock().map_err(|e| internal(e.to_string()))?;
+                if let Some(activity) = state.session_activity.get_mut(&session_id) {
+                    activity.state = "awaiting_input".into();
+                } else {
+                    state.session_activity.insert(
+                        session_id,
+                        SessionActivity {
+                            state: "awaiting_input".into(),
+                            attention: false,
+                        },
+                    );
+                }
+                Ok(serde_json::json!({ "success": true }))
+            }
             _ => Err(ExtensionError::method_not_found()),
         }
     }
 
     fn capabilities(&self) -> Value {
-        serde_json::json!({"vapid_public_key": true, "subscribe": true, "unsubscribe": true, "set_visibility": true, "apns_register": true, "apns_unregister": true, "test": true})
+        serde_json::json!({"vapid_public_key": true, "subscribe": true, "unsubscribe": true, "set_visibility": true, "apns_register": true, "apns_unregister": true, "test": true, "auto_accept_get": true, "auto_accept_set": true, "session_activity": true, "view": true, "unview": true, "message_sent": true})
     }
 }
 

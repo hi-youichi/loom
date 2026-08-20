@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::sync::RwLock;
 
 use super::{auth, ExtensionContext, ExtensionError, ExtensionHandler};
@@ -180,6 +180,147 @@ impl TerminalExtHandler {
         })
         .map_err(|e| internal_error(e.to_string()))
     }
+
+    async fn create(&self, params: Value, ctx: &ExtensionContext) -> Result<Value, ExtensionError> {
+        auth::check_server_policy(ctx, "terminal", "create")?;
+        let command = param_str(&params, "command").unwrap_or_else(|| {
+            if cfg!(windows) {
+                "powershell".to_string()
+            } else {
+                "sh".to_string()
+            }
+        });
+        let cwd = param_str(&params, "cwd").or_else(|| {
+            ctx.working_directory
+                .as_deref()
+                .map(|p| p.to_string_lossy().into_owned())
+        });
+        let args: Vec<String> = params
+            .get("args")
+            .and_then(|v| v.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let env: Vec<(String, String)> = params
+            .get("env")
+            .and_then(|v| v.as_object())
+            .map(|map| {
+                map.iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let limit = params.get("outputByteLimit").and_then(|v| v.as_u64());
+        let terminal_id = self
+            .terminal_mgr
+            .create_terminal(
+                command.clone(),
+                args.clone(),
+                cwd.map(std::path::PathBuf::from),
+                env,
+                limit,
+            )
+            .await
+            .map_err(|e| internal_error(e.to_string()))?;
+        Ok(json!({
+            "terminalId": terminal_id,
+            "command": command,
+            "args": args,
+        }))
+    }
+
+    async fn write(&self, params: Value, ctx: &ExtensionContext) -> Result<Value, ExtensionError> {
+        auth::check_server_policy(ctx, "terminal", "write")?;
+        let terminal_id = require_param_str(&params, "terminalId")?;
+        let actual_id = self.actual_session_id(&terminal_id).await;
+        let data = require_param_str(&params, "data")?;
+        self.terminal_mgr
+            .write_input(&actual_id, data.as_bytes())
+            .await
+            .map_err(|e| internal_error(e.to_string()))?;
+        Ok(json!({ "ok": true }))
+    }
+
+    async fn resize(&self, params: Value, ctx: &ExtensionContext) -> Result<Value, ExtensionError> {
+        auth::check_server_policy(ctx, "terminal", "resize")?;
+        let terminal_id = require_param_str(&params, "terminalId")?;
+        let actual_id = self.actual_session_id(&terminal_id).await;
+        if self.terminal_mgr.get_status(&actual_id).await.is_none() {
+            return Err(ExtensionError::not_found(format!(
+                "terminal not found: {terminal_id}"
+            )));
+        }
+        Ok(json!({ "ok": true }))
+    }
+
+    async fn close(&self, params: Value, ctx: &ExtensionContext) -> Result<Value, ExtensionError> {
+        auth::check_server_policy(ctx, "terminal", "close")?;
+        let terminal_id = require_param_str(&params, "terminalId")?;
+        let actual_id = self.actual_session_id(&terminal_id).await;
+        self.terminal_mgr
+            .release(&actual_id)
+            .await
+            .map_err(|e| internal_error(e.to_string()))?;
+        Ok(json!({ "ok": true }))
+    }
+
+    async fn output(&self, params: Value) -> Result<Value, ExtensionError> {
+        let terminal_id = require_param_str(&params, "terminalId")?;
+        let actual_id = self.actual_session_id(&terminal_id).await;
+        let (full, truncated, status) = self
+            .terminal_mgr
+            .get_output(&actual_id)
+            .await
+            .ok_or_else(|| {
+                ExtensionError::not_found(format!("terminal not found: {terminal_id}"))
+            })?;
+        let from = params
+            .get("fromIndex")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+        let slice = if from < full.len() { &full[from..] } else { "" };
+        Ok(json!({
+            "output": slice,
+            "fromIndex": from,
+            "totalLength": full.len(),
+            "truncated": truncated,
+            "status": terminal_status_value(status),
+        }))
+    }
+
+    async fn status(&self, params: Value) -> Result<Value, ExtensionError> {
+        let terminal_id = require_param_str(&params, "terminalId")?;
+        let actual_id = self.actual_session_id(&terminal_id).await;
+        let status = self
+            .terminal_mgr
+            .get_status(&actual_id)
+            .await
+            .ok_or_else(|| {
+                ExtensionError::not_found(format!("terminal not found: {terminal_id}"))
+            })?;
+        Ok(json!({
+            "terminalId": terminal_id,
+            "status": terminal_status_value(Some(status)),
+        }))
+    }
+}
+
+fn terminal_status_value(status: Option<TerminalStatus>) -> Value {
+    match status {
+        None => Value::Null,
+        Some(TerminalStatus::Running) => json!("running"),
+        Some(TerminalStatus::Completed { exit_code, signal }) => json!({
+            "state": "completed",
+            "exitCode": exit_code,
+            "signal": signal,
+        }),
+        Some(TerminalStatus::Killed) => json!("killed"),
+        Some(TerminalStatus::Released) => json!("released"),
+    }
 }
 
 #[async_trait]
@@ -193,13 +334,42 @@ impl ExtensionHandler for TerminalExtHandler {
         match method {
             "restart" => self.restart(params, ctx).await,
             "force_kill" => self.force_kill(params, ctx).await,
+            "create" => self.create(params, ctx).await,
+            "write" => self.write(params, ctx).await,
+            "resize" => self.resize(params, ctx).await,
+            "close" => self.close(params, ctx).await,
+            "output" => self.output(params).await,
+            "status" => self.status(params).await,
             _ => Err(ExtensionError::method_not_found()),
         }
     }
 
     fn capabilities(&self) -> Value {
-        serde_json::json!({"restart": true, "force_kill": true})
+        serde_json::json!({
+            "restart": true,
+            "force_kill": true,
+            "create": true,
+            "write": true,
+            "resize": true,
+            "close": true,
+            "output": true,
+            "status": true,
+            "streaming": "global:terminal",
+        })
     }
+}
+
+fn param_str(params: &Value, key: &str) -> Option<String> {
+    params
+        .get(key)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+fn require_param_str(params: &Value, key: &str) -> Result<String, ExtensionError> {
+    param_str(params, key).filter(|s| !s.trim().is_empty()).ok_or_else(|| {
+        ExtensionError::invalid_params(format!("missing required parameter: {key}"))
+    })
 }
 
 fn default_true() -> bool {
