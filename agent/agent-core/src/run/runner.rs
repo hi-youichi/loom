@@ -69,6 +69,10 @@ pub struct RunParams {
     pub cancellation: Option<RunCancellation>,
     pub any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
     pub llm_override: Option<Box<dyn LlmClient>>,
+    /// Business thread id (session id). When present, all events emitted during
+    /// the run inherit it via the `agent_run` root span, so the log formatter
+    /// surfaces `thread_id=<session>` instead of the OS `ThreadId(N)` fallback.
+    pub thread_id: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -110,8 +114,27 @@ impl TypedAnyStreamEvent {
     }
 }
 
+/// Runs the agent and attaches every emitted event to an `agent_run` root span
+/// carrying the business `thread_id`, so downstream log formatters can group
+/// all run-phase logs by session instead of falling back to OS thread ids.
 #[allow(clippy::type_complexity)]
 pub async fn run_agent_from_config(
+    config: &ReactBuildConfig,
+    cmd: &RunCmd,
+    mut params: RunParams,
+    on_event: Option<Box<dyn FnMut(TypedAnyStreamEvent) + Send>>,
+) -> Result<RunCompletion, RunError> {
+    let root_span = match params.thread_id.take() {
+        Some(tid) => tracing::info_span!("agent_run", thread_id = tid),
+        None => tracing::info_span!("agent_run", thread_id = %uuid6()),
+    };
+    run_agent_from_config_inner(config, cmd, params, on_event)
+        .instrument(root_span)
+        .await
+}
+
+#[allow(clippy::type_complexity)]
+async fn run_agent_from_config_inner(
     config: &ReactBuildConfig,
     cmd: &RunCmd,
     mut params: RunParams,
@@ -224,26 +247,6 @@ pub async fn run_agent_from_config(
     };
 
     Ok(result)
-}
-
-pub async fn run_agent_from_config_traced(
-    config: &ReactBuildConfig,
-    cmd: &RunCmd,
-    params: RunParams,
-    on_event: Option<Box<dyn FnMut(TypedAnyStreamEvent) + Send>>,
-    thread_id: Option<&str>,
-) -> Result<RunCompletion, RunError> {
-    let root_span = match thread_id {
-        Some(tid) => tracing::info_span!("agent_run", thread_id = tid),
-        None => {
-            let id = uuid6().to_string();
-            tracing::info_span!("agent_run", thread_id = %id)
-        }
-    };
-
-    run_agent_from_config(config, cmd, params, on_event)
-        .instrument(root_span)
-        .await
 }
 
 pub async fn build_runner(

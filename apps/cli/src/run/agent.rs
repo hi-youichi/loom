@@ -6,6 +6,8 @@ use agent::profile::list_available_profiles;
 use agent::run::{
     build_react_config, run_agent_from_config, RunCmd, RunParams, TypedAnyStreamEvent,
 };
+use loom_llm::support::uuid6::uuid6;
+use tracing::Instrument;
 use agent::state::ReActState;
 use agent::state::ToolResult;
 use agent::ResolvedAgent;
@@ -199,16 +201,35 @@ pub type RunAgentResult = Result<RunAgentOutput, RunError>;
 /// Runs the agent with stderr display for stream events.
 /// When `opts.output_json` is true: if `stream_out` is Some, each event is written via it and returns (reply, None);
 /// otherwise collects all events and returns (reply, Some(events)).
+///
+/// Wraps the whole run (config build + execution) in an `agent_run` root span
+/// carrying the business `thread_id` so every log line emitted during the run
+/// inherits it; the run phase is additionally covered by the span created in
+/// `run_agent_from_config`.
 pub async fn run_agent_wrapper(
+    opts: &agent::RunOptions,
+    cmd: &RunCmd,
+    stream_out: Option<StreamCallback>,
+) -> RunAgentResult {
+    let root_span = match opts.thread_id.as_deref() {
+        Some(tid) => tracing::info_span!("agent_run", thread_id = tid),
+        None => tracing::info_span!("agent_run", thread_id = %uuid6()),
+    };
+    run_agent_wrapper_inner(opts, cmd, stream_out)
+        .instrument(root_span)
+        .await
+}
+
+async fn run_agent_wrapper_inner(
     opts: &agent::RunOptions,
     _cmd: &RunCmd,
     stream_out: Option<StreamCallback>,
 ) -> RunAgentResult {
-    // Root span carrying the business `thread_id` lives in `run_agent_with_options`
-    // (loom-agent), which is the common execution path for both CLI and ACP
-    // entry points. This keeps a single point of truth and avoids the `!Send`
-    // future issue that arises from holding a span guard across awaits in
-    // caller-side async functions.
+    // NOTE: the business `thread_id` root span is attached by the
+    // `run_agent_wrapper` shell (whole run: config build + execution) and by
+    // `run_agent_from_config` (run phase) so the ACP/CLI entry points share
+    // one mechanism. `.instrument()` is used instead of a manual span guard
+    // to avoid the `!Send` future issue from holding a guard across awaits.
 
     let loom_opts = opts.clone();
     let (mut config, resolved_agent, skill_registry) = build_react_config(&loom_opts);
@@ -293,6 +314,7 @@ pub async fn run_agent_wrapper(
                     cancellation: opts.cancellation.clone(),
                     any_stream_event_sender: opts.any_stream_event_sender.clone(),
                     llm_override: None,
+                    thread_id: opts.thread_id.clone(),
                 },
                 Some(on_event),
             )
@@ -342,6 +364,7 @@ pub async fn run_agent_wrapper(
                 cancellation: opts.cancellation.clone(),
                 any_stream_event_sender: opts.any_stream_event_sender.clone(),
                 llm_override: None,
+                thread_id: opts.thread_id.clone(),
             },
             Some(on_event),
         )
@@ -398,6 +421,7 @@ pub async fn run_agent_wrapper(
             cancellation: opts.cancellation.clone(),
             any_stream_event_sender: opts.any_stream_event_sender.clone(),
             llm_override: None,
+            thread_id: opts.thread_id.clone(),
         },
         Some(on_event),
     )

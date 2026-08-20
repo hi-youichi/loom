@@ -248,6 +248,52 @@ impl ExtensionHandler for PreviewHandler {
         params: Value,
         ctx: &ExtensionContext,
     ) -> Result<Value, ExtensionError> {
+        if method == "targets" {
+            // Register a preview target descriptor. In ACP mode the FE does
+            // not hit an HTTP proxy path — it calls `preview/proxy` per
+            // request — so this returns the Express-compatible descriptor
+            // with proxyMethod pointing at the ACP surface.
+            if !matches!(self.runtime, PreviewRuntime::Web | PreviewRuntime::Desktop) {
+                return Err(ExtensionError::capability_not_supported("preview.targets"));
+            }
+            if ctx.session_id.is_none() || ctx.principal.trim().is_empty() {
+                return Err(ExtensionError::forbidden(
+                    "preview target authorization required",
+                ));
+            }
+            let port = params
+                .get("port")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| ExtensionError::invalid_params("port is required"))?;
+            if !(1..=65535).contains(&port) {
+                return Err(ExtensionError::invalid_params("port is out of range"));
+            }
+            let url = params
+                .get("url")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("http://127.0.0.1:{port}"));
+            let ttl_ms = params
+                .get("ttlMs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(30 * 60 * 1000);
+            let id = format!("preview-{}", uuid::Uuid::new_v4());
+            let preview_token = uuid::Uuid::new_v4().simple().to_string();
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            return Ok(serde_json::json!({
+                "id": id,
+                "port": port,
+                "url": url,
+                "proxyBasePath": "/api/preview-proxy/127.0.0.1",
+                "proxyMethod": "_loomdesk.dev/preview/proxy",
+                "previewToken": preview_token,
+                "expiresAt": now + ttl_ms,
+                "ttlMs": ttl_ms,
+            }));
+        }
         if method != "proxy" {
             return Err(ExtensionError::method_not_found());
         }
@@ -341,7 +387,7 @@ impl ExtensionHandler for PreviewHandler {
 
     fn capabilities(&self) -> Value {
         if matches!(self.runtime, PreviewRuntime::Web | PreviewRuntime::Desktop) {
-            serde_json::json!({"proxy": true})
+            serde_json::json!({"proxy": true, "targets": true})
         } else {
             serde_json::json!({})
         }

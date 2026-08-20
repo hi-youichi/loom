@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
 use tokio::sync::{Notify, RwLock};
 use tracing::{debug, error, info, trace, warn};
@@ -54,12 +54,14 @@ struct TerminalEntry {
     session: TerminalSession,
     child: Option<Child>,
     pid: Option<u32>,
+    stdin: Option<Arc<tokio::sync::Mutex<tokio::process::ChildStdin>>>,
     output_notify: Arc<Notify>,
     exit_notify: Arc<Notify>,
 }
 
 pub struct TerminalManager {
     terminals: Arc<RwLock<HashMap<String, TerminalEntry>>>,
+    bus: Arc<RwLock<Option<Arc<crate::global_events::GlobalEventBus>>>>,
 }
 
 impl Default for TerminalManager {
@@ -72,6 +74,35 @@ impl TerminalManager {
     pub fn new() -> Self {
         Self {
             terminals: Arc::new(RwLock::new(HashMap::new())),
+            bus: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    /// Attach the global event bus so output/exit events fan out to
+    /// subscribed connections (`terminal` topic).
+    pub async fn set_bus(&self, bus: Arc<crate::global_events::GlobalEventBus>) {
+        *self.bus.write().await = Some(bus);
+    }
+
+    #[allow(dead_code)]
+    async fn bus(&self) -> Option<Arc<crate::global_events::GlobalEventBus>> {
+        self.bus.read().await.clone()
+    }
+
+    fn bus_blocking(&self) -> Option<Arc<crate::global_events::GlobalEventBus>> {
+        self.bus.try_read().ok().and_then(|guard| guard.clone())
+    }
+
+    fn publish_terminal_event(
+        &self,
+        terminal_id: &str,
+        event_type: &str,
+        properties: serde_json::Value,
+    ) {
+        let bus = self.bus_blocking();
+        if let Some(bus) = bus {
+            bus.publish("terminal", event_type, properties);
+            let _ = terminal_id;
         }
     }
 
@@ -96,6 +127,7 @@ impl TerminalManager {
 
         let mut cmd = Command::new(&command);
         cmd.args(&args)
+            .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
 
@@ -122,8 +154,15 @@ impl TerminalManager {
                 TerminalError::CreationFailed(e.to_string())
             })?;
 
+        let command_for_event = command.clone();
+        let cwd_for_event = cwd.clone();
+
         let pid = child.id();
         debug!(terminal_id = %terminal_id, pid = ?pid, "Process spawned");
+        let stdin = child
+            .stdin
+            .take()
+            .map(|s| Arc::new(tokio::sync::Mutex::new(s)));
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
 
@@ -146,6 +185,7 @@ impl TerminalManager {
             session,
             child: Some(child),
             pid,
+            stdin,
             output_notify: output_notify.clone(),
             exit_notify: exit_notify.clone(),
         };
@@ -164,12 +204,23 @@ impl TerminalManager {
 
         self.spawn_exit_watcher(terminal_id.clone());
 
+        self.publish_terminal_event(
+            &terminal_id,
+            "terminal.created",
+            serde_json::json!({
+                "terminalId": terminal_id,
+                "command": command_for_event,
+                "cwd": cwd_for_event,
+            }),
+        );
+
         info!(terminal_id = %terminal_id, "Terminal created successfully");
         Ok(terminal_id)
     }
 
     fn spawn_exit_watcher(&self, terminal_id: String) {
         let terminals = self.terminals.clone();
+        let bus = self.bus.clone();
         tokio::spawn(async move {
             let child_process = {
                 let mut map = terminals.write().await;
@@ -223,9 +274,19 @@ impl TerminalManager {
                 if let Some(entry) = map.get_mut(&terminal_id) {
                     if matches!(entry.session.status, TerminalStatus::Running) {
                         debug!(terminal_id = %terminal_id, status = "running → completed", "Updating terminal status");
-                        entry.session.status = status;
+                        entry.session.status = status.clone();
                         entry.exit_notify.notify_waiters();
                         entry.output_notify.notify_waiters();
+                        if let Some(bus) = bus.read().await.as_ref() {
+                            bus.publish(
+                                "terminal",
+                                "terminal.exit",
+                                serde_json::json!({
+                                    "terminalId": terminal_id,
+                                    "status": format!("{:?}", status),
+                                }),
+                            );
+                        }
                     }
                 } else {
                     warn!(terminal_id = %terminal_id, "Terminal not found when setting exit status");
@@ -241,6 +302,7 @@ impl TerminalManager {
         _output_byte_limit: Option<u64>,
     ) {
         let terminals = self.terminals.clone();
+        let bus = self.bus.clone();
         tokio::spawn(async move {
             let mut buf = [0u8; 4096];
             loop {
@@ -249,18 +311,34 @@ impl TerminalManager {
                     Ok(n) => {
                         let text = String::from_utf8_lossy(&buf[..n]);
                         trace!(terminal_id = %terminal_id, bytes = n, "Output chunk received");
-                        let mut map = terminals.write().await;
-                        if let Some(entry) = map.get_mut(&terminal_id) {
-                            if let Some(limit) = entry.session.output_byte_limit {
-                                let new_len = entry.session.output_buffer.len() + text.len();
-                                if new_len > limit as usize {
-                                    entry.session.truncated = true;
-                                    trace!(terminal_id = %terminal_id, new_len, limit, "Output truncated (over limit)");
-                                    continue;
+                        let mut appended = false;
+                        {
+                            let mut map = terminals.write().await;
+                            if let Some(entry) = map.get_mut(&terminal_id) {
+                                if let Some(limit) = entry.session.output_byte_limit {
+                                    let new_len = entry.session.output_buffer.len() + text.len();
+                                    if new_len > limit as usize {
+                                        entry.session.truncated = true;
+                                        trace!(terminal_id = %terminal_id, new_len, limit, "Output truncated (over limit)");
+                                        continue;
+                                    }
                                 }
+                                entry.session.output_buffer.push_str(&text);
+                                entry.output_notify.notify_waiters();
+                                appended = true;
                             }
-                            entry.session.output_buffer.push_str(&text);
-                            entry.output_notify.notify_waiters();
+                        }
+                        if appended {
+                            if let Some(bus) = bus.read().await.as_ref() {
+                                bus.publish(
+                                    "terminal",
+                                    "terminal.output",
+                                    serde_json::json!({
+                                        "terminalId": terminal_id,
+                                        "chunk": text,
+                                    }),
+                                );
+                            }
                         }
                     }
                     Err(_) => break,
@@ -313,6 +391,28 @@ impl TerminalManager {
         let status = entry.session.status.clone();
         info!(terminal_id = %terminal_id, status = ?status, "wait_for_exit completed");
         Ok(status)
+    }
+
+    /// Write raw bytes to the terminal process's stdin.
+    pub async fn write_input(&self, terminal_id: &str, data: &[u8]) -> Result<(), TerminalError> {
+        let stdin = {
+            let map = self.terminals.read().await;
+            let entry = map
+                .get(terminal_id)
+                .ok_or_else(|| TerminalError::NotFound(terminal_id.to_string()))?;
+            if !matches!(entry.session.status, TerminalStatus::Running) {
+                return Err(TerminalError::NotRunning(terminal_id.to_string()));
+            }
+            entry.stdin.clone()
+        };
+        let Some(stdin) = stdin else {
+            return Err(TerminalError::NotRunning(terminal_id.to_string()));
+        };
+        let mut guard = stdin.lock().await;
+        guard
+            .write_all(data)
+            .await
+            .map_err(|e| TerminalError::NotRunning(e.to_string()))
     }
 
     pub async fn kill(&self, terminal_id: &str) -> Result<(), TerminalError> {
@@ -456,6 +556,7 @@ impl Clone for TerminalManager {
     fn clone(&self) -> Self {
         Self {
             terminals: Arc::clone(&self.terminals),
+            bus: Arc::clone(&self.bus),
         }
     }
 }

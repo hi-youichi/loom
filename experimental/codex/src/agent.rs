@@ -407,6 +407,7 @@ impl CodexAgent {
                     cancellation: run_opts.cancellation.clone(),
                     any_stream_event_sender: run_opts.any_stream_event_sender.clone(),
                     llm_override: None,
+                    thread_id: run_opts.thread_id.clone(),
                 },
                 Some(on_event),
             )

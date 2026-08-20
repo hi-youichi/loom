@@ -37,13 +37,13 @@ where
         let cp = checkpointer.expect("checkpointer is Some");
         let config = runnable_config.expect("runnable_config is Some");
         tracing::debug!(
-            thread_id = ?config.thread_id,
+            thread_id = %config.thread_id.as_deref().unwrap_or("none"),
             "resume_from_checkpoint: attempting to load checkpoint without appending message"
         );
         let tuple = cp.get_tuple(config).await?;
         if let Some((checkpoint, _)) = tuple {
             tracing::info!(
-                thread_id = ?config.thread_id,
+                thread_id = %config.thread_id.as_deref().unwrap_or("none"),
                 "resume_from_checkpoint: checkpoint found, restoring state without appending message"
             );
             return Ok(checkpoint.channel_values);
@@ -75,13 +75,13 @@ where
         let cp = checkpointer.expect("checkpointer is Some");
         let config = runnable_config.expect("runnable_config is Some");
         tracing::debug!(
-            thread_id = ?config.thread_id,
+            thread_id = %config.thread_id.as_deref().unwrap_or("none"),
             "load_from_checkpoint_or_build: attempting to load checkpoint"
         );
         let tuple = cp.get_tuple(config).await?;
         if let Some((checkpoint, _)) = tuple {
             tracing::info!(
-                thread_id = ?runnable_config.expect("runnable_config is Some").thread_id,
+                thread_id = %config.thread_id.as_deref().unwrap_or("none"),
                 "load_from_checkpoint_or_build: checkpoint found, merging user message"
             );
             return Ok(merge(checkpoint.channel_values, user_message.clone()));

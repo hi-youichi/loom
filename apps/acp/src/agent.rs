@@ -1223,7 +1223,15 @@ impl LoomAcpAgent {
                     let title_session_id = session_id.to_string();
                     let closure = move |ev: TypedAnyStreamEvent| {
                         capture_turn_usage(&ev, &acc);
-                        persist_session_title(&title_repository, &title_session_id, &ev);
+                        
+                        // Spawn background task for async title persistence
+                        let repo = title_repository.clone();
+                        let session = title_session_id.clone();
+                        let event = ev.clone();
+                        tokio::spawn(async move {
+                            persist_session_title(&repo, &session, &event).await;
+                        });
+                        
                         notifier.try_send_event(&ev);
                     };
                     Some(Box::new(closure) as Box<dyn FnMut(TypedAnyStreamEvent) + Send>)
@@ -1242,6 +1250,7 @@ impl LoomAcpAgent {
                 cancellation: opts.cancellation.clone(),
                 any_stream_event_sender: opts.any_stream_event_sender.clone(),
                 llm_override: None,
+                thread_id: opts.thread_id.clone(),
             },
             on_event,
         )
@@ -2140,7 +2149,7 @@ impl LoomAcpAgent {
                     let checkpoint_count: usize = row.get(1)?;
                     let _created_at_ms: Option<i64> = row.get(2)?;
                     let last_updated_ms: Option<i64> = row.get(3)?;
-                    let latest_step: i64 = row.get(4)?;
+                    let latest_step: Option<i64> = row.get(4)?;
                     let latest_source: String = row.get(5)?;
                     let latest_summary: Option<String> = row.get(6)?;
                     let review_status_str: Option<String> = row.get(7)?;
@@ -2180,7 +2189,7 @@ impl LoomAcpAgent {
                         meta: Some(SessionMeta {
                             checkpoint_count: Some(checkpoint_count),
                             message_count: None, // Would need to deserialize checkpoint to get message count
-                            latest_step: Some(latest_step),
+                            latest_step,
                             latest_source: Some(latest_source),
                             review,
                         }),
@@ -2241,7 +2250,7 @@ fn seed_title_text(content: &loom_llm::message::UserContent) -> Option<String> {
 /// (`Updates { node_id: "title" }`) into the session repository so
 /// `session/list` can serve the title across restarts. The push to the
 /// client happens separately via `SessionNotifier` (`session_info_update`).
-fn persist_session_title(
+async fn persist_session_title(
     repository: &SessionRepository,
     session_id: &str,
     ev: &TypedAnyStreamEvent,
@@ -2252,8 +2261,48 @@ fn persist_session_title(
     {
         if node_id == "title" {
             if let Some(title) = state.summary.as_ref().filter(|t| !t.trim().is_empty()) {
-                if let Err(error) = repository.set_title(session_id, title) {
-                    tracing::warn!(session_id, error = %error, "failed to persist session title");
+                // Add retry mechanism for title persistence
+                let mut retries = 0;
+                let max_retries = 3;
+                let mut last_error = None;
+
+                while retries <= max_retries {
+                    match repository.set_title(session_id, title) {
+                        Ok(_) => {
+                            if retries > 0 {
+                                tracing::info!(
+                                    session_id,
+                                    retries,
+                                    "successfully persisted session title after retry"
+                                );
+                            }
+                            return;
+                        }
+                        Err(error) => {
+                            last_error = Some(error);
+                            retries += 1;
+                            if retries <= max_retries {
+                                tracing::warn!(
+                                    session_id,
+                                    retries,
+                                    max_retries,
+                                    error = ?last_error,
+                                    "failed to persist session title, retrying..."
+                                );
+                                tokio::time::sleep(tokio::time::Duration::from_millis(100 * retries as u64)).await;
+                            }
+                        }
+                    }
+                }
+
+                if let Some(error) = last_error {
+                    tracing::error!(
+                        session_id,
+                        max_retries,
+                        error = %error,
+                        "failed to persist session title after {} retries",
+                        max_retries
+                    );
                 }
             }
         }

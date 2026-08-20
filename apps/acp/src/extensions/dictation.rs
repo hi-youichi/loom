@@ -667,15 +667,108 @@ impl DictationHandler {
 impl ExtensionHandler for DictationHandler {
     async fn handle(
         &self,
-        _method: &str,
-        _params: Value,
-        _ctx: &ExtensionContext,
+        method: &str,
+        params: Value,
+        ctx: &ExtensionContext,
     ) -> Result<Value, ExtensionError> {
-        Err(ExtensionError::method_not_found())
+        let parent = DictationParentContext {
+            session_id: ctx.session_id.clone(),
+            principal: ctx.principal.clone(),
+            connection_id: ctx.connection_id.clone(),
+            bearer_token_valid: true,
+        };
+        match method {
+            "start" => {
+                let mut config_value = params.clone();
+                if let Value::Object(map) = &mut config_value {
+                    map.remove("sessionId");
+                }
+                let config: DictationConfig = serde_json::from_value(config_value)
+                    .map_err(|e| ExtensionError::invalid_params(format!("invalid config: {e}")))?;
+                let url_session_id = params
+                    .get("sessionId")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let start = self
+                    .open_substream(url_session_id.as_deref(), &parent, config)
+                    .map_err(|e| ExtensionError {
+                        code: -32603,
+                        message: "dictation_start_failed".into(),
+                        data: Some(e),
+                    })?;
+                Ok(serde_json::json!({
+                    "substreamId": start.substream_id,
+                    "frame": start.frame,
+                }))
+            }
+            "control" => {
+                let frame = params
+                    .get("frame")
+                    .cloned()
+                    .ok_or_else(|| ExtensionError::invalid_params("frame is required"))?;
+                let out = self
+                    .receive_control(frame)
+                    .await
+                    .map_err(|e| ExtensionError {
+                        code: -32603,
+                        message: "dictation_control_failed".into(),
+                        data: Some(e),
+                    })?;
+                Ok(serde_json::json!({ "frames": out }))
+            }
+            "audio" => {
+                let id = params
+                    .get("substreamId")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ExtensionError::invalid_params("substreamId is required"))?
+                    .to_string();
+                let data_b64 = params
+                    .get("data")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ExtensionError::invalid_params("data is required"))?;
+                use base64::engine::general_purpose::STANDARD;
+                use base64::Engine;
+                let bytes = STANDARD
+                    .decode(data_b64)
+                    .map_err(|e| ExtensionError::invalid_params(format!("invalid base64: {e}")))?;
+                let out = self
+                    .receive_audio(&id, &bytes)
+                    .await
+                    .map_err(|e| ExtensionError {
+                        code: -32603,
+                        message: "dictation_audio_failed".into(),
+                        data: Some(e),
+                    })?;
+                Ok(serde_json::json!({ "frames": out }))
+            }
+            "status" => {
+                let count = self
+                    .streams
+                    .lock()
+                    .map(|s| s.len())
+                    .map_err(|_| ExtensionError {
+                        code: -32603,
+                        message: "internal_error".into(),
+                        data: None,
+                    })?;
+                Ok(serde_json::json!({
+                    "available": true,
+                    "activeSubstreams": count,
+                    "protocol": "rpc",
+                }))
+            }
+            _ => Err(ExtensionError::method_not_found()),
+        }
     }
 
     fn capabilities(&self) -> Value {
-        serde_json::json!({ "stream": true })
+        serde_json::json!({
+            "stream": true,
+            "start": true,
+            "control": true,
+            "audio": true,
+            "status": true,
+        })
     }
 }
 

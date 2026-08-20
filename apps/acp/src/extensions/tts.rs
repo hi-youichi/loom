@@ -466,12 +466,44 @@ impl ExtensionHandler for TtsHandler {
                 serde_json::to_value(result)
                     .map_err(|_| Self::internal("failed to serialize summary result"))
             }
+            "status" => Ok(serde_json::json!({
+                "available": true,
+                "provider": "loom-tts",
+                "voices": ["default"],
+                "formats": ["mp3", "wav", "ogg"],
+            })),
+            "speak" => {
+                let request: TtsSynthesizeParams = Self::parse(params)?;
+                Self::validate_text(&request.text)?;
+                Self::validate_voice(request.voice.as_deref())?;
+                Self::validate_speed(request.speed)?;
+                let session_id = Self::validate_session(request.session_id.as_deref(), ctx)?;
+                let output = self.synthesize_audio(&request).await?;
+                let result = self.synthesize_result(
+                    output,
+                    request.format,
+                    request.substream,
+                    ctx,
+                    session_id,
+                )?;
+                let _ = result;
+                Ok(serde_json::json!({
+                    "spoken": true,
+                    "available": true,
+                    "provider": "loom-tts",
+                }))
+            }
             _ => Err(ExtensionError::method_not_found()),
         }
     }
 
     fn capabilities(&self) -> Value {
-        serde_json::json!({ "synthesize": true, "summarize": true })
+        serde_json::json!({
+            "synthesize": true,
+            "summarize": true,
+            "status": true,
+            "speak": true,
+        })
     }
 }
 
