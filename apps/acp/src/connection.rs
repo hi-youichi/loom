@@ -28,6 +28,8 @@ pub enum ConnectionOutbound {
     },
     /// Cross-connection global event (`_loomdesk.dev/global/update`).
     GlobalNotification { method: String, params: Value },
+    /// Agent-originated extension notification sent to this connection's client.
+    ExtensionNotification { method: String, params: Value },
     /// FIFO barrier used to order session/load history before its response.
     Barrier(oneshot::Sender<()>),
 }

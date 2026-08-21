@@ -38,7 +38,7 @@ pub const TOOL_MOVE_FILE: &str = "move_file";
 /// create_dir — create a directory; parent directories are created if needed.
 pub const TOOL_CREATE_DIR: &str = "create_dir";
 
-/// apply_patch — apply a multi-file patch in opencode format.
+/// apply_patch — apply a multi-file patch in loom format.
 pub const TOOL_APPLY_PATCH: &str = "apply_patch";
 
 // ============================================================================

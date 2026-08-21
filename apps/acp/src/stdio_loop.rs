@@ -125,6 +125,15 @@ where
             let guard = drain_conn.read().await;
             if let Some(conn) = guard.as_ref() {
                 match outbound {
+                    ConnectionOutbound::ExtensionNotification { method, params } => {
+                        let message = agent_client_protocol::UntypedMessage {
+                            method: method.clone(),
+                            params,
+                        };
+                        if let Err(e) = conn.send_notification(message) {
+                            tracing::debug!(error = ?e, method = %method, "Failed to send extension notification");
+                        }
+                    }
                     ConnectionOutbound::Notification { value, enqueued } => {
                         if let Err(e) = conn.send_notification(value) {
                             tracing::error!(error = ?e, "Failed to send session notification");
@@ -267,10 +276,17 @@ where
                     } else {
                         match connection.require_capabilities().await {
                             Ok(capabilities) => {
-                                let bridge = Arc::new(crate::tools::AcpClientBridge::new(
-                                    session_id.to_string(),
-                                    connection.sdk_client_slot(),
-                                ));
+                                let bridge = Arc::new(
+                                    crate::tools::AcpClientBridge::new(
+                                        session_id.to_string(),
+                                        connection.sdk_client_slot(),
+                                    )
+                                    .with_question_handler(
+                                        connection.id.clone(),
+                                        runtime.question_handler.clone(),
+                                        capabilities.clone(),
+                                    ),
+                                );
                                 match runtime.execute_prompt(req, capabilities, bridge).await {
                                     Ok(response) => {
                                         match runtime.flush_notifications(&session_id).await {

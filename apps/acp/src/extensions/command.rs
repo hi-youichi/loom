@@ -599,8 +599,8 @@ fn internal_error(message: &str) -> ExtensionError {
 }
 
 /// Built-in slash commands, synthesized per request (not stored, not
-/// user-mutable). Names mirror the opencode runtime's shipped set so the FE
-/// command palette keeps its baseline after the opencode removal.
+/// user-mutable). Names mirror the loom runtime's shipped set so the FE
+/// command palette keeps its baseline after the loom removal.
 fn builtin_commands() -> Vec<CommandItem> {
     const EPOCH: DateTime<Utc> = DateTime::UNIX_EPOCH;
     fn cmd(id: &str, name: &str, description: &str, template: &str) -> CommandItem {

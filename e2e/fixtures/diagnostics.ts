@@ -6,7 +6,7 @@
  *
  * 使用方式：
  * ```
- * const test = base.extend({ ...mockOpencode, ...auth, ...diagnostics });
+ * const test = base.extend({ ...mockLoom, ...auth, ...diagnostics });
  * test('...', async ({ page, diagnosticsCollector }) => {
  *   expect(diagnosticsCollector.pageErrors).toEqual([]);
  * });

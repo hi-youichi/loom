@@ -12,16 +12,16 @@
 
 import { test as base, expect } from "@playwright/test";
 import { app } from "../../fixtures/app";
-import { mockOpencode } from "../../fixtures/mock-opencode";
+import { mockLoom } from "../../fixtures/mock-loom";
 import { auth } from "../../fixtures/auth";
 
 // 合并所有 fixtures
-// mockOpencode 提供 token 注入（让 SessionAuthGate 直接通过，绕过登录页）
+// mockLoom 提供 token 注入（让 SessionAuthGate 直接通过，绕过登录页）
 // + auth 提供 loginWithPassword + token 注入（双重保险）
 // + app 提供 baseURL。
 const test = base.extend({
   ...app,
-  ...mockOpencode,
+  ...mockLoom,
   ...auth,
 });
 
@@ -29,7 +29,7 @@ const test = base.extend({
  * SMK-001 — 应用启动与初始界面
  *
  * 目标：验证 Web 运行时能正常启动并展示主界面
- * 前置条件：已安装 OpenCode；浏览器可访问 http://localhost:3000
+ * 前置条件：已安装 Loom；浏览器可访问 http://localhost:3000
  * 步骤：1. 打开 http://localhost:3000 2. 输入密码登录
  * 预期结果：看到三栏布局：左侧会话侧栏、中间主视图（默认 Chat 标签）、右侧栏（Git/Files/Context）
  * 观察点/失败信号：页面空白、控制台报错、布局错乱、密码不生效

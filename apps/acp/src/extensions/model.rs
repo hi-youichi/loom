@@ -48,6 +48,13 @@ impl ModelHandler {
         Self
     }
 
+    /// Invalidate the catalog after provider configuration changes.
+    pub async fn invalidate_cache() {
+        let mut state = MODEL_CACHE.write().await;
+        state.catalog = None;
+        state.refreshed_at = None;
+    }
+
     /// Spawn a background refresh if one is not already running. When
     /// `only_if_empty` is set, skip when a catalog already exists (used by
     /// `new()` to avoid refresh storms across handler constructions).

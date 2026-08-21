@@ -25,15 +25,12 @@ fn param_str(params: &Value, key: &str) -> Option<String> {
 fn require_param(params: &Value, key: &str) -> Result<String, ExtensionError> {
     param_str(params, key)
         .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| {
-            ExtensionError::invalid_params(format!("missing required parameter: {key}"))
-        })
+        .ok_or_else(|| ExtensionError::invalid_params(format!("missing required parameter: {key}")))
 }
 
 /// Provider registry. `env_key` providers light up automatically when the
-/// corresponding environment variable is set; the manual trio
-/// (opencode-go / ollama-cloud / cursor) reads credentials from the store
-/// file, mirroring the Express `quota/` module.
+/// corresponding environment variable is set; the manual pair
+/// (ollama-cloud / cursor) reads credentials from the store file.
 struct ProviderDef {
     id: &'static str,
     label: &'static str,
@@ -43,19 +40,42 @@ struct ProviderDef {
 
 enum ProviderKind {
     EnvKey,
-    OpenCodeGo,
     OllamaCloud,
     Cursor,
 }
 
 fn providers() -> Vec<ProviderDef> {
     vec![
-        ProviderDef { id: "claude", label: "Claude Pro/Max", kind: ProviderKind::EnvKey, env_key: Some("CLAUDE_ACCESS_TOKEN") },
-        ProviderDef { id: "codex", label: "ChatGPT Codex", kind: ProviderKind::EnvKey, env_key: Some("CODEX_API_KEY") },
-        ProviderDef { id: "zhipu", label: "Zhipu Coding Plan", kind: ProviderKind::EnvKey, env_key: Some("ZHIPU_API_KEY") },
-        ProviderDef { id: "opencode-go", label: "opencode Go", kind: ProviderKind::OpenCodeGo, env_key: None },
-        ProviderDef { id: "ollama-cloud", label: "Ollama Cloud", kind: ProviderKind::OllamaCloud, env_key: None },
-        ProviderDef { id: "cursor", label: "Cursor", kind: ProviderKind::Cursor, env_key: None },
+        ProviderDef {
+            id: "claude",
+            label: "Claude Pro/Max",
+            kind: ProviderKind::EnvKey,
+            env_key: Some("CLAUDE_ACCESS_TOKEN"),
+        },
+        ProviderDef {
+            id: "codex",
+            label: "ChatGPT Codex",
+            kind: ProviderKind::EnvKey,
+            env_key: Some("CODEX_API_KEY"),
+        },
+        ProviderDef {
+            id: "zhipu",
+            label: "Zhipu Coding Plan",
+            kind: ProviderKind::EnvKey,
+            env_key: Some("ZHIPU_API_KEY"),
+        },
+        ProviderDef {
+            id: "ollama-cloud",
+            label: "Ollama Cloud",
+            kind: ProviderKind::OllamaCloud,
+            env_key: None,
+        },
+        ProviderDef {
+            id: "cursor",
+            label: "Cursor",
+            kind: ProviderKind::Cursor,
+            env_key: None,
+        },
     ]
 }
 
@@ -94,9 +114,7 @@ fn save_credentials(map: &HashMap<String, Value>) -> Result<(), ExtensionError> 
         }
     }
     let body = serde_json::to_string_pretty(&Value::Object(
-        map.iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect(),
+        map.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
     ))
     .map_err(|e| internal(e.to_string()))?;
     std::fs::write(&path, body).map_err(|e| internal(e.to_string()))
@@ -154,21 +172,6 @@ impl QuotaProviderHandler {
         }
     }
 
-    async fn fetch_opencode_go(token: &str) -> Result<Value, String> {
-        let client = reqwest::Client::new();
-        let response = client
-            .post("https://api.opencode.ai/quota/check")
-            .bearer_auth(token)
-            .header("User-Agent", "loom-acp")
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        if !response.status().is_success() {
-            return Err(format!("opencode-go returned {}", response.status()));
-        }
-        response.json::<Value>().await.map_err(|e| e.to_string())
-    }
-
     async fn fetch_ollama_cloud(token: &str) -> Result<Value, String> {
         let client = reqwest::Client::new();
         let response = client
@@ -201,13 +204,8 @@ impl QuotaProviderHandler {
         response.json::<Value>().await.map_err(|e| e.to_string())
     }
 
-    async fn fetch_provider(
-        &self,
-        def: &ProviderDef,
-        credential: &str,
-    ) -> Result<Value, String> {
+    async fn fetch_provider(&self, def: &ProviderDef, credential: &str) -> Result<Value, String> {
         match def.kind {
-            ProviderKind::OpenCodeGo => Self::fetch_opencode_go(credential).await,
             ProviderKind::OllamaCloud => Self::fetch_ollama_cloud(credential).await,
             ProviderKind::Cursor => Self::fetch_cursor(credential).await,
             // Env-key providers (claude/codex/zhipu) have no public usage
@@ -249,9 +247,7 @@ impl ExtensionHandler for QuotaProviderHandler {
             "credentials_set" => {
                 let id = require_param(&params, "id")?;
                 if providers().iter().all(|p| p.id != id) {
-                    return Err(ExtensionError::not_found(format!(
-                        "unknown provider: {id}"
-                    )));
+                    return Err(ExtensionError::not_found(format!("unknown provider: {id}")));
                 }
                 let credential = params
                     .get("credential")

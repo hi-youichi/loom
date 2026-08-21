@@ -6,7 +6,7 @@
  *
  * 使用 fixtures:
  * - app: 提供 baseURL
- * - mock-opencode: 拦截 HTTP API
+ * - mock-loom: 拦截 HTTP API
  * - temp-git-repo: 创建临时 git 仓库
  *
  * 参考 docs/references/openchamber-text-acceptance-test-cases.md §10, §11, §12
@@ -14,12 +14,12 @@
 
 import { test as base, expect } from "@playwright/test";
 import { app } from "../../fixtures/app";
-import { mockOpencode } from "../../fixtures/mock-opencode";
+import { mockLoom } from "../../fixtures/mock-loom";
 import { tempGitRepo } from "../../fixtures/temp-git-repo";
 
 const test = base.extend({
   ...app,
-  ...mockOpencode,
+  ...mockLoom,
   ...tempGitRepo,
 });
 

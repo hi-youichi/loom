@@ -103,7 +103,7 @@ impl ToolCallStreamForwarder {
         } else if pending.started {
             // The arguments carried by this delta have not previously been
             // forwarded. Name fragments are intentionally not resent: the
-            // OpenCode protocol has no tool-name delta event.
+            // Loom protocol has no tool-name delta event.
             if let Some(arguments) = arguments {
                 let _ = sink.try_send_tool_call(
                     ToolCallChunk::Delta {

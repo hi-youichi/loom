@@ -44,14 +44,19 @@ async fn start_server() -> (std::net::SocketAddr, loom_server::state::SharedStat
     let _ = std::fs::remove_file(data_dir.join("jwt-secret"));
     std::env::set_var("LOOMDESK_DATA_DIR", &data_dir);
     std::env::remove_var("LOOMDESK_JWT_SECRET");
-    std::env::remove_var("OPENCODE_JWT_SECRET");
+    std::env::remove_var("LOOM_JWT_SECRET");
     std::env::remove_var("LOOM_AUTH_TOKEN");
     let state = new_server_state();
     let app = build_router(state.clone());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
-        axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await.unwrap();
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .unwrap();
     });
     (addr, state)
 }

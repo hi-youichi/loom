@@ -1,6 +1,6 @@
 //! PTY wire-protocol helpers.
 //!
-//! Mirrors the opencode `pty-protocol.ts` contract exactly — the pure,
+//! Mirrors the loom `pty-protocol.ts` contract exactly — the pure,
 //! transport-free helpers used to adapt `Pty.attach` to WebSocket
 //! transports. No axum/tokio; no I/O. Only logic + UTF-8.
 //!
@@ -121,7 +121,7 @@ fn parse_cursor_json(s: &str) -> Option<u64> {
 ///
 /// `Output` and `Meta` frames are parsed from raw bytes via [`Frame::parse`];
 /// `Close` carries the child exit code and is constructed by the server when
-/// the PTY child terminates (the opencode contract defines no on-wire close
+/// the PTY child terminates (the loom contract defines no on-wire close
 /// encoding, only the `0x00` metadata marker).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Frame {

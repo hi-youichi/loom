@@ -52,12 +52,12 @@ pub struct SettingsSaveResponse {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct RestartOpencodeRequest {
+pub struct RestartLoomRequest {
     pub confirm_token: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct RestartOpencodeResponse {
+pub struct RestartLoomResponse {
     pub restarted: bool,
     pub message: String,
 }
@@ -459,7 +459,7 @@ fn path(path: &str) -> Result<Vec<String>, ExtensionError> {
 }
 
 /// `~/.config/loomdesk/AGENTS.md` — the global behavior prompt (renamed from
-/// the legacy opencode path; Express reads the same file).
+/// the legacy loom path; Express reads the same file).
 const MAX_AGENTS_MD_BYTES: usize = 1024 * 1024;
 
 fn agents_md_path() -> std::path::PathBuf {
@@ -563,7 +563,7 @@ impl ExtensionHandler for SettingsHandler {
         let capability = match method {
             "load" => "load",
             "save" => "save",
-            "restart_opencode" => "restart_opencode",
+            "restart_loom" => "restart_loom",
             "read_agents_md" => "load",
             "write_agents_md" => "save",
             "reload_config" => "save",
@@ -671,14 +671,14 @@ impl ExtensionHandler for SettingsHandler {
                 })
                 .map_err(|error| Self::internal(error.to_string()))
             }
-            "restart_opencode" => {
-                let request: RestartOpencodeRequest = Self::parse(params)?;
+            "restart_loom" => {
+                let request: RestartLoomRequest = Self::parse(params)?;
                 if request.confirm_token.trim().is_empty() {
                     return Err(ExtensionError::invalid_params(
                         "confirmToken must not be empty",
                     ));
                 }
-                if !self.authorizer.authorized("restart_opencode", ctx) {
+                if !self.authorizer.authorized("restart_loom", ctx) {
                     return Err(Self::forbidden("restart permission required"));
                 }
                 self.scheduler
@@ -687,9 +687,9 @@ impl ExtensionHandler for SettingsHandler {
                         RestartScheduleError::RateLimited => Self::rate_limited(),
                         RestartScheduleError::Scheduling(message) => Self::internal(message),
                     })?;
-                serde_json::to_value(RestartOpencodeResponse {
+                serde_json::to_value(RestartLoomResponse {
                     restarted: true,
-                    message: "OpenCode server is restarting. Please reconnect.".into(),
+                    message: "Loom server is restarting. Please reconnect.".into(),
                 })
                 .map_err(|error| Self::internal(error.to_string()))
             }
@@ -721,9 +721,7 @@ impl ExtensionHandler for SettingsHandler {
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                         Ok(serde_json::json!({ "content": "", "exists": false }))
                     }
-                    Err(error) => Err(Self::internal(format!(
-                        "failed to read AGENTS.md: {error}"
-                    ))),
+                    Err(error) => Err(Self::internal(format!("failed to read AGENTS.md: {error}"))),
                 }
             }
             "write_agents_md" => {
@@ -735,10 +733,9 @@ impl ExtensionHandler for SettingsHandler {
                 }
                 let path = agents_md_path();
                 if let Some(parent) = path.parent() {
-                    std::fs::create_dir_all(parent)
-                        .map_err(|error| Self::internal(format!(
-                            "failed to create config directory: {error}"
-                        )))?;
+                    std::fs::create_dir_all(parent).map_err(|error| {
+                        Self::internal(format!("failed to create config directory: {error}"))
+                    })?;
                 }
                 std::fs::write(&path, &request.content).map_err(|error| {
                     Self::internal(format!("failed to write AGENTS.md: {error}"))
@@ -753,7 +750,7 @@ impl ExtensionHandler for SettingsHandler {
         serde_json::json!({
             "load": true,
             "save": true,
-            "restart_opencode": true,
+            "restart_loom": true,
             "read_agents_md": true,
             "write_agents_md": true,
             "reload_config": true,

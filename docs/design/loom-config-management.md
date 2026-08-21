@@ -46,7 +46,7 @@ wire 层已完整：agent/command/skill/snippet/plugin/mcp 六域的 CRUD、scop
 
 - mcp/configure 补 headers/oauth/timeout/env 字段 + `delete` 方法（mcp.json schema 扩展）
 - model 域补 provider create/update/delete（写 providers.json）
-- scheduled-task 补 create/update/delete（已有落盘，仅补方法）
+- scheduled-task 已补 create/update/delete（已有落盘）；真实定时触发与 session/prompt 执行仍由 Phase 5 scheduler 负责
 - `project/icon_get {theme}`（主题着色 SVG dataUrl）+ icon_set（响应带 `settings` 字段）
 - TTS：`TtsSynthesizeParams` + optional `providerId/modelId`（消费 loom 已配置 provider，不再透传凭据）
 - `diagnostics/probe_url`、`diagnostics/free_port`

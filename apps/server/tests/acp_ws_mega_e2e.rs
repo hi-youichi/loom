@@ -21,7 +21,7 @@ async fn start_server() -> (String, tokio::task::JoinHandle<()>) {
     let _ = std::fs::remove_file(data_dir.join("jwt-secret"));
     std::env::set_var("LOOMDESK_DATA_DIR", &data_dir);
     std::env::remove_var("LOOMDESK_JWT_SECRET");
-    std::env::remove_var("OPENCODE_JWT_SECRET");
+    std::env::remove_var("LOOM_JWT_SECRET");
     std::env::remove_var("LOOM_AUTH_TOKEN");
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
@@ -29,7 +29,12 @@ async fn start_server() -> (String, tokio::task::JoinHandle<()>) {
     let address = listener.local_addr().expect("listener address");
     let app: Router = build_router(new_state());
     let task = tokio::spawn(async move {
-        axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await.expect("serve test router");
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .await
+        .expect("serve test router");
     });
     (format!("ws://{address}/acp"), task)
 }

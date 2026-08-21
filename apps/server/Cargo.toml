@@ -2,7 +2,7 @@
 name = "loom-server-core"
 version.workspace = true
 edition.workspace = true
-description = "Loom HTTP+SSE server: serves loom as an opencode-compatible kernel (External mode)"
+description = "Loom HTTP+SSE server: serves loom as an loom-compatible kernel (External mode)"
 license.workspace = true
 authors.workspace = true
 

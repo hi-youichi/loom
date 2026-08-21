@@ -1,6 +1,6 @@
 //! `_loomdesk.dev/session/*` — global session listing + archival.
 //!
-//! Replaces the legacy Express→opencode `/api/experimental/session`
+//! Replaces the legacy Express→loom `/api/experimental/session`
 //! passthrough: the sidebar pulls active and archived sessions from the
 //! Loom-owned `acp_sessions` table via `list-global`, and archive/unarchive
 //! mutations are persisted server-side and broadcast as `session.updated`
@@ -73,7 +73,9 @@ impl SessionListHandler {
             .pagination
             .decode_cursor::<String>()
             .map_err(|error| ExtensionError::invalid_params(format!("{error}")))?;
-        let limit = parsed.pagination.limit_or_default(DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT);
+        let limit = parsed
+            .pagination
+            .limit_or_default(DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT);
 
         let agent = self.agent()?;
         let (rows, next_cursor) = agent
@@ -87,7 +89,18 @@ impl SessionListHandler {
             .await
             .map_err(|error| internal_error(error.message))?;
 
-        let sessions: Vec<Value> = rows.iter().map(to_list_item).collect();
+        let mut sessions = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let mut item = to_list_item(row);
+            if let Some(metadata) = agent
+                .session_metadata_for_owner(&ctx.principal, &row.session_id)
+                .await
+                .map_err(|error| internal_error(error.to_string()))?
+            {
+                item["metadata"] = metadata;
+            }
+            sessions.push(item);
+        }
         let has_more = next_cursor.is_some();
         let next_cursor = next_cursor.map(|cursor| encode_cursor(Value::String(cursor)));
         Ok(json!({
@@ -125,6 +138,66 @@ impl SessionListHandler {
 
         Ok(json!({ "session": to_list_item(&updated) }))
     }
+
+    async fn handle_update(
+        &self,
+        params: Value,
+        ctx: &ExtensionContext,
+    ) -> Result<Value, ExtensionError> {
+        let parsed: UpdateParams = serde_json::from_value(params)
+            .map_err(|error| ExtensionError::invalid_params(format!("{error}")))?;
+        if parsed.session_id.is_empty() {
+            return Err(ExtensionError::invalid_params("sessionId is required"));
+        }
+        if parsed.metadata.is_none() && parsed.title.is_none() {
+            return Err(ExtensionError::invalid_params(
+                "metadata or title is required",
+            ));
+        }
+
+        let agent = self.agent()?;
+        if let Some(metadata) = parsed.metadata {
+            if !metadata.is_object() {
+                return Err(ExtensionError::invalid_params("metadata must be an object"));
+            }
+            agent
+                .update_session_metadata_for_owner(&ctx.principal, &parsed.session_id, metadata)
+                .await
+                .map_err(|error| internal_error(error.to_string()))?
+                .ok_or_else(|| ExtensionError::not_found("session not found"))?;
+        }
+        if let Some(title) = parsed.title {
+            agent
+                .update_session_title_for_owner(&ctx.principal, &parsed.session_id, &title)
+                .await
+                .map_err(|error| internal_error(error.to_string()))?
+                .then_some(())
+                .ok_or_else(|| ExtensionError::not_found("session not found"))?;
+        }
+
+        let session = agent
+            .session_for_owner(&ctx.principal, &parsed.session_id)
+            .await
+            .map_err(|error| internal_error(error.to_string()))?
+            .ok_or_else(|| ExtensionError::not_found("session not found"))?;
+        let metadata = agent
+            .session_metadata_for_owner(&ctx.principal, &parsed.session_id)
+            .await
+            .map_err(|error| internal_error(error.to_string()))?
+            .unwrap_or_else(|| json!({}));
+        let mut info = to_event_info(&session);
+        info["metadata"] = metadata.clone();
+        let mut session_item = to_list_item(&session);
+        session_item["metadata"] = metadata.clone();
+        if let Some(bus) = &self.global_bus {
+            bus.publish(
+                "session",
+                "session.updated",
+                json!({ "info": info, "metadata": metadata }),
+            );
+        }
+        Ok(json!({ "session": session_item, "metadata": metadata }))
+    }
 }
 
 impl Default for SessionListHandler {
@@ -151,6 +224,16 @@ struct ArchiveParams {
     archived: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateParams {
+    session_id: String,
+    #[serde(default)]
+    metadata: Option<Value>,
+    #[serde(default)]
+    title: Option<String>,
+}
+
 fn default_archived() -> bool {
     true
 }
@@ -164,7 +247,7 @@ fn internal_error(message: impl Into<String>) -> ExtensionError {
 }
 
 /// Loom-native list item consumed by the FE adapter
-/// (`acpSessionInfoToOpenCodeSession`-style mapping).
+/// (`acpSessionInfoToLoomSession`-style mapping).
 fn to_list_item(metadata: &SessionMetadata) -> Value {
     json!({
         "sessionId": metadata.session_id,
@@ -176,7 +259,7 @@ fn to_list_item(metadata: &SessionMetadata) -> Value {
     })
 }
 
-/// opencode-shaped session info for `session.updated` global events; the FE
+/// loom-shaped session info for `session.updated` global events; the FE
 /// event reducer requires `id` plus `time` (with `time.archived` for
 /// archival transitions).
 fn to_event_info(metadata: &SessionMetadata) -> Value {
@@ -227,12 +310,13 @@ impl ExtensionHandler for SessionListHandler {
         match method {
             "list-global" => self.handle_list_global(params, ctx).await,
             "archive" => self.handle_archive(params, ctx).await,
+            "update" => self.handle_update(params, ctx).await,
             _ => Err(ExtensionError::method_not_found()),
         }
     }
 
     fn capabilities(&self) -> Value {
-        json!({ "methods": ["list-global", "archive"] })
+        json!({ "methods": ["list-global", "archive", "update"] })
     }
 }
 
@@ -241,7 +325,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn event_info_maps_opencode_shape() {
+    fn event_info_maps_loom_shape() {
         let metadata = SessionMetadata {
             session_id: "s-1".into(),
             thread_id: "t-1".into(),

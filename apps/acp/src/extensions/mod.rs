@@ -33,6 +33,7 @@ pub mod pairing;
 pub mod plugin;
 pub mod preview;
 pub mod project;
+pub mod provider;
 pub mod question;
 pub mod quota_provider;
 pub mod relay;

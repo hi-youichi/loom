@@ -462,6 +462,9 @@ pub struct GoalListParams {
 {
   "scheduled-task": {
     "list": true,
+    "create": true,
+    "update": true,
+    "delete": true,
     "run": true
   }
 }
@@ -479,8 +482,12 @@ pub struct ScheduledTask {
     pub description: String,
     /// 是否启用
     pub enabled: bool,
-    /// Cron 表达式或间隔描述
-    pub schedule: String,
+    /// Client-defined schedule object; the handler preserves its fields.
+    pub schedule: serde_json::Value,
+    /// Prompt/model execution configuration preserved for the scheduler.
+    pub execution: serde_json::Value,
+    /// Scheduler-owned state preserved for the UI.
+    pub state: serde_json::Value,
     /// 上次运行时间
     pub last_run: Option<String>,
     /// 上次运行状态
@@ -565,6 +572,10 @@ pub struct ScheduledTaskRunParams {
 | kind | 触发条件 |
 |---|---|
 | `internal_error` | 读取配置失败 |
+
+### `_loomdesk.dev/scheduled-task/create|update|delete`
+
+配置变更同样按项目工作目录落盘到 `<cwd>/.loom/scheduled-tasks.json`。`create` 和 `update` 接收 `{ "task": { ... } }`，`update` 还需要 `id`；`delete` 接收 `id`。响应包含 `tasks`，创建或更新时额外包含 `task`。这些方法只负责配置和运行记录，不会在当前版本内自行启动 scheduler。
 
 ---
 

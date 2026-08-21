@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::connection_registry::ConnectionRegistry;
 use crate::global_events::GlobalEventBus;
 
 use super::session_history::SessionHistoryHandler;
@@ -12,12 +13,14 @@ use super::ExtensionRegistry;
 pub struct ExtensionRegistryHandles {
     pub session_history: Arc<SessionHistoryHandler>,
     pub session_list: Arc<SessionListHandler>,
+    pub question: Arc<super::question::QuestionHandler>,
 }
 
 /// Register every extension domain implemented in this crate.
 pub fn register_default_extensions(
     registry: &mut ExtensionRegistry,
     global_bus: Arc<GlobalEventBus>,
+    connections: Option<Arc<ConnectionRegistry>>,
 ) -> ExtensionRegistryHandles {
     registry.register("files", Arc::new(super::files::FilesHandler));
     registry.register(
@@ -46,10 +49,12 @@ pub fn register_default_extensions(
         "client-auth",
         Arc::new(super::client_auth::ClientAuthHandler::default()),
     );
-    registry.register(
-        "question",
-        Arc::new(super::question::QuestionHandler::default()),
-    );
+    let question_handler = match connections {
+        Some(connections) => super::question::QuestionHandler::with_connections(connections),
+        None => super::question::QuestionHandler::default(),
+    };
+    let question_handler = Arc::new(question_handler);
+    registry.register("question", question_handler.clone());
     registry.register("github", Arc::new(super::github::GithubHandler::default()));
     registry.register(
         "notification",
@@ -81,6 +86,7 @@ pub fn register_default_extensions(
         "project",
         Arc::new(super::project::ProjectHandler::persistent()),
     );
+    registry.register("provider", Arc::new(super::provider::ProviderHandler));
     registry.register("tunnel", Arc::new(super::tunnel::TunnelHandler::default()));
     registry.register(
         "multi-run",
@@ -122,7 +128,9 @@ pub fn register_default_extensions(
     }
     registry.register(
         "terminal-ext",
-        Arc::new(super::terminal_ext::TerminalExtHandler::new(terminal_manager)),
+        Arc::new(super::terminal_ext::TerminalExtHandler::new(
+            terminal_manager,
+        )),
     );
     registry.register("tts", Arc::new(super::tts::TtsHandler::default()));
     registry.register(
@@ -143,5 +151,6 @@ pub fn register_default_extensions(
     ExtensionRegistryHandles {
         session_history,
         session_list,
+        question: question_handler,
     }
 }

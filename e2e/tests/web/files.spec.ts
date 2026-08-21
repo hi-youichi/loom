@@ -12,12 +12,12 @@
 
 import { test as base, expect } from "@playwright/test";
 import { app } from "../../fixtures/app";
-import { mockOpencode } from "../../fixtures/mock-opencode";
+import { mockLoom } from "../../fixtures/mock-loom";
 
-// 合并 fixtures：mockOpencode 的 page 必须不被覆盖
+// 合并 fixtures：mockLoom 的 page 必须不被覆盖
 const test = base.extend({
   ...app,
-  ...mockOpencode,
+  ...mockLoom,
 });
 
 /**

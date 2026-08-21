@@ -54,6 +54,7 @@ pub struct AcpRuntime {
     pub connections: Arc<ConnectionRegistry>,
     pub notification_router: Arc<NotificationRouter>,
     pub extensions: Arc<ExtensionRegistry>,
+    pub question_handler: Arc<crate::extensions::question::QuestionHandler>,
     pub global_bus: Arc<crate::global_events::GlobalEventBus>,
     prompt_executor: Arc<dyn AcpPromptExecutor>,
     prompt_capacity: Arc<Semaphore>,
@@ -82,9 +83,13 @@ impl AcpRuntime {
     ) -> Result<Arc<Self>, Box<dyn std::error::Error + Send + Sync>> {
         let (updates_tx, mut updates_rx) = mpsc::channel(256);
         let global_bus = Arc::new(crate::global_events::GlobalEventBus::new());
+        let connections = Arc::new(ConnectionRegistry::default());
         let mut extension_registry = ExtensionRegistry::new();
-        let extension_handles =
-            register_default_extensions(&mut extension_registry, global_bus.clone());
+        let extension_handles = register_default_extensions(
+            &mut extension_registry,
+            global_bus.clone(),
+            Some(connections.clone()),
+        );
         let extensions = Arc::new(extension_registry);
         let agent = Arc::new(LoomAcpAgent::new_with_extension_registry(
             extensions.clone(),
@@ -93,7 +98,6 @@ impl AcpRuntime {
         extension_handles.session_history.bind(&agent);
         extension_handles.session_list.bind(&agent);
         let bindings = Arc::new(SessionBindings::new());
-        let connections = Arc::new(ConnectionRegistry::default());
         global_bus.bind_registry(connections.clone());
         let notification_router = Arc::new(NotificationRouter::new(
             bindings.clone(),
@@ -108,6 +112,7 @@ impl AcpRuntime {
             connections,
             notification_router,
             extensions,
+            question_handler: extension_handles.question,
             global_bus,
             prompt_executor,
             prompt_capacity: Arc::new(Semaphore::new(
@@ -177,7 +182,7 @@ impl AcpRuntime {
                 }
                 let is_replay = replaying_sessions.contains(&update_session_id);
                 // Cross-connection signal: session content changed. Payload
-                // mirrors the opencode `session.updated` event shape.
+                // mirrors the loom `session.updated` event shape.
                 if !is_replay {
                     global_bus.publish(
                         "session",

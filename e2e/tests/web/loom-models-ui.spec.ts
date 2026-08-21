@@ -10,7 +10,7 @@
  *
  * 2. openchamber 前端运行在 http://localhost:5173
  *    cd openchamber-feat-dev
- *    $env:OPENCODE_HOST = "http://127.0.0.1:18081"
+ *    $env:LOOM_HOST = "http://127.0.0.1:18081"
  *    $env:OPENCHAMBER_PORT = "3200"
  *    bun run dev:web:full
  *

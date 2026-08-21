@@ -5,7 +5,7 @@
 //! (`_loomdesk.dev/global/update`) pushed over each subscribed connection.
 //!
 //! Topics are coarse-grained change signals (`session`, `settings`, `git`,
-//! `notification`); payloads are opencode-shaped events
+//! `notification`); payloads are loom-shaped events
 //! (`{ type, properties }`) so the frontend event pipeline can reuse its
 //! existing reducers unchanged.
 
@@ -56,7 +56,7 @@ impl GlobalEventBus {
         *self.connections.lock().expect("global bus poisoned") = Some(registry);
     }
 
-    /// Publish an opencode-shaped event (`{ type, properties }`) to every
+    /// Publish an loom-shaped event (`{ type, properties }`) to every
     /// active subscription of `topic`.
     ///
     /// Fire-and-forget: slow consumers drop frames (events are change

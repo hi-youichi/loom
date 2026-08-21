@@ -23,8 +23,24 @@ const RESERVED_PREFIXES: &[&str] = &["/api", "/acp", "/global", "/metrics"];
 /// File extensions that must 404 instead of falling back to `index.html` — a
 /// missing asset answering with HTML turns a clear 404 into a MIME error.
 const ASSET_EXTENSIONS: &[&str] = &[
-    "js", "mjs", "css", "map", "svg", "png", "jpg", "jpeg", "gif", "ico", "woff", "woff2", "ttf",
-    "eot", "json", "webmanifest", "txt", "wasm",
+    "js",
+    "mjs",
+    "css",
+    "map",
+    "svg",
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "ico",
+    "woff",
+    "woff2",
+    "ttf",
+    "eot",
+    "json",
+    "webmanifest",
+    "txt",
+    "wasm",
 ];
 
 /// Router that serves `dist_dir` statically with an SPA fallback to
@@ -61,7 +77,11 @@ async fn spa_fallback(req: Request, index: PathBuf) -> Response {
     let is_asset = Path::new(path)
         .extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| ASSET_EXTENSIONS.iter().any(|known| known.eq_ignore_ascii_case(ext)))
+        .map(|ext| {
+            ASSET_EXTENSIONS
+                .iter()
+                .any(|known| known.eq_ignore_ascii_case(ext))
+        })
         .unwrap_or(false);
 
     if reserved || is_asset {
@@ -116,7 +136,7 @@ async fn pwa_manifest(Query(query): Query<ManifestQuery>) -> Response {
     let mut manifest = serde_json::json!({
         "name": name,
         "short_name": short_name,
-        "description": "Web interface companion for OpenCode AI coding agent",
+        "description": "Web interface companion for Loom AI coding agent",
         "id": "/",
         "start_url": "/",
         "scope": "/",
@@ -257,7 +277,9 @@ mod tests {
         let res = send(router.clone(), "/manifest.webmanifest?orientation=portrait").await;
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(
-            res.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()),
+            res.headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok()),
             Some("application/manifest+json")
         );
         let body = to_bytes(res.into_body(), usize::MAX).await.expect("body");

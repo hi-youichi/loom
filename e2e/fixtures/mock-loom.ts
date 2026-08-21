@@ -1,9 +1,9 @@
 /**
- * e2e/fixtures/mock-opencode.ts
+ * e2e/fixtures/mock-loom.ts
  *
- * Mock OpenCode API fixture.
+ * Mock Loom API fixture.
  *
- * 使用 page.route() 拦截前端对 OpenCode server 的 HTTP 请求。
+ * 使用 page.route() 拦截前端对 Loom server 的 HTTP 请求。
  * Playwright 自动在每个新 page 创建时应用，无需显式调用。
  *
  * 拦截的端点：
@@ -11,7 +11,7 @@
  * - GET /api/models → 返回 models.json 内容
  * - POST /api/sessions → 返回 mock 会话对象
  *
- * @module fixtures/mock-opencode
+ * @module fixtures/mock-loom
  */
 
 import { test as base } from "@playwright/test";
@@ -44,21 +44,21 @@ const MOCK_MODELS = loadMockModels();
 // ─── Fixture Implementation ─────────────────────────────────────────────────
 
 /**
- * mockOpencode fixture — Playwright fixture dict (NOT a TestType).
+ * mockLoom fixture — Playwright fixture dict (NOT a TestType).
  *
  * 用法：
  * ```
  * import { test as base, expect } from "@playwright/test";
- * import { mockOpencode } from "../../fixtures/mock-opencode";
+ * import { mockLoom } from "../../fixtures/mock-loom";
  * import { auth } from "../../fixtures/auth";
  *
  * const test = base.extend({
- *   ...mockOpencode,
+ *   ...mockLoom,
  *   ...auth,
  * });
  * ```
  */
-export const mockOpencode: Record<string, unknown> = {
+export const mockLoom: Record<string, unknown> = {
   /**
    * 自动挂载 mock 到每个新 page。
    * 使用 page.route() 在浏览器进程中拦截请求（零网络开销）。

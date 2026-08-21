@@ -6,7 +6,7 @@
  *
  * 使用 fixtures:
  * - app: 提供 baseURL
- * - mock-opencode: 拦截 HTTP API
+ * - mock-loom: 拦截 HTTP API
  * - temp-project: 创建临时项目目录
  *
  * 参考 docs/references/openchamber-text-acceptance-test-cases.md §2
@@ -14,12 +14,12 @@
 
 import { test as base, expect } from "@playwright/test";
 import { app } from "../../fixtures/app";
-import { mockOpencode } from "../../fixtures/mock-opencode";
+import { mockLoom } from "../../fixtures/mock-loom";
 import { tempProject } from "../../fixtures/temp-project";
 
 const test = base.extend({
   ...app,
-  ...mockOpencode,
+  ...mockLoom,
   ...tempProject,
 });
 

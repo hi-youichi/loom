@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use crate::client_capabilities::ClientCapabilitiesInfo;
+use crate::extensions::question::{QuestionHandler, QuestionReply, QuestionRequest};
+
 #[derive(Debug, Clone)]
 pub struct TerminalOutput {
     pub output: String,
@@ -58,6 +61,12 @@ pub trait ClientBridgeTrait: Send + Sync {
     async fn terminal_kill(&self, session_id: &str, terminal_id: &str) -> Result<(), String>;
 
     async fn terminal_release(&self, session_id: &str, terminal_id: &str) -> Result<(), String>;
+
+    /// Ask the connected ACP client a structured question and wait for its
+    /// answer. Bridges that do not have a client connection reject this path.
+    async fn ask_question(&self, _request: QuestionRequest) -> Result<QuestionReply, String> {
+        Err("No question bridge available".to_string())
+    }
 }
 
 pub struct AcpClientBridge {
@@ -68,6 +77,9 @@ pub struct AcpClientBridge {
         >,
     >,
     terminal_ids: tokio::sync::Mutex<HashSet<String>>,
+    connection_id: Option<String>,
+    question_handler: Option<Arc<QuestionHandler>>,
+    client_capabilities: Option<ClientCapabilitiesInfo>,
 }
 
 impl AcpClientBridge {
@@ -83,7 +95,22 @@ impl AcpClientBridge {
             session_id: agent_client_protocol::schema::v1::SessionId::new(session_id.into()),
             conn,
             terminal_ids: tokio::sync::Mutex::new(HashSet::new()),
+            connection_id: None,
+            question_handler: None,
+            client_capabilities: None,
         }
+    }
+
+    pub fn with_question_handler(
+        mut self,
+        connection_id: impl Into<String>,
+        question_handler: Arc<QuestionHandler>,
+        client_capabilities: ClientCapabilitiesInfo,
+    ) -> Self {
+        self.connection_id = Some(connection_id.into());
+        self.question_handler = Some(question_handler);
+        self.client_capabilities = Some(client_capabilities);
+        self
     }
 }
 
@@ -212,6 +239,32 @@ impl ClientBridgeTrait for AcpClientBridge {
             self.terminal_ids.lock().await.remove(terminal_id);
         }
         result
+    }
+
+    async fn ask_question(&self, request: QuestionRequest) -> Result<QuestionReply, String> {
+        let handler = self
+            .question_handler
+            .as_ref()
+            .ok_or_else(|| "Question capability is unavailable".to_string())?;
+        let connection_id = self
+            .connection_id
+            .as_ref()
+            .ok_or_else(|| "No ACP connection available".to_string())?;
+        let capabilities = self
+            .client_capabilities
+            .as_ref()
+            .ok_or_else(|| "Question capability is unavailable".to_string())?;
+        let mut request = request;
+        request.session_id = Some(self.session_id.to_string());
+        handler
+            .request_for_agent(
+                request,
+                connection_id.clone(),
+                Some(self.session_id.to_string()),
+                capabilities.clone(),
+            )
+            .await
+            .map_err(|error| error.to_string())
     }
 }
 

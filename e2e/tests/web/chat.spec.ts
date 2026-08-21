@@ -6,19 +6,19 @@
  * 使用 fixtures:
  * - app: 提供 baseURL fixture
  * - auth: 提供 Bearer Token 注入（已认证状态）
- * - mock-opencode: 拦截 /api/sessions 和 /api/models 请求
+ * - mock-loom: 拦截 /api/sessions 和 /api/models 请求
  *
  * 参考 docs/references/openchamber-text-acceptance-test-cases.md §3
  */
 
 import { test as base, expect } from "@playwright/test";
 
-// 使用 mock-opencode 的 page 拦截。
-// 注意：不要在这里定义 page fixture，会 shadow mockOpencode 的拦截器。
-import { mockOpencode } from "../../fixtures/mock-opencode";
+// 使用 mock-loom 的 page 拦截。
+// 注意：不要在这里定义 page fixture，会 shadow mockLoom 的拦截器。
+import { mockLoom } from "../../fixtures/mock-loom";
 
 const test = base.extend({
-  ...mockOpencode,
+  ...mockLoom,
   baseURL: async ({}, use) => {
     await use(process.env.E2E_BASE_URL ?? "http://localhost:3000");
   },

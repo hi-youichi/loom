@@ -77,8 +77,8 @@ pub fn loomdesk_config_dir() -> Result<PathBuf, StoreError> {
     Ok(user_home()?.join(".config").join("loomdesk"))
 }
 
-pub fn opencode_config_dir() -> Result<PathBuf, StoreError> {
-    Ok(user_home()?.join(".config").join("opencode"))
+pub fn loom_config_dir() -> Result<PathBuf, StoreError> {
+    Ok(user_home()?.join(".config").join("loom"))
 }
 
 pub fn validate_entity_name(name: &str) -> Result<(), StoreError> {
@@ -89,9 +89,7 @@ pub fn validate_entity_name(name: &str) -> Result<(), StoreError> {
         || name.contains("..")
         || name.starts_with('.')
     {
-        return Err(StoreError::invalid(format!(
-            "invalid entity name: {name}"
-        )));
+        return Err(StoreError::invalid(format!("invalid entity name: {name}")));
     }
     Ok(())
 }
@@ -204,9 +202,9 @@ fn json_to_yaml(value: &Value) -> serde_yaml::Value {
             }
         }
         Value::String(s) => serde_yaml::Value::String(s.clone()),
-        Value::Array(items) => serde_yaml::Value::Sequence(
-            items.iter().map(json_to_yaml).collect(),
-        ),
+        Value::Array(items) => {
+            serde_yaml::Value::Sequence(items.iter().map(json_to_yaml).collect())
+        }
         Value::Object(map) => {
             let mut out = serde_yaml::Mapping::new();
             for (k, v) in map {
@@ -227,10 +225,7 @@ pub fn write_md_file(
         if value.is_null() {
             continue;
         }
-        cleaned.insert(
-            serde_yaml::Value::String(key.clone()),
-            json_to_yaml(value),
-        );
+        cleaned.insert(serde_yaml::Value::String(key.clone()), json_to_yaml(value));
     }
 
     let mut content = String::new();
@@ -244,8 +239,9 @@ pub fn write_md_file(
     content.push_str(body);
 
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| StoreError::internal(format!("failed to create {}: {e}", parent.display())))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            StoreError::internal(format!("failed to create {}: {e}", parent.display()))
+        })?;
     }
     std::fs::write(path, content)
         .map_err(|e| StoreError::internal(format!("failed to write {}: {e}", path.display())))?;
@@ -339,9 +335,8 @@ pub fn read_config_file(path: Option<&Path>) -> Result<Map<String, Value>, Store
         return Ok(Map::new());
     }
     let normalized = strip_jsonc(&content);
-    let value: Value = serde_json::from_str(&normalized).map_err(|e| {
-        StoreError::internal(format!("failed to parse {}: {e}", path.display()))
-    })?;
+    let value: Value = serde_json::from_str(&normalized)
+        .map_err(|e| StoreError::internal(format!("failed to parse {}: {e}", path.display())))?;
     match value {
         Value::Object(map) => Ok(map),
         _ => Ok(Map::new()),
@@ -377,7 +372,7 @@ fn project_config_path(working_dir: Option<&Path>) -> Option<PathBuf> {
 }
 
 pub fn custom_config_path() -> Option<PathBuf> {
-    std::env::var("OPENCODE_CONFIG").ok().map(PathBuf::from)
+    std::env::var("LOOM_CONFIG").ok().map(PathBuf::from)
 }
 
 pub fn read_config_layers(working_dir: Option<&Path>) -> Result<ConfigLayers, StoreError> {
@@ -429,8 +424,9 @@ pub fn write_config(config: &Map<String, Value>, path: &Path) -> Result<(), Stor
             .map_err(|e| StoreError::internal(format!("failed to back up config: {e}")))?;
     }
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| StoreError::internal(format!("failed to create {}: {e}", parent.display())))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            StoreError::internal(format!("failed to create {}: {e}", parent.display()))
+        })?;
     }
     let json = serde_json::to_string_pretty(&Value::Object(config.clone()))
         .map_err(|e| StoreError::internal(format!("failed to serialize config: {e}")))?;
@@ -520,7 +516,11 @@ pub fn section_set_entry(
     }
 }
 
-pub fn section_remove_entry(config: &mut Map<String, Value>, section_key: &str, entry_name: &str) -> bool {
+pub fn section_remove_entry(
+    config: &mut Map<String, Value>,
+    section_key: &str,
+    entry_name: &str,
+) -> bool {
     let Some(section) = config.get_mut(section_key) else {
         return false;
     };
@@ -571,8 +571,9 @@ pub fn resolve_prompt_file_path(reference: &str) -> Option<PathBuf> {
 
 pub fn write_prompt_file(path: &Path, content: &str) -> Result<(), StoreError> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| StoreError::internal(format!("failed to create {}: {e}", parent.display())))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            StoreError::internal(format!("failed to create {}: {e}", parent.display()))
+        })?;
     }
     std::fs::write(path, content)
         .map_err(|e| StoreError::internal(format!("failed to write {}: {e}", path.display())))?;
@@ -633,8 +634,9 @@ pub fn ensure_agent_dirs() -> Result<(), StoreError> {
         config_dir.join(AGENT_DIR_NAME),
         config_dir.join(COMMAND_DIR_NAME),
     ] {
-        std::fs::create_dir_all(&dir)
-            .map_err(|e| StoreError::internal(format!("failed to create {}: {e}", dir.display())))?;
+        std::fs::create_dir_all(&dir).map_err(|e| {
+            StoreError::internal(format!("failed to create {}: {e}", dir.display()))
+        })?;
     }
     Ok(())
 }

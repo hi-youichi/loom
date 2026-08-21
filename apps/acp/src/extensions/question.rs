@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::oneshot;
 
+use crate::connection::ConnectionOutbound;
+use crate::connection_registry::ConnectionRegistry;
+
 use super::{ExtensionContext, ExtensionError, ExtensionHandler};
 
 const DEFAULT_TIMEOUT_MS: u64 = 120_000;
@@ -270,6 +273,28 @@ impl QuestionStore {
         Ok(())
     }
 
+    fn list_for_connection(
+        &self,
+        connection_id: &str,
+        session_id: Option<&str>,
+    ) -> Result<Vec<QuestionRequest>, ExtensionError> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| internal_error("question store lock failed", "mutex poisoned"))?;
+        let mut requests: Vec<QuestionRequest> = state
+            .pending
+            .values()
+            .filter(|record| {
+                record.owner_connection_id == connection_id
+                    && session_id.is_none_or(|id| record.owner_session_id.as_deref() == Some(id))
+            })
+            .map(|record| record.request.clone())
+            .collect();
+        requests.sort_by(|left, right| left.question_id.cmp(&right.question_id));
+        Ok(requests)
+    }
+
     pub fn cancel_connection(
         &self,
         connection_id: &str,
@@ -314,6 +339,7 @@ pub trait QuestionTransport: Send + Sync {
 pub struct QuestionHandler {
     store: Arc<QuestionStore>,
     transport: Option<Arc<dyn QuestionTransport>>,
+    connections: Option<Arc<ConnectionRegistry>>,
 }
 
 impl QuestionHandler {
@@ -321,6 +347,7 @@ impl QuestionHandler {
         Self {
             store: Arc::new(QuestionStore::new()),
             transport: None,
+            connections: None,
         }
     }
 
@@ -328,6 +355,15 @@ impl QuestionHandler {
         Self {
             store,
             transport: None,
+            connections: None,
+        }
+    }
+
+    pub fn with_connections(connections: Arc<ConnectionRegistry>) -> Self {
+        Self {
+            store: Arc::new(QuestionStore::new()),
+            transport: None,
+            connections: Some(connections),
         }
     }
 
@@ -338,6 +374,7 @@ impl QuestionHandler {
         Self {
             store,
             transport: Some(transport),
+            connections: None,
         }
     }
 
@@ -351,6 +388,33 @@ impl QuestionHandler {
         session_id: Option<&str>,
     ) -> Result<usize, ExtensionError> {
         self.store.cancel_connection(connection_id, session_id)
+    }
+
+    /// Request a question from an in-process agent tool.
+    ///
+    /// Agent tools use the same store, ownership checks, timeout handling, and
+    /// outbound notification path as the public extension method. Keeping one
+    /// request path prevents tool-triggered questions from becoming an
+    /// untracked second implementation.
+    pub async fn request_for_agent(
+        &self,
+        request: QuestionRequest,
+        connection_id: String,
+        session_id: Option<String>,
+        client_capabilities: crate::client_capabilities::ClientCapabilitiesInfo,
+    ) -> Result<QuestionReply, ExtensionError> {
+        let params = serde_json::to_value(request)
+            .map_err(|e| internal_error("question request serialization failed", e))?;
+        let ctx = ExtensionContext {
+            session_id,
+            principal: "loom-agent".into(),
+            connection_id,
+            working_directory: None,
+            client_capabilities,
+        };
+        let value = ExtensionHandler::handle(self, "request", params, &ctx).await?;
+        serde_json::from_value(value)
+            .map_err(|e| internal_error("question response deserialization failed", e))
     }
 }
 
@@ -492,6 +556,15 @@ impl ExtensionHandler for QuestionHandler {
         ctx: &ExtensionContext,
     ) -> Result<Value, ExtensionError> {
         match method {
+            "list" => {
+                let params = object_params(method, params)?;
+                let session_id = params.get("sessionId").and_then(Value::as_str);
+                let requests = self
+                    .store
+                    .list_for_connection(&ctx.connection_id, session_id)?;
+                serde_json::to_value(requests)
+                    .map_err(|e| internal_error("question list serialization failed", e))
+            }
             "request" => {
                 if !ctx.client_capabilities.supports_question() {
                     return Err(ExtensionError::capability_not_supported("question"));
@@ -528,6 +601,24 @@ impl ExtensionHandler for QuestionHandler {
                         self.store.rollback(&id)?;
                         return Err(internal_error("question request transport failed", error));
                     }
+                }
+                if let Some(connections) = &self.connections {
+                    let connection = connections.get(&ctx.connection_id).ok_or_else(|| {
+                        internal_error("question request transport failed", "connection not found")
+                    })?;
+                    let params = serde_json::to_value(&request).map_err(|error| {
+                        internal_error("question request serialization failed", error)
+                    })?;
+                    connection
+                        .outbound_tx
+                        .send(ConnectionOutbound::ExtensionNotification {
+                            method: "_loomdesk.dev/question/request".into(),
+                            params,
+                        })
+                        .await
+                        .map_err(|error| {
+                            internal_error("question request transport failed", error)
+                        })?;
                 }
                 let result =
                     match tokio::time::timeout(Duration::from_millis(timeout_ms), receiver).await {
@@ -642,5 +733,81 @@ impl ExtensionHandler for QuestionHandler {
 
     fn capabilities(&self) -> Value {
         json!({ "request": true, "reply": true, "cancel": true })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client_capabilities::ClientCapabilitiesInfo;
+    use crate::connection::AcpConnection;
+    use tokio::sync::mpsc;
+
+    fn context(connection_id: &str) -> ExtensionContext {
+        ExtensionContext {
+            session_id: Some("session-1".into()),
+            principal: "owner-1".into(),
+            connection_id: connection_id.into(),
+            working_directory: None,
+            client_capabilities: ClientCapabilitiesInfo::from_json(Some(json!({
+                "_meta": { "loomdesk.dev": { "question": { "request": true } } }
+            }))),
+        }
+    }
+
+    #[tokio::test]
+    async fn request_notifies_the_current_client_and_reply_resolves_it() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let connection = Arc::new(AcpConnection::shell(
+            "connection-1".into(),
+            "owner-1".into(),
+            tx,
+        ));
+        let connections = Arc::new(ConnectionRegistry::default());
+        connections.insert(connection);
+        let handler = Arc::new(QuestionHandler::with_connections(connections));
+        let ctx = context("connection-1");
+        let request = json!({
+            "questionId": "question-1",
+            "sessionId": "session-1",
+            "prompt": "Choose a plan",
+            "choices": [{ "value": "fast", "label": "Fast" }]
+        });
+
+        let pending_handler = handler.clone();
+        let pending =
+            tokio::spawn(async move { pending_handler.handle("request", request, &ctx).await });
+        let outbound = rx.recv().await.expect("question notification");
+        let ConnectionOutbound::ExtensionNotification { method, params } = outbound else {
+            panic!("expected extension notification");
+        };
+        assert_eq!(method, "_loomdesk.dev/question/request");
+        assert_eq!(params["questionId"], "question-1");
+
+        let listed = handler
+            .handle("list", json!({}), &context("connection-1"))
+            .await
+            .expect("question list");
+        assert_eq!(listed.as_array().map(Vec::len), Some(1));
+
+        let reply = handler
+            .handle(
+                "reply",
+                json!({
+                    "questionId": "question-1",
+                    "status": "answered",
+                    "choice": "fast"
+                }),
+                &context("connection-1"),
+            )
+            .await
+            .expect("question reply");
+        assert_eq!(reply["accepted"], true);
+        let result = pending
+            .await
+            .expect("question task")
+            .expect("question result");
+        assert_eq!(result["status"], "answered");
+        assert_eq!(result["choice"], "fast");
     }
 }

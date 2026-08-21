@@ -6,18 +6,18 @@
  *
  * 使用 fixtures:
  * - app: 提供 baseURL
- * - mock-opencode: 拦截 HTTP API
+ * - mock-loom: 拦截 HTTP API
  *
  * 参考 docs/references/openchamber-text-acceptance-test-cases.md §4, §8, §9
  */
 
 import { test as base, expect } from "@playwright/test";
 import { app } from "../../fixtures/app";
-import { mockOpencode } from "../../fixtures/mock-opencode";
+import { mockLoom } from "../../fixtures/mock-loom";
 
 const test = base.extend({
   ...app,
-  ...mockOpencode,
+  ...mockLoom,
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

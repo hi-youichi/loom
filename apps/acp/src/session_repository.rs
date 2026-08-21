@@ -55,6 +55,10 @@ impl SessionRepository {
             );
             CREATE INDEX IF NOT EXISTS idx_acp_sessions_owner_updated
                 ON acp_sessions(owner_principal, updated_at DESC);
+            CREATE TABLE IF NOT EXISTS acp_session_data (
+                session_id TEXT PRIMARY KEY,
+                metadata_json TEXT NOT NULL DEFAULT '{}'
+            );
             "#,
         )?;
         self.ensure_title_column()?;
@@ -83,9 +87,7 @@ impl SessionRepository {
             .exists([])?;
         if !has_archived {
             self.connection()?
-                .execute_batch(
-                    "ALTER TABLE acp_sessions ADD COLUMN archived_at TEXT",
-                )?;
+                .execute_batch("ALTER TABLE acp_sessions ADD COLUMN archived_at TEXT")?;
         }
         Ok(())
     }
@@ -204,12 +206,7 @@ impl SessionRepository {
         let mut statement = connection.prepare(&sql)?;
         let rows = statement
             .query_map(
-                rusqlite::params![
-                    owner_principal,
-                    cwd_owned,
-                    cursor_owned,
-                    limit as i64
-                ],
+                rusqlite::params![owner_principal, cwd_owned, cursor_owned, limit as i64],
                 Self::metadata_from_row,
             )?
             .collect();
@@ -226,8 +223,47 @@ impl SessionRepository {
         Ok(())
     }
 
+    /// Read arbitrary Loom Desk metadata owned by a session.
+    pub fn get_metadata_json(&self, session_id: &str) -> rusqlite::Result<Option<String>> {
+        self.connection()?
+            .query_row(
+                "SELECT metadata_json FROM acp_session_data WHERE session_id = ?1",
+                [session_id],
+                |row| row.get(0),
+            )
+            .optional()
+    }
+
+    /// Replace arbitrary Loom Desk metadata when the session belongs to the
+    /// requested principal. The metadata is deliberately separate from ACP's
+    /// protocol-owned session columns so extensions cannot corrupt lifecycle
+    /// or routing state.
+    pub fn set_metadata_json(
+        &self,
+        session_id: &str,
+        owner_principal: &str,
+        metadata_json: &str,
+    ) -> rusqlite::Result<bool> {
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let owned: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM acp_sessions WHERE session_id = ?1 AND owner_principal = ?2)",
+            params![session_id, owner_principal],
+            |row| row.get(0),
+        )?;
+        if !owned {
+            return Ok(false);
+        }
+        transaction.execute(
+            "INSERT INTO acp_session_data (session_id, metadata_json) VALUES (?1, ?2) ON CONFLICT(session_id) DO UPDATE SET metadata_json = excluded.metadata_json",
+            params![session_id, metadata_json],
+        )?;
+        transaction.commit()?;
+        Ok(true)
+    }
+
     /// Set or clear the archival timestamp. Bumps `updated_at` (matching
-    /// opencode semantics where archiving is a list-reordering mutation)
+    /// loom semantics where archiving is a list-reordering mutation)
     /// and returns the stored metadata, or `None` when the session does not
     /// exist or belongs to another principal.
     pub fn set_archived(
@@ -281,10 +317,17 @@ impl SessionRepository {
     }
 
     pub fn delete(&self, session_id: &str) -> rusqlite::Result<()> {
-        self.connection()?.execute(
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "DELETE FROM acp_session_data WHERE session_id = ?1",
+            [session_id],
+        )?;
+        transaction.execute(
             "DELETE FROM acp_sessions WHERE session_id = ?1",
             [session_id],
         )?;
+        transaction.commit()?;
         Ok(())
     }
 
@@ -320,6 +363,12 @@ impl SessionRepository {
         if table_exists("session_config")? {
             transaction.execute(
                 "DELETE FROM session_config WHERE session_id = ?1",
+                [session_id],
+            )?;
+        }
+        if table_exists("acp_session_data")? {
+            transaction.execute(
+                "DELETE FROM acp_session_data WHERE session_id = ?1",
                 [session_id],
             )?;
         }
@@ -448,7 +497,10 @@ mod tests {
         let metadata = repository.get("session-old").unwrap().unwrap();
         assert_eq!(metadata.title, None);
         assert!(metadata.updated_at.is_some());
-        assert!(metadata.archived_at.is_none(), "legacy db migrates archived_at");
+        assert!(
+            metadata.archived_at.is_none(),
+            "legacy db migrates archived_at"
+        );
         repository.set_title("session-old", "Migrated").unwrap();
         assert_eq!(
             repository.get("session-old").unwrap().unwrap().title,

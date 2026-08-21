@@ -212,6 +212,7 @@ impl LoomAcpAgent {
         register_default_extensions(
             &mut extension_registry,
             std::sync::Arc::new(crate::global_events::GlobalEventBus::new()),
+            None,
         );
         Self::new_with_extension_registry(Arc::new(extension_registry), None)
     }
@@ -246,6 +247,7 @@ impl LoomAcpAgent {
         register_default_extensions(
             &mut extension_registry,
             std::sync::Arc::new(crate::global_events::GlobalEventBus::new()),
+            None,
         );
         Self::new_with_extension_registry(Arc::new(extension_registry), Some(tx))
     }
@@ -1223,7 +1225,7 @@ impl LoomAcpAgent {
                     let title_session_id = session_id.to_string();
                     let closure = move |ev: TypedAnyStreamEvent| {
                         capture_turn_usage(&ev, &acc);
-                        
+
                         // Spawn background task for async title persistence
                         let repo = title_repository.clone();
                         let session = title_session_id.clone();
@@ -1231,7 +1233,7 @@ impl LoomAcpAgent {
                         tokio::spawn(async move {
                             persist_session_title(&repo, &session, &event).await;
                         });
-                        
+
                         notifier.try_send_event(&ev);
                     };
                     Some(Box::new(closure) as Box<dyn FnMut(TypedAnyStreamEvent) + Send>)
@@ -2014,15 +2016,106 @@ impl LoomAcpAgent {
         owner_principal: &str,
         session_id: &str,
         archived: bool,
-    ) -> agent_client_protocol::Result<
-        Option<crate::session_repository::SessionMetadata>,
-    > {
+    ) -> agent_client_protocol::Result<Option<crate::session_repository::SessionMetadata>> {
         self.session_repository
             .set_archived(session_id, owner_principal, archived)
             .map_err(|error| {
                 agent_client_protocol::Error::internal_error()
                     .data(format!("failed to update archive state: {error}"))
             })
+    }
+
+    /// Replace Loom Desk-owned metadata for a session after checking the ACP
+    /// principal. This is the ACP equivalent of the old session metadata
+    /// PATCH endpoint used by goals, reviews, and client-side annotations.
+    pub async fn update_session_metadata_for_owner(
+        &self,
+        owner_principal: &str,
+        session_id: &str,
+        metadata: serde_json::Value,
+    ) -> agent_client_protocol::Result<Option<serde_json::Value>> {
+        let metadata_json = serde_json::to_string(&metadata).map_err(|error| {
+            agent_client_protocol::Error::invalid_params()
+                .data(format!("invalid session metadata: {error}"))
+        })?;
+        let updated = self
+            .session_repository
+            .set_metadata_json(session_id, owner_principal, &metadata_json)
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to update session metadata: {error}"))
+            })?;
+        if !updated {
+            return Ok(None);
+        }
+        Ok(Some(metadata))
+    }
+
+    /// Read Loom Desk-owned metadata for a session after checking ownership.
+    pub async fn session_metadata_for_owner(
+        &self,
+        owner_principal: &str,
+        session_id: &str,
+    ) -> agent_client_protocol::Result<Option<serde_json::Value>> {
+        let owned = self
+            .session_repository
+            .get(session_id)
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to read session metadata: {error}"))
+            })?
+            .is_some_and(|metadata| metadata.owner_principal == owner_principal);
+        if !owned {
+            return Ok(None);
+        }
+        let raw = self
+            .session_repository
+            .get_metadata_json(session_id)
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to read session metadata payload: {error}"))
+            })?;
+        raw.map(|value| {
+            serde_json::from_str(&value).map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("stored session metadata is invalid: {error}"))
+            })
+        })
+        .transpose()
+    }
+
+    /// Return one durable session after checking ownership.
+    pub async fn session_for_owner(
+        &self,
+        owner_principal: &str,
+        session_id: &str,
+    ) -> agent_client_protocol::Result<Option<crate::session_repository::SessionMetadata>> {
+        self.session_repository
+            .get(session_id)
+            .map(|value| value.filter(|metadata| metadata.owner_principal == owner_principal))
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to read session: {error}"))
+            })
+    }
+
+    /// Set a user-visible session title after checking ownership.
+    pub async fn update_session_title_for_owner(
+        &self,
+        owner_principal: &str,
+        session_id: &str,
+        title: &str,
+    ) -> agent_client_protocol::Result<bool> {
+        let Some(metadata) = self.session_for_owner(owner_principal, session_id).await? else {
+            return Ok(false);
+        };
+        self.session_repository
+            .set_title(&metadata.session_id, title)
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to update session title: {error}"))
+            })?;
+        Ok(true)
     }
 }
 
@@ -2243,7 +2336,9 @@ fn seed_title_text(content: &loom_llm::message::UserContent) -> Option<String> {
     if normalized.is_empty() {
         return None;
     }
-    Some(agent::agent::react::title_generator::clamp_summary_chars(&normalized))
+    Some(agent::agent::react::title_generator::clamp_summary_chars(
+        &normalized,
+    ))
 }
 
 /// Persist the fire-and-forget first-turn title event
@@ -2289,7 +2384,10 @@ async fn persist_session_title(
                                     error = ?last_error,
                                     "failed to persist session title, retrying..."
                                 );
-                                tokio::time::sleep(tokio::time::Duration::from_millis(100 * retries as u64)).await;
+                                tokio::time::sleep(tokio::time::Duration::from_millis(
+                                    100 * retries as u64,
+                                ))
+                                .await;
                             }
                         }
                     }
@@ -2551,7 +2649,10 @@ mod tests {
             Some("fix the login bug please")
         );
 
-        assert_eq!(seed_title_text(&UserContent::Text("/reset".to_string())), None);
+        assert_eq!(
+            seed_title_text(&UserContent::Text("/reset".to_string())),
+            None
+        );
         assert_eq!(seed_title_text(&UserContent::Text("   ".to_string())), None);
 
         let long = UserContent::Text("x".repeat(80));

@@ -839,12 +839,12 @@ struct Snippet {
 
 fn snippet_dirs(ctx: &ExtensionContext) -> Result<Vec<(PathBuf, &'static str)>, store::StoreError> {
     let mut dirs = Vec::new();
-    let global = store::opencode_config_dir()?;
+    let global = store::loom_config_dir()?;
     dirs.push((global.join("snippets"), "global"));
     dirs.push((global.join("snippet"), "global"));
     if let Some(wd) = store::optional_working_dir(ctx) {
-        dirs.push((wd.join(".opencode").join("snippets"), "project"));
-        dirs.push((wd.join(".opencode").join("snippet"), "project"));
+        dirs.push((wd.join(".loom").join("snippets"), "project"));
+        dirs.push((wd.join(".loom").join("snippet"), "project"));
     }
     Ok(dirs)
 }
@@ -966,14 +966,14 @@ fn writable_snippet_dir(
 ) -> Result<PathBuf, store::StoreError> {
     if scope == "project" {
         let wd = store::working_dir_or_error(ctx)?;
-        let preferred = wd.join(".opencode").join("snippet");
-        let alternate = wd.join(".opencode").join("snippets");
+        let preferred = wd.join(".loom").join("snippet");
+        let alternate = wd.join(".loom").join("snippets");
         if alternate.is_dir() && !preferred.is_dir() {
             return Ok(alternate);
         }
         return Ok(preferred);
     }
-    let global = store::opencode_config_dir()?;
+    let global = store::loom_config_dir()?;
     let alt = global.join("snippets");
     let preferred = global.join("snippet");
     if alt.is_dir() && !preferred.is_dir() {
@@ -1841,7 +1841,7 @@ mod tests {
         let ctx = make_ctx(project.path());
         let handler = ConfigEntityHandler::new();
 
-        let global = home.path().join(".config").join("opencode").join("snippets");
+        let global = home.path().join(".config").join("loom").join("snippets");
         write_snippet(&global, "greet", "hello from greet", "");
         write_snippet(
             &global,
@@ -1893,10 +1893,10 @@ mod tests {
         let ctx = make_ctx(project.path());
         let handler = ConfigEntityHandler::new();
 
-        let global = home.path().join(".config").join("opencode").join("snippets");
+        let global = home.path().join(".config").join("loom").join("snippets");
         write_snippet(&global, "dup", "global version", "");
 
-        let project_snippets = project.path().join(".opencode").join("snippets");
+        let project_snippets = project.path().join(".loom").join("snippets");
         write_snippet(&project_snippets, "dup", "project version", "");
 
         let got = call(&handler, "snippets_get", serde_json::json!({ "name": "dup" }), &ctx)

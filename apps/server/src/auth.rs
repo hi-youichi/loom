@@ -41,7 +41,7 @@ pub const AUTH_TOKEN_ENV: &str = "LOOM_AUTH_TOKEN";
 pub const JWT_SECRET_ENV: &str = "LOOMDESK_JWT_SECRET";
 
 /// Legacy alias Express reads first for the JWT secret.
-pub const JWT_SECRET_ENV_LEGACY: &str = "OPENCODE_JWT_SECRET";
+pub const JWT_SECRET_ENV_LEGACY: &str = "LOOM_JWT_SECRET";
 
 /// Environment variable holding the Loom Desk UI password (same variable the
 /// Express server reads; `options.uiPassword` in Express maps to it).

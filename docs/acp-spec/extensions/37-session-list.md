@@ -61,6 +61,22 @@
 ```
 
 - `archived=true` 写入 `archived_at=now` 并 bump `updated_at`；`false` 置 `NULL`（取消归档）。
+
+### `update`
+
+更新 Loom Desk-owned session metadata 或标题。metadata 与 ACP session 生命周期字段分表存储，调用方必须拥有该 session。
+
+请求：
+
+```json
+{
+  "sessionId": "session-…",
+  "metadata": { "loomdesk": { "goal": { "status": "active" } } },
+  "title": "可选的新标题"
+}
+```
+
+`metadata` 和 `title` 至少提供一个；metadata 必须是 JSON object。响应返回更新后的 `session` 与完整 `metadata`。成功后广播 `session.updated`，供其他客户端刷新。
 - 仅 owner（principal）本人可操作；目标不存在或不属于该 principal 返回 not_found。
 
 响应：
@@ -83,12 +99,12 @@
 |---|---|---|
 | -32602 | invalid_params | 参数解析失败 / sessionId 为空 / cursor 非法 |
 | -32001 | capability_not_supported | 域未注册（旧二进制） |
-| -32003 | not_found | archive 目标不存在或非本 principal 所有 |
+| -32003 | not_found | archive/update 目标不存在或非本 principal 所有 |
 | -32603 | internal_error | SQLite 失败等 |
 
 ## 存储 schema（`acp_sessions`）
 
-新增列 `archived_at TEXT`（`ALTER TABLE` 自动迁移，见 `session_repository.rs::ensure_archived_at_column`）。索引建议：`(owner_principal, archived_at, updated_at)` —— 当前规模未加。
+新增列 `archived_at TEXT`（`ALTER TABLE` 自动迁移，见 `session_repository.rs::ensure_archived_at_column`）；session-owned metadata 存储在 `acp_session_data.metadata_json`，不会改变 ACP 生命周期列。
 
 ## 迁移说明
 
@@ -98,5 +114,5 @@
 
 ## 实现索引
 
-- Rust：`apps/acp/src/extensions/session_list.rs`（handler）、`apps/acp/src/session_repository.rs`（`archived_at` + `list_for_owner_paged` + `set_archived`）、`apps/acp/src/agent.rs`（`list_global_sessions_for_owner` / `archive_session_for_owner`）
-- FE：`packages/ui/src/stores/globalSessions.ts`（ACP 分发）、`packages/ui/src/lib/acp/acp-api.ts`（`session.listGlobal` / `session.archive`）、`packages/ui/src/lib/acp/type-mapping.ts`（`acpGlobalSessionToOpenCodeSession`）、`packages/ui/src/lib/acp/acp-runtime-shared.ts`（`probeAcpRuntime`：不自举连接的探测）
+- Rust：`apps/acp/src/extensions/session_list.rs`（handler）、`apps/acp/src/session_repository.rs`（archive + metadata）、`apps/acp/src/agent.rs`（owner-scoped session mutations）
+- FE：`packages/ui/src/stores/globalSessions.ts`（ACP 分发）、`packages/ui/src/lib/acp/acp-api.ts`（`session.listGlobal` / `session.archive` / `session.update`）、`packages/ui/src/lib/acp/type-mapping.ts`（`acpGlobalSessionToOpenCodeSession`）、`packages/ui/src/lib/acp/acp-runtime-shared.ts`（`probeAcpRuntime`：不自举连接的探测）

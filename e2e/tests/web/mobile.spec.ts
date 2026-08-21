@@ -11,11 +11,11 @@
 
 import { test as base, expect } from "@playwright/test";
 
-// 使用 mock-opencode 的 page 拦截（mockOpencode 的 page fixture 不能被覆盖）
-import { mockOpencode } from "../../fixtures/mock-opencode";
+// 使用 mock-loom 的 page 拦截（mockLoom 的 page fixture 不能被覆盖）
+import { mockLoom } from "../../fixtures/mock-loom";
 
 const test = base.extend({
-  ...mockOpencode,
+  ...mockLoom,
   baseURL: async ({}, use) => {
     await use(process.env.E2E_BASE_URL ?? "http://localhost:3000");
   },

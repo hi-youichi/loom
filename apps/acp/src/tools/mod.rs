@@ -8,12 +8,14 @@
 
 mod client_bridge;
 mod fs_tools;
+mod question_tool;
 mod terminal_executor;
 
 pub use client_bridge::{
     AcpClientBridge, ClientBridgeTrait, NoOpClientBridge, TerminalExitResult, TerminalOutput,
 };
 pub use fs_tools::{ReadTextFileTool, WriteTextFileTool};
+pub use question_tool::AskQuestionTool;
 pub use terminal_executor::{AcpBridgeCommandExecutor, TerminalCommandExecutor};
 
 use crate::client_capabilities::ClientCapabilitiesInfo;
@@ -52,7 +54,11 @@ pub fn create_acp_tools(
     }
 
     if capabilities.can_write_text_file() {
-        tools.push(Box::new(WriteTextFileTool::with_bridge(bridge)));
+        tools.push(Box::new(WriteTextFileTool::with_bridge(bridge.clone())));
+    }
+
+    if capabilities.supports_question() {
+        tools.push(Box::new(AskQuestionTool::with_bridge(bridge)));
     }
 
     tools
@@ -95,6 +101,21 @@ mod tests {
         let caps = ClientCapabilitiesInfo::from_json(Some(caps_json));
         let tools = create_acp_tools(&caps, std::sync::Arc::new(NoOpClientBridge));
         assert_eq!(tools.len(), 2);
+    }
+
+    #[test]
+    fn test_create_acp_tools_question_capability() {
+        let caps_json = json!({
+            "_meta": {
+                "loomdesk.dev": {
+                    "question": { "request": true }
+                }
+            }
+        });
+        let caps = ClientCapabilitiesInfo::from_json(Some(caps_json));
+        let tools = create_acp_tools(&caps, std::sync::Arc::new(NoOpClientBridge));
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name(), "ask_user_question");
     }
 
     #[test]
