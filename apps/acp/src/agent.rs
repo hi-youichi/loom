@@ -36,10 +36,8 @@ use tool_basic::bash::LocalCommandExecutor;
 use agent::run::TypedAnyStreamEvent;
 use agent::run::{build_react_config, run_agent_from_config, RunCmd, RunError, RunParams};
 use agent::run::{RunCompletion, RunOptions};
-use chrono::DateTime;
 use config::load_full_config;
 use loom_llm::message::{Message, UserContent};
-use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -189,6 +187,10 @@ pub struct LoomAcpAgent {
     pub(crate) agent_registry: AgentRegistry,
     pub(crate) config_store: SessionConfigStore,
     pub(crate) session_repository: SessionRepository,
+    /// SQLite path used by both session metadata and checkpoint history.
+    /// Keeping it on the agent lets embedded hosts and tests isolate agents
+    /// without mutating the process-wide `LOOM_HOME` environment variable.
+    pub(crate) checkpoint_db_path: PathBuf,
     pub(crate) session_update_tx: Option<mpsc::Sender<SessionUpdateEnvelope>>,
     pub(crate) model_provider: Arc<dyn ModelProvider>,
     pub(crate) extension_registry: Arc<ExtensionRegistry>,
@@ -217,11 +219,51 @@ impl LoomAcpAgent {
         Self::new_with_extension_registry(Arc::new(extension_registry), None)
     }
 
+    /// Construct an agent backed by an explicit SQLite database.
+    ///
+    /// This is useful for embedded runtimes that host more than one agent in
+    /// a process, and prevents tests from racing through the global
+    /// `LOOM_HOME` path when Rust runs them in parallel.
+    pub fn new_with_db_path(
+        db_path: impl Into<PathBuf>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let mut extension_registry = ExtensionRegistry::new();
+        register_default_extensions(
+            &mut extension_registry,
+            std::sync::Arc::new(crate::global_events::GlobalEventBus::new()),
+            None,
+        );
+        Self::new_with_extension_registry_and_db_path(
+            Arc::new(extension_registry),
+            None,
+            db_path.into(),
+        )
+    }
+
     pub(crate) fn new_with_extension_registry(
         extension_registry: Arc<ExtensionRegistry>,
         session_update_tx: Option<mpsc::Sender<SessionUpdateEnvelope>>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let db_path = checkpoint_sqlite_store::default_memory_db_path();
+        Self::new_with_extension_registry_and_db_path(
+            extension_registry,
+            session_update_tx,
+            checkpoint_sqlite_store::default_memory_db_path(),
+        )
+    }
+
+    fn new_with_extension_registry_and_db_path(
+        extension_registry: Arc<ExtensionRegistry>,
+        session_update_tx: Option<mpsc::Sender<SessionUpdateEnvelope>>,
+        db_path: PathBuf,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(parent) = db_path.parent() {
+            // LOOM_HOME can be swapped by embedding hosts/tests while another
+            // ACP agent is starting. Recreate the directory before opening
+            // either SQLite store so a cleaned temporary home cannot turn
+            // startup into an opaque "unable to open database file" error.
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("session database directory init failed: {error}"))?;
+        }
         let config_store = SessionConfigStore::new(db_path.to_str().unwrap_or_default())
             .map_err(|e| format!("session config store init failed: {e}"))?;
         let session_repository = SessionRepository::new(&db_path)
@@ -232,6 +274,7 @@ impl LoomAcpAgent {
             agent_registry: AgentRegistry::new(),
             config_store,
             session_repository,
+            checkpoint_db_path: db_path,
             session_update_tx,
             model_provider: Arc::new(RealModelProvider),
             extension_registry,
@@ -264,7 +307,7 @@ impl LoomAcpAgent {
     }
 
     fn restore_session_metadata(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        for metadata in self.session_repository.list()? {
+        for metadata in self.session_repository.list_for_restore()? {
             let session_id = OurSessionId::new(metadata.session_id);
             self.sessions.create_with_owner(
                 session_id.clone(),
@@ -553,6 +596,33 @@ impl LoomAcpAgent {
     ) -> agent_client_protocol::Result<NewSessionResponse> {
         tracing::debug!(cwd = ?args.cwd, "new_session called");
         let canonical_cwd = canonicalize_existing_directory(&args.cwd)?;
+        let extension_meta = args.meta.as_ref().and_then(|meta| meta.get("loomdesk.dev"));
+        if let Some(metadata) = extension_meta.and_then(|meta| meta.get("metadata")) {
+            if !metadata.is_object() {
+                return Err(agent_client_protocol::Error::invalid_params()
+                    .data("session metadata must be an object"));
+            }
+        }
+        let parent_session_id = extension_meta
+            .and_then(|meta| meta.get("parentSessionId"))
+            .and_then(|value| value.as_str());
+        if let Some(parent_session_id) = parent_session_id {
+            let parent = self
+                .session_repository
+                .get_index_record(owner_principal, parent_session_id)
+                .map_err(|error| {
+                    agent_client_protocol::Error::internal_error()
+                        .data(format!("failed to validate parentSessionId: {error}"))
+                })?
+                .ok_or_else(|| {
+                    agent_client_protocol::Error::invalid_params()
+                        .data("parent session is not available")
+                })?;
+            if parent.cwd != canonical_cwd || parent.archived_at.is_some() {
+                return Err(agent_client_protocol::Error::invalid_params()
+                    .data("parent session must be active in the same cwd"));
+            }
+        }
         // Logging is initialized at startup; this is a no-op if already initialized
         crate::logging::init_logging(Some(&canonical_cwd));
 
@@ -568,14 +638,26 @@ impl LoomAcpAgent {
             agent_client_protocol::Error::internal_error()
                 .data("session cwd missing after creation")
         })?;
-        if let Err(error) =
-            self.session_repository
-                .insert(our_id.as_str(), &entry.thread_id, owner_principal, cwd)
-        {
-            self.sessions.delete(&our_id);
-            return Err(agent_client_protocol::Error::internal_error()
-                .data(format!("failed to persist session metadata: {error}")));
-        }
+        let title = extension_meta
+            .and_then(|meta| meta.get("title"))
+            .and_then(|value| value.as_str());
+        let metadata = extension_meta.and_then(|meta| meta.get("metadata"));
+        let created_index_records = self
+            .session_repository
+            .insert_index_record(
+                our_id.as_str(),
+                &entry.thread_id,
+                owner_principal,
+                cwd,
+                parent_session_id,
+                title,
+                metadata,
+            )
+            .map_err(|error| {
+                self.sessions.delete(&our_id);
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to persist session metadata: {error}"))
+            })?;
         tracing::debug!(session_id = %session_id, "session created");
 
         // Store MCP servers from ACP session/new request
@@ -665,9 +747,62 @@ impl LoomAcpAgent {
             )
             .await;
         });
+        let mut created_records = created_index_records.into_iter();
+        let canonical = created_records.next();
+        let affected_ancestors = created_records.collect::<Vec<_>>();
+        let mut meta = serde_json::Map::new();
+        if let Some(canonical) = canonical {
+            let affected_sessions = affected_ancestors
+                .iter()
+                .map(|record| {
+                    serde_json::json!({
+                        "sessionId": record.session_id,
+                        "parentSessionId": record.parent_session_id,
+                        "cwd": record.cwd,
+                        "title": record.title,
+                        "metadata": record.metadata,
+                        "createdAt": record.created_at,
+                        "activityAt": record.activity_at,
+                        "treeActivityAt": record.tree_activity_at,
+                        "stateChangedAt": record.state_changed_at,
+                        "metadataUpdatedAt": record.metadata_updated_at,
+                        "archivedAt": record.archived_at,
+                        "closedAt": record.closed_at,
+                        "lifecycle": record.lifecycle,
+                        "revision": record.revision,
+                        "indexVersion": record.index_version,
+                    })
+                })
+                .collect::<Vec<_>>();
+            meta.insert(
+                "loomdesk.dev".into(),
+                serde_json::json!({
+                    "session": {
+                        "sessionId": canonical.session_id,
+                        "parentSessionId": canonical.parent_session_id,
+                        "cwd": canonical.cwd,
+                        "title": canonical.title,
+                        "metadata": canonical.metadata,
+                        "createdAt": canonical.created_at,
+                        "activityAt": canonical.activity_at,
+                        "treeActivityAt": canonical.tree_activity_at,
+                        "stateChangedAt": canonical.state_changed_at,
+                        "metadataUpdatedAt": canonical.metadata_updated_at,
+                        "archivedAt": canonical.archived_at,
+                        "closedAt": canonical.closed_at,
+                        "lifecycle": canonical.lifecycle,
+                        "revision": canonical.revision,
+                        "indexVersion": canonical.index_version,
+                    },
+                    "affectedSessions": affected_sessions,
+                    "indexVersion": canonical.index_version,
+                }),
+            );
+        }
         Ok(NewSessionResponse::new(session_id)
             .modes(self.agent_registry.to_session_mode_state(current_mode))
-            .config_options(config_options))
+            .config_options(config_options)
+            .meta(meta))
     }
 
     pub async fn cancel(&self, args: CancelNotification) -> agent_client_protocol::Result<()> {
@@ -960,6 +1095,17 @@ impl LoomAcpAgent {
         let user_content =
             content_blocks_to_user_content(args.prompt.as_slice()).map_err(|_| {
                 agent_client_protocol::Error::new(-32602, "content_blocks parse failed")
+            })?;
+
+        // Activity is recorded only after the prompt has been accepted and
+        // the busy lease is held, immediately before any command/executor
+        // work starts. This keeps sidebar recency independent of completion
+        // timing and makes the mutation atomic with ancestor propagation.
+        self.session_repository
+            .record_activity(&args.session_id.to_string())
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to record session activity: {error}"))
             })?;
 
         self.seed_session_title_from_prompt(&args.session_id, &user_content);
@@ -1375,7 +1521,7 @@ impl LoomAcpAgent {
             })?
         };
 
-        let db_path = checkpoint_sqlite_store::default_memory_db_path();
+        let db_path = self.checkpoint_db_path.clone();
         tracing::debug!(
             session_id = %session_id,
             thread_id = %entry.thread_id,
@@ -1403,7 +1549,36 @@ impl LoomAcpAgent {
             resume_values_by_interrupt_id: Default::default(),
         };
 
-        match checkpointer.get_tuple(&config).await {
+        // A completed prompt response can reach the client just before the
+        // SQLite saver makes its final checkpoint visible to a newly opened
+        // connection. Retry a short, bounded window so an immediate reload
+        // does not turn a durable conversation into an empty replay.
+        let checkpoint = {
+            let mut last_error = None;
+            let mut found = None;
+            for attempt in 0..=5 {
+                match checkpointer.get_tuple(&config).await {
+                    Ok(Some(value)) => {
+                        found = Some(value);
+                        break;
+                    }
+                    Ok(None) if attempt < 5 => {
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    }
+                    Ok(None) => break,
+                    Err(error) => {
+                        last_error = Some(error);
+                        break;
+                    }
+                }
+            }
+            match last_error {
+                Some(error) => Err(error),
+                None => Ok(found),
+            }
+        };
+
+        match checkpoint {
             Ok(Some((checkpoint, _metadata))) => {
                 let state: ReActState = checkpoint.channel_values;
                 let user_count = state
@@ -1577,7 +1752,7 @@ impl LoomAcpAgent {
     // -----------------------------------------------------------------
 
     async fn read_checkpoint_messages(&self, thread_id: &str) -> Result<Vec<Message>, String> {
-        let db_path = checkpoint_sqlite_store::default_memory_db_path();
+        let db_path = self.checkpoint_db_path.clone();
         let serializer = Arc::new(JsonSerializer);
         let checkpointer: Arc<dyn Checkpointer<ReActState>> = Arc::new(
             SqliteSaver::new(db_path.to_string_lossy().as_ref(), serializer)
@@ -1764,7 +1939,31 @@ impl LoomAcpAgent {
     ) -> agent_client_protocol::Result<DeleteSessionResponse> {
         let key = OurSessionId::new(args.session_id.to_string());
         let Some(entry) = self.sessions.get(&key) else {
-            return Ok(DeleteSessionResponse::new());
+            let tombstone = self
+                .session_repository
+                .get_tombstone(key.as_str())
+                .map_err(|error| {
+                    agent_client_protocol::Error::internal_error()
+                        .data(format!("failed to read session tombstone: {error}"))
+                })?;
+            let mut meta = serde_json::Map::new();
+            if let Some(tombstone) = tombstone {
+                meta.insert(
+                    "loomdesk.dev".into(),
+                    serde_json::json!({
+                        "tombstone": {
+                            "sessionId": tombstone.session_id,
+                            "cwd": tombstone.cwd,
+                            "parentSessionId": tombstone.parent_session_id,
+                            "revision": tombstone.revision,
+                            "indexVersion": tombstone.index_version,
+                            "deletedAt": tombstone.deleted_at,
+                            "deleted": true,
+                        }
+                    }),
+                );
+            }
+            return Ok(DeleteSessionResponse::new().meta(meta));
         };
         if entry.owner_principal != owner_principal {
             return Err(agent_client_protocol::Error::new(
@@ -1772,14 +1971,62 @@ impl LoomAcpAgent {
                 "session not available for this principal",
             ));
         }
-        self.session_repository
-            .delete_all(key.as_str(), &entry.thread_id)
+        let delete_result = self
+            .session_repository
+            .delete_all_indexed(key.as_str(), &entry.thread_id)
             .map_err(|error| {
                 agent_client_protocol::Error::internal_error()
                     .data(format!("failed to delete session data: {error}"))
+            })?
+            .ok_or_else(|| {
+                agent_client_protocol::Error::internal_error()
+                    .data("session disappeared before delete transaction")
             })?;
+        let tombstone = Some(delete_result.tombstone);
         self.sessions.delete(&key);
-        Ok(DeleteSessionResponse::new())
+        let mut meta = serde_json::Map::new();
+        if let Some(tombstone) = tombstone {
+            let affected_sessions = delete_result
+                .affected_ancestors
+                .iter()
+                .map(|record| {
+                    serde_json::json!({
+                        "sessionId": record.session_id,
+                        "parentSessionId": record.parent_session_id,
+                        "cwd": record.cwd,
+                        "title": record.title,
+                        "metadata": record.metadata,
+                        "createdAt": record.created_at,
+                        "activityAt": record.activity_at,
+                        "treeActivityAt": record.tree_activity_at,
+                        "stateChangedAt": record.state_changed_at,
+                        "metadataUpdatedAt": record.metadata_updated_at,
+                        "archivedAt": record.archived_at,
+                        "closedAt": record.closed_at,
+                        "lifecycle": record.lifecycle,
+                        "revision": record.revision,
+                        "indexVersion": record.index_version,
+                    })
+                })
+                .collect::<Vec<_>>();
+            meta.insert(
+                "loomdesk.dev".into(),
+                serde_json::json!({
+                    "tombstone": {
+                        "sessionId": tombstone.session_id,
+                        "cwd": tombstone.cwd,
+                        "parentSessionId": tombstone.parent_session_id,
+                        "revision": tombstone.revision,
+                        "indexVersion": tombstone.index_version,
+                        "deletedAt": tombstone.deleted_at,
+                        "deleted": true,
+                    },
+                    "affectedSessions": affected_sessions,
+                    "indexVersion": tombstone.index_version,
+                }),
+            );
+        }
+        Ok(DeleteSessionResponse::new().meta(meta))
     }
 
     /// Seed a missing session title from the first user prompt so the
@@ -1832,101 +2079,6 @@ impl LoomAcpAgent {
         }
     }
 
-    pub async fn list_sessions(
-        &self,
-        args: ListSessionsRequest,
-    ) -> agent_client_protocol::Result<ListSessionsResponse> {
-        tracing::debug!(cwd = ?args.cwd, cursor = ?args.cursor, "list_sessions called");
-        // Convert PathBuf cwd to Option<&str> for our internal function
-        let cwd_filter = args.cwd.as_ref().and_then(|p| p.to_str());
-
-        // Get sessions from database
-        let our_sessions = self
-            .list_sessions_from_db(cwd_filter, args.cursor.as_deref())
-            .await?;
-
-        // Convert our SessionInfo to JSON and then deserialize to protocol types
-        // This is necessary because agent_client_protocol types are non_exhaustive
-        let protocol_sessions: Vec<agent_client_protocol::schema::v1::SessionInfo> = our_sessions
-            .into_iter()
-            .map(|s| {
-                // Convert cwd: Option<String> to PathBuf string (use default if None)
-                let cwd_str = s
-                    .cwd
-                    .unwrap_or_else(|| agent::run::DEFAULT_WORKING_FOLDER.to_string());
-                let cwd_path = std::path::PathBuf::from(&cwd_str);
-
-                let mut session_json = serde_json::json!({
-                    "sessionId": s.session_id,
-                    "cwd": cwd_path,
-                });
-
-                if let Some(title) = s.title {
-                    if let Some(obj) = session_json.as_object_mut() {
-                        obj.insert("title".to_string(), serde_json::Value::String(title));
-                    }
-                }
-                if let Some(updated_at) = s.updated_at {
-                    if let Some(obj) = session_json.as_object_mut() {
-                        obj.insert(
-                            "updatedAt".to_string(),
-                            serde_json::Value::String(updated_at),
-                        );
-                    }
-                }
-
-                // Convert our SessionMeta to Map<String, Value> for _meta
-                if let Some(meta) = s.meta {
-                    let mut meta_map = serde_json::Map::new();
-                    if let Some(count) = meta.checkpoint_count {
-                        meta_map.insert(
-                            "checkpoint_count".to_string(),
-                            serde_json::Value::Number(count.into()),
-                        );
-                    }
-                    if let Some(count) = meta.message_count {
-                        meta_map.insert(
-                            "message_count".to_string(),
-                            serde_json::Value::Number(count.into()),
-                        );
-                    }
-                    if let Some(step) = meta.latest_step {
-                        meta_map.insert(
-                            "latest_step".to_string(),
-                            serde_json::Value::Number(step.into()),
-                        );
-                    }
-                    if let Some(source) = meta.latest_source {
-                        meta_map.insert(
-                            "latest_source".to_string(),
-                            serde_json::Value::String(source),
-                        );
-                    }
-                    if let Some(review) = meta.review {
-                        if let Ok(review_val) = serde_json::to_value(&review) {
-                            meta_map.insert("review".to_string(), review_val);
-                        }
-                    }
-                    if let Some(obj) = session_json.as_object_mut() {
-                        obj.insert("_meta".to_string(), serde_json::Value::Object(meta_map));
-                    }
-                }
-
-                serde_json::from_value(session_json)
-                    .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        // Build response JSON (pagination not implemented yet, so next_cursor is None)
-        let response_json = serde_json::json!({
-            "sessions": protocol_sessions,
-            "nextCursor": None::<()>,
-        });
-
-        serde_json::from_value(response_json)
-            .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))
-    }
-
     /// List only durable sessions owned by the authenticated ACP principal.
     /// Metadata is the source of truth so a newly-created session is visible
     /// even before its first checkpoint is written.
@@ -1939,73 +2091,54 @@ impl LoomAcpAgent {
             Some(cwd) => Some(canonicalize_existing_directory(&cwd)?),
             None => None,
         };
+        let cwd_filter_string = cwd_filter
+            .as_ref()
+            .map(|cwd| cwd.to_string_lossy().to_string());
         let sessions = self
             .session_repository
-            .list_for_owner(owner_principal)
+            .list_index_for_owner(owner_principal, cwd_filter_string.as_deref(), "active")
             .map_err(|error| {
                 agent_client_protocol::Error::internal_error()
-                    .data(format!("failed to list session metadata: {error}"))
+                    .data(format!("failed to list session index: {error}"))
             })?
             .into_iter()
-            .filter(|metadata| {
-                cwd_filter
-                    .as_ref()
-                    .map(|cwd| &metadata.cwd == cwd)
-                    .unwrap_or(true)
-            })
-            .map(|metadata| {
+            .map(|record| {
                 let mut info = agent_client_protocol::schema::v1::SessionInfo::new(
-                    metadata.session_id,
-                    metadata.cwd,
+                    record.session_id,
+                    record.cwd,
                 );
-                info.title = metadata.title;
-                info.updated_at = metadata.updated_at;
+                info.title = record.title;
+                info.updated_at = Some(record.activity_at);
                 info
             })
             .collect();
         Ok(ListSessionsResponse::new(sessions))
     }
 
-    /// Global sidebar listing with archival filter and keyset pagination on
-    /// `updated_at`. Returns the page plus the cursor for the next page
-    /// (`None` when exhausted). Data source: the `acp_sessions` table.
-    pub async fn list_global_sessions_for_owner(
+    /// Canonical SessionIndex projection shared by the private list extension
+    /// and the standard ACP session/list compatibility projection.
+    pub async fn list_index_records_for_owner(
         &self,
         owner_principal: &str,
-        archived: bool,
         cwd: Option<&str>,
-        limit: usize,
-        before_updated_at: Option<&str>,
-    ) -> agent_client_protocol::Result<(
-        Vec<crate::session_repository::SessionMetadata>,
-        Option<String>,
-    )> {
-        let page_limit = limit.saturating_add(1);
-        let mut rows = self
+        archived: &str,
+    ) -> agent_client_protocol::Result<(Vec<crate::session_repository::SessionIndexRecord>, i64)>
+    {
+        let records = self
             .session_repository
-            .list_for_owner_paged(
-                owner_principal,
-                archived,
-                cwd,
-                page_limit,
-                before_updated_at,
-            )
+            .list_index_for_owner(owner_principal, cwd, archived)
             .map_err(|error| {
                 agent_client_protocol::Error::internal_error()
-                    .data(format!("failed to list global sessions: {error}"))
+                    .data(format!("failed to list session index: {error}"))
             })?;
-        let has_more = rows.len() >= page_limit;
-        if has_more {
-            rows.truncate(limit);
-        }
-        let next_cursor = has_more
-            .then(|| {
-                rows.last()
-                    .and_then(|metadata| metadata.updated_at.clone())
-                    .or_else(|| rows.last().and_then(|m| m.created_at.clone()))
-            })
-            .flatten();
-        Ok((rows, next_cursor))
+        let version = self
+            .session_repository
+            .owner_index_version(owner_principal)
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to read session index version: {error}"))
+            })?;
+        Ok((records, version))
     }
 
     /// Archive or restore a session owned by `owner_principal`. Returns the
@@ -2022,6 +2155,25 @@ impl LoomAcpAgent {
             .map_err(|error| {
                 agent_client_protocol::Error::internal_error()
                     .data(format!("failed to update archive state: {error}"))
+            })
+    }
+
+    /// Archive/restore and return every projection changed by that owner
+    /// mutation. The repository assigns one index version to the target and
+    /// any ancestor tree recalculations, so filtering by that version gives a
+    /// stable response/event set after commit.
+    pub async fn archive_session_index_for_owner(
+        &self,
+        owner_principal: &str,
+        session_id: &str,
+        archived: bool,
+    ) -> agent_client_protocol::Result<Option<Vec<crate::session_repository::SessionIndexRecord>>>
+    {
+        self.session_repository
+            .set_archived_index_records(session_id, owner_principal, archived)
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to update archive index: {error}"))
             })
     }
 
@@ -2049,6 +2201,31 @@ impl LoomAcpAgent {
             return Ok(None);
         }
         Ok(Some(metadata))
+    }
+
+    /// Atomically update title and Desk metadata and return the canonical
+    /// index projection produced by the same repository transaction.
+    pub async fn update_session_index_fields_for_owner(
+        &self,
+        owner_principal: &str,
+        session_id: &str,
+        title: Option<&str>,
+        metadata: Option<serde_json::Value>,
+    ) -> agent_client_protocol::Result<Option<crate::session_repository::SessionIndexRecord>> {
+        let metadata_json = metadata
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|error| {
+                agent_client_protocol::Error::invalid_params()
+                    .data(format!("invalid session metadata: {error}"))
+            })?;
+        self.session_repository
+            .update_index_fields(session_id, owner_principal, title, metadata_json.as_deref())
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to update session index fields: {error}"))
+            })
     }
 
     /// Read Loom Desk-owned metadata for a session after checking ownership.
@@ -2099,6 +2276,34 @@ impl LoomAcpAgent {
             })
     }
 
+    pub async fn session_index_record_for_owner(
+        &self,
+        owner_principal: &str,
+        session_id: &str,
+    ) -> agent_client_protocol::Result<Option<crate::session_repository::SessionIndexRecord>> {
+        self.session_repository
+            .get_index_record(owner_principal, session_id)
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to read session index record: {error}"))
+            })
+    }
+
+    pub async fn session_tombstone_for_owner(
+        &self,
+        owner_principal: &str,
+        session_id: &str,
+    ) -> agent_client_protocol::Result<Option<crate::session_repository::SessionTombstone>> {
+        let tombstone = self
+            .session_repository
+            .get_tombstone(session_id)
+            .map_err(|error| {
+                agent_client_protocol::Error::internal_error()
+                    .data(format!("failed to read session tombstone: {error}"))
+            })?;
+        Ok(tombstone.filter(|item| item.owner_principal == owner_principal))
+    }
+
     /// Set a user-visible session title after checking ownership.
     pub async fn update_session_title_for_owner(
         &self,
@@ -2116,189 +2321,6 @@ impl LoomAcpAgent {
                     .data(format!("failed to update session title: {error}"))
             })?;
         Ok(true)
-    }
-}
-
-/// Session information for ACP session/list response.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SessionInfo {
-    /// Session ID (thread_id)
-    pub session_id: String,
-    /// Working directory (cwd) for the session
-    pub cwd: Option<String>,
-    /// Human-readable title for the session (auto-generated from first prompt or summary)
-    pub title: Option<String>,
-    /// ISO 8601 timestamp of the last activity
-    pub updated_at: Option<String>,
-    /// Agent-specific metadata
-    #[serde(rename = "_meta")]
-    pub meta: Option<SessionMeta>,
-}
-
-/// Agent-specific metadata for a session.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SessionMeta {
-    /// Number of checkpoints in this session
-    pub checkpoint_count: Option<usize>,
-    /// Number of messages in the session
-    pub message_count: Option<usize>,
-    /// Latest step number
-    pub latest_step: Option<i64>,
-    /// Source of the latest checkpoint
-    pub latest_source: Option<String>,
-    /// Background review status for this session (latest record).
-    /// `None` when the session has never been reviewed (implicitly "pending").
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub review: Option<SessionReviewMeta>,
-}
-
-/// Background review status for a session, derived from the latest
-/// `review_status` row (updated on every prompt completion and on
-/// `/review-skill`).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SessionReviewMeta {
-    /// "reviewed" | "skipped"
-    pub status: String,
-    /// ISO 8601 timestamp of the most recent review
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reviewed_at: Option<String>,
-    /// Number of memory updates produced by the review
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_update_count: Option<usize>,
-    /// Number of skill updates produced by the review
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub skill_update_count: Option<usize>,
-}
-
-impl LoomAcpAgent {
-    /// Lists all sessions from the SQLite database.
-    ///
-    /// This function queries the checkpoints table to find all unique thread_ids
-    /// and returns session information including metadata.
-    pub async fn list_sessions_from_db(
-        &self,
-        cwd_filter: Option<&str>,
-        _cursor: Option<&str>,
-    ) -> Result<Vec<crate::agent::SessionInfo>, agent_client_protocol::Error> {
-        let db_path = checkpoint_sqlite_store::default_memory_db_path();
-        let cwd_filter = cwd_filter.map(String::from);
-
-        // Use spawn_blocking for SQLite operations
-        let sessions = tokio::task::spawn_blocking(move || -> Result<Vec<SessionInfo>, String> {
-            let conn = Connection::open(&db_path)
-                .map_err(|e| format!("Failed to open database: {}", e))?;
-
-            // Ensure the review_status table exists before we LEFT JOIN against
-            // it. On a fresh database with no review ever recorded the table
-            // would otherwise be absent, causing the query to fail.
-            loom_curator::ReviewHistory::ensure_schema(&conn)
-                .map_err(|e| format!("Failed to ensure review schema: {}", e))?;
-
-            // Build query: use CTE to get latest checkpoint per thread,
-            // then join with aggregate stats. This avoids 3 correlated subqueries.
-            let mut sql = r#"
-                SELECT 
-                    c.thread_id,
-                    c.checkpoint_count,
-                    c.created_at,
-                    c.last_updated,
-                    lc.metadata_step as latest_step,
-                    lc.metadata_source as latest_source,
-                    lc.metadata_summary as latest_summary,
-                    rs.status as review_status,
-                    rs.reviewed_at as review_reviewed_at,
-                    rs.memory_update_count as review_memory_count,
-                    rs.skill_update_count as review_skill_count
-                FROM (
-                    SELECT 
-                        thread_id,
-                        COUNT(*) as checkpoint_count,
-                        MIN(metadata_created_at) as created_at,
-                        MAX(metadata_created_at) as last_updated
-                    FROM checkpoints
-                    GROUP BY thread_id
-                ) c
-                INNER JOIN checkpoints lc ON lc.thread_id = c.thread_id
-                    AND lc.metadata_created_at = c.last_updated
-                LEFT JOIN review_status rs ON rs.session_id = c.thread_id
-                "#
-            .to_string();
-
-            // Note: We don't store cwd in checkpoints table directly,
-            // so we can't filter by cwd yet. This would require storing
-            // cwd in the checkpoints table or a separate sessions table.
-            // For now, we'll return all sessions regardless of cwd_filter.
-            let _ = cwd_filter;
-
-            sql.push_str(" ORDER BY COALESCE(c.last_updated, 0) DESC");
-
-            let mut stmt = conn
-                .prepare(&sql)
-                .map_err(|e| format!("Failed to prepare statement: {}", e))?;
-
-            let sessions = stmt
-                .query_map([], |row: &rusqlite::Row| {
-                    let session_id: String = row.get(0)?;
-                    let checkpoint_count: usize = row.get(1)?;
-                    let _created_at_ms: Option<i64> = row.get(2)?;
-                    let last_updated_ms: Option<i64> = row.get(3)?;
-                    let latest_step: Option<i64> = row.get(4)?;
-                    let latest_source: String = row.get(5)?;
-                    let latest_summary: Option<String> = row.get(6)?;
-                    let review_status_str: Option<String> = row.get(7)?;
-                    let review_reviewed_at_ms: Option<i64> = row.get(8)?;
-                    let review_memory_count: Option<i64> = row.get(9)?;
-                    let review_skill_count: Option<i64> = row.get(10)?;
-
-                    let updated_at = last_updated_ms
-                        .and_then(DateTime::from_timestamp_millis)
-                        .map(|dt| dt.to_rfc3339());
-
-                    // Use summary as title if available and not empty, otherwise generate from session_id
-                    let title = latest_summary.filter(|s| !s.trim().is_empty()).or_else(|| {
-                        Some(format!(
-                            "Session {}",
-                            session_id.chars().take(8).collect::<String>()
-                        ))
-                    });
-
-                    // LEFT JOIN yields NULL for all rs.* columns when the
-                    // session has never been reviewed; in that case `review`
-                    // stays None (implicitly "pending").
-                    let review = review_status_str.map(|status| SessionReviewMeta {
-                        status,
-                        reviewed_at: review_reviewed_at_ms
-                            .and_then(DateTime::from_timestamp_millis)
-                            .map(|dt| dt.to_rfc3339()),
-                        memory_update_count: review_memory_count.map(|i| i as usize),
-                        skill_update_count: review_skill_count.map(|i| i as usize),
-                    });
-
-                    Ok(SessionInfo {
-                        session_id,
-                        cwd: None, // TODO: Store cwd in checkpoints or separate table
-                        title,
-                        updated_at,
-                        meta: Some(SessionMeta {
-                            checkpoint_count: Some(checkpoint_count),
-                            message_count: None, // Would need to deserialize checkpoint to get message count
-                            latest_step,
-                            latest_source: Some(latest_source),
-                            review,
-                        }),
-                    })
-                })
-                .map_err(|e| format!("Failed to query sessions: {}", e))?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| format!("Failed to collect sessions: {}", e))?;
-
-            Ok(sessions)
-        })
-        .await
-        .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?
-        .map_err(|e| agent_client_protocol::Error::internal_error().data(e))?;
-
-        Ok(sessions)
     }
 }
 

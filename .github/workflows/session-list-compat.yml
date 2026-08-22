@@ -1,0 +1,95 @@
+name: Session list compatibility
+
+on:
+  push:
+    branches: [main, master, dev]
+  pull_request:
+    branches: [main, master, dev]
+
+jobs:
+  wire-regression:
+    name: Wire regression (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: session-list-compat-${{ matrix.os }}
+
+      - name: Build Loom binary (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: cargo build -p cli
+
+      - name: Build Loom binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo build -p cli
+
+      - name: Run model-free session-list wire regression (Unix)
+        if: runner.os != 'Windows'
+        shell: pwsh
+        run: >-
+          ./scripts/run-session-list-compat.ps1
+          -NewLoomBinary "$PWD/target/debug/loom"
+          -OutputDir "$PWD/session-list-compat-results"
+
+      - name: Run model-free session-list wire regression (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: >-
+          ./scripts/run-session-list-compat.ps1
+          -NewLoomBinary "$PWD/target/debug/loom.exe"
+          -OutputDir "$PWD/session-list-compat-results"
+
+      - name: Validate compatibility manifest
+        shell: pwsh
+        run: |
+          $manifestPath = Join-Path $PWD 'session-list-compat-results/manifest.json'
+          if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+            throw "missing compatibility manifest: $manifestPath"
+          }
+          $entries = @(Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json)
+          if ($entries.Count -lt 1) {
+            throw 'compatibility manifest contains no runs'
+          }
+          foreach ($entry in $entries) {
+            if ($entry.exitCode -ne 0) { throw "run failed: $($entry.name)" }
+            if ($entry.testCount -lt 1) { throw "run executed zero tests: $($entry.name)" }
+            if ($entry.expectedMode -notin @('canonical', 'legacy')) {
+              throw "invalid expectedMode for $($entry.name): $($entry.expectedMode)"
+            }
+            if ([string]$entry.binarySha256 -notmatch '^[0-9a-fA-F]{64}$') {
+              throw "invalid binarySha256 for $($entry.name)"
+            }
+            if ([int64]$entry.binarySizeBytes -le 0) {
+              throw "invalid binarySizeBytes for $($entry.name)"
+            }
+            if ($null -eq $entry.sameBinaryAsEarlierRun) {
+              throw "missing sameBinaryAsEarlierRun for $($entry.name)"
+            }
+            foreach ($field in @('osDescription', 'osArchitecture', 'processArchitecture', 'powershell')) {
+              if ([string]::IsNullOrWhiteSpace([string]$entry.$field)) {
+                throw "missing manifest field '$field' for $($entry.name)"
+              }
+            }
+          }
+          Write-Host "validated $($entries.Count) compatibility run(s)"
+
+      - name: Upload wire regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: session-list-wire-${{ matrix.os }}
+          path: session-list-compat-results
+          if-no-files-found: error

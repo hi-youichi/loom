@@ -45,6 +45,7 @@ pub struct AcpRuntimeMetricsSnapshot {
     pub prompt_busy_rejections: u64,
     pub route_failures: u64,
     pub session_rebinds: u64,
+    pub legacy_session_list_alias_calls: u64,
 }
 
 /// One Loom agent core plus all transient ACP connection state.
@@ -59,6 +60,7 @@ pub struct AcpRuntime {
     prompt_executor: Arc<dyn AcpPromptExecutor>,
     prompt_capacity: Arc<Semaphore>,
     metrics: Arc<AcpRuntimeMetrics>,
+    session_list_handler: Arc<crate::extensions::session_list::SessionListHandler>,
     updates_tx: mpsc::Sender<crate::stream_bridge::SessionUpdateEnvelope>,
     flush_waiters: Arc<Mutex<std::collections::HashMap<String, oneshot::Sender<()>>>>,
     #[allow(clippy::type_complexity)]
@@ -96,7 +98,8 @@ impl AcpRuntime {
             Some(updates_tx.clone()),
         )?);
         extension_handles.session_history.bind(&agent);
-        extension_handles.session_list.bind(&agent);
+        let session_list_handler = extension_handles.session_list.clone();
+        session_list_handler.bind(&agent);
         let bindings = Arc::new(SessionBindings::new());
         global_bus.bind_registry(connections.clone());
         let notification_router = Arc::new(NotificationRouter::new(
@@ -123,6 +126,7 @@ impl AcpRuntime {
                     .unwrap_or(4),
             )),
             metrics: metrics.clone(),
+            session_list_handler,
             updates_tx,
             flush_waiters: flush_waiters.clone(),
             session_bridges,
@@ -130,13 +134,12 @@ impl AcpRuntime {
 
         let router = runtime.notification_router.clone();
         let metrics_for_router = metrics;
-        let global_bus = runtime.global_bus.clone();
         tokio::spawn(async move {
             // Sessions whose history is currently being replayed via
             // `send_history`. While a session is in this set, its
             // notifications are routed to subscribers as usual, but the
-            // cross-connection `session.updated` global broadcast is
-            // suppressed: a `session/load` replay is a read, not a mutation.
+            // cross-connection SessionIndex broadcasts are not emitted from
+            // this high-frequency notification path.
             let mut replaying_sessions: std::collections::HashSet<String> =
                 std::collections::HashSet::new();
             while let Some(envelope) = updates_rx.recv().await {
@@ -180,16 +183,11 @@ impl AcpRuntime {
                     replaying_sessions.remove(session_id);
                     continue;
                 }
-                let is_replay = replaying_sessions.contains(&update_session_id);
-                // Cross-connection signal: session content changed. Payload
-                // mirrors the loom `session.updated` event shape.
-                if !is_replay {
-                    global_bus.publish(
-                        "session",
-                        "session.updated",
-                        serde_json::json!({ "id": update_session_id }),
-                    );
-                }
+                // Session content notifications are routed to the bound ACP
+                // connection only. They must not masquerade as global
+                // SessionIndex mutations: the canonical list event is
+                // published by the mutation boundary with revision/index
+                // metadata, while dropped events are recovered by resync.
                 if let Err(error) = router.send(update).await {
                     metrics_for_router
                         .route_failures
@@ -268,6 +266,7 @@ impl AcpRuntime {
             prompt_busy_rejections: self.metrics.prompt_busy_rejections.load(Ordering::Relaxed),
             route_failures: self.metrics.route_failures.load(Ordering::Relaxed),
             session_rebinds: self.metrics.session_rebinds.load(Ordering::Relaxed),
+            legacy_session_list_alias_calls: self.session_list_handler.legacy_alias_call_count(),
         }
     }
 

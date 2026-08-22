@@ -88,5 +88,9 @@ name = "e2e_mega"
 path = "tests/e2e_mega.rs"
 
 [[test]]
+name = "e2e_session_list"
+path = "tests/e2e_session_list.rs"
+
+[[test]]
 name = "e2e"
 path = "tests/e2e/main.rs"

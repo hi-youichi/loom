@@ -11,6 +11,7 @@
 
 #![allow(dead_code)]
 
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -47,12 +48,22 @@ impl AcpTestHarness {
     pub async fn spawn(env: &TestEnv, llm_url: &str) -> Self {
         let log_path = env.loom_home().join("loom-acp.log");
         let pid_path = env.loom_home().join("acp").join("loom-acp.pid");
+        // `loom acp` is a stdio-to-WebSocket bridge.  Always use an isolated
+        // ephemeral port so e2e tests cannot silently attach to a developer's
+        // already-running server on the default 3030 endpoint.
+        let port = TcpListener::bind(("127.0.0.1", 0))
+            .expect("reserve an e2e ACP port")
+            .local_addr()
+            .expect("read reserved e2e ACP port")
+            .port();
 
         let mut cmd = Command::new(binary_path());
         cmd.env("OPENAI_BASE_URL", format!("{llm_url}/v1"))
             .env("OPENAI_API_KEY", "test-key")
             .env("OPENAI_MODEL", "openai/gpt-4o")
+            .env("LOOM_ACP_BRIDGE_EXIT_SHUTDOWN", "1")
             .arg("acp")
+            .arg(format!("ws://127.0.0.1:{port}/acp"))
             .arg("--home")
             .arg(env.loom_home())
             .arg("--log-file")

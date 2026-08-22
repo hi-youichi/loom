@@ -39,6 +39,12 @@ use tempfile::TempDir;
 /// from `current_exe()` — test binaries live in `target/<profile>/deps/`,
 /// so going up two parents gives `target/<profile>/` where `loom` resides.
 pub fn binary_path() -> PathBuf {
+    // Release/compatibility runs can point the same wire-level harness at a
+    // separately built Loom binary. Keep the normal Cargo-discovered path as
+    // the default so local tests remain unchanged.
+    if let Some(path) = std::env::var_os("LOOM_ACP_BINARY") {
+        return PathBuf::from(path);
+    }
     if let Some(p) = option_env!("CARGO_BIN_EXE_loom") {
         return PathBuf::from(p);
     }

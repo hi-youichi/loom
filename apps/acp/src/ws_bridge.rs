@@ -328,14 +328,29 @@ pub async fn run_ws_bridge(url: Option<String>, pid_file: Option<PathBuf>) -> Br
     drop(stdout_tx);
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    // Reap the last spawned server child to prevent zombie processes.
+    // Reap the last spawned server child to prevent zombie processes. Tests
+    // can request ownership cleanup because a detached auto-spawned server
+    // otherwise keeps the test process's Windows job alive after the bridge
+    // has closed its stdio pipes. Production keeps the historical behavior
+    // (the local server remains available for the next bridge connection).
+    let shutdown_spawned_server = std::env::var("LOOM_ACP_BRIDGE_EXIT_SHUTDOWN")
+        .ok()
+        .is_some_and(|value| value == "1");
     if let Some(mut child) = server_child.take() {
         match child.try_wait() {
             Ok(Some(status)) => {
                 tracing::info!(%status, "loom-server child already exited");
             }
             Ok(None) => {
-                tracing::info!("loom-server still running, detaching");
+                if shutdown_spawned_server {
+                    tracing::info!("stopping loom-server child for owned bridge shutdown");
+                    if let Err(error) = child.kill() {
+                        tracing::warn!(error = %error, "failed to stop owned loom-server child");
+                    }
+                    let _ = child.wait();
+                } else {
+                    tracing::info!("loom-server still running, detaching");
+                }
             }
             Err(e) => {
                 tracing::warn!(error = %e, "failed to check loom-server child status");

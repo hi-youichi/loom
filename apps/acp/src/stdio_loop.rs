@@ -9,6 +9,10 @@ use std::time::Duration;
 
 use crate::client_capabilities::ClientCapabilitiesInfo;
 use crate::connection::{AcpConnection, ConnectionOutbound};
+use crate::extensions::session_list::{
+    to_event_info_from_index, to_event_info_from_wire, to_tombstone_event_info,
+    tombstone_event_payload,
+};
 use crate::runtime::AcpRuntime;
 use crate::session::{SessionId as LoomSessionId, SessionLifecycle};
 use agent_client_protocol::schema::v1::{
@@ -253,6 +257,56 @@ where
                             .bindings
                             .bind_new_session(session_id.clone(), connection.id.clone());
                         connection.note_session(session_id.as_str()).await;
+                        if let Ok(Some(record)) = runtime
+                            .agent
+                            .session_index_record_for_owner(&connection.principal, session_id.as_str())
+                            .await
+                        {
+                            runtime.global_bus.publish(
+                                "session",
+                                "session.created",
+                                serde_json::json!({ "info": to_event_info_from_index(&record) }),
+                            );
+
+                            // A child create can also change the visible
+                            // tree projection of each active ancestor. The
+                            // session/new response carries those canonical
+                            // records in nearest-ancestor-first order; emit
+                            // them as separate updated events so clients that
+                            // miss the response still converge through the
+                            // global session stream.
+                            if let Ok(response_json) = serde_json::to_value(response) {
+                                if let Some(ancestors) = response_json
+                                    .get("_meta")
+                                    .and_then(|meta| meta.get("loomdesk.dev"))
+                                    .and_then(|meta| meta.get("affectedSessions"))
+                                    .and_then(serde_json::Value::as_array)
+                                {
+                                    for ancestor in ancestors {
+                                        let Some(ancestor_id) = ancestor
+                                            .get("sessionId")
+                                            .and_then(serde_json::Value::as_str)
+                                        else {
+                                            continue;
+                                        };
+                                        if let Ok(Some(ancestor_record)) = runtime
+                                            .agent
+                                            .session_index_record_for_owner(
+                                                &connection.principal,
+                                                ancestor_id,
+                                            )
+                                            .await
+                                        {
+                                            runtime.global_bus.publish(
+                                                "session",
+                                                "session.updated",
+                                                serde_json::json!({ "info": to_event_info_from_index(&ancestor_record) }),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     let _ = responder.respond_with_result(result);
                     Ok(())
@@ -498,6 +552,20 @@ where
                     if result.is_ok() {
                         runtime.bindings.unbind_session(&session_id);
                         runtime.cleanup_session_resources(session_id.as_str()).await;
+                        if let Ok(Some(tombstone)) = runtime
+                            .agent
+                            .session_tombstone_for_owner(&connection.principal, session_id.as_str())
+                            .await
+                        {
+                            runtime.global_bus.publish(
+                                "session",
+                                "session.deleted",
+                                serde_json::json!({
+                                    "info": to_tombstone_event_info(&tombstone),
+                                    "sessionID": tombstone.session_id,
+                                }),
+                            );
+                        }
                     }
                     let _ = responder.respond_with_result(result);
                     Ok(())
@@ -513,17 +581,75 @@ where
                 let connection = conn_for_delete.clone();
                 async move {
                     let session_id = LoomSessionId::new(req.session_id.to_string());
-                    let result = if !runtime.bindings.is_connection_bound_to_session(&session_id, &connection.id) {
-                        Err(agent_client_protocol::Error::new(
-                            -32011,
-                            "session is not bound to this connection",
-                        ))
-                    } else {
+                    let was_bound = runtime
+                        .bindings
+                        .is_connection_bound_to_session(&session_id, &connection.id);
+                    let result = if was_bound {
                         runtime.agent.delete_session_for_owner(req, &connection.principal).await
+                    } else {
+                        // A retry after the first successful delete has
+                        // already unbound the session. Permit it to reach the
+                        // durable tombstone path so retries remain idempotent;
+                        // unrelated unbound deletes still fail closed.
+                        match runtime
+                            .agent
+                            .session_tombstone_for_owner(&connection.principal, session_id.as_str())
+                            .await
+                        {
+                            Ok(Some(_)) => runtime.agent.delete_session_for_owner(req, &connection.principal).await,
+                            Ok(None) => Err(agent_client_protocol::Error::new(
+                                -32011,
+                                "session is not bound to this connection",
+                            )),
+                            Err(error) => Err(error),
+                        }
                     };
                     if result.is_ok() {
                         runtime.bindings.unbind_session(&session_id);
                         runtime.cleanup_session_resources(session_id.as_str()).await;
+                        // A successful first delete owns the global tombstone
+                        // event. Retries after the binding was removed remain
+                        // idempotent but must not emit a duplicate event.
+                        if was_bound {
+                            if let Ok(Some(tombstone)) = runtime
+                                .agent
+                                .session_tombstone_for_owner(
+                                    &connection.principal,
+                                    session_id.as_str(),
+                                )
+                                .await
+                            {
+                                runtime.global_bus.publish(
+                                    "session",
+                                    "session.deleted",
+                                    serde_json::json!({
+                                        "info": to_tombstone_event_info(&tombstone),
+                                        "sessionID": tombstone.session_id,
+                                        "tombstone": tombstone_event_payload(&tombstone),
+                                    }),
+                                );
+                                if let Ok(response) = &result {
+                                    if let Ok(response_json) = serde_json::to_value(response) {
+                                    if let Some(ancestors) = response_json
+                                        .get("_meta")
+                                        .and_then(|meta| meta.get("loomdesk.dev"))
+                                        .and_then(|meta| meta.get("affectedSessions"))
+                                        .and_then(serde_json::Value::as_array)
+                                    {
+                                        for ancestor in ancestors {
+                                            if let Some(info) = to_event_info_from_wire(ancestor) {
+                                                runtime.global_bus.publish(
+                                                    "session",
+                                                    "session.updated",
+                                                    serde_json::json!({ "info": info }),
+                                                );
+                                            }
+                                        }
+                                    }
+                                    }
+                                }
+                            }
+                        }
                     }
                     let _ = responder.respond_with_result(result);
                     Ok(())

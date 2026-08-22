@@ -139,6 +139,12 @@ pub fn register_default_extensions(
     );
     let session_list = Arc::new(SessionListHandler::new().with_global_bus(global_bus.clone()));
     registry.register("session", session_list.clone());
+    registry.register(
+        "session-metrics",
+        Arc::new(super::session_metrics::SessionMetricsHandler::new(
+            session_list.clone(),
+        )),
+    );
 
     registry.register(
         "global",

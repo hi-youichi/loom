@@ -86,9 +86,14 @@
 //! ## session/list
 //!
 //! - Only when capabilities.sessionCapabilities.list is present. Request: optional `cwd` (filter by working directory), optional `cursor` (pagination).
-//! - Agent queries SQLite checkpoints table to find all unique thread_ids; returns array of SessionInfo with sessionId, cwd, title (from summary), updatedAt, and optional _meta (checkpoint_count, latest_step, latest_source, review).
-//! - `_meta.review`: latest background-review status for the session (status: "reviewed"|"skipped", reviewed_at, memory/skill update counts). `None`/absent when the session has never been reviewed (implicitly "pending"). Updated on every prompt completion via `spawn_inprocess_review` and on `/review-skill`. Delivered via two channels: (a) persisted to SQLite for `session/list` queries; (b) pushed as a real-time `session_info_update` notification (see `session/update` section above).
-//! - Response includes `sessions` array and optional `nextCursor` for pagination. Currently pagination is not implemented (returns all sessions).
+//! - Agent reads the owner-scoped `acp_sessions` SessionIndex; the checkpoint
+//!   database is history storage, not a second membership/order source. The
+//!   response contains active records for the authenticated owner and optional
+//!   cwd, projected to standard ACP fields (`sessionId`, `cwd`, `title`,
+//!   `updatedAt`).
+//! - The compatibility implementation intentionally returns one complete page
+//!   with `nextCursor = null`; private Loom Desk pagination is provided by
+//!   `_loomdesk.dev/session/list` and its immutable snapshot cursor.
 //!
 //! ## Session mode and session config
 //!

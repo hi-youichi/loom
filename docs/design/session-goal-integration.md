@@ -1,6 +1,6 @@
 # Session Goal 整合方案（OpenChamber 前端 ⇄ Loom 后端）
 
-> 状态：草案（2025-08-19）
+> 状态：历史草案（2025-08-19）；本文记录当时的 Session Goal 缺口与候选方案，不代表当前 Loom/Desk 实现状态。开发 session metadata/list 时请以 37 号规范和 `session-list-redesign.md` 为准。
 > 范围：把 OpenChamber 的 **Session Goal**（元数据驱动的服务端目标循环）移植到 Loom ACP 后端，使前端 goal UI 在 ACP 模式下完整可用。
 > 参考：
 > - 参考实现（上游）：`openchamber-feat-dev/packages/web/server/lib/session-goal/`（`runtime.js` 36KB + `DOCUMENTATION.md` + `routes.js` + `objectives.js`）
@@ -9,7 +9,7 @@
 
 ## 摘要
 
-**问题**：OpenChamber 前端 goal UI（arm 开关、goal strip、管理对话框）已完整就位，但依赖两个 Loom 侧不存在的服务端能力——ACP 模式下 `patchSessionMetadata` 是 no-op stub（goal 元数据写不进、同步不了），`/api/goals/objective` 路由与续跑 runtime 完全缺失。当前 Loom 默认路径下所有 goal 动作均 toast 报错。
+**历史问题（2025-08-19）**：OpenChamber 前端 goal UI（arm 开关、goal strip、管理对话框）当时依赖两个 Loom 侧不存在的服务端能力——ACP 模式下 `patchSessionMetadata` 是 no-op stub，`/api/goals/objective` 路由与续跑 runtime 缺失。该描述是历史基线；当前 session metadata storage/update 已由 SessionIndex repository 与 `_loomdesk.dev/session/update` 路径提供，goal runtime 是否实现仍需以当前源码单独核实，不能直接据本草案判断。
 
 **方案**：按"直接移植、零前端改动（goal 层）"路线，把上游 web server 的 session-goal runtime（36KB JS，事件驱动循环）移植为 Rust 模块 `apps/acp/src/session_goal/`。**不做** `goal-system-workflow.md` 的多 Agent 编排（前端契约是元数据+事件+循环，非 workflow API）。语义基线取 OpenChamber（独立小模型审计器为终止权威、快照式 token 核算、五态状态机），工程机制借鉴 Codex（`codex-rs/ext/goal/`）：goal-state/accounting 双互斥锁、`expected_goal_id` CAS 防陈旧写、fork continuation deferral、mid-turn 预算 steering（§2.4 对照表）。
 
@@ -42,7 +42,7 @@ OpenChamber 的 Session Goal 是**服务端持久化**的自主目标循环：
 
 | # | 前端契约 | 参考实现位置 | Loom 现状 | 缺口 |
 |---|---|---|---|---|
-| G1 | `session.metadata.openchamber.goal` 可读写、随 `session.updated` 全量扇出 | web server session 存储 + SSE | `session_repository.rs` 只有内部字段（cwd/thread_id/owner/lifecycle），无用户元数据；global bus `session.updated` 只发 `{id}`；**前端 ACP 模式 `patchSessionMetadata` 是 no-op stub** | 存储层 + patch 协议 + 事件扇出，全缺 |
+| G1 | `session.metadata.openchamber.goal` 可读写、随 `session.updated` 全量扇出 | web server session 存储 + SSE | **历史基线**：当时无用户元数据；当前 `acp_session_data`、SessionIndex metadata projection、`session/update` response/event 已实现。Goal 专属 runtime/字段语义仍需另行核实 | 不得按本行旧结论判断当前实现 |
 | G2 | `PUT/GET/DELETE /api/goals/objective/:sessionId` | `routes.js` + `objectives.js`（`<data-dir>/goals/<sessionId>.md`） | bridge 路由表无此路由，且 `acp-rest-bridge.ts` 路由为**精确匹配**、不支持路径参数 | 全缺 |
 | G3 | idle tick → 核算 → 审计 → `prompt_async` 续跑循环 | `runtime.js` | 无 | 全缺（见 §2.2） |
 | G4 | Settings gate `sessionGoalEnabled` / 默认预算 | web server settings | `openchamber.ui` blob 已持久化到 Loom settings，Rust 侧可读 | ✅ 基本可用 |

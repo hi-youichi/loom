@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use rusqlite::Connection;
 
@@ -38,6 +39,11 @@ impl SessionConfigStore {
     /// Open or create the session_config table in the given database.
     pub fn new(db_path: &str) -> rusqlite::Result<Self> {
         let conn = Connection::open(db_path)?;
+        // Session metadata and SessionIndex are written by concurrent ACP
+        // tasks/tests against the same SQLite file. Match the repository's
+        // busy policy so a short writer overlap waits instead of surfacing a
+        // spurious `database is locked` error to session/new callers.
+        conn.busy_timeout(Duration::from_secs(30))?;
         let store = Self {
             conn: Arc::new(Mutex::new(conn)),
         };

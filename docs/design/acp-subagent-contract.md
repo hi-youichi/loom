@@ -1,6 +1,6 @@
 # Loom ACP 子代理契约设计
 
-> **状态**：Draft，待评审
+> **状态**：历史设计草案（2026-08-19）；P0/P1 的当前实现与最终 wire 约束以 [37-session-list.md](../acp-spec/extensions/37-session-list.md) 和 [session-list-redesign.md](./session-list-redesign.md) 为准。
 > **日期**：2026-08-19
 > **范围**：将 Loom 已有的 in-process 子代理执行引擎升级为 ACP 一等公民 —— tool call metadata 透传、`parentID` 子会话、`agent/list` + subagent 模式、级联删除，对齐 OpenChamber 前端已有的 task/子会话契约
 > **相关代码**：`agent/agent-core/src/tools/agent/`（mod.rs、runner.rs、worktree.rs、registry.rs、build_config.rs）、`apps/acp/src/stream_bridge.rs`、`apps/acp/src/session_repository.rs`、`apps/acp/src/agent.rs`、`apps/acp/src/agent_registry.rs`、`apps/acp/src/extensions/agent_profile.rs`
@@ -17,7 +17,7 @@ Loom 的 `agent` 工具（`agent/agent-core/src/tools/agent/`）已经实现了�
 | # | 缺口 | 位置 | 前端后果 |
 |---|---|---|---|
 | 1 | tool call 不携带 metadata | `apps/acp/src/stream_bridge.rs` 全文无一处设置 `ToolCallContent.metadata` | `explicitTaskSessionId` 永远为空，task ↔ 子会话绑定退化为 3s/8s 时间窗启发式（`resolveFallbackTaskSessionId.ts`） |
-| 2 | 会话无 `parentID` | `apps/acp/src/session_repository.rs` 的 `acp_sessions` 表无该列 | 子代理 thread 的 checkpoint 以孤立 session 漏进 `session/list`；侧边栏无法建树 |
+| 2 | 会话无 `parentID` | **历史基线**；当前 `acp_sessions.parent_session_id`、tree activity 和 canonical SessionIndex 已落地 | 当前已可从 SessionIndex 构造父子树；本行仅解释原始问题，不是当前待办 |
 | 3 | 未实现 `agent/list`、SessionMode 无 subagent 标记 | `apps/acp/src/agent.rs` 无该方法；`apps/acp/src/agent_registry.rs:47` 仅 id/name/description | 前端 agent 选择器把所有 profile 当 primary；subagent 不应出现在主对话选择列表 |
 | 4 | 无级联删除 | `apps/acp/src/session_repository.rs:206` `delete_all` 只删单 session | 删父留孤儿 |
 
@@ -44,6 +44,8 @@ Loom 的 `agent` 工具（`agent/agent-core/src/tools/agent/`）已经实现了�
 
 ## 3. 方案（按优先级）
 
+> 本节保留 2026-08-19 的候选方案，不能直接照抄执行。尤其是旧草案中的 `parent_id` 应替换为当前规范的 `parent_session_id`；repository mutation、owner/revision/indexVersion、snapshot/event 和 delete tombstone 必须遵循 37 号规范及 `session-list-redesign.md`，不能新增第二套 session 写入路径。
+
 ### 3.1 P0 — tool call metadata 透传
 
 最小改动、收益最大：让前端第一级解析生效，启发式退役。
@@ -62,7 +64,7 @@ Loom 的 `agent` 工具（`agent/agent-core/src/tools/agent/`）已经实现了�
 
 - 同时在同步完成的 tool output 文本里追加 `<task id="{agent_id}" state="completed">` 包装，对齐 opencode 的 fallback 解析源（前端第三级解析零改动可用）
 
-### 3.2 P1 — `parentID` 子会话
+### 3.2 P1 — `parentID` 子会话（历史方案；核心已实现）
 
 - **schema**：`session_repository.rs` 照 `ensure_title_column` 模式加列：
 
@@ -103,5 +105,5 @@ CREATE INDEX idx_acp_sessions_parent ON acp_sessions(parent_id);
 
 - **同步/后台双路径**：`background: true` 时 metadata 只在 `ToolStart` 可用（无 `ToolEnd` 结果），前端需容忍子会话晚绑定 —— 现有 fallback 逻辑天然覆盖，但应在 P0 的 metadata 里带上 `status: "running"` 提示
 - **agent_id 稳定性**：`sub-{thread}-{agent}-{depth}-{seq}` 含全局序号，跨进程重启后 registry（内存态）丢失，子 session 元数据以 SQLite 为准 —— P1 落库后无影响
-- **acp_sessions 与 checkpoints 双源**：`session/list` 目前从 checkpoints 表聚合，`acp_sessions` 只是 ACP 元数据侧车；引入 parent_id 后子会话必须两条链路一致，建议 list 查询改走 `acp_sessions` 主表 + checkpoints 聚合 JOIN（与 `list_sessions_from_db` 的 CTE 合并）
+- **acp_sessions 与 checkpoints 分工**：`session/list` 已从 owner-scoped `acp_sessions` SessionIndex 派生；checkpoints 只负责 history/load 和统计，不再作为 membership/order 第二事实源。parent/session tree 的列表语义统一由 SessionIndex 持久化与查询。
 - **OpenChamber 主仓 vs feat-dev**：`C:\Users\heycj\dev\openchamber`（main）尚未合入 `src/lib/acp/` 契约代码，本设计以 `openchamber-feat-dev` 的契约为准；main 合入 ACP 支持后需回归

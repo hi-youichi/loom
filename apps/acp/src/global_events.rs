@@ -10,7 +10,10 @@
 //! existing reducers unchanged.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex,
+};
 
 use serde_json::{json, Value};
 
@@ -42,6 +45,7 @@ pub enum GlobalEventError {
 pub struct GlobalEventBus {
     connections: Mutex<Option<Arc<ConnectionRegistry>>>,
     subscriptions: Mutex<HashMap<String, HashSet<String>>>,
+    dropped_events: AtomicU64,
 }
 
 impl GlobalEventBus {
@@ -91,6 +95,7 @@ impl GlobalEventBus {
                 params: params.clone(),
             };
             if let Err(error) = connection.outbound_tx.try_send(outbound) {
+                self.dropped_events.fetch_add(1, Ordering::Relaxed);
                 tracing::debug!(
                     connection = %connection_id,
                     %error,
@@ -98,6 +103,12 @@ impl GlobalEventBus {
                 );
             }
         }
+    }
+
+    /// Number of fire-and-forget notifications dropped because a consumer
+    /// queue was full or closed since this bus was created.
+    pub fn dropped_event_count(&self) -> u64 {
+        self.dropped_events.load(Ordering::Relaxed)
     }
 
     /// Replace the topic set for a connection. Validates topics; `"*"` is

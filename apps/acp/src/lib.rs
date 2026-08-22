@@ -162,7 +162,7 @@
 //! | `session/cancel` | `agent::cancel` | Increment generation, fire cancellation token |
 //! | `session/fork` | `agent::fork_session` | Clone config + MCP, new session ID |
 //! | `session/load` | `agent::load_session` | Restore from checkpoint, replay history |
-//! | `session/list` | `agent::list_sessions` | Query SQLite checkpoints |
+//! | `session/list` | `agent::list_sessions_for_owner` | Project owner-scoped SessionIndex records |
 //! | `set_config_option` | `agent::set_session_config_option` | Update model/mode/effort, persist |
 //! | `set_mode` | `agent::set_session_mode` | Switch agent profile (ask/dev/default) |
 //!

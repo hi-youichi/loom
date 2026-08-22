@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Session List 索引与稳定排序重设计</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f8fafc; --surface: #fff; --text: #172033; --muted: #596579; --line: #dbe2ea; --accent: #2563eb; --code: #f1f5f9; --warn: #fff7ed; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.7 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { display: grid; grid-template-columns: 220px minmax(0, 1040px); gap: 28px; max-width: 1320px; margin: 0 auto; padding: 48px 24px 80px; }
+    article { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 48px; box-shadow: 0 8px 30px rgb(15 23 42 / 6%); }
+    h1 { font-size: 2rem; line-height: 1.25; margin: 0 0 16px; }
+    h2 { margin: 48px 0 16px; padding-top: 8px; font-size: 1.45rem; border-top: 1px solid var(--line); }
+    h3 { margin: 28px 0 12px; font-size: 1.1rem; }
+    p { margin: 12px 0; }
+    .meta { padding: 16px 20px; border-left: 4px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); color: var(--muted); }
+    .toc { position: sticky; top: 24px; align-self: start; padding: 18px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 30px rgb(15 23 42 / 4%); }
+    .toc-title { margin: 0 0 10px; color: var(--muted); font-size: .78rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .toc a { display: block; padding: 5px 8px; color: var(--muted); text-decoration: none; border-radius: 6px; font-size: .9rem; }
+    .toc a.sub { padding-left: 18px; font-size: .82rem; }
+    .toc a:hover, .toc a:focus-visible { color: var(--accent); background: var(--code); outline: none; }
+    code { padding: .12em .35em; background: var(--code); border-radius: 4px; font: .9em ui-monospace, SFMono-Regular, Consolas, monospace; }
+    pre { overflow-x: auto; padding: 16px; background: var(--code); border-radius: 8px; }
+    pre code { padding: 0; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0 24px; font-size: .94rem; }
+    th, td { padding: 10px 12px; text-align: left; vertical-align: top; border: 1px solid var(--line); }
+    th { background: var(--code); }
+    ul, ol { padding-left: 1.4rem; }
+    .priority { font-weight: 700; color: #b45309; }
+    @media (max-width: 840px) { main { display: block; padding: 16px; } .toc { position: static; margin-bottom: 16px; } .toc a { display: inline-block; } article { padding: 24px 18px; } table { display: block; overflow-x: auto; } h1 { font-size: 1.65rem; } }
+    @media (prefers-color-scheme: dark) { :root { --bg: #0f172a; --surface: #111827; --text: #e5e7eb; --muted: #aab4c3; --line: #334155; --accent: #60a5fa; --code: #1e293b; --warn: #422006; } }
+  </style>
+</head>
+<body>
+  <main>
+    <aside class="toc" aria-label="文档目录">
+      <p class="toc-title">目录</p>
+      <a href="#background">1. 背景与问题</a>
+      <a href="#readiness">0. 开发指导完整性评审</a>
+      <a href="#goals">2. 目标：要完成的事情</a>
+      <a href="#model">3. 目标数据模型</a>
+      <a href="#api">4. 协议与实时事件</a>
+      <a href="#desk">5. Loom Desk 消费方</a>
+      <a class="sub" href="#desk-review">5.2 源码审查结论</a>
+      <a class="sub" href="#desk-ownership">5.3 数据所有权</a>
+      <a class="sub" href="#desk-record">5.4 Record 与排序</a>
+      <a class="sub" href="#desk-compat">5.5 Capability 与兼容</a>
+      <a class="sub" href="#desk-create-fork">5.6 Create 与 fork</a>
+      <a class="sub" href="#desk-current-logic">5.7 当前实现完整清单</a>
+      <a href="#migration">6. 迁移与兼容性</a>
+      <a href="#tasks">7. 开发任务</a>
+      <a href="#tests">8. 测试用例开发</a>
+    </aside>
+    <article>
+      <h1>Session List 索引与稳定排序重设计</h1>
+      <div class="meta">
+      <div><strong>状态：</strong>Draft（可执行开发版；未达到完成定义）</div>
+      <p><strong>签收模板：</strong><code>docs/design/session-list-release-signoff.md</code>，用于记录 §12 的命令、环境、artifact 和责任人。</p>
+        <div><strong>相关代码：</strong><code>apps/acp/src/session_repository.rs</code>、<code>apps/acp/src/extensions/session_list.rs</code>、<code>apps/acp/src/agent.rs</code>、<code>packages/ui/src/stores/globalSessions.ts</code></div>
+        <div><strong>交叉参考：</strong>Session List 规范、标准 ACP 单 Server 多 Session 实现方案</div>
+        <div><strong>版本说明：</strong>本页是 Markdown 设计文档的可浏览摘要；字段级契约与测试清单以 Markdown 和 37 号规范为准。</div>
+      </div>
+
+      <h2 id="readiness">0. 开发指导完整性评审（2026-08-22）</h2>
+      <p><strong>结论：目前可以指导分阶段开发，但还不能声称“开发者只看本文即可完成并验收”。</strong> 文档已经具备协议字段、数据模型、错误语义、依赖顺序、代码落点、测试编号和完成定义；但当前实现仍处于迁移中的 Draft 状态，目标契约与已落地代码之间还有必须关闭的差距。</p>
+      <p>这里的“不能完全指导”主要是交付闭环尚未封口：真实新旧版本组合、跨平台 CI、生产 alias 观测、迁移/回滚操作手册和最终删除 alias 的批准证据仍属于外部发布工作。部分章节保留 2026-08-21 的源码现状快照，用于解释问题来源；<strong>当前代码状态以 2026-08-22 的实现进度和 37 号规范为准</strong>，不能把历史快照中的“尚未实现”直接当作今天的结论。</p>
+      <table><thead><tr><th>评审项</th><th>当前结论</th><th>完成前必须补齐</th></tr></thead><tbody>
+        <tr><td>契约可执行性</td><td>已足够</td><td>以 37 号规范为唯一 wire source of truth，并登记实现偏差。</td></tr>
+        <tr><td>代码落点</td><td>已锁定</td><td>核心 repository、handler、Desk adapter/store/action 与测试入口已列明；最终仍需源码检索确认没有旁路写入。</td></tr>
+        <tr><td>Loom 实现</td><td>核心完成</td><td>tree activity 下降、mutation/event contract、标准 list SessionIndex 收敛、legacy helper 删除和 delete tombstone/ancestor response 已有源码与回归证据；global topic 最终发布清理仍受兼容窗口约束。</td></tr>
+        <tr><td>Desk 实现</td><td>核心完成</td><td>canonical list、revision/tombstone merge、delete ancestor merge、runtime switch/reconnect guard 与失败回滚已有实现和测试；真实多版本运行时联调仍未完成。</td></tr>
+        <tr><td>兼容性</td><td>测试完成、联调未完成</td><td>fake behavior fixture 已覆盖三种 request path；COMP-01～03 仍需真实新旧 Loom/Desk 组合联调。</td></tr>
+        <tr><td>性能与发布</td><td>部分完成</td><td>Windows 20-run p95/CPU/RAM/OS 证据已补齐；Linux/macOS 采样、alias 调用量观测和 14 天删除门槛仍未达成。</td></tr>
+      </tbody></table>
+      <h3>0.1 仍不能由本文单独完成的交付事项</h3>
+      <table><thead><tr><th>项目</th><th>当前状态</th><th>需要补的证据/材料</th></tr></thead><tbody>
+        <tr><td>多版本兼容</td><td>有 fake fixture 和兼容矩阵</td><td>新 Desk+旧 Loom、旧 Desk+新 Loom、新 Desk+新 Loom 的真实 ACP 运行记录，包含 capability、fallback 和业务错误不降级。</td></tr>
+        <tr><td>跨平台性能</td><td>CI 矩阵和按 OS 的 JSON artifact 已提交，只有 Windows 本地结果</td><td>Linux/macOS CI 成功链接、20-run 原始输出和阈值判定。</td></tr>
+        <tr><td>Alias 下线</td><td>计数器和 metrics endpoint 已实现</td><td>连续 14 天生产调用为零、最低支持 Desk 版本确认，以及删除后的回滚窗口。</td></tr>
+        <tr><td>数据迁移运维</td><td>schema/migration 契约、测试和操作手册已写</td><td>真实数据库备份、升级、降级/回滚演练结果及 foreign-key-check 实际输出。</td></tr>
+        <tr><td>交付验收</td><td>代码级测试大部分通过</td><td>按验收矩阵记录命令、环境、提交版本、失败项和责任人。</td></tr>
+      </tbody></table>
+      <p>当前应按 Markdown §10 的依赖顺序实施、按 §11 编号补测试，再按 §12 逐条签收；所有未完成项关闭前，不得标记“已实现”或删除 <code>list-global</code> alias。</p>
+
+      <h2 id="background">1. 背景与问题</h2>
+      <p>Loom 当前有两条对外会话列表方法：标准 ACP <code>session/list</code> 与 Loom Desk 的 canonical <code>_loomdesk.dev/session/list</code>；迁移期仍保留 <code>list-global</code> alias。三者共享 SessionIndex/repository 核心，legacy alias 只负责旧字段投影和 boolean archived 适配。</p>
+      <pre><code>WHERE COALESCE(updated_at, created_at) &lt; ?cursor
+ORDER BY COALESCE(updated_at, created_at) DESC</code></pre>
+      <p>单个 <code>updated_at</code> 不是完整总序：相同时间戳跨页时会跳过记录；分页期间的活动、归档或恢复会造成重复或遗漏。标题、归档、恢复和 lifecycle 也复用 <code>updated_at</code>，把管理操作误解为“最近对话”。全局列表还没有可靠的父子关系。</p>
+
+      <h3>1.1 基线 acp_sessions 表（2026-08-21 快照）</h3>
+      <p><code>acp_sessions</code> 保存 durable session metadata，是 sidebar 的主要数据源；消息历史仍存于 checkpoint，由 <code>thread_id</code> 关联。</p>
+      <table><thead><tr><th>字段</th><th>当前语义</th></tr></thead><tbody>
+        <tr><td><code>session_id</code></td><td>主键，Loom session ID。</td></tr><tr><td><code>thread_id</code></td><td>checkpoint 的 thread ID。</td></tr><tr><td><code>owner_principal</code></td><td>owner 隔离键。</td></tr><tr><td><code>cwd</code></td><td>session 工作目录。</td></tr><tr><td><code>lifecycle</code> / <code>closed_at</code></td><td>生命周期和关闭时间。</td></tr><tr><td><code>created_at</code> / <code>updated_at</code></td><td>创建时间与当前列表排序键。</td></tr><tr><td><code>title</code> / <code>archived_at</code></td><td>展示标题和归档时间。</td></tr>
+      </tbody></table>
+      <p><code>acp_session_data(session_id, metadata_json)</code> 保存 Loom Desk-owned JSON metadata，当前没有数据库级 foreign key，删除由 repository transaction 显式处理。</p>
+
+      <h3>1.2 基线 Loom 生产调用链（2026-08-21 快照）</h3>
+      <table><thead><tr><th>路径</th><th>源码确认的当前行为</th></tr></thead><tbody>
+        <tr><td>extension</td><td>canonical list 使用 immutable SessionIndex snapshot；迁移期 list-global 只把同一 canonical page 投影为旧字段，metadata 不再逐项读取。</td></tr>
+        <tr><td>repository/standard list</td><td>private 旧分页曾按 updated DESC 且无 ID tie-break/snapshot；production 标准 list 从 acp_sessions 读 active owner records，旧 checkpoint 聚合 helper 已删除，canonical/legacy 仍需共享 query core。</td></tr>
+        <tr><td>create/fork/mutation</td><td>new/fork 不持久化 request meta 的 parent/初始 metadata；title/meta 不改 updated_at，archive/lifecycle 会改；durable lifecycle 为 idle/closed；delete 无 tombstone event。</td></tr>
+        <tr><td>global event</td><td>wire 为 {topic,event}；archive/update 发 OpenCode-like info，runtime 又对每条非 replay 标准 update 高频发 minimal {id} 的同名 session.updated；create/delete 缺完整 membership event。</td></tr>
+      </tbody></table>
+      <p>所以实现不能只重命名 RPC，还必须统一查询、mutation 与 global event contract。</p>
+
+      <h3>1.3 当前缺口</h3>
+      <table><thead><tr><th>优先级</th><th>缺口</th><th>影响</th></tr></thead><tbody>
+        <tr><td class="priority">P0</td><td><code>updated_at</code> 单键分页</td><td>相同时间戳跨页可能漏 session。</td></tr>
+        <tr><td class="priority">P1</td><td>无 snapshot 语义</td><td>分页期间写入会重复或漏项。</td></tr>
+        <tr><td class="priority">P1</td><td>没有 <code>parent_session_id</code></td><td>无法稳定构造主 session/subagent 树。</td></tr>
+        <tr><td class="priority">P1</td><td>两套列表来源</td><td>标准 ACP 与 sidebar 的集合、cwd filter、排序可能不同。</td></tr>
+        <tr><td>P2</td><td><code>updated_at</code> 混合时间语义</td><td>归档、恢复和关闭伪造最近活动。</td></tr>
+        <tr><td>P2</td><td>没有 <code>revision</code></td><td>乱序或重连事件无法可靠拒绝旧状态。</td></tr>
+        <tr><td>P3</td><td><code>closed_at</code> 未投影</td><td>客户端不能区分最近关闭与最近活动。</td></tr>
+        <tr><td>P3</td><td>metadata 无 foreign key</td><td>未来新增写路径可能留下孤儿数据。</td></tr>
+      </tbody></table>
+
+      <h2 id="goals">2. 目标：要完成的事情</h2>
+      <p>本次改造要把 Loom 的 session list 从“以 <code>updated_at</code> 临时拼出的全局列表”，升级为由 SessionIndex 驱动、支持稳定分页和实时合并的正式能力；同时让 Loom Desk 只依赖一个明确的私有列表契约，并在迁移期兼容旧版本。完成后，列表的集合、顺序、层级和实时状态都由服务端强语义决定，客户端不再通过时间戳、标题或事件先后顺序猜测。</p>
+      <h3>2.1 本次要完成的工作</h3>
+      <table><thead><tr><th>工作面</th><th>要做的事情</th><th>交付结果</th></tr></thead><tbody>
+        <tr><td>Loom 数据模型</td><td>扩展 <code>acp_sessions</code>，增加 parent、activity、tree activity、状态/metadata 时间和 revision，并提供 migration 与索引。</td><td>可持久化、可排序、可表达父子关系的 SessionIndex。</td></tr>
+        <tr><td>Loom 写入语义</td><td>将新建、对话 activity、archive/restore、lifecycle、标题和 metadata 收敛到统一 repository mutation API。</td><td>不同操作只更新负责字段；管理操作不伪造最近活动。</td></tr>
+        <tr><td>私有列表协议</td><td>用 <code>_loomdesk.dev/session/list</code> 替代 <code>list-global</code>，实现 owner snapshot、opaque cursor、完整总序、filter 校验和明确错误。</td><td>多页遍历不重不漏，分页期间写入仍保持一致。</td></tr>
+        <tr><td>标准 ACP 对齐</td><td>标准 <code>session/list</code> 与私有列表都从 SessionIndex 派生，同时保留各自 projection 和职责。</td><td>消除多套事实源，不破坏 ACP v1 client。</td></tr>
+        <tr><td>Loom Desk 适配</td><td>增加 <code>listIndex</code>、capability 选择、snapshot 恢复、revision merge、统一排序、parent、rollback、retention 和 create 参数支持。</td><td>Sidebar、Recent、归档和目录视图使用同一记录语义。</td></tr>
+        <tr><td>兼容与发布</td><td>短期同时支持 <code>list</code>/<code>list-global</code>；Desk 优先新方法，仅 method missing 时 fallback，最后从 Loom 删除 alias；Desk 对最低支持旧 Loom 的 fallback 独立保留。</td><td>新旧 Loom/Desk 可渐进升级，业务错误不被 fallback 掩盖。</td></tr>
+        <tr><td>自动化验证</td><td>建立可控时钟、snapshot harness、ACP fake transport 和查询/write instrumentation，并完成全层测试。</td><td>排序、snapshot、revision、层级和性能成为持续回归门槛。</td></tr>
+      </tbody></table>
+      <p>这不只是修改一个 RPC 名称。schema、所有写入路径、列表读取、实时事件、Desk 合并逻辑、兼容迁移和自动化测试必须一起完成；只改其中一层仍会留下字段漂移、分页漏项或缓存乱序。</p>
+      <h3>2.1.1 Alias 观测接口</h3>
+      <table><thead><tr><th>项目</th><th>Contract</th></tr></thead><tbody>
+        <tr><td>方法</td><td><code>_loomdesk.dev/session-metrics/status</code>，独立于 <code>session</code> capability。</td></tr>
+        <tr><td>权限</td><td>需要非空 principal；否则返回 <code>-32002 forbidden</code>。</td></tr>
+        <tr><td>响应</td><td><code>{ legacyListGlobalCalls: number }</code>，只统计 legacy <code>list-global</code>，进程重启归零。</td></tr>
+        <tr><td>发布门槛</td><td>真实生产连续 14 天为 0，且最低支持 Desk 已包含 <code>listIndex</code> 后，才允许删除 alias。</td></tr>
+      </tbody></table>
+      <h3>2.2 预期结果</h3>
+      <ol><li>建立唯一、稳定、可分页的 owner-scoped 会话列表事实源。</li><li>明确区分实际对话活动、lifecycle 变化和展示 metadata 变化。</li><li>提供无重复、无漏项的 snapshot 分页。</li><li>持久化并返回父子关系。</li><li>维持 ACP v1 兼容，允许 Loom Desk 渐进迁移。</li></ol>
+      <h3>2.3 非目标</h3>
+      <ul><li>不改变 session/load、消息历史或 checkpoint 的持久化格式。</li><li>不把 Desk 的 Pin、文件夹或项目手动顺序移入 Loom。</li><li>不导入非 Loom 的历史会话记录。</li><li>不改变 session owner、连接绑定或 prompt 并发模型。</li></ul>
+      <h3>2.4 核心设计决策</h3>
+      <table><thead><tr><th>维度</th><th>决定</th></tr></thead><tbody>
+        <tr><td>事实源</td><td><code>acp_sessions</code> session index；checkpoint 仅保留 history/统计。</td></tr>
+        <tr><td>最近活动</td><td><code>activity_at</code>，仅由用户/agent 实际工作更新。</td></tr>
+        <tr><td>树排序</td><td>根节点按 <code>tree_activity_at</code>；同级子节点按 <code>activity_at</code>。</td></tr>
+        <tr><td>稳定性</td><td>所有服务端排序使用时间键 + <code>session_id</code> 总序。</td></tr>
+        <tr><td>分区一致性</td><td>Desk 用一次 owner-wide <code>archived="all"</code> snapshot 同时冻结 active/archived；不再拼接两个独立 snapshot。</td></tr>
+        <tr><td>Snapshot 存储</td><td>冻结完整不可变 projection，而不是只保存 ID/排序键后回表读取。</td></tr>
+        <tr><td>实时同步</td><td>每条可见记录拥有单调递增 <code>revision</code>。</td></tr>
+      </tbody></table>
+
+      <h2 id="model">3. 目标数据模型</h2>
+      <pre><code>ALTER TABLE acp_sessions ADD COLUMN parent_session_id TEXT;
+ALTER TABLE acp_sessions ADD COLUMN activity_at TEXT;
+ALTER TABLE acp_sessions ADD COLUMN tree_activity_at TEXT;
+ALTER TABLE acp_sessions ADD COLUMN state_changed_at TEXT;
+ALTER TABLE acp_sessions ADD COLUMN metadata_updated_at TEXT;
+ALTER TABLE acp_sessions ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE acp_sessions ADD COLUMN index_version INTEGER NOT NULL DEFAULT 1;
+-- 另建 owner current_version 与 durable tombstone tables</code></pre>
+      <p>统一 mutation 明确覆盖 create、activity、archive/restore、lifecycle、metadata、内部 repair reparent 和 delete。每个非 history-replay prompt 被接受时至多记录一次 <code>Activity</code>；token/part/tool progress 不写 index。管理操作不改 activity，但 archive/delete/reparent 会重算旧、新祖先。<code>lifecycle</code> 只使用 durable <code>idle/closed</code>，live busy 状态留在标准 ACP 链路；public API 不提供 reparent。</p>
+      <p><code>tree_activity_at</code> 是自身和沿全 active parent edges 可达后代的最大 activity，不是历史 high-water；closed 但未 archived 的记录仍计入，archived parent 会切断上方 tree。</p>
+      <p>活跃 effective root 顺序为 <code>tree_activity_at DESC, session_id ASC</code>；子节点为 <code>activity_at DESC, session_id ASC</code>；归档视图为 <code>archived_at DESC, session_id ASC</code>。parent 已归档/删除或缺失时，active child 临时作为 root 保持可见，parent 恢复后按持久化 parent 自动挂回。</p>
+
+      <h2 id="api">4. _loomdesk.dev/session/list 与实时事件</h2>
+      <p>不另建版本化的新方法。直接升级现有实现，最终 wire method 改名为 <code>_loomdesk.dev/session/list</code>。它与标准 ACP <code>session/list</code> 不冲突：标准方法走 ACP handler，私有方法走 extension registry。</p>
+      <pre><code>{ "archived": "all", "directory": "C:/repo", "limit": 200 }
+
+{
+  "sessions": [{
+    "sessionId": "ses_123", "parentSessionId": null,
+    "cwd": "C:/repo", "title": "...", "createdAt": "...",
+    "activityAt": "...", "treeActivityAt": "...",
+    "stateChangedAt": null, "metadataUpdatedAt": "...",
+    "archivedAt": null, "closedAt": null, "lifecycle": "idle",
+    "metadata": {}, "revision": 42, "indexVersion": 108
+  }],
+  "nextCursor": "opaque", "hasMore": true, "snapshotVersion": 108
+}</code></pre>
+      <p><code>archived</code> 为 <code>all/active/archived</code> 枚举；Desk full/directory load 使用 <code>all</code>。snapshot identity、下一位置、cursor version 与 filter hash 封装在 HMAC cursor；snapshot 冻结完整 projection 与 owner <code>snapshotVersion</code>。过期返回 <code>snapshot_expired</code>，容量不足返回 <code>snapshot_capacity_exceeded</code>，都不能解释为空列表。</p>
+      <p><code>all</code> 的序列是 active tree 的稳定 pre-order traversal，随后追加 archived records；<code>hasMore</code> 与 <code>nextCursor</code> 必须同步。兼容 <code>list-global</code> 共享同一 query/snapshot core，但保留旧 boolean filter 和 <code>updatedAt</code> projection；不能把新 record 原样返回给旧 Desk。</p>
+      <p>成功完成的 snapshot 对其 owner/directory scope 具有 authoritative absence：原子 commit 删除 scope 内缺席的旧记录，保留 scope 外和失败 scope；随后按 revision 合并 event/tombstone overlay，再叠加 optimistic shadow。</p>
+      <pre><code>{ "topic": "session", "event": {
+  "type": "session.updated",
+  "properties": { "info": { "sessionId": "ses_123", "revision": 42 } }
+}}</code></pre>
+      <p>真实 transport envelope 是嵌套的 <code>{topic,event:{type,properties}}</code>。created/updated 使用完整 record；deleted tombstone 包含 cwd/parent/revision/indexVersion/deletedAt。当前逐标准 update 的 minimal event 必须移除。Global bus 是 fire-and-forget：drop 不回滚 DB，actor 用 response 收敛，其他 client 由集中 60 秒 authoritative resync 修复。</p>
+      <p>标准方法负责 active ACP projection，并为旧 client 固定一次返回全部记录、<code>nextCursor=null</code>；私有方法负责 snapshot/index fields。</p>
+
+      <h3>4.1 已冻结的实现参数</h3>
+      <table><thead><tr><th>维度</th><th>不可变实现契约</th></tr></thead><tbody>
+        <tr><td>version</td><td>空 owner snapshotVersion=0，第一次真实 mutation=1；record revision/indexVersion 从 1 开始。全部是 checked JSON safe integer，每个真实 owner transaction 只分配一个 indexVersion，溢出整体回滚。</td></tr>
+        <tr><td>snapshot</td><td>进程内 immutable；5 分钟不续期；4/owner、64 MiB/owner、256 MiB/process；过期清理后 LRU，tie-break snapshot ID。</td></tr>
+        <tr><td>cursor</td><td>128-bit snapshot ID、进程 256-bit secret、HMAC-SHA256、最大 1024 bytes；restart → snapshot_expired。</td></tr>
+        <tr><td>activity/no-op</td><td>busy lease 后、executor 前提交；validation/busy/replay 不写，cancel/failure 保留一次；相同 metadata/archive/lifecycle 不增 version/event。</td></tr>
+        <tr><td>time</td><td>UTC RFC 3339 固定 6 位小数；新字段值取 max(now 截断到微秒, previous+1µs)，系统时钟回拨不得造成 mutation 时间倒退。</td></tr>
+        <tr><td>migration</td><td>BEGIN IMMEDIATE 原子 backfill；metadata table 重建为 ON DELETE CASCADE，每 connection foreign_keys=ON，orphan 清理后 foreign_key_check。</td></tr>
+        <tr><td>delete</td><td>response _meta 返回永久紧凑 tombstone；重复 delete 返回原值，ID 永不复用；client 仅由覆盖版本的 owner-wide snapshot 清 tombstone。</td></tr>
+      </tbody></table>
+
+      <h2 id="desk">5. Loom Desk session 消费方</h2>
+      <table><thead><tr><th>层</th><th>主要模块</th><th>用途</th></tr></thead><tbody>
+        <tr><td>全局 session cache</td><td><code>useGlobalSessionsStore.ts</code></td><td>active/archived session、sidebar、归档和 retention。</td></tr>
+        <tr><td>directory child store</td><td><code>sync-context.tsx</code></td><td>已初始化目录的实时 session、消息、parts、权限、问题、status。</td></tr>
+        <tr><td>ACP-native store</td><td><code>acp-session-store.ts</code></td><td>ACP notification 原生投影，并向 legacy UI 过渡。</td></tr>
+      </tbody></table>
+      <div class="meta"><strong>基线源码审查结论（2026-08-21）：</strong>ACP runtime、global event source 和 session event router 的组件已经存在，但当时 production 代码没有调用 <code>openAcpGlobalEventStream</code>，也没有把 global session topic 接入 <code>applySessionEventToGlobalSessions</code>。当前实现进度以文档末尾 2026-08-22 记录为准。</div>
+      <p>Desk 支持草稿、新建、切换、发送、停止、权限/问题、history replay、标题、归档、删除、批量操作、Recent、Pin、文件夹、拖拽、搜索、switcher、Goal、review/plan、fork、worktree 与 retention。</p>
+      <h3>5.1 当前查询、分页与缓存合并逻辑</h3>
+      <pre><code>SyncProvider / Sidebar / Retention
+  -> useGlobalSessionsStore.loadSessions()
+      -> 并行 listGlobalSessionPages(archived=false)
+      -> 并行 listGlobalSessionPages(archived=true)
+          -> 循环调用 _loomdesk.dev/session/list-global（当前）
+             / _loomdesk.dev/session/list（迁移后）
+          -> 映射 ACP descriptor、按 session id 去重
+          -> 使用 nextCursor 继续，直到 hasMore=false
+      -> 写 activeSessions / archivedSessions / sessionsByDirectory</code></pre>
+      <ol>
+        <li><code>listGlobalSessionPagesAcp</code> 使用 <code>inflightLoad</code> 合并并发全量加载；runtime switch 后 generation 不一致的迟到结果会被丢弃。</li>
+        <li>active 与 archived 通过 <code>Promise.allSettled</code> 并行加载，每页最多重试三次、间隔 500ms。时间字符串映射为毫秒，目录会补充本地 project/worktree metadata。</li>
+        <li>分页维护 <code>seenIds</code>。空 payload、没有 <code>hasMore</code>/<code>nextCursor</code> 或“下一页全部已见”都会停止；最后一项是防 cursor 异常无限循环。</li>
+        <li>部分失败不会清空 cache：active 请求失败时保留旧 active cache 并合并 directory sync fallback；archived 失败时保留旧 archived cache，整体 status 标记为 error。</li>
+        <li>局部刷新按目录并行查询 active/archived；只替换成功目录的 cache slice，失败目录保留旧数据。随后重建 <code>sessionsByDirectory</code> 与 review-transfer map。</li>
+        <li>create、title、metadata 成功后 upsert；archive/delete 先乐观更新。<code>applySessionEventToGlobalSessions</code> 已具备 created/updated/delete reducer，但 production global subscription 尚未接线；Loom 目前也只在部分 archive/title/metadata 路径发布 updated，尚缺 created 和带 revision tombstone 的 deleted。</li>
+      </ol>
+      <p>当前 global cache 的数组顺序不是单一契约：局部刷新会按 <code>updated/created DESC, id DESC</code> 排序，全量加载保留服务端分页顺序，而 upsert 会把记录放在开头。最终 sidebar 会再应用 Pin 与时间排序。ID 去重不能修复后端 timestamp cursor 漏项；时间戳过滤也不能代替 record revision。</p>
+      <h3 id="desk-review">5.2 源码审查确认的客户端缺口</h3>
+      <table><thead><tr><th>优先级</th><th>缺口</th><th>处理方向</th></tr></thead><tbody>
+        <tr><td class="priority">P0</td><td>global session event 没有 production subscription。</td><td>接通单 runtime 订阅，并处理 reconnect/runtime switch dispose。</td></tr>
+        <tr><td class="priority">P0</td><td>live session 覆盖 global record，并自动追加 live-only record。</td><td>SessionIndex 决定 membership；禁止 stale live 复活 archived/deleted。</td></tr>
+        <tr><td class="priority">P0</td><td>active/archived 两个 snapshot 独立替换数组，删除无 tombstone。</td><td>normalized revision merge、跨分区提交和 delete tombstone。</td></tr>
+        <tr><td class="priority">P1（基线）</td><td><code>createSession(... parentID, metadata)</code> 早期只使用目录。</td><td>当前已通过 <code>session/new</code> request 与 canonical response/affectedSessions 回填；历史问题保留用于说明改造动机。</td></tr>
+        <tr><td class="priority">P1</td><td><code>forkFromMessage</code> 忽略 message ID。</td><td>message-bounded fork 明确退出本次范围；移除该参数并按标准 fork/复制配置语义命名。</td></tr>
+        <tr><td class="priority">P1</td><td>archived metadata patch 先走标准 active-only list 取基础记录。</td><td>改用 canonical global record 或 private update 的完整 response。</td></tr>
+        <tr><td class="priority">P1（基线）</td><td>delete/archive 早期乐观更新失败后不回滚。</td><td>当前已使用 shadow/rollback、tombstone 与 affectedSessions；历史问题保留用于说明改造动机。</td></tr>
+        <tr><td>P2（已收敛）</td><td>retention 早期直接使用 <code>loomAgentClient</code>。</td><td>当前逐项调用 ACP archive/delete facade，并处理 <code>false</code> partial failure。</td></tr>
+      </tbody></table>
+
+      <h3 id="desk-ownership">5.3 跨 store 的事实源与合并规则</h3>
+      <table><thead><tr><th>数据</th><th>权威来源</th><th>规则</th></tr></thead><tbody>
+        <tr><td>active/archived/deleted membership</td><td>SessionIndex global cache</td><td>authoritative load 后普通 live-only record 不得追加；仅 shadow map 中 optimistic create 可临时显示。</td></tr>
+        <tr><td>parent/cwd/title/metadata/index 时间/archive/revision</td><td>SessionIndex record</td><td>按 revision 合并，directory child store 不覆盖。</td></tr>
+        <tr><td>message/part/permission/question/status/streaming</td><td>directory child store</td><td>保持实时链路，不改 global index record。</td></tr>
+        <tr><td>Pin/文件夹/手动顺序/折叠</td><td>Desk preference</td><td>仅影响显示，不改变 SessionIndex 基础顺序。</td></tr>
+      </tbody></table>
+      <p>新协议的 full load 与 directory refresh 都使用单个 <code>archived="all"</code> snapshot，再按 <code>archivedAt</code> 派生两个 view。只有完整成功后才 scoped replace；失败/过期保留旧 cache。snapshot 加载期间的事件和 tombstone 作为 overlay 原子合并。archive/delete 成功同步更新 global membership、directory projection 和 selection；失败从 shadow snapshot 回滚。</p>
+
+      <h3 id="desk-record">5.4 Canonical record 与统一排序</h3>
+      <p>新增强类型 <code>SessionIndexRecord</code> 保存 parent、activity/tree/state/metadata 时间、archive 与 revision。<code>time.updated = activityAt</code> 仅作为 legacy UI 兼容映射，<code>treeActivityAt</code> 独立保存；非法或缺失时间不得用 <code>Date.now()</code> 填充。unversioned directory event 只能更新聊天实时字段，不能覆盖 versioned index 字段。</p>
+      <p>共享 activity/rank helper 必须覆盖 Sidebar、Recent、worktree grouping、session row、retention、edge swipe、Tray、mobile widget、MobileSessionsSheet、MobileSessionStatusBar、SessionSwitcher 和 Command Palette，避免不同视图自行用 <code>time.updated</code> 得出不同顺序。</p>
+
+      <h3 id="desk-compat">5.5 Capability、fallback 与 retry</h3>
+      <ol><li>capability 明确支持 <code>list</code>：调用新方法。</li><li>明确只有 <code>list-global</code>：直接调用 alias。</li><li>capability 不可判定：先试新方法，仅 JSON-RPC <code>-32601</code> 回退。</li><li><code>-32001</code> 表示 extension 域不存在，不能 fallback；权限、DB、invalid cursor、snapshot expired 同样不得 fallback。</li><li>只有 transient transport/readiness 错误重试；移除当前 <code>retryIf: () =&gt; true</code>。</li></ol>
+      <p>现有 ACP runtime 已保存 Loom 在 <code>agentCapabilities._meta["loomdesk.dev"].session.methods</code> 中发布的能力，因此不需要新增 RuntimeAPI、Web route、Electron IPC 或 VS Code bridge。</p>
+
+      <h3 id="desk-create-fork">5.6 Create 与 fork contract</h3>
+      <pre><code>{
+  "cwd": "C:/repo", "mcpServers": [],
+  "_meta": { "loomdesk.dev": {
+    "title": "Implement session list",
+    "parentSessionId": "ses_parent",
+    "metadata": {}
+  }}
+}</code></pre>
+      <p>Loom 必须原子持久化 index、metadata、owner version 与 ancestor tree updates；<code>session/new</code> response 的 <code>_meta["loomdesk.dev"]</code> 返回 target、nearest-first ancestors 和 indexVersion。Archive 使用同样的 target+ancestors response；update 原子返回 record/metadata；标准 delete <code>_meta</code> 返回 durable tombstone。parent 必须同 owner/cwd且不可 public reparent。message-bounded fork 不在本次范围，assistant-plan 动作按“新建+发送 prompt”命名。</p>
+
+      <h3 id="desk-current-logic">5.7 当前生产实现完整清单</h3>
+      <p>本节只描述 2026-08-21 源码中的基线行为。基线 production 直接引用只有 <code>acpApi.session.listGlobal()</code> 和 <code>listGlobalSessionPagesAcp()</code> 两层；其余模块通过 <code>useGlobalSessionsStore</code> 消费。当前实现进度以文档末尾 2026-08-22 记录为准。</p>
+      <pre><code>ACP runtime
+  -&gt; acpApi.session.listGlobal()
+  -&gt; listGlobalSessionPagesAcp()
+  -&gt; useGlobalSessionsStore
+      |- activeSessions / archivedSessions
+      |- sessionsByDirectory
+      `- reviewTransferBySessionId
+  -&gt; Sidebar / Mobile / Tray / Retention / Switcher / Worktree
+
+旁路写入：actions/review/multi-run -&gt; upsert/remove/archive
+global event router：reducer 已有，production subscription 未接线</code></pre>
+
+      <h3>5.7.1 Adapter、mapping 与分页</h3>
+      <table><thead><tr><th>层</th><th>当前逻辑</th></tr></thead><tbody>
+        <tr><td>method</td><td>硬编码 <code>_loomdesk.dev/session/list-global</code>；源码没有 <code>listIndex</code> 或新 <code>_loomdesk.dev/session/list</code> 调用。</td></tr>
+        <tr><td>params</td><td>truthy 时发送 archived/directory/cursor/limit；<code>archived=false</code> 省略，directory 不经 <code>normDir()</code>。</td></tr>
+        <tr><td>response</td><td>非数组 sessions → <code>[]</code>；非字符串 cursor → null；仅 <code>hasMore === true</code> 继续。</td></tr>
+        <tr><td>mapping</td><td>只映射 ID/cwd/title/created/updated/archived/metadata；缺 created 用 <code>Date.now()</code>；没有 parent/revision/activity/tree 字段。</td></tr>
+        <tr><td>project metadata</td><td>分页层按 directory 补 <code>{ id: directory, worktree: directory }</code>。</td></tr>
+        <tr><td>retry</td><td>每页最多三次、间隔 500ms，<code>retryIf: () =&gt; true</code>，永久错误也重试。</td></tr>
+        <tr><td>pagination</td><td>以 seenIds 去重；空页、无 hasMore/cursor、整页重复任一条件终止；cursor 原样回传。</td></tr>
+        <tr><td>legacy shape</td><td>公开函数已忽略 <code>_apiClient</code> 与 <code>roots</code> 参数。</td></tr>
+      </tbody></table>
+
+      <h3>5.7.2 Global store</h3>
+      <ul>
+        <li><code>inflightLoad</code> 合并全量请求，active/archived 以 <code>Promise.allSettled</code> 并行拉取，page size 500。</li>
+        <li>active 失败保留旧 active 并合并 live fallback；archived 失败保留旧 archived；任一失败 status=error。</li>
+        <li>runtime switch 递增 generation 并清空 cache，拒绝旧 runtime 的迟到 snapshot。</li>
+        <li>目录刷新只替换成功目录，失败目录保留；active 再合并 live fallback并重建目录/review 索引。</li>
+        <li>full load 保留服务端顺序；目录刷新按 updated/created DESC、ID DESC；新 upsert 插头部，已有 upsert 原位替换。</li>
+        <li>remove 没有 tombstone；archive 用本地 <code>Date.now()</code> 移到 archived 头部；没有 revision 或 rollback。</li>
+        <li>snapshot signature 只含 ID/title/time/share/metadata/directory，用于复用未变化数组引用。</li>
+      </ul>
+      <p><code>mergeLiveSessionWithGlobalSession</code> 以 live 为主体，只保留 global directory/worktree（当 live 缺失）和 global share。Sidebar 与两个 mobile surface 还会追加全部 live-only record，因此 stale live 可能复活 archived/deleted session。</p>
+
+      <h3>5.7.3 加载与刷新触发点</h3>
+      <table><thead><tr><th>触发点</th><th>行为</th></tr></thead><tbody>
+        <tr><td>SyncProvider mount</td><td>ACP global bootstrap 后 fire-and-forget 全量加载。</td></tr>
+        <tr><td>Sidebar</td><td>mount 全量刷新；scheduled-task-ran debounce 500ms；新增 project/worktree directory 局部刷新。</td></tr>
+        <tr><td>Mobile</td><td>移动端启用时 ensure；status panel/SessionSheet 打开时全量刷新并可带 live fallback。</td></tr>
+        <tr><td>Tray</td><td>mount ensure；owner-wide 全量刷新由 SyncProvider 的 60 秒 authoritative scheduler 统一负责；status 另行跨目录轮询。</td></tr>
+        <tr><td>Retention</td><td>hook mount 和实际 cleanup 前 ensure。</td></tr>
+        <tr><td>Scheduled task</td><td>手动运行成功后刷新 task 与 global sessions。</td></tr>
+        <tr><td>Runtime switch</td><td>清空旧 instance cache，由新 SyncProvider 重载。</td></tr>
+        <tr><td>ACP reconnect</td><td>仅重放/校验 directory child session，不主动刷新 global list。</td></tr>
+      </tbody></table>
+
+      <h3>5.7.4 Mutation 与 event</h3>
+      <table><thead><tr><th>动作</th><th>当前逻辑</th></tr></thead><tbody>
+        <tr><td>create</td><td>标准 session/new 只传 cwd；title/parent/meta 被忽略；本地构造最小 Session 并 upsert。</td></tr>
+        <tr><td>standard fork</td><td>forkFromMessage 不把 messageId 放入 wire；Loom 新建 session 并复制配置/MCP，没有 message history boundary。</td></tr>
+        <tr><td>assistant-plan session</td><td>客户端读取 plan、可建 worktree、普通新建 session 后发送组合 prompt；不是 server-side fork。</td></tr>
+        <tr><td>title/meta</td><td>调用私有 update；metadata patch 先用标准 active-only list 取旧 record，因此 archived session 可能在 RPC 前失败。</td></tr>
+        <tr><td>archive</td><td>先本地移动并清 selection，再 RPC；失败不 rollback。</td></tr>
+        <tr><td>delete</td><td>先本地删除并清 selection，再标准 session/delete；失败不 rollback。</td></tr>
+        <tr><td>review/multi-run</td><td>创建成功后直接 upsert。</td></tr>
+        <tr><td>retention</td><td>逐项调用 facade，成功 ID 批量 archive/remove，允许 partial failure。</td></tr>
+        <tr><td>standard title event</td><td>更新 directory child store；global 已有该 ID 时同步 upsert title。</td></tr>
+        <tr><td>global events</td><td>（2026-08-21 基线快照）event source 读取 <code>{topic,event}</code> 并交付内层 event，router 也存在但当时尚未接线；Loom runtime 还会按每条标准 update 高频发布 minimal <code>{id}</code> 的同名 event，与目标 schema 冲突。当前收敛状态以 §13 为准：SyncProvider 已建立 owner-wide global subscription，并由 60 秒 authoritative resync 兜底。</td></tr>
+      </tbody></table>
+
+      <h3>5.7.5 下游消费方</h3>
+      <table><thead><tr><th>模块</th><th>用途</th></tr></thead><tbody>
+        <tr><td>SessionSidebar</td><td>active/live、archived、目录过滤、Pin/time、Recent、文件夹、project/worktree、parent tree。</td></tr>
+        <tr><td>MobileSessionsSheet / MobileSessionStatusBar</td><td>跨项目树、搜索、计数、切换、归档和最近状态。</td></tr>
+        <tr><td>VSCodeLayout / Header</td><td>workspace/session 恢复；live 未命中时回退 global 标题和目录。</td></tr>
+        <tr><td>Switcher / Command Palette / Edge swipe</td><td>project/pin session 切换；统一使用 SessionIndex root/child activity timestamp 排序。</td></tr>
+        <tr><td>Tray / mobile widget</td><td>跨项目 root session、parent/descendant status/unseen rollup、widget snapshot。</td></tr>
+        <tr><td>Auto cleanup</td><td>按 canonical tree/child activity，保护当前、share、最近五个；通过 ACP archive/delete facade 执行并处理 partial failure。</td></tr>
+        <tr><td>MultiRunFusionDialog</td><td>合并 active/archived/live 作为 fusion source。</td></tr>
+        <tr><td>WorktreeSection / MobileDeleteWorktree</td><td>查直接 session 和递归 subsession，服务 worktree 删除/归档。</td></tr>
+        <tr><td>session-ui-store</td><td>通过 sessionsByDirectory 和 active/archived fallback 解析 session directory。</td></tr>
+        <tr><td>routeSync / runtimeEndpointReset</td><td>deep link 最长等待 global store 解析目录；runtime switch 清空旧 cache 并隔离迟到请求。</td></tr>
+        <tr><td>reviewFlow / useMultiRunStore</td><td>新建关联 session 后直接 upsert global，并同步 directory 状态。</td></tr>
+        <tr><td>useProjectSessionLists / useSessionGrouping</td><td>Sidebar 内部派生项目、worktree、文件夹与 parent tree。</td></tr>
+        <tr><td>MessageList / review flow</td><td>通过 reviewTransferBySessionId 处理 original/review 转移。</td></tr>
+        <tr><td>ScheduledTasksDialog</td><td>任务运行后刷新，使新 session 出现在全局列表。</td></tr>
+      </tbody></table>
+
+      <h3>5.7.6 基线测试与未实现边界（2026-08-21 快照）</h3>
+      <p><code>globalSessions.test.ts</code> 仍构造旧 <code>AgentClient.experimental.session.list</code>，而 production 已忽略 <code>_apiClient</code>；现有分页 fixture 不覆盖真实 ACP wire。store tests 只覆盖 share/directory merge，event test 只覆盖一个旧时间戳 title reducer。</p>
+      <p>以下是 2026-08-21 基线中仍未实现的目标项：新方法与 capability/fallback、snapshot-expired restart、revision/跨分区 merge、event overlay、delete tombstone、optimistic rollback、production global subscription、逐标准 update 的 minimal global broadcast 拆除、parent/tree mapping、canonical record、archived metadata update 修复和统一 activity/rank helper。它们用于解释开发动因，不能覆盖文档末尾的当前实现进度。</p>
+
+      <h2 id="migration">6. 迁移与兼容性</h2>
+      <ol>
+        <li>添加 schema、索引和 migration；旧记录以 <code>updated_at</code> 初始化活动字段，未知 parent 保持 <code>NULL</code>。</li>
+        <li>引入完整 repository mutation API，收敛 create/activity/archive/restore/lifecycle/metadata/reparent/delete，并双向重算 tree activity。</li>
+        <li>Loom 注册 <code>_loomdesk.dev/session/list</code>，并在兼容窗口保留 <code>list-global</code> 薄 adapter；共享 query/snapshot core，但 alias 保留旧 boolean request 与 <code>updatedAt</code> projection。</li>
+        <li>过渡期 capability 为 <code>["list", "list-global", "archive", "update"]</code>。明确仅旧方法时直调 alias；capability 未知时只有 <code>-32601</code> fallback，<code>-32001</code> 不 fallback。</li>
+        <li>兼容窗口结束后从新 Loom 删除 alias，capability 收敛为 <code>["list", "archive", "update"]</code>；Desk 对最低支持旧 Loom 的 fallback 保留到最低版本另行提高；标准 ACP <code>session/list</code> 继续作为独立兼容 projection。</li>
+      </ol>
+      <h3>6.1 实际迁移、校验与回滚手册</h3>
+      <p>当前没有独立 migration CLI。<code>LoomAcpAgent::new</code> 创建 <code>SessionRepository</code> 时自动执行 <code>ensure_schema()</code>；数据库通常是 <code>{LOOM_HOME}/memory.db</code>。发布时必须先停掉所有 ACP writer，再备份主文件及存在的 <code>-wal</code>/<code>-shm</code> sidecar，随后只启动一个新版本 ACP 触发 migration。</p>
+      <ol>
+        <li>记录实际 <code>LOOM_HOME</code> 和数据库绝对路径，停止 ACP/Desk host 并确认无并发 writer。</li>
+        <li>保存带版本和 UTC 时间的 SQLite 备份；不要在进程运行时直接复制主文件。</li>
+        <li>启动新 ACP，确认 initialize 成功；只读连接检查新增 columns、<code>acp_session_index_state</code>、<code>acp_session_tombstones</code> 和 <code>PRAGMA foreign_key_check</code> 零行。</li>
+        <li>执行 <code>cargo test -p loom-acp --lib -- --test-threads=1</code>、<code>cargo check -p loom-acp --lib</code> 和 clippy，并保存命令、commit、备份名与输出。</li>
+        <li>失败时保留失败数据库和日志，停止 ACP，从完整备份恢复后再启动旧版本；不要手工删除新列/表或在原文件上反复重试。</li>
+        <li>回滚后重新做完整性检查及 session/list、session/load、session/delete 验证；Desk 需要 runtime switch/reconnect authoritative resync，因为数据库备份不能撤销已发出的事件或本地缓存。</li>
+      </ol>
+      <p>ACP wire-level E2E harness 支持 <code>LOOM_ACP_BINARY</code> 指定独立构建的 Loom executable；每个版本必须使用独立 <code>LOOM_HOME</code>，保存 capability、canonical/legacy list 请求序列和错误响应。真实多版本 Desk/Loom 组合仍需发布环境联调留档。</p>
+      <p><code>scripts/run-session-list-compat.ps1 -NewLoomBinary &lt;PATH&gt; [-OldLoomBinary &lt;PATH&gt;] [-OutputDir &lt;DIR&gt;]</code> 默认逐个设置 <code>LOOM_ACP_BINARY</code> 并运行不依赖模型的 <code>e2e_session_list</code> wire target；旧 binary 会设置 <code>LOOM_SESSION_LIST_EXPECT_LEGACY=1</code>，只验证 <code>list-global</code> fallback 与标准 list；可用 <code>-TestName e2e_mega</code> 显式运行完整流程（<code>e2e</code> target 仅是 harness 根）。每次按 binary 保存 log 并生成包含 binary、<code>expectedMode</code>、时间、exit code、实际 test count、OS/架构、PowerShell 版本和路径的 <code>manifest.json</code>；若 target 执行零测试，runner 会失败而不会假绿；它不替代真实 Desk 版本组合验收。</p>
+      <p>完整 <code>e2e_mega</code> 仍可能在 session/prompt 前受既有模型解析环境影响；默认的无模型 target 不受该外部依赖影响。<code>.github/workflows/session-list-compat.yml</code> 会在 Ubuntu/macOS/Windows 构建独立 binary、运行该 target，校验 manifest 的模式、测试数、退出码、binary SHA-256、文件大小和 OS/架构字段，并上传 manifest/log 作为跨平台 wire 证据。</p>
+      <p>Desk <code>acp-event-source</code> 会按 <code>sessionId/id</code> 合并同一 session 的排队事件，保留跨 session 相对顺序；无 session key 的队列最多 256 条，超出部分依赖 owner-wide authoritative resync 修复。关闭事件源时会清空 queue/index，防止 runtime switch 后旧事件泄漏。</p>
+      <p>session-list 组合回归已固化为 <code>packages/ui</code> 的 <code>bun run test:session</code>（内部使用 Bun <code>--isolate</code>），当前 12 个相关文件共 65/65 通过；普通多文件运行会受到 Bun 全局 module mock 污染，不能作为组合门禁。</p>
+      <p><code>.github/workflows/test.yml</code> 新增独立 <code>session-list-ui</code> job，在 Ubuntu 上执行同一个 <code>bun run test:session</code>，与全量 <code>ui-tests</code> 分离。</p>
+
+      <h2 id="tasks">7. 详细开发任务列表</h2>
+      <p>任务按依赖顺序执行；每项独立提交并保持可测试。兼容期两方法必须共享 repository/snapshot core，只允许 alias 保留薄 legacy projection adapter。</p>
+
+      <h3>7.1 A：契约与基线</h3>
+      <table><thead><tr><th>ID</th><th>任务</th><th>验收标准</th></tr></thead><tbody>
+        <tr><td>A1</td><td>冻结 request/response/event、cursor、错误码、capability，修正源码误指向 39 号规范的注释。</td><td>明确 nested event envelope、idle/closed、owner-wide snapshot、absence 与三态 fallback。</td></tr>
+        <tr><td>A2</td><td>补 Loom v1 repository/extension 基线测试。</td><td>稳定复现同 timestamp 跨页漏项。</td></tr>
+        <tr><td>A3</td><td>补 Desk 当前分页与失败保留测试。</td><td>覆盖重试、重复页、部分失败和迟到响应。</td></tr>
+      </tbody></table>
+
+      <h3>7.2 B：SessionIndex schema 与 repository</h3>
+      <table><thead><tr><th>ID</th><th>任务</th><th>验收标准</th></tr></thead><tbody>
+        <tr><td>B1</td><td>新增 index columns、owner state/tombstone tables 与原子 migration。</td><td>冻结 backfill、FK rebuild、orphan cleanup、foreign_key_check/rollback 全覆盖。</td></tr>
+        <tr><td>B2</td><td>扩展 <code>SessionMetadata</code> 和所有 row mapping。</td><td>新字段无损读写，旧 NULL 有明确 fallback。</td></tr>
+        <tr><td>B3</td><td>增加 active root/child、archived、cwd membership 索引。</td><td>各 scope 查询不退化为无界全表扫描。</td></tr>
+        <tr><td>B4</td><td>引入 mutation result 与 owner version allocation。</td><td>每个真实 transaction 一个 indexVersion；no-op 不改 version/event。</td></tr>
+        <tr><td>B5</td><td>实现双向 <code>tree_activity_at</code> 重算。</td><td>archive/delete/reparent 可下降旧祖先并更新新祖先。</td></tr>
+        <tr><td>B6</td><td>实现 effective root、child、archived 稳定总序。</td><td>所有排序含 ID tie-break；parent 缺席时 active child 不丢失。</td></tr>
+        <tr><td>B7</td><td>实现固定容量的 in-memory snapshot 与 HMAC cursor。</td><td>5m、4/owner、64/256 MiB、LRU、1024-byte cursor 与 restart-expired 全覆盖。</td></tr>
+        <tr><td>B8</td><td>固定 metadata FK/cascade 与 connection pragma。</td><td>不保留事务-only 备选方案。</td></tr>
+        <tr><td>B9</td><td>实现 durable tombstone。</td><td>重复 delete/restart 返回原值；永久紧凑记录；ID 不复用。</td></tr>
+      </tbody></table>
+
+      <h3>7.3 C：Loom 写入链路</h3>
+      <table><thead><tr><th>ID</th><th>任务</th><th>验收标准</th></tr></thead><tbody>
+        <tr><td>C1</td><td>session/new 持久化 parent 和初始 metadata。</td><td>顶层 NULL、child 正确，owner/cwd 边界有效。</td></tr>
+        <tr><td>C2</td><td>按 busy-lease/executor 边界接入 activity并拆除 minimal 广播。</td><td>DB fail 不启动 executor；validation/busy/replay 为零；cancel/failure 保留一次。</td></tr>
+        <tr><td>C3</td><td>archive/lifecycle/title/metadata/reparent/delete 使用专属 mutation。</td><td>不改 activity；tree membership 变化完整重算。</td></tr>
+        <tr><td>C4</td><td>移除直接写 session index 时间字段的旁路。</td><td>写入口可审计且有测试。</td></tr>
+      </tbody></table>
+
+      <h3>7.4 D：Loom 列表协议与事件</h3>
+      <table><thead><tr><th>ID</th><th>任务</th><th>验收标准</th></tr></thead><tbody>
+        <tr><td>D1</td><td>实现 `_loomdesk.dev/session/list` 的 <code>all/active/archived</code> snapshot handler。</td><td>full load 一次冻结两分区和完整 projection。</td></tr>
+        <tr><td>D2</td><td>保留 <code>list-global</code> legacy projection adapter。</td><td>共享 query core；alias 接受 boolean filter 并返回含 updatedAt 的旧 descriptor。</td></tr>
+        <tr><td>D3</td><td>消除 metadata N+1 查询。</td><td>每页查询次数不随 session 数线性增长。</td></tr>
+        <tr><td>D4</td><td>统一事件与 drop observability。</td><td>fire-and-forget drop 不回滚；counter/安全日志；同 transaction 共用 indexVersion。</td></tr>
+        <tr><td>D5</td><td>标准 ACP <code>session/list</code> 改用 SessionIndex。</td><td>owner/cwd 有效，仅返回 active，标准字段兼容。</td></tr>
+        <tr><td>D6</td><td>删除或隔离 checkpoint 列表路径。</td><td>production dispatch 只有一个事实源。</td></tr>
+        <tr><td>D7</td><td>实现 create <code>_meta</code>/response，收紧 fork 语义。</td><td>response 返回 target+ancestors+indexVersion；message-bounded fork 为非目标。</td></tr>
+        <tr><td>D8</td><td>实现 archive/update/delete 精确 response。</td><td>target/ancestors、atomic metadata 与 durable tombstone shape 固定。</td></tr>
+      </tbody></table>
+
+      <h3>7.5 E：Loom Desk 适配</h3>
+      <table><thead><tr><th>ID</th><th>任务</th><th>验收标准</th></tr></thead><tbody>
+        <tr><td>E1</td><td>新增 canonical <code>SessionIndexRecord</code> 与共享 strict parser。</td><td>list/event 共用 schema，唯一 wire ID 为 sessionId。</td></tr>
+        <tr><td>E2</td><td>增加 <code>listIndex</code>、capability parser 和错误分类。</td><td>明确旧版直调；未知仅 -32601 fallback；-32001 不 fallback。</td></tr>
+        <tr><td>E3</td><td>处理 owner-wide snapshot cursor、overlay、过期和 retry。</td><td>full/directory 都使用 archived=all；只重试 transient error。</td></tr>
+        <tr><td>E4</td><td>normalized revision merge 与 scoped replace。</td><td>成功 scope authoritative absence；失败 scope 保留。</td></tr>
+        <tr><td>E5</td><td>delete tombstone 与 optimistic shadow map。</td><td>旧数据不复活；仅登记的 optimistic create 可 live-only。</td></tr>
+        <tr><td>E6</td><td>接通 production global session subscription。</td><td>reconnect/runtime switch 只有一个有效订阅。</td></tr>
+        <tr><td>E7</td><td>定义 global/directory 字段所有权。</td><td>index 决定 membership，live 只补聊天实时字段。</td></tr>
+        <tr><td>E8</td><td>统一所有消费方 activity/rank helper。</td><td>桌面、mobile、Tray、retention 顺序语义一致。</td></tr>
+        <tr><td>E9</td><td>sidebar parent tree 与 cycle guard。</td><td>缺失/循环/非法 parent 安全降级。</td></tr>
+        <tr><td>E10</td><td>archive/delete reconciliation 与回滚。</td><td>global、directory、selection 一致，event echo 幂等。</td></tr>
+        <tr><td>E11</td><td>retention 收敛到 canonical ACP action。</td><td>partial failure 与 activity 语义正确。</td></tr>
+        <tr><td>E12</td><td>补齐 create response 与 fork/action 语义。</td><td>canonical response 替换 shadow；移除被忽略的 messageId。</td></tr>
+        <tr><td>E13</td><td>修复 archived metadata update。</td><td>不依赖标准 active-only pre-read，按 private response revision merge。</td></tr>
+        <tr><td>E14</td><td>集中 authoritative resync scheduler。</td><td>bootstrap/reconnect/switch 立即；visible+online 每 60 秒 singleflight；移除重复 timer。</td></tr>
+      </tbody></table>
+
+      <h3>7.6 F/G：验证与发布</h3>
+      <table><thead><tr><th>ID</th><th>任务</th><th>验收标准</th></tr></thead><tbody>
+        <tr><td>F1</td><td>Rust repository/extension unit tests。</td><td>migration、排序、snapshot、隔离、revision、tree 全覆盖。</td></tr>
+        <tr><td>F2</td><td>ACP integration/E2E。</td><td>标准/私有列表、事件、重启持久化一致。</td></tr>
+        <tr><td>F3</td><td>Desk store/action tests。</td><td>跨分区 race、overlay、tombstone、live 防复活、回滚和 runtime switch 全覆盖。</td></tr>
+        <tr><td>F4</td><td>新旧兼容矩阵。</td><td>三种 Loom/Desk 组合均通过。</td></tr>
+        <tr><td>F5</td><td>固定性能预算。</td><td>10k×1KiB：≤3 SQL、page 0 SQL、build p95≤500ms、20 pages≤2s、Desk merge≤100ms。</td></tr>
+        <tr><td>F6</td><td>执行 scoped nextest/clippy/type-check/lint/dead-code。</td><td>相关 workspace baseline 全绿。</td></tr>
+        <tr><td>G1</td><td>发布新方法 + alias 的 Loom。</td><td>可观测旧 alias 调用量，不记录敏感参数。</td></tr>
+        <tr><td>G2</td><td>发布使用 <code>listIndex</code> 的 Desk。</td><td>错误指标区分过期、method missing、DB failure。</td></tr>
+        <tr><td>G3</td><td>满足量化门槛后从 Loom 删除 alias。</td><td>alias 14 天零调用 + 最低支持 Desk 已含 listIndex；无遥测渠道保留 2 个 stable releases。Desk 的旧 Loom fallback/COMP-01 保留到最低支持 Loom 版本另行提高。</td></tr>
+        <tr><td>G4</td><td>收尾规范与设计文档。</td><td>状态、最终方法和验证结果同步。</td></tr>
+      </tbody></table>
+      <pre><code>A1 -> A2/A3 -> B1..B9 -> C1..C4 -> D1..D8
+   -> E1..E14 -> F1..F6 -> G1 -> G2 -> G3 -> G4</code></pre>
+      <p>最小可发布切片包含 B1–B9、C1–C4、D1–D4、D7/D8、E1–E14 与 F1–F4；否则 version、response、event drop 或跨 store membership 仍可能分叉。</p>
+
+      <h2 id="tests">8. 测试用例开发与完成定义</h2>
+      <p>测试与实现任务同步提交。Repository 测试扩展 <code>apps/acp/src/session_repository.rs</code>，extension 测试扩展 <code>apps/acp/src/extensions/session_list.rs</code>，跨 dispatch/重启场景放入 <code>apps/acp/tests/</code>。Desk 优先扩展现有 <code>globalSessions.test.ts</code>、<code>sync-context-session-events.test.ts</code> 和 sidebar <code>utils.test.ts</code>；隔离 adapter 时新增 <code>session-list-index.test.ts</code>。</p>
+
+      <h3>8.1 测试基础设施</h3>
+      <table><thead><tr><th>ID</th><th>开发项</th><th>实现要求</th></tr></thead><tbody>
+        <tr><td>TFX-01</td><td>Session fixture builder</td><td>声明 owner/cwd/parent、各类时间、archive、revision/indexVersion；固定默认值。</td></tr>
+        <tr><td>TFX-02</td><td>可控时钟</td><td>mutation 和 snapshot TTL 注入 clock，测试禁止 sleep。</td></tr>
+        <tr><td>TFX-03</td><td>Snapshot harness</td><td>支持创建、翻页、推进 TTL、篡改 cursor 和清理断言。</td></tr>
+        <tr><td>TFX-04</td><td>ACP fake transport</td><td>配置 capability、多页响应、错误、迟到响应、global subscription 生命周期和事件插入点，并记录 wire 调用。</td></tr>
+        <tr><td>TFX-05</td><td>SQL/write instrumentation</td><td>测量每页查询数和一次流式响应的 session-index 写次数。</td></tr>
+        <tr><td>TFX-06</td><td>共享断言</td><td>验证 ID 唯一、总序、完整 projection、引用复用和双 store 一致。</td></tr>
+      </tbody></table>
+
+      <h3>8.2 Loom repository</h3>
+      <table><thead><tr><th>ID</th><th>场景</th><th>核心断言</th></tr></thead><tbody>
+        <tr><td>R-01</td><td>旧 schema 连续 migration 两次。</td><td>新列/索引/默认值正确，幂等且不覆盖旧数据。</td></tr>
+        <tr><td>R-02</td><td>相同 activity 时间的 root 乱序插入。</td><td>严格按 activity DESC、session ID ASC，总序可重复。</td></tr>
+        <tr><td>R-03</td><td>相同时间记录跨 page size。</td><td>每个 session 恰好一次，无遗漏、重复、空洞页。</td></tr>
+        <tr><td>R-04</td><td>第 1 页后更新尚未读取的 session。</td><td>旧 snapshot 集合/字段/顺序不变，新查询看到更新。</td></tr>
+        <tr><td>R-05</td><td>推进时钟超过 snapshot TTL。</td><td>返回 snapshot_expired，不返回空成功或部分结果，并清理 snapshot。</td></tr>
+        <tr><td>R-06</td><td>owner B 复用 owner A cursor。</td><td>拒绝且不泄露 A 的记录或总数。</td></tr>
+        <tr><td>R-07</td><td>用不同 archived/cwd filter 复用 cursor。</td><td>filter hash 不匹配拒绝；原 filter 仍可继续。</td></tr>
+        <tr><td>R-08</td><td>篡改 cursor/version/offset。</td><td>稳定 invalid-cursor 错误，不 panic、不回第一页。</td></tr>
+        <tr><td>R-09</td><td>grandchild 产生 activity。</td><td>leaf activity 与所有祖先 tree activity 更新，无关树不变。</td></tr>
+        <tr><td>R-10</td><td>缺失、自引用、循环 parent。</td><td>原子失败或安全截断；无死循环、部分更新、跨 owner 传播。</td></tr>
+        <tr><td>R-11</td><td>title/meta/archive/restore/lifecycle。</td><td>activity 不变；专属字段更新；每次可见变更 revision +1。</td></tr>
+        <tr><td>R-12</td><td>no-op、真实和并发 mutation。</td><td>no-op 不增 revision；真实写单调且不重复。</td></tr>
+        <tr><td>R-13</td><td>删除 metadata session 与 rollback。</td><td>成功无 orphan；失败时两者同时保留。</td></tr>
+        <tr><td>R-14</td><td>snapshot 后修改 title/meta/parent/lifecycle。</td><td>旧 snapshot 返回创建时完整 projection，新 snapshot 才见新字段。</td></tr>
+        <tr><td>R-15</td><td>archive/delete/restore/reparent 最活跃 child。</td><td>旧祖先 tree 可下降、新祖先可上升，变化祖先 revision/event 完整。</td></tr>
+        <tr><td>R-16</td><td><code>archived=all</code> 翻页间分区往返。</td><td>每个 session 恰好一次，不因 archive/restore 双缺席。</td></tr>
+        <tr><td>R-17</td><td>单独 archive parent、保留 active child，再 restore。</td><td>child 临时成为 effective root，restore 后重新挂回且不丢失。</td></tr>
+        <tr><td>R-18～22</td><td>原子 FK migration、owner version/no-op/clock rollback/overflow、snapshot capacity/HMAC/restart、activity failure matrix、durable delete retry。</td><td>所有冻结参数、失败边界与幂等语义有 repository 级证据。</td></tr>
+      </tbody></table>
+
+      <h3>8.3 Extension、标准 ACP 与事件</h3>
+      <table><thead><tr><th>ID</th><th>场景</th><th>核心断言</th></tr></thead><tbody>
+        <tr><td>API-01</td><td>以等价 filter 调用 list 与 list-global。</td><td>membership/order/cursor/error 同源；新旧 projection 各自可解析，无双 query 实现。</td></tr>
+        <tr><td>API-02</td><td>读取过渡期 capability。</td><td>声明 list/list-global/archive/update，不覆盖标准 ACP capability。</td></tr>
+        <tr><td>API-03</td><td>混合 owner/cwd/archive 数据。</td><td>owner 强隔离，cwd 规范化与 archive filter 正确。</td></tr>
+        <tr><td>API-04</td><td>查询完整 session record。</td><td>parent、五类时间、closed、revision、metadata 无损投影。</td></tr>
+        <tr><td>API-05</td><td>expired/篡改/跨域 cursor。</td><td>错误 code/data 可区分，不伪装为空列表。</td></tr>
+        <tr><td>API-06</td><td>create/update/archive/restore/delete 与旧 revision 重放。</td><td>created/updated 与 list 同构；deleted 带最终 revision tombstone。</td></tr>
+        <tr><td>API-07</td><td>标准 ACP session/list。</td><td>仅当前 owner/cwd active，标准字段兼容，时间来自 SessionIndex。</td></tr>
+        <tr><td>API-08</td><td>查询 1/100/1000 条 metadata。</td><td>SQL 次数常数级，无 N+1。</td></tr>
+        <tr><td>API-09</td><td>用标准 session/new <code>_meta</code> 创建 child 后重启。</td><td>title/parent/meta 原子持久化，created/list/restart 一致。</td></tr>
+        <tr><td>API-10</td><td>监测 production dispatch。</td><td>标准/private 均由 SessionIndex 派生，不调用 legacy aggregation。</td></tr>
+        <tr><td>API-11</td><td>删除后重放旧 snapshot/created/updated。</td><td>tombstone 拒绝全部旧 revision，并按 resync 策略安全清理。</td></tr>
+        <tr><td>API-12</td><td>调用标准 fork 与 assistant-plan 新建动作。</td><td>不传/忽略 source message；plan 动作不宣称 server history fork。</td></tr>
+        <tr><td>API-13</td><td>捕获三类 event wire 并复用 list parser。</td><td>严格 {topic,event}；唯一 sessionId；info 与 list 同构；delete 使用冻结 tombstone。</td></tr>
+        <tr><td>API-14</td><td>长 prompt 产生大量标准 updates。</td><td>每 prompt 至多一次 Activity/full-record global event；无 minimal {id}；history replay 为零。</td></tr>
+        <tr><td>API-15～17</td><td>精确 mutation responses、event drop、标准 list &gt;200。</td><td>response 原子；drop 不回滚且 resync；标准一次返回全部、nextCursor=null。</td></tr>
+      </tbody></table>
+
+      <h3>8.4 Loom Desk adapter、store 与 sidebar</h3>
+      <table><thead><tr><th>ID</th><th>场景</th><th>核心断言</th></tr></thead><tbody>
+        <tr><td>UI-01</td><td>capability 同时有 list/list-global。</td><td>只调用私有 list；标准 acpApi.session.list 不变。</td></tr>
+        <tr><td>UI-02</td><td>旧 Loom 只声明 list-global。</td><td>直接调用旧方法，不制造失败探测。</td></tr>
+        <tr><td>UI-03</td><td>新方法返回业务错误或 -32001。</td><td>抛错并保留 cache；未知 capability 下只有 -32601 fallback。</td></tr>
+        <tr><td>UI-04</td><td>三页 opaque cursor。</td><td>原样回传、按 ID 去重、正确终止，不解析 cursor。</td></tr>
+        <tr><td>UI-05</td><td>第 2 页 snapshot_expired。</td><td>丢弃部分 accumulator，有限重载；失败不提交半套结果。</td></tr>
+        <tr><td>UI-06</td><td>directory scope 成功/失败。</td><td>成功 scope replace，失败 scope 完整保留且 error 可见。</td></tr>
+        <tr><td>UI-07</td><td>revision 10 后注入 9/10/11。</td><td>9/10 不覆盖或移动，11 更新一次，未变项保持引用。</td></tr>
+        <tr><td>UI-08</td><td>snapshot 翻页时插入 update/delete。</td><td>overlay 原子参与 revision merge，无复活、重复、旧 snapshot 覆盖。</td></tr>
+        <tr><td>UI-09</td><td>full/local/upsert 三条路径。</td><td>共享 normalized merge/comparator，顺序一致并复用引用。</td></tr>
+        <tr><td>UI-10</td><td>root/child/Pin/tree activity。</td><td>层级与排序正确，Pin 只影响同层，Recent 不重复 child。</td></tr>
+        <tr><td>UI-11</td><td>archive/delete 乐观成功、失败与 event echo。</td><td>失败回滚 global/directory/selection；成功与 echo 幂等。</td></tr>
+        <tr><td>UI-12</td><td>retention 部分 RPC 失败。</td><td>共享 activity helper；失败保留可重试，不产生 cache 分叉。</td></tr>
+        <tr><td>UI-13</td><td>创建 root/child 并传 title/parent/meta。</td><td>response target+ancestors 原子替换 shadow/tree，event echo 幂等。</td></tr>
+        <tr><td>UI-14</td><td>标准 fork 与 assistant-plan 新建动作。</td><td>无被忽略 messageId；新建+发送 plan 的真实语义可见。</td></tr>
+        <tr><td>UI-15</td><td>owner-wide snapshot 中 archive/restore 与 overlay。</td><td>按 revision 合并并唯一分区，不出现双缺席。</td></tr>
+        <tr><td>UI-16</td><td>runtime A 重连后切到 B，并从 A/B 发事件。</td><td>只有一个有效订阅；A dispose；仅 B 更新 store。</td></tr>
+        <tr><td>UI-17</td><td>global 不含 ID，live store 仍保留 archived/deleted/optimistic record。</td><td>stale live 不复活；仅 shadow optimistic create 临时显示。</td></tr>
+        <tr><td>UI-18</td><td>同 fixture 进入所有 session 排序消费方。</td><td>Sidebar/Recent/worktree/retention/Tray/mobile/switcher 使用同一 rank。</td></tr>
+        <tr><td>UI-19</td><td>缺失、自引用、循环、非法跨 cwd parent。</td><td>构树安全降级，无递归溢出并保留诊断。</td></tr>
+        <tr><td>UI-20</td><td>-32601、权限、DB、cursor、snapshot 与 transient error。</td><td>只有 -32601 fallback；仅 transient retry；其他错误保留 cache 并报告。</td></tr>
+        <tr><td>UI-21</td><td>成功 snapshot 缺少旧 cache ID，随后同 scope 失败。</td><td>成功时删除 scope 内缺席项；失败不删除；scope 外与 optimistic shadow 保留。</td></tr>
+        <tr><td>UI-22</td><td>复现两个独立 snapshot 的 archive/restore 双缺席。</td><td>新客户端只发送一次 archived=all traversal，session 唯一且可见。</td></tr>
+        <tr><td>UI-23</td><td>对 archived session patch metadata。</td><td>不调用 active-only pre-read；按 private response revision 更新，失败保留。</td></tr>
+        <tr><td>UI-24</td><td>parent archive 成功、child 失败后刷新。</td><td>child 作为 effective root 可见；parent restore 后重新挂回。</td></tr>
+        <tr><td>UI-25～28</td><td>snapshotVersion tombstone cleanup、60s scheduler、capacity/error policy、跨页 version mismatch。</td><td>清理、timer、retry/fallback 与 protocol violation 行为完全确定。</td></tr>
+      </tbody></table>
+
+      <h3>8.5 兼容性、E2E 与性能</h3>
+      <table><thead><tr><th>ID</th><th>场景</th><th>核心断言</th></tr></thead><tbody>
+        <tr><td>COMP-01</td><td>新 Desk + 旧 Loom。</td><td>使用 list-global，active/archived 可用。</td></tr>
+        <tr><td>COMP-02</td><td>旧 Desk + 新 Loom。</td><td>alias 返回 boolean-filter/updatedAt legacy projection，数据来自新 core。</td></tr>
+        <tr><td>COMP-03</td><td>新 Desk + 新 Loom。</td><td>首选 list、不触发 alias，标准 ACP list 仍可用。</td></tr>
+        <tr><td>E2E-01</td><td>root/child activity、跨页、重启、事件。</td><td>层级、tree order、revision、snapshot 语义一致。</td></tr>
+        <tr><td>E2E-02</td><td>owner-wide 分页时 activity/archive/restore 并令 snapshot 过期。</td><td>集合/字段/顺序冻结；恢复无空闪、双缺席、重复或复活。</td></tr>
+        <tr><td>E2E-03</td><td>使用独立 Loom binary 运行无模型 initialize capability、session/new、canonical list、cursor continuation、legacy alias、metrics、标准 list、archive 和 delete wire 流程。</td><td>新 peer 声明 list/list-global；不依赖 prompt/模型；snapshotVersion 固定且无重复/遗漏；legacy projection 不泄漏 revision/indexVersion；metrics 能导出 alias 调用计数；archive 进入 archived projection，delete 返回 tombstone 且 authoritative list 移除 target；旧 peer 只断言 legacy fallback 与标准 list。</td></tr>
+        <tr><td>PERF-01</td><td>10k×1KiB sessions、page 500、连续 20 次完整遍历。</td><td>≤3 SQL、后续页 0 SQL、build p95≤500ms、20 pages p95≤2s、Desk merge p95≤100ms、≤64 MiB/owner，并记录 CPU/RAM/OS。</td></tr>
+        <tr><td>PERF-02</td><td>大量 token delta 长响应。</td><td>按 activity 边界合并写入，不逐 token 写库或放大 revision。</td></tr>
+        <tr><td>PERF-03</td><td>非当前 session 高频事件。</td><td>仅约定 lifecycle edge 重排，无 delta 级全列表重排。</td></tr>
+      </tbody></table>
+
+      <h3>8.6 执行门槛</h3>
+      <ul>
+        <li>修复型用例先在旧实现稳定失败，再由对应任务转绿；禁止真实时间、随机 ID 和不受控并发。</li>
+        <li>F1 覆盖 TFX-01～03、R-01～22；F2 覆盖 API-01～17、E2E-01～02；F3 覆盖 TFX-04/06、UI-01～28；F4 覆盖 COMP-01～03；F5 覆盖 TFX-05、PERF-01～03。</li>
+        <li>Loom 执行 scoped nextest/clippy；Desk 执行相关 UI tests、package type-check/lint；新增或改名 module/export 时执行 dead-code。</li>
+        <li>alias 删除前 COMP-01～03 全部通过；删除 commit 只把 COMP-02 改成新 Loom 对旧方法返回 -32601 的负向 fixture，COMP-01 持续验证新 Desk 连接旧 Loom。</li>
+        <li>完成标准：snapshotVersion/indexVersion 可证明覆盖；固定容量/HMAC/response/drop-resync/no-op/FK/标准单页契约全部由自动化测试证明。</li>
+        <li>tree activity 可随 archive/delete/reparent 下降并发布祖先 revision/event；snapshot/event/optimistic mutation 使用同一 normalized merge；所有视图共享 activity/rank；新旧兼容矩阵通过。</li>
+      </ul>
+      <h2 id="implementation-status">9. 当前实现状态（2026-08-22）</h2>
+      <p>本轮已落地 SessionIndex schema/query、owner version/tombstone 表、metadata cascade migration、<code>_loomdesk.dev/session/list</code> 的签名 snapshot cursor、标准 ACP active projection、标准 ACP delete 的 durable tombstone <code>_meta</code>、Desk <code>listIndex</code> 能力声明选择/旧 Loom fallback、单 owner-wide full load、Desk global session stream 接线，以及 global event drop counter；prompt 接受边界的一次性 activity mutation、active ancestor 的 tree activity 传播、稳定树前序排序、单事务 title/metadata 更新、事务内 materialize canonical mutation response、canonical created/updated/deleted event、canonical wire JSON snapshot byte accounting、Desk tombstone shadow 与版本化回收、60 秒 singleflight resync、UTC 微秒固定格式/单调时间写入、create/archive/update 的 canonical response merge、create <code>session/new</code> response 的 target/ancestor 合并、解绑后的标准 delete 幂等重试、确定性 timestamp parser、独立的 session/new wire contract 测试（包含必填 <code>mcpServers: []</code>）、按 runtime 隔离的 ACP global topic refcount、archive target-only optimistic move 与安全 rollback、create 临时 global shadow 的确认/失败回滚、shared ACP runtime 切换清理和 generation guard、update response 的固定 <code>affectedSessions: []</code> 字段、SessionListHandler 的可注入 clock、quota admission 先淘汰最旧 owner snapshot、owner indexVersion 的 JSON-safe checked increment、owner indexVersion/session revision/tombstone revision 的 JSON-safe 上限保护、archived metadata patch 不再依赖 active-only 预读、10k session × 20 次 repository full-read smoke fixture、10k owner-wide keyset 分页 fixture、真实 Loom agent archive wire-level fixture，以及 global event source teardown fixture 也已接入。新增无模型 <code>e2e_session_list</code> wire 回归，使用独立 ACP 端口验证 canonical cursor 续页、legacy alias 和标准 list；续页只携带 <code>cursor/limit</code> 也保持同一 snapshot。<code>session/new</code> 的 Loom 持久化现在通过单个 repository transaction 写入 target、parent、title 和 metadata，target 与可见 ancestors 共享同一个 <code>indexVersion</code>；Desk action 会消费 <code>affectedSessions</code> 并已覆盖 create ancestor merge 回归测试。真实 ACP BDD 已通过 canonical ID、<code>session/prompt</code> request/response、sidebar duplicate-safe assertion、reload 后新发出的 canonical <code>session/load</code>、对应 history batch、UI 消息恢复和服务端 history 持久化验证；runtime-switch BDD 还会注入真实浏览器事件、等待 remount 后重新发出的 global/legacy/standard session list 请求，随后通过 UI archive 观察真实 <code>_loomdesk.dev/global/update</code> 的 <code>session.updated</code> wire event，并确认 session 离开 active list。新增 <code>session/update</code> wire 回归证明 title/metadata mutation 是 target-only、返回固定 <code>affectedSessions: []</code>，且 parent revision/indexVersion 不变。Loom <code>session/load</code> 已加入最多 500ms 的 checkpoint 可见性重试；Desk reload/deep-link 路径即使本地持久化消息已可渲染也会强制权威 load。E2E WebSocket capture 已加入 frame cursor，等待器不会把 reload 前缓存帧当成新请求；ACP history paging/store 回归测试 11 项通过。跨平台 CPU/RAM 采样和完整兼容/性能矩阵仍需按主设计任务继续开发；update response 的 target-only/empty-ancestor contract 已有 Loom wire 回归，但仍需与多版本 Desk 客户端做跨版本联调。ACP lib 全量测试当前为 598 通过；并发初始化场景的 <code>archived_at</code> 迁移已改为幂等，clippy 已通过；Agent 启动时会幂等重建临时数据库父目录，SQLite busy timeout/retry 压力回归也已通过，因此完成定义尚未满足。</p>
+      <p>性能补充（早期基线）：10k fixture 已加入每条 1 KiB metadata、20 次 canonical SessionIndex full-read 计时和 p95 输出；Desk merge fixture 也连续运行 20 次，并额外输出 <code>process.cpuUsage()</code> CPU 时间/单核占用比及 runner platform/arch/CPU/RAM；strict 模式同时强制 p95 ≤500ms 与 heap delta ≤64MiB。早期 Windows 基线约为 p95 32ms、heap delta 26MiB；snapshot quota 现在按 canonical wire JSON + 64 bytes/record + 256 bytes/snapshot 精确计费并有回归测试；跨平台采样仍需在 Linux/macOS 基准环境复测。</p>
+      <p>兼容性补充：Desk behavior fixture 已覆盖新 Desk+新 Loom、旧 Loom capability、未知 capability + canonical method missing 三种 request path，分别验证 canonical、直接 legacy fallback 和仅 <code>-32601</code> 触发 fallback。</p>
+      <p>事件补充：标准 <code>session/new</code> 现在按 target created、nearest-ancestor-first updated 的顺序发布 global events；ancestor event 使用 response 对应的完整 SessionIndex 投影字段。</p>
+      <p>Update merge 补充：Desk <code>updateSessionTitle</code> action 已有 canonical response merge 回归，target 与 response 中的 affected records 都会写入 global store，并保留 revision/indexVersion。</p>
+      <p>分页补充：新增真实 <code>LoomAcpAgent + SessionListHandler</code> loopback 回归，5 条 active sessions 以 <code>limit=2</code> 跨页读取，验证 <code>snapshotVersion</code> 固定、cursor 可继续且无重复/遗漏。</p>
+      <p>runtime-switch 补充：Desk global store 的 generation guard 现在也保护 singleflight 引用，旧 runtime 的迟到 promise 不会清空新 runtime 的 in-flight load；已加入旧/新响应交错回归测试。</p>
+      <p>runtime event 补充：endpoint switching 测试现在验证实际 <code>loomdesk:runtime-endpoint-changed</code> 事件 detail，确保 remount 消费者收到新的 endpoint/runtime key。</p>
+      <p>兼容补充：<code>listIndex</code> 使用纯 capability 判定：只有 capability 明确缺少 canonical <code>list</code> 且存在其他 session methods 时直调旧 alias；空 capability 保持未知并先 probe canonical method。只有 ACP <code>-32601 method_not_found</code>（或无 code 的 legacy 文本错误）时回退 <code>list-global</code>；<code>-32001</code>、<code>-32602</code> 和业务错误不会被掩盖。兼容矩阵已覆盖 JSON-RPC code、legacy/unknown-method 文本、capability/permission、invalid params、存储错误和连接错误，并验证 legacy active+archived 合并保持顺序、active 优先去重且明确不可分页。Loom capability wire 回归同时确认迁移窗口声明 canonical <code>list</code>、legacy <code>list-global</code>、archive/update/delete。</p>
+      <p>Capability 验证补充：Loom `SessionListHandler` 的迁移窗口 capability wire 回归已通过，确认同时声明 canonical <code>list</code> 与 legacy <code>list-global</code>，并保留 <code>archive</code>、<code>update</code>、<code>delete</code>。</p>
+      <p>COMP-02 验证补充：旧 <code>list-global</code> 从共享 SessionIndex/query core 返回 legacy projection，不泄漏 <code>revision/indexVersion</code> 等 canonical 新字段。</p>
+      <p>COMP-01 验证补充：Desk legacy fallback 在仅支持 <code>list-global</code> 的旧 Loom 上只读取 active/archived 两个分区，不先 probe canonical method；合并后 active 优先去重并明确不可分页。</p>
+      <p>验证计数更新：ACP lib 全量测试现为 602 通过；<code>cargo clippy -p loom-acp --lib -- -D warnings</code> 通过。</p>
+      <p>并发补充：<code>SessionConfigStore</code> 与 SessionRepository 统一使用 30 秒 SQLite busy timeout，atomic <code>session/new</code> index write 对 busy/locked 做 bounded exponential 8-attempt retry，并有 8-worker × 4-session 压力回归；此前并行测试中的偶发 <code>database is locked</code> 已消除。</p>
+      <p>启动竞态补充：Agent 在打开 SQLite stores 前幂等重建 <code>LOOM_HOME</code> 数据库父目录，archive mutation 也复用 SQLite retry helper；该阶段重复全量运行保持 594/594 通过，当前新增删除回归后为 596/596。</p>
+      <p>列表事实源收敛：已删除 <code>LoomAcpAgent::list_sessions_from_db</code>、旧 <code>SessionInfo</code> 类型和标准 <code>list_sessions</code> checkpoint 聚合旁路；标准 <code>session/list</code> 现在仅通过 owner-scoped SessionIndex 生产路径。<code>cargo check -p loom-acp --lib</code>、<code>cargo clippy -p loom-acp --lib -- -D warnings</code> 通过；该阶段串行全量为 594/594，当前新增删除回归后为 596/596。并行全量测试可能受外部临时 <code>LOOM_HOME</code> 清理竞态影响。</p>
+      <p>兼容 alias 收敛：<code>list-global</code> 现在直接复用 canonical <code>list</code> 的 immutable snapshot/cursor core，再投影旧字段；已删除 timestamp keyset 和逐条 metadata 查询。新增跨页回归验证 canonical opaque cursor、无重复以及不泄漏 <code>revision/indexVersion</code>。</p>
+      <p>删除事件收敛：标准 ACP <code>session/delete</code> 首次成功会发布带完整 tombstone 的 <code>session.deleted</code>；解绑后的幂等重试和 extension 重复删除不会重复广播。<code>delete_all_indexed</code> 在同一事务内删除 target、写入 durable tombstone，并按剩余可见后代重算受影响 ancestors；response 透传共享 <code>indexVersion</code> 与 nearest-ancestor-first <code>affectedSessions</code>，同时为变更 ancestors 发布 <code>session.updated</code>。</p>
+      <p>Desk delete action 已在记录 target tombstone 后立即合并 response 的 <code>affectedSessions</code>，因此 ancestor revision/indexVersion 不依赖下一次 snapshot 或事件；新增 target tombstone + ancestor merge 回归。</p>
+      <p>最新验证：ACP lib 串行全量测试为 602/602，<code>cargo check -p loom-acp --lib</code> 与 <code>cargo clippy -p loom-acp --lib -- -D warnings</code> 通过。跨平台 CPU/RAM 采样、完整兼容矩阵和多版本 Desk 联调仍是最终发布门槛。</p>
+      <p>源码事实源审计：生产 <code>session/list</code>、canonical private list、legacy alias 均落到 SessionIndex；旧 checkpoint 聚合入口不存在。仅保留用于 ACP 重启恢复的 <code>SessionRepository::list_for_restore</code>，不参与外部 membership/order projection。</p>
+      <p>删除绑定边界：首次删除要求 live session 绑定当前 ACP connection；未绑定 live session 返回 <code>-32011</code>。只有同 owner 且已有 durable tombstone 的解绑后重试进入幂等路径，且不会重复广播 <code>session.deleted</code>。</p>
+      <p>alias 观测：<code>SessionListHandler::legacy_alias_call_count</code>、<code>AcpRuntimeMetricsSnapshot::legacy_session_list_alias_calls</code> 及受 principal 保护的 <code>_loomdesk.dev/session-metrics/status</code> 只读导出已接入，只统计 legacy <code>list-global</code>；Desk <code>acpApi.sessionMetrics.status()</code> typed adapter 也已接入，并拒绝缺失、负数、非整数和超出 safe-integer 范围的计数；14 天生产样本仍未积累。</p>
+      <p>跨平台性能：<code>.github/workflows/test.yml</code> 新增 Ubuntu/macOS/Windows 矩阵，统一运行 <code>LOOM_DESK_STRICT_PERF=1</code> 的 20-run rich merge benchmark，并记录 runner platform/arch/CPU/RAM；CI 结果作为 Linux/macOS 验收证据来源。</p>
+      <p>Desk 性能补充：新增 10k rich snapshot merge 基准，每条 session 带 1 KiB metadata，重复应用 20 次 full snapshot，并输出 heap delta；当前 Windows 环境 p95 35.11ms、heap delta 25.53MiB，<code>LOOM_DESK_STRICT_PERF=1</code> 下 500ms/64MiB 预算通过。设置 <code>LOOM_DESK_PERF_OUTPUT</code> 时会写出 JSON，CI 按 OS 上传原始性能 artifact。</p>
+      <p>最新验证补充：Desk 全仓 <code>bun run type-check</code> 与 <code>bun run lint</code> 通过；<code>packages/ui</code> 的 <code>bun run test:session</code> 为 65/65（12 个测试文件，183 个 expect）；Windows strict 20-run rich merge benchmark 为 p95 33.66ms、heap delta 25.17MiB（≤500ms/64MiB）。性能测试使用 Node-compatible <code>fs/promises</code> 写 JSON，并在输出路径带父目录时创建目录，避免依赖 Bun ambient types 或 <code>mkdir(".")</code> 的运行时差异。Loom 使用独立 <code>target/session-list-build</code> binary（避免占用中的默认 <code>target/debug/loom.exe</code>）运行 <code>e2e_session_list</code> canonical 与 <code>LOOM_SESSION_LIST_EXPECT_LEGACY=1</code> 两个分支，均为 1/1 通过；旧默认 binary 因文件锁不能作为当前源码证据。</p>
+      <p>兼容 runner 本地复验：同一独立 binary 分别作为 <code>-NewLoomBinary</code> 与 <code>-OldLoomBinary</code> 运行，manifest 中 canonical/legacy 两条记录均为 <code>exitCode=0</code>、<code>testCount=1</code>；这只是 runner/断言路径回归，不替代真实历史 binary 的跨版本证据。</p>
+      <p>Desk 分页恢复已补齐：<code>listGlobalSessionPagesAcp</code> 与 <code>listGlobalSessionIndex</code> 对 <code>-32004</code>/<code>snapshot_expired</code> 最多重启两次，并从第一页创建新 cursor；重启前清空 partial accumulator，渐进式调用方通过 <code>onReset</code> 清理已展示页。达到上限或遇到 invalid cursor/权限/存储错误则原样抛出，不返回空成功、不触发 legacy fallback；新增普通分页和 owner-wide index 回归测试。</p>
+      <p>UI-28 协议一致性已补齐：分页过程中若相邻页 <code>snapshotVersion</code> 改变，Desk 不再用 <code>Math.max</code> 混合不同 snapshot，而是丢弃整份 accumulator、清理 cursor 并通过 <code>onReset</code> 通知渐进式展示层；随后有限次从第一页重载。连续版本漂移超过上限会抛错并由 store 保留旧 cache。对应版本漂移、过期上限和 cursor 重启测试已通过。</p>
+      <p>mutation/list wire guard 已补齐：<code>parseAcpGlobalSessionDescriptor</code> 统一拒绝缺失、空白或非字符串 <code>sessionId</code>；list、archive/update response 以及 create/delete/update 的 <code>affectedSessions</code> merge 都先经过 guard，malformed JSON 不会写入空 ID session。ACP API 边界还会将非数组/非法 fan-out 归一化为空或过滤掉，standard/authoritative list envelope malformed 时显式失败，tombstone store 也会拒绝非法 counter；Desk session 门禁当前 65/65 通过。</p>
+      <p>同一 guard 还拒绝负数、浮点、非安全整数的 <code>revision/indexVersion</code>；<code>listIndex</code> 对 <code>snapshotVersion</code> 使用同样的 JSON-safe 非负整数校验，异常值降为无版本（0）而不会参与 tombstone/freshness 判定。</p>
+      <p>UI-08 overlay 收敛已补齐：<code>useGlobalSessionsStore.loadSessions</code> 在原子提交时重新读取最新 Zustand state；对 snapshot 中同 ID 记录按 <code>indexVersion</code>、<code>revision</code>、更新时间选择更新者，并保留加载期间产生的 optimistic/newer live records，避免异步 snapshot 覆盖事件。新增 deferred owner-snapshot 回归测试。</p>
+      <p>active/archived 分区也在同一 reconciliation 中处理：若 live archive/restore 在 snapshot 期间改变归属，live partition 优先且同一 ID 只进入一个分区；snapshot 外的 optimistic/newer record 按现有 live 顺序追加，不改变 SessionIndex 树顺序。对应跨分区竞态测试已加入 session gate（65/65）。</p>
+      <p>UI-26 调度去重已补齐：<code>useTraySync</code> 只在 mount 时执行 seed，移除原有 45 秒全量刷新 timer；owner-wide 全量刷新统一由 <code>SyncProvider</code> 的 visible+online 60 秒 singleflight scheduler 负责，避免 Sidebar/Tray 双定时器造成重复请求。</p>
+      <p>UI-26 唤醒门控已补齐：<code>visibilitychange</code>/<code>online</code> 只在从未成功或距上次成功至少 60 秒时触发立即 resync；失败不更新时间戳，hidden/offline 期间不发请求。</p>
+      <p>排序展示的缺失时间 fallback 已统一为确定性 epoch：<code>SessionSwitcherDropdown</code> 与 <code>SessionNodeItem</code> 不再用 <code>Date.now()</code> 把 malformed/legacy session 伪装成最近活动。</p>
+      <p>SessionIndex 排序事实源已统一：<code>session-activity.ts</code> 对 root 使用 <code>treeActivityAt</code>、对 child 使用 <code>activityAt</code>，再回退到 <code>time.updated/created</code>；global store、Sidebar、Recent 和 Tray 共用该 helper。</p>
+      <p>自动清理与 Sidebar 排序 memo 也已接入同一 helper：保护最近 session 使用 tree/child activity，tree activity 改变会刷新 <code>sessionOrderIndex</code>，不会沿用只看 <code>time.updated</code> 的旧缓存。</p>
+      <p>其余排序/展示路径也已收敛：Switcher、SessionNode、worktree grouping、agent groups 的时间显示与聚合均使用 <code>getSessionActivityTimestamp</code>，agent group 缺失时间不再回退当前时间。</p>
+      <p>retention 已迁移到 ACP <code>archiveSession</code>/<code>deleteSession</code> facade，复用 tombstone、affectedSessions、乐观回滚和统一错误语义；不会再直接调用 legacy <code>loomAgentClient</code>，且明确处理 facade 返回 <code>false</code> 的 partial failure。</p>
+      <p>标准 ACP <code>session/list</code> 的 <code>rawSessionList</code> 也已拒绝 malformed envelope/全量非法 record，目录级读取不会再把协议失败当成空成功。</p>
+      <p>分页 adapter 的渐进式 <code>onPage</code> 回调现在复用累加器的 ID 去重结果；即使异常页面重复 <code>sessionId</code>，渐进式 UI 也不会先显示重复行。新增回归后 session gate 为 65/65。</p>
+      <p>Sidebar、Switcher 与 mobile session bucket 现在共用 defensive session tree builder；self-parent、cycle 和缺失 parent 会被安全截断或提升为 root，级联 archive/delete 也共用 visited-set descendant helper；新增 4 个 cycle/orphan 回归后门禁为 65/65。</p>
+      <p>ACP global event source 现在按请求的 topic allowlist 过滤共享 runtime 回调，避免 notification topic 混入 session reducer；新增 topic-isolation 回归测试。</p>
+      <p>Web notification consumer 也按 <code>notification</code> topic 过滤共享 callback，避免 session event 被送入通知 payload parser；两个 ACP global consumer 的 topic 隔离规则保持一致。</p>
+      <p>Loom 生产源码旁路审计确认 <code>acp_sessions</code> 的写入只存在于 <code>session_repository.rs</code> 的 repository/migration/test 路径；<code>cargo test -p loom-acp --lib -- --test-threads=1</code> 当前 602/602 通过。</p>
+      <p>Sidebar 的 archive/delete 级联收集也增加 visited-set 防护；即使 legacy 数据出现 self-parent 或循环 parent 链，操作路径也不会无限递归。</p>
+      <p><code>SyncProvider</code> 已接入生产 ACP global session subscription：使用共享 topic refcount、事件按 session coalesce、runtime teardown 自动关闭，并由 visible+online 的 owner-wide resync 做丢事件恢复；当前仍缺少真实 runtime switch/reconnect 的集成测试证据。</p>
+      <p>ACP bootstrap 现在复用严格标准 <code>session/list</code> parser；malformed envelope/全量非法 records 不会伪装成空成功，且所有 bootstrap directory 都失败时会抛出错误，只有部分 directory 失败才保留可见分区并记录失败。</p>
+      <p><code>session/load</code> cwd mismatch 的 fallback lookup 也复用同一 strict parser，不会因 malformed standard list 把“找不到 session”误判为正常空结果。</p>
+      <p>新增 <code>legacy_schema_migration_is_idempotent_and_removes_orphan_metadata</code> repository 回归：用旧版 <code>acp_sessions/acp_session_data</code> schema 构造有效记录与 orphan metadata，验证 SessionIndex 列、owner state/tombstone 表、cascade FK、<code>foreign_key_check</code>、orphan 清理和第二次初始化幂等；发布签收中的真实数据库备份、失败注入回滚和生产 14 天 alias 指标仍需在目标环境执行。</p>
+      <p><code>LoomAcpAgent::new_with_db_path</code> 现在允许 embedded host/test 显式注入 SQLite 文件，并让 session metadata 与 checkpoint history 共用该路径；session-list handler 测试不再修改进程级 <code>LOOM_HOME</code>，因此并行 <code>cargo test -p loom-acp --lib</code> 已稳定通过 602/602。</p>
+      <p>新增 <code>metadata_foreign_key_migration_rolls_back_when_rebuild_cannot_start</code>：故意制造 metadata rebuild 目标表冲突，验证 migration 失败后原表和数据完整保留，移除冲突后可重试成功且 <code>foreign_key_check</code> 仍为零。</p>
+      <p><code>ensure_schema</code> 现在在单个 <code>BEGIN IMMEDIATE</code> transaction 中执行基础表、兼容列、索引、owner state/tombstone、trigger 和 metadata FK migration；新增并发初始化回归证明多个 agent 同时启动时会先串行化 DDL，而不是在 deferred transaction 升级阶段返回 <code>SQLITE_BUSY</code>。</p>
+      <p>schema transaction 在 commit 前强制执行 <code>PRAGMA foreign_key_check</code>；任何残留 FK 错误都会触发整体 rollback，而不是让部分迁移后的数据库继续启动。</p>
+      <p>migration rollback 回归还会检查失败后不存在 <code>archived_at</code>、SessionIndex owner/tombstone 表等半成品 schema，证明回滚覆盖前置 DDL，而不仅是 metadata table rename。</p>
+      <p>新增 <code>foreign_key_check_failure_aborts_schema_initialization</code>：已有 cascade FK 但存在 orphan 时，启动被拒绝，前置 <code>archived_at</code> 变更回滚，原 orphan 数据保持可审计。</p>
+      <p>Desk Agent Manager 的 worktree/group loader 现在复用 <code>listGlobalSessionPages</code> 的 active SessionIndex projection；旧 Loom 仍由同一 adapter 显式 fallback 到 <code>list-global</code>，不再由 Agent Manager 直接调用 legacy <code>loomAgentClient.listSessions</code> 形成第二套 membership/order 事实源。</p>
+      <p>Review flow 在元数据关联失败时的回滚也直接调用统一 ACP <code>deleteSession</code> action；旧 <code>loomAgentClient.deleteSession</code> 名称不再出现在 session 删除旁路中，失败告警和原始关联错误传播语义保持不变。</p>
+      <p>runtime endpoint switch 在 ACP 模式跳过无意义的 Express <code>oc_url_token</code> mint，避免切换/重连路径产生预期的 ACP rejection 和未处理 promise；runtime-switch/review-flow 回归共 7/7 通过。</p>
+      <p>最新 Loom wire 复验使用独立 <code>target/session-list-build/debug/loom.exe</code>：<code>e2e_session_list</code> canonical 与 <code>LOOM_SESSION_LIST_EXPECT_LEGACY=1</code> legacy 分支各 1/1 通过；直接使用被锁的默认 <code>target/debug/loom.exe</code> 会在第二页返回 <code>snapshot_expired</code>，因此不作为当前源码证据。Loom <code>cargo test -p loom-acp --lib</code> 并行运行当前为 602/602 通过，<code>cargo clippy -p loom-acp --lib -- -D warnings</code> 也通过。</p>
+      <p>兼容 runner manifest 现在为每次 binary 记录 <code>binarySha256</code>、<code>binarySizeBytes</code> 与 <code>sameBinaryAsEarlierRun</code>，CI validator 会拒绝缺失/非法 identity；本地同 binary 双模式复验明确生成相同 hash/重复标记，证明它只是 runner/legacy 分支回归，不会冒充真实历史版本矩阵。</p>
+    </article>
+  </main>
+</body>
+</html>
