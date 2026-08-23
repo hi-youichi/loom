@@ -24,11 +24,7 @@ impl SessionBindings {
     }
 
     /// Bind a newly-created session to a connection. Returns true if this is a new binding.
-    pub fn bind_new_session(
-        &self,
-        session_id: SessionId,
-        connection_id: ConnectionId,
-    ) -> bool {
+    pub fn bind_new_session(&self, session_id: SessionId, connection_id: ConnectionId) -> bool {
         self.add_connection_to_session(&session_id, connection_id)
     }
 
@@ -40,7 +36,7 @@ impl SessionBindings {
         connection_id: ConnectionId,
     ) -> bool {
         let mut state = self.inner.write().unwrap_or_else(|e| e.into_inner());
-        
+
         // Add connection to session's connection set
         let is_new = state
             .session_to_connections
@@ -65,7 +61,7 @@ impl SessionBindings {
         connection_id: &ConnectionId,
     ) -> bool {
         let mut state = self.inner.write().unwrap_or_else(|e| e.into_inner());
-        
+
         // Remove connection from session's connection set
         let was_bound = state
             .session_to_connections
@@ -150,7 +146,7 @@ impl SessionBindings {
     /// Remove a session from all connections. Returns connections that were bound.
     pub fn unbind_session(&self, session_id: &SessionId) -> Vec<ConnectionId> {
         let mut state = self.inner.write().unwrap_or_else(|e| e.into_inner());
-        
+
         let connections = state
             .session_to_connections
             .remove(session_id)
@@ -176,7 +172,7 @@ impl SessionBindings {
             .connection_to_sessions
             .remove(connection_id)
             .unwrap_or_default();
-        
+
         // Remove this connection from all session sets
         for session_id in &sessions {
             if let Some(connections) = state.session_to_connections.get_mut(session_id) {
@@ -186,7 +182,7 @@ impl SessionBindings {
                 }
             }
         }
-        
+
         sessions.into_iter().collect()
     }
 
@@ -212,14 +208,17 @@ mod tests {
     fn test_multi_connection_binding() {
         let bindings = SessionBindings::new();
         let session = SessionId::new("session-a");
-        
+
         // Bind first connection
         assert!(bindings.bind_new_session(session.clone(), "connection-a".into()));
-        assert_eq!(bindings.connections_for(&session), vec!["connection-a".to_string()]);
-        
+        assert_eq!(
+            bindings.connections_for(&session),
+            vec!["connection-a".to_string()]
+        );
+
         // Bind second connection - should succeed
         assert!(bindings.add_connection_to_session(&session, "connection-b".into()));
-        
+
         let conns = bindings.connections_for(&session);
         assert_eq!(conns.len(), 2);
         assert!(conns.contains(&"connection-a".into()));
@@ -230,9 +229,9 @@ mod tests {
     fn test_connection_bound_check() {
         let bindings = SessionBindings::new();
         let session = SessionId::new("session-a");
-        
+
         bindings.add_connection_to_session(&session, "connection-a".into());
-        
+
         assert!(bindings.is_connection_bound_to_session(&session, &"connection-a".into()));
         assert!(!bindings.is_connection_bound_to_session(&session, &"connection-b".into()));
     }
@@ -241,16 +240,16 @@ mod tests {
     fn test_remove_connection_from_session() {
         let bindings = SessionBindings::new();
         let session = SessionId::new("session-a");
-        
+
         bindings.add_connection_to_session(&session, "connection-a".into());
         bindings.add_connection_to_session(&session, "connection-b".into());
-        
+
         // Remove one connection
         assert!(bindings.remove_connection_from_session(&session, &"connection-a".into()));
-        
+
         let conns = bindings.connections_for(&session);
         assert_eq!(conns, vec!["connection-b".to_string()]);
-        
+
         // Session should still be bound
         assert!(bindings.is_session_bound(&session));
     }
@@ -259,10 +258,10 @@ mod tests {
     fn test_unbind_session_removes_all_connections() {
         let bindings = SessionBindings::new();
         let session = SessionId::new("session-a");
-        
+
         bindings.add_connection_to_session(&session, "connection-a".into());
         bindings.add_connection_to_session(&session, "connection-b".into());
-        
+
         let removed = bindings.unbind_session(&session);
         assert_eq!(removed.len(), 2);
         assert!(!bindings.is_session_bound(&session));
@@ -274,10 +273,10 @@ mod tests {
         let bindings = SessionBindings::new();
         let session_a = SessionId::new("session-a");
         let session_b = SessionId::new("session-b");
-        
+
         bindings.add_connection_to_session(&session_a, "connection-a".into());
         bindings.add_connection_to_session(&session_b, "connection-a".into());
-        
+
         let removed = bindings.unbind_connection("connection-a");
         assert_eq!(removed.len(), 2);
         assert!(!bindings.is_session_bound(&session_a));
@@ -288,15 +287,21 @@ mod tests {
     fn test_legacy_compatibility() {
         let bindings = SessionBindings::new();
         let session = SessionId::new("session-a");
-        
+
         // Test legacy bind_new_session behavior
         bindings.bind_new_session(session.clone(), "connection-a".into());
-        assert_eq!(bindings.connection_for(&session), Some("connection-a".into()));
-        
-        // Test legacy rebind_session behavior  
+        assert_eq!(
+            bindings.connection_for(&session),
+            Some("connection-a".into())
+        );
+
+        // Test legacy rebind_session behavior
         let prev = bindings.rebind_session(&session, "connection-b".into());
         assert_eq!(prev, Some("connection-a".into()));
-        assert_eq!(bindings.connection_for(&session), Some("connection-b".into()));
+        assert_eq!(
+            bindings.connection_for(&session),
+            Some("connection-b".into())
+        );
         assert!(bindings.connections_for(&session).len() == 1); // Should only have one after rebind
     }
 
@@ -305,7 +310,7 @@ mod tests {
         let bindings = Arc::new(SessionBindings::new());
         let session = SessionId::new("session-a");
         let mut threads = Vec::new();
-        
+
         for index in 0..4 {
             let bindings = bindings.clone();
             let session = session.clone();
@@ -313,7 +318,7 @@ mod tests {
                 bindings.add_connection_to_session(&session, format!("connection-{index}"));
             }));
         }
-        
+
         for thread in threads {
             thread.join().unwrap();
         }
@@ -321,10 +326,12 @@ mod tests {
         // All connections should be bound
         let conns = bindings.connections_for(&session);
         assert_eq!(conns.len(), 4);
-        
+
         // Each connection should see the session
         for index in 0..4 {
-            assert!(bindings.sessions_for(&format!("connection-{index}")).contains(&session));
+            assert!(bindings
+                .sessions_for(&format!("connection-{index}"))
+                .contains(&session));
         }
     }
 }

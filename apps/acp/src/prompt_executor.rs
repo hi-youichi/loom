@@ -73,7 +73,9 @@ impl AcpPromptExecutor for DeterministicPromptExecutor {
         );
 
         let serialized = serde_json::to_string(&request.prompt).unwrap_or_default();
-        if serialized.contains("SLOW") {
+        if serialized.contains("SLOW_E2E") {
+            tokio::time::sleep(std::time::Duration::from_millis(1_500)).await;
+        } else if serialized.contains("SLOW") {
             tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         }
         if cancellation.token().is_cancelled() {
@@ -81,17 +83,24 @@ impl AcpPromptExecutor for DeterministicPromptExecutor {
         }
 
         let text = format!("deterministic:{}", session_id.as_str());
-        router
-            .send(SessionNotification::new(
-                request.session_id,
-                SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
-                    TextContent::new(text),
-                ))),
-            ))
-            .await
-            .map_err(|error| {
+        let notification = SessionNotification::new(
+            request.session_id,
+            SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
+                TextContent::new(text),
+            ))),
+        );
+        if let Some(sender) = &agent.session_update_tx {
+            sender
+                .send(crate::stream_bridge::SessionUpdateEnvelope::Session(notification))
+                .await
+                .map_err(|error| {
+                    agent_client_protocol::Error::internal_error().data(error.to_string())
+                })?;
+        } else {
+            router.send(notification).await.map_err(|error| {
                 agent_client_protocol::Error::internal_error().data(error.to_string())
             })?;
+        }
         Ok(PromptResponse::new(StopReason::EndTurn))
     }
 }

@@ -48,7 +48,9 @@ fn device_client_id() -> String {
 #[allow(dead_code)]
 fn active_token(state: &State) -> Option<String> {
     let _ = state;
-    std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.trim().is_empty())
+    std::env::var("GITHUB_TOKEN")
+        .ok()
+        .filter(|t| !t.trim().is_empty())
 }
 
 impl GithubHandler {

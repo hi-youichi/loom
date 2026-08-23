@@ -811,13 +811,18 @@ impl SessionNotifier {
     ///
     /// Returns `None` for System messages and empty assistant turns — they
     /// carry nothing user-visible for a replaying client.
-    pub fn message_session_updates(message: &Message) -> Option<Vec<SessionUpdate>> {
+    pub fn message_session_updates(
+        session_id: &str,
+        message_index: usize,
+        message: &Message,
+    ) -> Option<Vec<SessionUpdate>> {
+        let message_id = MessageId::new(format!("history:{session_id}:{message_index}"));
         match message {
             Message::User(content) => Some(vec![SessionUpdate::UserMessageChunk(
                 ContentChunk::new(ContentBlock::Text(TextContent::new(
                     content.as_text().to_string(),
                 )))
-                .message_id(Some(MessageId::new(Uuid::new_v4().to_string()))),
+                .message_id(Some(message_id)),
             )]),
             Message::Assistant(payload) => {
                 let is_empty_assistant = payload.content.trim().is_empty()
@@ -839,14 +844,13 @@ impl SessionNotifier {
                     if !reasoning.trim().is_empty() {
                         updates.push(SessionUpdate::AgentThoughtChunk(
                             ContentChunk::new(reasoning.clone().into())
-                                .message_id(Some(MessageId::new(Uuid::new_v4().to_string()))),
+                                .message_id(Some(message_id.clone())),
                         ));
                     }
                 }
 
                 updates.push(SessionUpdate::AgentMessageChunk(
-                    ContentChunk::new(payload.content.clone().into())
-                        .message_id(Some(MessageId::new(Uuid::new_v4().to_string()))),
+                    ContentChunk::new(payload.content.clone().into()).message_id(Some(message_id)),
                 ));
 
                 for tc in &payload.tool_calls {
@@ -891,7 +895,7 @@ impl SessionNotifier {
         }
     }
 
-    pub async fn send_history(&self, messages: &[Message]) {
+    pub async fn send_history(&self, messages: &[Message], start_index: usize) {
         tracing::debug!(
             session_id = %self.session_id,
             total_messages = messages.len(),
@@ -932,7 +936,12 @@ impl SessionNotifier {
                 Message::Tool { .. } => "tool",
                 Message::System(_) => "system",
             };
-            let updates = match Self::message_session_updates(message) {
+            let stable_index = start_index + idx;
+            let updates = match Self::message_session_updates(
+                &self.session_id.to_string(),
+                stable_index,
+                message,
+            ) {
                 Some(updates) => updates,
                 None => {
                     if matches!(message, Message::System(_)) {
@@ -944,7 +953,7 @@ impl SessionNotifier {
 
             tracing::trace!(
                 session_id = %self.session_id,
-                index = idx,
+                index = stable_index,
                 msg_type = msg_type,
                 notification_count = updates.len(),
                 "Replaying history message"
@@ -1566,6 +1575,25 @@ mod token_usage_meta_tests {
         assert!(
             !has_token_usage,
             "_meta.token_usage must not be present without acc"
+        );
+    }
+
+    #[test]
+    fn history_message_identity_is_stable_and_index_scoped() {
+        let message = Message::user("same content");
+        let first =
+            SessionNotifier::message_session_updates("session-a", 7, &message).expect("updates");
+        let repeated =
+            SessionNotifier::message_session_updates("session-a", 7, &message).expect("updates");
+        let other_index =
+            SessionNotifier::message_session_updates("session-a", 8, &message).expect("updates");
+        assert_eq!(
+            serde_json::to_value(&first).expect("serialize"),
+            serde_json::to_value(&repeated).expect("serialize")
+        );
+        assert_ne!(
+            serde_json::to_value(&first).expect("serialize"),
+            serde_json::to_value(&other_index).expect("serialize")
         );
     }
 }

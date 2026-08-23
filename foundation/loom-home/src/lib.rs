@@ -21,10 +21,7 @@ pub fn set_override(path: Option<PathBuf>) {
 
 /// The currently active override, if any.
 pub fn override_path() -> Option<PathBuf> {
-    OVERRIDE
-        .read()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone()
+    OVERRIDE.read().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 /// Returns the Loom home directory: the `--home` override if set, else

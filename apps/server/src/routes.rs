@@ -2,19 +2,11 @@
 
 use std::path::PathBuf;
 
-use axum::{
-    middleware,
-    routing::get,
-    Router,
-};
+use axum::{middleware, routing::get, Router};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
-use crate::auth::{
-    log_authorization_header,
-    record_acp_auth_verdict,
-    require_valid_token,
-};
+use crate::auth::{log_authorization_header, record_acp_auth_verdict, require_valid_token};
 use crate::handlers;
 use crate::state::SharedState;
 use crate::static_files;

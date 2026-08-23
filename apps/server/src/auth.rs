@@ -18,11 +18,7 @@
 
 use axum::{
     extract::Request,
-    http::{
-        header::COOKIE,
-        HeaderMap,
-        StatusCode,
-    },
+    http::{header::COOKIE, HeaderMap, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     Json,
@@ -104,7 +100,9 @@ fn loomdesk_data_dir() -> std::path::PathBuf {
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());
-    std::path::PathBuf::from(home).join(".config").join("loomdesk")
+    std::path::PathBuf::from(home)
+        .join(".config")
+        .join("loomdesk")
 }
 
 /// Read the configured Express JWT secret: `LOOMDESK_JWT_SECRET` /
@@ -140,10 +138,14 @@ fn ensure_jwt_secret_for_minting() -> Option<String> {
     if let Some(secret) = configured_jwt_secret() {
         return Some(secret);
     }
-    let secret = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
+    let secret = format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    );
     let dir = loomdesk_data_dir();
-    if let Err(error) = std::fs::create_dir_all(&dir)
-        .and_then(|_| std::fs::write(dir.join("jwt-secret"), &secret))
+    if let Err(error) =
+        std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(dir.join("jwt-secret"), &secret))
     {
         tracing::warn!(%error, "failed to persist generated JWT secret");
         return None;
@@ -162,14 +164,25 @@ fn verify_ui_password(candidate: &str) -> bool {
     let params = Params::new(14, 8, 1, 64).expect("scrypt params");
     // Two UUIDv4s = 32 bytes of crypto randomness in hex; uuid is already a
     // workspace dependency and this is only salt material.
-    let salt = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple())
-        .into_bytes();
+    let salt = format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    )
+    .into_bytes();
     let mut expected_hash = [0u8; 64];
     if scrypt(expected.as_bytes(), &salt, &params, &mut expected_hash).is_err() {
         return false;
     }
     let mut candidate_hash = [0u8; 64];
-    if scrypt(candidate.trim().as_bytes(), &salt, &params, &mut candidate_hash).is_err() {
+    if scrypt(
+        candidate.trim().as_bytes(),
+        &salt,
+        &params,
+        &mut candidate_hash,
+    )
+    .is_err()
+    {
         return false;
     }
     token_eq(&expected_hash, &candidate_hash)
@@ -227,13 +240,27 @@ pub fn attempt_ui_login(password: &str, trust_device: bool, peer_ip: &str) -> Lo
     }
     if !verify_ui_password(password) {
         login_rate_record_failure(peer_ip);
-        return LoginOutcome { ok: false, session_token: None, expires_at_unix: None, retry_after_secs: None };
+        return LoginOutcome {
+            ok: false,
+            session_token: None,
+            expires_at_unix: None,
+            retry_after_secs: None,
+        };
     }
     login_rate_clear(peer_ip);
-    let ttl = if trust_device { TRUSTED_DEVICE_TTL_SECS } else { SESSION_TTL_SECS };
+    let ttl = if trust_device {
+        TRUSTED_DEVICE_TTL_SECS
+    } else {
+        SESSION_TTL_SECS
+    };
     let Some(secret) = ensure_jwt_secret_for_minting() else {
         tracing::error!("password login succeeded but no JWT secret available");
-        return LoginOutcome { ok: false, session_token: None, expires_at_unix: None, retry_after_secs: None };
+        return LoginOutcome {
+            ok: false,
+            session_token: None,
+            expires_at_unix: None,
+            retry_after_secs: None,
+        };
     };
     let token = mint_ui_session_jwt(&secret, ttl);
     LoginOutcome {
@@ -265,8 +292,9 @@ struct RateRecord {
     locked_until_ms: Option<u64>,
 }
 
-static LOGIN_RATE_LIMITS: std::sync::LazyLock<parking_lot::Mutex<std::collections::HashMap<String, RateRecord>>> =
-    std::sync::LazyLock::new(|| parking_lot::Mutex::new(std::collections::HashMap::new()));
+static LOGIN_RATE_LIMITS: std::sync::LazyLock<
+    parking_lot::Mutex<std::collections::HashMap<String, RateRecord>>,
+> = std::sync::LazyLock::new(|| parking_lot::Mutex::new(std::collections::HashMap::new()));
 
 fn now_ms() -> u64 {
     chrono::Utc::now().timestamp_millis().max(0) as u64
@@ -330,9 +358,7 @@ fn login_rate_clear(peer_ip: &str) {
     LOGIN_RATE_LIMITS.lock().remove(peer_ip);
 }
 
-fn sweep_stale_records(
-    limits: &mut std::collections::HashMap<String, RateRecord>,
-) {
+fn sweep_stale_records(limits: &mut std::collections::HashMap<String, RateRecord>) {
     let now = now_ms();
     limits.retain(|_, record| {
         let expired = record.locked_until_ms.is_some_and(|until| now >= until);
@@ -367,7 +393,11 @@ fn ui_session_cookie_from_headers(headers: &HeaderMap) -> Option<&str> {
         .get(COOKIE)
         .and_then(|value| value.to_str().ok())?
         .split(';')
-        .filter_map(|part| part.trim().strip_prefix(UI_SESSION_COOKIE).and_then(|rest| rest.strip_prefix('=')))
+        .filter_map(|part| {
+            part.trim()
+                .strip_prefix(UI_SESSION_COOKIE)
+                .and_then(|rest| rest.strip_prefix('='))
+        })
         .next()
 }
 
@@ -384,11 +414,7 @@ fn is_valid_ui_session(cookie_value: &str, secret: &str) -> bool {
         &jsonwebtoken::DecodingKey::from_secret(secret.as_bytes()),
         &validation,
     ) {
-        Ok(data) => data
-            .claims
-            .get("type")
-            .and_then(|claim| claim.as_str())
-            == Some("ui-session"),
+        Ok(data) => data.claims.get("type").and_then(|claim| claim.as_str()) == Some("ui-session"),
         Err(_) => false,
     }
 }
@@ -422,9 +448,7 @@ pub fn credentials_valid(headers: &HeaderMap) -> bool {
     }
 
     if let Some(expected) = &loom_token {
-        let header = headers
-            .get(AUTHORIZATION)
-            .and_then(|v| v.to_str().ok());
+        let header = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok());
         if let Some(provided) = bearer_from_header(header) {
             if token_eq(provided.as_bytes(), expected.as_bytes()) {
                 return true;
@@ -507,8 +531,16 @@ mod tests {
     #[test]
     fn ui_session_cookie_is_extracted_from_cookie_header() {
         let mut headers = HeaderMap::new();
-        headers.insert(COOKIE, "other=1; oc_ui_session=abc.def.ghi; more=2".parse().unwrap());
-        assert_eq!(ui_session_cookie_from_headers(&headers), Some("abc.def.ghi"));
+        headers.insert(
+            COOKIE,
+            "other=1; oc_ui_session=abc.def.ghi; more=2"
+                .parse()
+                .unwrap(),
+        );
+        assert_eq!(
+            ui_session_cookie_from_headers(&headers),
+            Some("abc.def.ghi")
+        );
     }
 
     #[test]

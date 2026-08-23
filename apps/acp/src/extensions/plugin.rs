@@ -19,9 +19,7 @@ fn param_str(params: &Value, key: &str) -> Option<String> {
 fn require_param(params: &Value, key: &str) -> Result<String, ExtensionError> {
     param_str(params, key)
         .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| {
-            ExtensionError::invalid_params(format!("missing required parameter: {key}"))
-        })
+        .ok_or_else(|| ExtensionError::invalid_params(format!("missing required parameter: {key}")))
 }
 
 fn internal(message: impl Into<String>) -> ExtensionError {
@@ -92,9 +90,9 @@ fn valid_plugin_file_name(name: &str) -> bool {
         .chars()
         .next()
         .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
-    let body_ok = lower.chars().all(|c| {
-        c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_' | '.')
-    });
+    let body_ok = lower
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_' | '.'));
     let ext_ok = [".js", ".ts", ".mjs", ".cjs"]
         .iter()
         .any(|ext| lower.ends_with(ext));
@@ -231,11 +229,10 @@ impl PluginHandler {
         let wd = store::working_dir_or_error(ctx).map_err(|e| internal(e.message))?;
         let layers = store::read_config_layers(Some(&wd)).map_err(|e| internal(e.message))?;
         let mut existing = plugin_entries(&layers);
-        if existing
-            .iter()
-            .any(|e| matches!(e, Value::String(s) if *s == spec)
-                || matches!(e, Value::Array(p) if !p.is_empty() && p[0].as_str() == Some(&spec)))
-        {
+        if existing.iter().any(|e| {
+            matches!(e, Value::String(s) if *s == spec)
+                || matches!(e, Value::Array(p) if !p.is_empty() && p[0].as_str() == Some(&spec))
+        }) {
             return Err(ExtensionError::conflict(format!(
                 "plugin already configured: {spec}"
             )));
@@ -396,10 +393,7 @@ impl PluginHandler {
         Ok(mutation_envelope("Plugin file deleted."))
     }
 
-    async fn registry(
-        &self,
-        params: &Value,
-    ) -> Result<Value, ExtensionError> {
+    async fn registry(&self, params: &Value) -> Result<Value, ExtensionError> {
         let specs: Vec<String> = params
             .get("specs")
             .and_then(|v| v.as_array())
@@ -549,9 +543,7 @@ impl ExtensionHandler for PluginHandler {
             }
             "entry_create" => self.entry_create(ctx, &params),
             "entry_update" => self.entry_update(ctx, &params),
-            "entry_delete" => {
-                self.entry_delete(ctx, &params)
-            }
+            "entry_delete" => self.entry_delete(ctx, &params),
             "file_read" => {
                 let id = require_param(&params, "id")?;
                 self.file_read(ctx, &id)

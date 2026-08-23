@@ -219,6 +219,7 @@ pub mod session;
 pub mod session_bindings;
 pub mod session_config_store;
 pub mod session_repository;
+pub mod session_sync;
 pub mod stdio_loop;
 pub mod stream_bridge;
 pub mod terminal;

@@ -271,13 +271,13 @@ impl TerminalExtHandler {
     async fn output(&self, params: Value) -> Result<Value, ExtensionError> {
         let terminal_id = require_param_str(&params, "terminalId")?;
         let actual_id = self.actual_session_id(&terminal_id).await;
-        let (full, truncated, status) = self
-            .terminal_mgr
-            .get_output(&actual_id)
-            .await
-            .ok_or_else(|| {
-                ExtensionError::not_found(format!("terminal not found: {terminal_id}"))
-            })?;
+        let (full, truncated, status) =
+            self.terminal_mgr
+                .get_output(&actual_id)
+                .await
+                .ok_or_else(|| {
+                    ExtensionError::not_found(format!("terminal not found: {terminal_id}"))
+                })?;
         let from = params
             .get("fromIndex")
             .and_then(|v| v.as_u64())
@@ -367,9 +367,9 @@ fn param_str(params: &Value, key: &str) -> Option<String> {
 }
 
 fn require_param_str(params: &Value, key: &str) -> Result<String, ExtensionError> {
-    param_str(params, key).filter(|s| !s.trim().is_empty()).ok_or_else(|| {
-        ExtensionError::invalid_params(format!("missing required parameter: {key}"))
-    })
+    param_str(params, key)
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| ExtensionError::invalid_params(format!("missing required parameter: {key}")))
 }
 
 fn default_true() -> bool {

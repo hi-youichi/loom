@@ -6,14 +6,25 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let port = std::env::args()
-        .skip_while(|arg| arg != "--port")
+    let args = std::env::args().collect::<Vec<_>>();
+    let port = args
+        .iter()
+        .skip_while(|arg| arg.as_str() != "--port")
         .nth(1)
         .and_then(|value| value.parse::<u16>().ok())
         .unwrap_or(0);
-    let runtime = loom_acp::runtime::AcpRuntime::with_prompt_executor(Arc::new(
-        loom_acp::prompt_executor::DeterministicPromptExecutor,
-    ))?;
+    let db_path = args
+        .iter()
+        .skip_while(|arg| arg.as_str() != "--db-path")
+        .nth(1)
+        .map(std::path::PathBuf::from);
+    let executor = Arc::new(loom_acp::prompt_executor::DeterministicPromptExecutor);
+    let runtime = match db_path {
+        Some(path) => loom_acp::runtime::AcpRuntime::with_prompt_executor_and_db_path(
+            executor, path,
+        )?,
+        None => loom_acp::runtime::AcpRuntime::with_prompt_executor(executor)?,
+    };
     let hub = Arc::new(loom_server::acp_hub::AcpHub::with_runtime(
         loom_server::acp_hub::AcpHubConfig::default(),
         runtime,
@@ -23,6 +34,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let listener = TcpListener::bind(("127.0.0.1", port)).await?;
     let address = listener.local_addr()?;
     println!("ACP_TEST_SERVER_URL=ws://{address}/acp");
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }

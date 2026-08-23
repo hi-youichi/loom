@@ -39,8 +39,14 @@ fn path_string(path: &std::path::Path) -> Value {
 }
 
 fn project_agent_path(wd: &std::path::Path, name: &str) -> PathBuf {
-    let plural = wd.join(store::LOOMDESK_DIR_NAME).join("agents").join(format!("{name}.md"));
-    let legacy = wd.join(store::LOOMDESK_DIR_NAME).join("agent").join(format!("{name}.md"));
+    let plural = wd
+        .join(store::LOOMDESK_DIR_NAME)
+        .join("agents")
+        .join(format!("{name}.md"));
+    let legacy = wd
+        .join(store::LOOMDESK_DIR_NAME)
+        .join("agent")
+        .join(format!("{name}.md"));
     if legacy.is_file() && !plural.is_file() {
         legacy
     } else {
@@ -49,7 +55,9 @@ fn project_agent_path(wd: &std::path::Path, name: &str) -> PathBuf {
 }
 
 fn user_agent_flat_path(name: &str) -> Result<PathBuf, store::StoreError> {
-    Ok(store::loomdesk_config_dir()?.join("agents").join(format!("{name}.md")))
+    Ok(store::loomdesk_config_dir()?
+        .join("agents")
+        .join(format!("{name}.md")))
 }
 
 fn user_agent_legacy_path(name: &str) -> Result<PathBuf, store::StoreError> {
@@ -106,10 +114,7 @@ fn md_sources_payload(
     }
 }
 
-fn json_sources_payload(
-    source: &store::JsonEntrySource,
-    layers: &store::ConfigLayers,
-) -> Value {
+fn json_sources_payload(source: &store::JsonEntrySource, layers: &store::ConfigLayers) -> Value {
     let path = source
         .path
         .clone()
@@ -283,7 +288,12 @@ fn agent_permission_source(
             } else {
                 "user"
             };
-            return Ok(("json".into(), Some(scope.into()), source.path.clone(), source.section.clone()));
+            return Ok((
+                "json".into(),
+                Some(scope.into()),
+                source.path.clone(),
+                source.section.clone(),
+            ));
         }
     }
 
@@ -423,7 +433,10 @@ fn update_entity(
                 .unwrap_or_else(|| layers.user_path.clone()),
         )
     } else {
-        store::get_json_write_target(&layers, prefer_project_json && wd.join(store::LOOMDESK_DIR_NAME).exists())
+        store::get_json_write_target(
+            &layers,
+            prefer_project_json && wd.join(store::LOOMDESK_DIR_NAME).exists(),
+        )
     };
 
     let is_builtin_override = !md_exists && !has_json_fields;
@@ -481,7 +494,10 @@ fn update_entity(
                 .and_then(|s| s.get(body_field))
                 .cloned();
             if store::is_prompt_file_reference(json_body.as_ref()) {
-                let reference = json_body.as_ref().and_then(|v| v.as_str()).unwrap_or_default();
+                let reference = json_body
+                    .as_ref()
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
                 if let Some(file_path) = store::resolve_prompt_file_path(reference) {
                     store::write_prompt_file(&file_path, &normalized)?;
                 }
@@ -550,13 +566,7 @@ fn update_entity(
                     md_modified = true;
                 }
             } else {
-                merge_json_field(
-                    &mut json_config,
-                    section_key,
-                    name,
-                    "permission",
-                    merged,
-                );
+                merge_json_field(&mut json_config, section_key, name, "permission", merged);
                 json_modified = true;
             }
             continue;
@@ -641,12 +651,7 @@ fn merge_json_field(
     merge_json_entry(config, section_key, name, &Value::Object(map));
 }
 
-fn merge_json_entry(
-    config: &mut Map<String, Value>,
-    section_key: &str,
-    name: &str,
-    entry: &Value,
-) {
+fn merge_json_entry(config: &mut Map<String, Value>, section_key: &str, name: &str, entry: &Value) {
     let existing = config
         .get(section_key)
         .and_then(|s| s.get(name).cloned())
@@ -725,7 +730,11 @@ fn create_entity(
     Ok(())
 }
 
-fn delete_agent(ctx: &ExtensionContext, name: &str, scope: Option<&str>) -> Result<(), store::StoreError> {
+fn delete_agent(
+    ctx: &ExtensionContext,
+    name: &str,
+    scope: Option<&str>,
+) -> Result<(), store::StoreError> {
     let wd = store::working_dir_or_error(ctx)?;
     store::validate_entity_name(name)?;
 
@@ -753,11 +762,7 @@ fn delete_agent(ctx: &ExtensionContext, name: &str, scope: Option<&str>) -> Resu
     let source = store::get_json_entry_source(&layers, store::JSON_SECTION_AGENT, name);
     if source.exists {
         if let (Some(mut config), Some(path)) = (source.config.clone(), source.path.clone()) {
-            if store::section_remove_entry(
-                &mut config,
-                store::JSON_SECTION_AGENT,
-                name,
-            ) {
+            if store::section_remove_entry(&mut config, store::JSON_SECTION_AGENT, name) {
                 store::write_config(&config, &path)?;
                 return Ok(());
             }
@@ -808,11 +813,7 @@ fn delete_command(ctx: &ExtensionContext, name: &str) -> Result<(), store::Store
     let source = store::get_json_entry_source(&layers, store::JSON_SECTION_COMMAND, name);
     if source.exists {
         if let (Some(mut config), Some(path)) = (source.config.clone(), source.path.clone()) {
-            if store::section_remove_entry(
-                &mut config,
-                store::JSON_SECTION_COMMAND,
-                name,
-            ) {
+            if store::section_remove_entry(&mut config, store::JSON_SECTION_COMMAND, name) {
                 store::write_config(&config, &path)?;
                 deleted = true;
             }
@@ -960,10 +961,7 @@ fn snippet_json(snippet: &Snippet) -> Value {
     })
 }
 
-fn writable_snippet_dir(
-    ctx: &ExtensionContext,
-    scope: &str,
-) -> Result<PathBuf, store::StoreError> {
+fn writable_snippet_dir(ctx: &ExtensionContext, scope: &str) -> Result<PathBuf, store::StoreError> {
     if scope == "project" {
         let wd = store::working_dir_or_error(ctx)?;
         let preferred = wd.join(".loom").join("snippet");
@@ -983,7 +981,12 @@ fn writable_snippet_dir(
     }
 }
 
-fn write_snippet_file(path: &std::path::Path, content: &str, aliases: &[String], description: Option<&str>) -> Result<(), store::StoreError> {
+fn write_snippet_file(
+    path: &std::path::Path,
+    content: &str,
+    aliases: &[String],
+    description: Option<&str>,
+) -> Result<(), store::StoreError> {
     let mut frontmatter = Map::new();
     let normalized: Vec<String> = aliases
         .iter()
@@ -1007,10 +1010,7 @@ fn write_snippet_file(path: &std::path::Path, content: &str, aliases: &[String],
         let yaml_str = serde_yaml::to_string(&{
             let mut m = serde_yaml::Mapping::new();
             for (k, v) in &frontmatter {
-                m.insert(
-                    serde_yaml::Value::String(k.clone()),
-                    json_value_to_yaml(v),
-                );
+                m.insert(serde_yaml::Value::String(k.clone()), json_value_to_yaml(v));
             }
             serde_yaml::Value::Mapping(m)
         })
@@ -1047,26 +1047,20 @@ fn json_value_to_yaml(value: &Value) -> serde_yaml::Value {
             }
         }
         Value::String(s) => serde_yaml::Value::String(s.clone()),
-        Value::Array(items) => serde_yaml::Value::Sequence(
-            items.iter().map(json_value_to_yaml).collect(),
-        ),
+        Value::Array(items) => {
+            serde_yaml::Value::Sequence(items.iter().map(json_value_to_yaml).collect())
+        }
         Value::Object(map) => {
             let mut out = serde_yaml::Mapping::new();
             for (k, v) in map {
-                out.insert(
-                    serde_yaml::Value::String(k.clone()),
-                    json_value_to_yaml(v),
-                );
+                out.insert(serde_yaml::Value::String(k.clone()), json_value_to_yaml(v));
             }
             serde_yaml::Value::Mapping(out)
         }
     }
 }
 
-fn find_snippet<'a>(
-    registry: &'a HashMap<String, Snippet>,
-    name: &str,
-) -> Option<&'a Snippet> {
+fn find_snippet<'a>(registry: &'a HashMap<String, Snippet>, name: &str) -> Option<&'a Snippet> {
     registry.get(&name.to_lowercase())
 }
 
@@ -1150,17 +1144,14 @@ fn expand_text(
                 let mut j = i + 1;
                 let mut name = String::new();
                 while j < chars.len()
-                    && (chars[j].is_ascii_alphanumeric()
-                        || chars[j] == '_'
-                        || chars[j] == '-')
+                    && (chars[j].is_ascii_alphanumeric() || chars[j] == '_' || chars[j] == '-')
                 {
                     name.push(chars[j]);
                     j += 1;
                 }
                 if !name.is_empty() {
-                    let is_skill_call = name.eq_ignore_ascii_case("skill")
-                        && j < chars.len()
-                        && chars[j] == '(';
+                    let is_skill_call =
+                        name.eq_ignore_ascii_case("skill") && j < chars.len() && chars[j] == '(';
                     if !is_skill_call {
                         if let Some(snippet) = registry.get(&name.to_lowercase()) {
                             let key = snippet.name.to_lowercase();
@@ -1172,29 +1163,17 @@ fn expand_text(
                                 let (inline, prepend_blocks, append_blocks) =
                                     parse_snippet_blocks(&snippet.content);
                                 for block in &prepend_blocks {
-                                    let expanded = expand_text(
-                                        block,
-                                        registry,
-                                        expansion_counts,
-                                        collector,
-                                    );
+                                    let expanded =
+                                        expand_text(block, registry, expansion_counts, collector);
                                     collector.prepend.push(expanded);
                                 }
                                 for block in &append_blocks {
-                                    let expanded = expand_text(
-                                        block,
-                                        registry,
-                                        expansion_counts,
-                                        collector,
-                                    );
+                                    let expanded =
+                                        expand_text(block, registry, expansion_counts, collector);
                                     collector.append.push(expanded);
                                 }
-                                let expanded_inline = expand_text(
-                                    &inline,
-                                    registry,
-                                    expansion_counts,
-                                    collector,
-                                );
+                                let expanded_inline =
+                                    expand_text(&inline, registry, expansion_counts, collector);
                                 result.push_str(&current[last..i]);
                                 result.push_str(&expanded_inline);
                                 last = j;
@@ -1251,22 +1230,43 @@ impl ExtensionHandler for ConfigEntityHandler {
             "agents_sources" | "commands_sources" => {
                 let name = store::params_str_required(&params, "name")?;
                 if method == "agents_sources" {
-                    entity_sources(ctx, &name, store::JSON_SECTION_AGENT, |wd| project_agent_path(wd, &name), user_agent_path, "prompt")
+                    entity_sources(
+                        ctx,
+                        &name,
+                        store::JSON_SECTION_AGENT,
+                        |wd| project_agent_path(wd, &name),
+                        user_agent_path,
+                        "prompt",
+                    )
                 } else {
                     entity_sources(
                         ctx,
                         &name,
                         store::JSON_SECTION_COMMAND,
                         |wd| {
-                            let plural = wd.join(store::LOOMDESK_DIR_NAME).join("commands").join(format!("{name}.md"));
-                            let legacy = wd.join(store::LOOMDESK_DIR_NAME).join("command").join(format!("{name}.md"));
-                            if legacy.is_file() && !plural.is_file() { legacy } else { plural }
+                            let plural = wd
+                                .join(store::LOOMDESK_DIR_NAME)
+                                .join("commands")
+                                .join(format!("{name}.md"));
+                            let legacy = wd
+                                .join(store::LOOMDESK_DIR_NAME)
+                                .join("command")
+                                .join(format!("{name}.md"));
+                            if legacy.is_file() && !plural.is_file() {
+                                legacy
+                            } else {
+                                plural
+                            }
                         },
                         |n| {
                             let config_dir = store::loomdesk_config_dir()?;
                             let plural = config_dir.join("commands").join(format!("{n}.md"));
                             let legacy = config_dir.join("command").join(format!("{n}.md"));
-                            if legacy.is_file() && !plural.is_file() { Ok(legacy) } else { Ok(plural) }
+                            if legacy.is_file() && !plural.is_file() {
+                                Ok(legacy)
+                            } else {
+                                Ok(plural)
+                            }
                         },
                         "template",
                     )
@@ -1304,15 +1304,29 @@ impl ExtensionHandler for ConfigEntityHandler {
                     scope.as_deref(),
                     "template",
                     |wd| {
-                        let plural = wd.join(store::LOOMDESK_DIR_NAME).join("commands").join(format!("{name}.md"));
-                        let legacy = wd.join(store::LOOMDESK_DIR_NAME).join("command").join(format!("{name}.md"));
-                        if legacy.is_file() && !plural.is_file() { legacy } else { plural }
+                        let plural = wd
+                            .join(store::LOOMDESK_DIR_NAME)
+                            .join("commands")
+                            .join(format!("{name}.md"));
+                        let legacy = wd
+                            .join(store::LOOMDESK_DIR_NAME)
+                            .join("command")
+                            .join(format!("{name}.md"));
+                        if legacy.is_file() && !plural.is_file() {
+                            legacy
+                        } else {
+                            plural
+                        }
                     },
                     |n| {
                         let config_dir = store::loomdesk_config_dir()?;
                         let plural = config_dir.join("commands").join(format!("{n}.md"));
                         let legacy = config_dir.join("command").join(format!("{n}.md"));
-                        if legacy.is_file() && !plural.is_file() { Ok(legacy) } else { Ok(plural) }
+                        if legacy.is_file() && !plural.is_file() {
+                            Ok(legacy)
+                        } else {
+                            Ok(plural)
+                        }
                     },
                 )?;
                 Ok(store::mutation_envelope(&format!(
@@ -1345,15 +1359,29 @@ impl ExtensionHandler for ConfigEntityHandler {
                     &name,
                     store::JSON_SECTION_COMMAND,
                     |wd| {
-                        let plural = wd.join(store::LOOMDESK_DIR_NAME).join("commands").join(format!("{name}.md"));
-                        let legacy = wd.join(store::LOOMDESK_DIR_NAME).join("command").join(format!("{name}.md"));
-                        if legacy.is_file() && !plural.is_file() { legacy } else { plural }
+                        let plural = wd
+                            .join(store::LOOMDESK_DIR_NAME)
+                            .join("commands")
+                            .join(format!("{name}.md"));
+                        let legacy = wd
+                            .join(store::LOOMDESK_DIR_NAME)
+                            .join("command")
+                            .join(format!("{name}.md"));
+                        if legacy.is_file() && !plural.is_file() {
+                            legacy
+                        } else {
+                            plural
+                        }
                     },
                     |n| {
                         let config_dir = store::loomdesk_config_dir()?;
                         let plural = config_dir.join("commands").join(format!("{n}.md"));
                         let legacy = config_dir.join("command").join(format!("{n}.md"));
-                        if legacy.is_file() && !plural.is_file() { Ok(legacy) } else { Ok(plural) }
+                        if legacy.is_file() && !plural.is_file() {
+                            Ok(legacy)
+                        } else {
+                            Ok(plural)
+                        }
                     },
                     "template",
                     &updates,
@@ -1433,7 +1461,9 @@ impl ExtensionHandler for ConfigEntityHandler {
                 write_snippet_file(&path, &content, &aliases, description.as_deref())?;
                 let registry = load_snippet_registry(ctx)?;
                 match find_snippet(&registry, &name) {
-                    Some(snippet) => Ok(json!({ "success": true, "snippet": snippet_json(snippet) })),
+                    Some(snippet) => {
+                        Ok(json!({ "success": true, "snippet": snippet_json(snippet) }))
+                    }
                     None => Err(store::StoreError::internal("snippet vanished after write")),
                 }
             }
@@ -1472,7 +1502,9 @@ impl ExtensionHandler for ConfigEntityHandler {
                 )?;
                 let registry = load_snippet_registry(ctx)?;
                 match find_snippet(&registry, &name) {
-                    Some(snippet) => Ok(json!({ "success": true, "snippet": snippet_json(snippet) })),
+                    Some(snippet) => {
+                        Ok(json!({ "success": true, "snippet": snippet_json(snippet) }))
+                    }
                     None => Err(store::StoreError::internal("snippet vanished after write")),
                 }
             }
@@ -1660,16 +1692,26 @@ mod tests {
         assert_eq!(fm["description"], "d");
         assert_eq!(body, "you review");
 
-        let sources = call(&handler, "agents_sources", serde_json::json!({ "name": "reviewer" }), &ctx)
-            .await
-            .unwrap();
+        let sources = call(
+            &handler,
+            "agents_sources",
+            serde_json::json!({ "name": "reviewer" }),
+            &ctx,
+        )
+        .await
+        .unwrap();
         assert_eq!(sources["sources"]["md"]["exists"], true);
         assert_eq!(sources["scope"], "user");
         assert_eq!(sources["isBuiltIn"], false);
 
-        let config = call(&handler, "agents_config", serde_json::json!({ "name": "reviewer" }), &ctx)
-            .await
-            .unwrap();
+        let config = call(
+            &handler,
+            "agents_config",
+            serde_json::json!({ "name": "reviewer" }),
+            &ctx,
+        )
+        .await
+        .unwrap();
         assert_eq!(config["source"], "md");
         assert_eq!(config["config"]["prompt"], "you review");
 
@@ -1693,9 +1735,14 @@ mod tests {
         .await;
         assert!(conflict.is_err());
 
-        call(&handler, "agents_delete", serde_json::json!({ "name": "reviewer" }), &ctx)
-            .await
-            .unwrap();
+        call(
+            &handler,
+            "agents_delete",
+            serde_json::json!({ "name": "reviewer" }),
+            &ctx,
+        )
+        .await
+        .unwrap();
         assert!(!user_md.exists());
     }
 
@@ -1706,11 +1753,16 @@ mod tests {
         let ctx = make_ctx(project.path());
         let handler = ConfigEntityHandler::new();
 
-        let user_config = home.path().join(".config").join("loomdesk").join("config.json");
+        let user_config = home
+            .path()
+            .join(".config")
+            .join("loomdesk")
+            .join("config.json");
         fs::create_dir_all(user_config.parent().unwrap()).unwrap();
         fs::write(
             &user_config,
-            serde_json::json!({ "agent": { "builtin-override": { "description": "from json" } } }).to_string(),
+            serde_json::json!({ "agent": { "builtin-override": { "description": "from json" } } })
+                .to_string(),
         )
         .unwrap();
 
@@ -1773,9 +1825,14 @@ mod tests {
         let (_, body) = store::parse_md_file(&user_md).unwrap();
         assert_eq!(body, "deploy v2");
 
-        call(&handler, "commands_delete", serde_json::json!({ "name": "ship" }), &ctx)
-            .await
-            .unwrap();
+        call(
+            &handler,
+            "commands_delete",
+            serde_json::json!({ "name": "ship" }),
+            &ctx,
+        )
+        .await
+        .unwrap();
         assert!(!user_md.exists());
     }
 
@@ -1807,9 +1864,14 @@ mod tests {
             .unwrap();
         assert_eq!(list.as_array().unwrap().len(), 1);
 
-        let by_alias = call(&handler, "snippets_get", serde_json::json!({ "name": "hi" }), &ctx)
-            .await
-            .unwrap();
+        let by_alias = call(
+            &handler,
+            "snippets_get",
+            serde_json::json!({ "name": "hi" }),
+            &ctx,
+        )
+        .await
+        .unwrap();
         assert_eq!(by_alias["name"], "greet");
 
         call(
@@ -1820,14 +1882,24 @@ mod tests {
         )
         .await
         .unwrap();
-        let got = call(&handler, "snippets_get", serde_json::json!({ "name": "greet" }), &ctx)
-            .await
-            .unwrap();
+        let got = call(
+            &handler,
+            "snippets_get",
+            serde_json::json!({ "name": "greet" }),
+            &ctx,
+        )
+        .await
+        .unwrap();
         assert_eq!(got["content"], "hi there");
 
-        call(&handler, "snippets_delete", serde_json::json!({ "name": "greet" }), &ctx)
-            .await
-            .unwrap();
+        call(
+            &handler,
+            "snippets_delete",
+            serde_json::json!({ "name": "greet" }),
+            &ctx,
+        )
+        .await
+        .unwrap();
         let list = call(&handler, "snippets_list", serde_json::json!({}), &ctx)
             .await
             .unwrap();
@@ -1899,9 +1971,14 @@ mod tests {
         let project_snippets = project.path().join(".loom").join("snippets");
         write_snippet(&project_snippets, "dup", "project version", "");
 
-        let got = call(&handler, "snippets_get", serde_json::json!({ "name": "dup" }), &ctx)
-            .await
-            .unwrap();
+        let got = call(
+            &handler,
+            "snippets_get",
+            serde_json::json!({ "name": "dup" }),
+            &ctx,
+        )
+        .await
+        .unwrap();
         assert_eq!(got["content"], "project version");
     }
 }

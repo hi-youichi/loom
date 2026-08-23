@@ -317,10 +317,15 @@ where
         .on_receive_request(
             move |req: PromptRequest,
                   responder: Responder<PromptResponse>,
-                  conn: ConnectionTo<Client>| {
+                  _conn: ConnectionTo<Client>| {
                 let runtime = r_prompt.clone();
                 let connection = conn_for_prompt.clone();
-                let _ = conn.clone().spawn(async move {
+                // A prompt belongs to the server runtime, not to the transient
+                // JSON-RPC connection. Detach it from the SDK connection task
+                // set so a WebSocket close only drops the old response path;
+                // the run keeps producing checkpointed/session-sync events and
+                // a replacement connection can attach immediately.
+                tokio::spawn(async move {
                     let session_id = LoomSessionId::new(req.session_id.to_string());
                     let result = if !runtime.bindings.is_connection_bound_to_session(&session_id, &connection.id) {
                         Err(agent_client_protocol::Error::new(
@@ -333,12 +338,11 @@ where
                                 let bridge = Arc::new(
                                     crate::tools::AcpClientBridge::new(
                                         session_id.to_string(),
-                                        connection.sdk_client_slot(),
+                                        runtime.connections.clone(),
+                                        runtime.bindings.clone(),
                                     )
                                     .with_question_handler(
-                                        connection.id.clone(),
                                         runtime.question_handler.clone(),
-                                        capabilities.clone(),
                                     ),
                                 );
                                 match runtime.execute_prompt(req, capabilities, bridge).await {
@@ -363,10 +367,6 @@ where
                         }
                     };
                     let _ = responder.respond_with_result(result);
-                    Ok(())
-                }).map_err(|e| {
-                    tracing::error!(error = ?e, "Failed to spawn prompt task — client will not receive a response");
-                    e
                 });
                 async { Ok(()) }
             },

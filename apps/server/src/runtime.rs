@@ -107,7 +107,7 @@ pub async fn run(
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    .await?;
     Ok(())
 }
 

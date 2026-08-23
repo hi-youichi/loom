@@ -18,7 +18,9 @@ use std::net::SocketAddr;
 use tokio::sync::mpsc;
 
 use crate::acp_hub::SessionOwner;
-use crate::auth::{attempt_ui_login, LoginOutcome, ui_password_configured, ui_session_token_valid, AcpAuthVerdict};
+use crate::auth::{
+    attempt_ui_login, ui_password_configured, ui_session_token_valid, AcpAuthVerdict, LoginOutcome,
+};
 use crate::state::SharedState;
 
 /// Max ACP WS message / frame size.
@@ -121,16 +123,16 @@ enum PreAuthOutcome {
     Close,
 }
 
-async fn pre_auth_dispatch(
-    peer_ip: &str,
-    text: &str,
-) -> PreAuthOutcome {
+async fn pre_auth_dispatch(peer_ip: &str, text: &str) -> PreAuthOutcome {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
         return PreAuthOutcome::Close;
     };
     let id = value.get("id").cloned().unwrap_or(serde_json::Value::Null);
     let method = value.get("method").and_then(|m| m.as_str()).unwrap_or("");
-    let params = value.get("params").cloned().unwrap_or(serde_json::Value::Null);
+    let params = value
+        .get("params")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
 
     match method {
         "initialize" => PreAuthOutcome::Respond(auth_error_response(&id)),
@@ -152,8 +154,14 @@ async fn pre_auth_dispatch(
             )
         }
         "_loomdesk.dev/auth/login" => {
-            let password = params.get("password").and_then(|p| p.as_str()).unwrap_or("");
-            let trust_device = params.get("trustDevice").and_then(|t| t.as_bool()).unwrap_or(false);
+            let password = params
+                .get("password")
+                .and_then(|p| p.as_str())
+                .unwrap_or("");
+            let trust_device = params
+                .get("trustDevice")
+                .and_then(|t| t.as_bool())
+                .unwrap_or(false);
             let outcome = tokio::task::spawn_blocking({
                 let password = password.to_string();
                 let peer_ip = peer_ip.to_string();
@@ -208,7 +216,10 @@ async fn pre_auth_dispatch(
             }
         }
         "_loomdesk.dev/auth/authenticate" => {
-            let token = params.get("sessionToken").and_then(|t| t.as_str()).unwrap_or("");
+            let token = params
+                .get("sessionToken")
+                .and_then(|t| t.as_str())
+                .unwrap_or("");
             if !token.is_empty() && ui_session_token_valid(token) {
                 PreAuthOutcome::RespondAndAuthenticate(
                     serde_json::json!({

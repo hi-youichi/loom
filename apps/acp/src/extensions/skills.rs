@@ -128,10 +128,7 @@ fn write_skill_dir(
 ) -> Result<(), ExtensionError> {
     std::fs::create_dir_all(dir).map_err(|e| internal(e.to_string()))?;
     let mut frontmatter = Map::new();
-    frontmatter.insert(
-        "description".into(),
-        Value::String(description.to_string()),
-    );
+    frontmatter.insert("description".into(), Value::String(description.to_string()));
     if let Some(tags) = tags {
         if !tags.is_null() {
             frontmatter.insert("tags".into(), tags.clone());
@@ -198,7 +195,10 @@ fn clone_to_temp(url: &str) -> Result<tempfile::TempDir, ExtensionError> {
     Ok(dir)
 }
 
-fn scan_skills_in_dir(root: &Path, subpath: Option<&str>) -> Vec<(String, Option<String>, PathBuf)> {
+fn scan_skills_in_dir(
+    root: &Path,
+    subpath: Option<&str>,
+) -> Vec<(String, Option<String>, PathBuf)> {
     let base = match subpath {
         Some(sub) if !sub.is_empty() => root.join(sub),
         _ => root.to_path_buf(),
@@ -220,20 +220,25 @@ fn scan_skills_in_dir(root: &Path, subpath: Option<&str>) -> Vec<(String, Option
         if !md.is_file() {
             continue;
         }
-        let description = parse_skill_md(&md)
-            .ok()
-            .and_then(|(fm, _)| {
-                fm.get("description")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            });
+        let description = parse_skill_md(&md).ok().and_then(|(fm, _)| {
+            fm.get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        });
         out.push((name, description, path));
     }
     out.sort_by(|a, b| a.0.cmp(&b.0));
     out
 }
 
-fn catalog_item(source_id: &str, name: &str, description: &Option<String>, installed: bool, repo_source: &str, subpath: Option<&str>) -> Value {
+fn catalog_item(
+    source_id: &str,
+    name: &str,
+    description: &Option<String>,
+    installed: bool,
+    repo_source: &str,
+    subpath: Option<&str>,
+) -> Value {
     json!({
         "sourceId": source_id,
         "skillName": name,
@@ -341,8 +346,8 @@ impl SkillsHandler {
 
     fn update(&self, ctx: &ExtensionContext, params: &Value) -> Result<Value, ExtensionError> {
         let name = require_param(params, "name")?;
-        let (dir, _scope) = find_skill(ctx, &name)
-            .ok_or_else(|| not_found(format!("skill '{name}' not found")))?;
+        let (dir, _scope) =
+            find_skill(ctx, &name).ok_or_else(|| not_found(format!("skill '{name}' not found")))?;
         let md = dir.join("SKILL.md");
         let (mut frontmatter, mut instructions) = parse_skill_md(&md)?;
         if let Some(description) = param_str(params, "description") {
@@ -358,8 +363,7 @@ impl SkillsHandler {
         if let Some(text) = param_str(params, "instructions") {
             instructions = text;
         }
-        store::write_md_file(&md, &frontmatter, &instructions)
-            .map_err(|e| internal(e.message))?;
+        store::write_md_file(&md, &frontmatter, &instructions).map_err(|e| internal(e.message))?;
         Ok(mutation_envelope(&format!(
             "Skill {name} updated successfully. Reloading interface…"
         )))
@@ -367,8 +371,8 @@ impl SkillsHandler {
 
     fn delete(&self, ctx: &ExtensionContext, params: &Value) -> Result<Value, ExtensionError> {
         let name = require_param(params, "name")?;
-        let (dir, _) = find_skill(ctx, &name)
-            .ok_or_else(|| not_found(format!("skill '{name}' not found")))?;
+        let (dir, _) =
+            find_skill(ctx, &name).ok_or_else(|| not_found(format!("skill '{name}' not found")))?;
         std::fs::remove_dir_all(&dir).map_err(|e| internal(e.to_string()))?;
         Ok(mutation_envelope(&format!(
             "Skill {name} deleted successfully. Reloading interface…"
@@ -378,8 +382,8 @@ impl SkillsHandler {
     fn read_file(&self, ctx: &ExtensionContext, params: &Value) -> Result<Value, ExtensionError> {
         let name = require_param(params, "name")?;
         let file = require_param(params, "file")?;
-        let (dir, _) = find_skill(ctx, &name)
-            .ok_or_else(|| not_found(format!("skill '{name}' not found")))?;
+        let (dir, _) =
+            find_skill(ctx, &name).ok_or_else(|| not_found(format!("skill '{name}' not found")))?;
         let target = safe_join(&dir, &file)?;
         let content = std::fs::read_to_string(&target)
             .map_err(|_| not_found(format!("file '{file}' not found")))?;
@@ -390,8 +394,8 @@ impl SkillsHandler {
         let name = require_param(params, "name")?;
         let file = require_param(params, "file")?;
         let content = require_param(params, "content")?;
-        let (dir, _) = find_skill(ctx, &name)
-            .ok_or_else(|| not_found(format!("skill '{name}' not found")))?;
+        let (dir, _) =
+            find_skill(ctx, &name).ok_or_else(|| not_found(format!("skill '{name}' not found")))?;
         let target = safe_join(&dir, &file)?;
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(|e| internal(e.to_string()))?;
@@ -403,8 +407,8 @@ impl SkillsHandler {
     fn delete_file(&self, ctx: &ExtensionContext, params: &Value) -> Result<Value, ExtensionError> {
         let name = require_param(params, "name")?;
         let file = require_param(params, "file")?;
-        let (dir, _) = find_skill(ctx, &name)
-            .ok_or_else(|| not_found(format!("skill '{name}' not found")))?;
+        let (dir, _) =
+            find_skill(ctx, &name).ok_or_else(|| not_found(format!("skill '{name}' not found")))?;
         let target = safe_join(&dir, &file)?;
         std::fs::remove_file(&target).map_err(|e| internal(e.to_string()))?;
         Ok(mutation_envelope("Skill file deleted."))
@@ -447,8 +451,8 @@ impl SkillsHandler {
             });
         }
         let repo = clone_to_temp(def.source)?;
-        let sub = param_str(params, "subpath")
-            .or_else(|| def.default_subpath.map(|s| s.to_string()));
+        let sub =
+            param_str(params, "subpath").or_else(|| def.default_subpath.map(|s| s.to_string()));
         let items: Vec<Value> = scan_skills_in_dir(repo.path(), sub.as_deref())
             .into_iter()
             .map(|(name, description, _)| {
@@ -473,7 +477,14 @@ impl SkillsHandler {
         let items: Vec<Value> = scan_skills_in_dir(repo.path(), subpath.as_deref())
             .into_iter()
             .map(|(name, description, _)| {
-                catalog_item("custom", &name, &description, false, &source, subpath.as_deref())
+                catalog_item(
+                    "custom",
+                    &name,
+                    &description,
+                    false,
+                    &source,
+                    subpath.as_deref(),
+                )
             })
             .collect();
         Ok(json!({ "ok": true, "items": items }))
@@ -493,9 +504,12 @@ impl SkillsHandler {
                     .collect()
             })
             .unwrap_or_default();
-        let conflict_policy = param_str(params, "conflictPolicy").unwrap_or_else(|| "prompt".into());
+        let conflict_policy =
+            param_str(params, "conflictPolicy").unwrap_or_else(|| "prompt".into());
         if selections.is_empty() {
-            return Err(ExtensionError::invalid_params("selections must not be empty"));
+            return Err(ExtensionError::invalid_params(
+                "selections must not be empty",
+            ));
         }
 
         let repo = clone_to_temp(&source)?;

@@ -279,10 +279,14 @@ impl ExtensionHandler for ScheduledTaskHandler {
     }
 }
 
-fn task_from_value(value: Value, fallback_id: Option<&str>) -> Result<ScheduledTask, ExtensionError> {
-    let mut object = value.as_object().cloned().ok_or_else(|| {
-        ExtensionError::invalid_params("task must be an object")
-    })?;
+fn task_from_value(
+    value: Value,
+    fallback_id: Option<&str>,
+) -> Result<ScheduledTask, ExtensionError> {
+    let mut object = value
+        .as_object()
+        .cloned()
+        .ok_or_else(|| ExtensionError::invalid_params("task must be an object"))?;
     let id = object
         .get("id")
         .and_then(Value::as_str)
@@ -291,12 +295,22 @@ fn task_from_value(value: Value, fallback_id: Option<&str>) -> Result<ScheduledT
         .or_else(|| fallback_id.map(str::to_string))
         .unwrap_or_else(|| format!("task-{}", uuid::Uuid::new_v4()));
     object.insert("id".into(), Value::String(id));
-    object.entry("name").or_insert_with(|| Value::String("Scheduled task".into()));
-    object.entry("description").or_insert_with(|| Value::String(String::new()));
+    object
+        .entry("name")
+        .or_insert_with(|| Value::String("Scheduled task".into()));
+    object
+        .entry("description")
+        .or_insert_with(|| Value::String(String::new()));
     object.entry("enabled").or_insert(Value::Bool(true));
-    object.entry("schedule").or_insert(Value::Object(Default::default()));
-    object.entry("execution").or_insert(Value::Object(Default::default()));
-    object.entry("state").or_insert(Value::Object(Default::default()));
+    object
+        .entry("schedule")
+        .or_insert(Value::Object(Default::default()));
+    object
+        .entry("execution")
+        .or_insert(Value::Object(Default::default()));
+    object
+        .entry("state")
+        .or_insert(Value::Object(Default::default()));
     serde_json::from_value(Value::Object(object))
         .map_err(|error| ExtensionError::invalid_params(format!("invalid scheduled task: {error}")))
 }
@@ -307,7 +321,10 @@ async fn handle_create(params: Value, ctx: &ExtensionContext) -> Result<Value, E
     let task = task_from_value(task_value, None)?;
     let mut store = load_store(ctx)?;
     if store.tasks.iter().any(|existing| existing.id == task.id) {
-        return Err(ExtensionError::conflict(format!("task '{}' already exists", task.id)));
+        return Err(ExtensionError::conflict(format!(
+            "task '{}' already exists",
+            task.id
+        )));
     }
     store.tasks.push(task.clone());
     save_store(ctx, &mut store)?;
@@ -317,10 +334,16 @@ async fn handle_create(params: Value, ctx: &ExtensionContext) -> Result<Value, E
 async fn handle_update(params: Value, ctx: &ExtensionContext) -> Result<Value, ExtensionError> {
     auth::check_server_policy(ctx, "scheduled-task", "update")?;
     let id = require_param_str(&params, "id")?;
-    let task_value = params.get("task").cloned().unwrap_or(Value::Object(Default::default()));
+    let task_value = params
+        .get("task")
+        .cloned()
+        .unwrap_or(Value::Object(Default::default()));
     let task = task_from_value(task_value, Some(&id))?;
     let mut store = load_store(ctx)?;
-    let existing = store.tasks.iter_mut().find(|existing| existing.id == id)
+    let existing = store
+        .tasks
+        .iter_mut()
+        .find(|existing| existing.id == id)
         .ok_or_else(|| ExtensionError::not_found(format!("task '{id}' not found")))?;
     *existing = task.clone();
     save_store(ctx, &mut store)?;

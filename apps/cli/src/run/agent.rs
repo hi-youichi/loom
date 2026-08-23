@@ -6,13 +6,12 @@ use agent::profile::list_available_profiles;
 use agent::run::{
     build_react_config, run_agent_from_config, RunCmd, RunParams, TypedAnyStreamEvent,
 };
-use loom_llm::support::uuid6::uuid6;
-use tracing::Instrument;
 use agent::state::ReActState;
 use agent::state::ToolResult;
 use agent::ResolvedAgent;
 use agent::{DupState, GotState, TotState};
 use chrono::Local;
+use loom_llm::support::uuid6::uuid6;
 use loom_llm::ToolCall;
 use model_spec_core::resolver::{
     build_composite_resolver, ConfigModelEntry, ConfigProviderEntry, ModelResolver,
@@ -21,6 +20,7 @@ use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use stream_event::Envelope;
+use tracing::Instrument;
 
 type StreamCallback = Arc<Mutex<dyn FnMut(Value) + Send>>;
 

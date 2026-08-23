@@ -31,10 +31,7 @@ async fn e2e_generate_title_real_llm() {
     let mut last_error: Option<String> = None;
 
     for p in &full.providers {
-        let model = p
-            .model
-            .clone()
-            .unwrap_or_else(|| fallback_model.clone());
+        let model = p.model.clone().unwrap_or_else(|| fallback_model.clone());
         let Some(api_key) = p.api_key.clone() else {
             println!("[e2e] skip provider={} (no api_key)", p.name);
             continue;
@@ -66,9 +63,8 @@ async fn e2e_generate_title_real_llm() {
         };
         match client.invoke(&msgs).await {
             Ok(resp) => {
-                let title = agent::agent::react::title_generator::clamp_summary_chars(
-                    resp.content.trim(),
-                );
+                let title =
+                    agent::agent::react::title_generator::clamp_summary_chars(resp.content.trim());
                 println!(
                     "[e2e] OK provider={} model={} ({:?}): {title:?}",
                     p.name,

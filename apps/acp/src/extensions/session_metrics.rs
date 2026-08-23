@@ -23,7 +23,9 @@ impl SessionMetricsHandler {
             return Err(ExtensionError {
                 code: -32002,
                 message: "forbidden".into(),
-                data: Some(Value::String("session metrics require authentication".into())),
+                data: Some(Value::String(
+                    "session metrics require authentication".into(),
+                )),
             });
         }
         Ok(())

@@ -251,7 +251,7 @@ impl LoomAcpAgent {
         )
     }
 
-    fn new_with_extension_registry_and_db_path(
+    pub(crate) fn new_with_extension_registry_and_db_path(
         extension_registry: Arc<ExtensionRegistry>,
         session_update_tx: Option<mpsc::Sender<SessionUpdateEnvelope>>,
         db_path: PathBuf,
@@ -1627,7 +1627,9 @@ impl LoomAcpAgent {
 
                 if let Some(ref tx) = self.session_update_tx {
                     let notifier = SessionNotifier::new(tx.clone(), session_id.clone());
-                    notifier.send_history(&state.messages[replay_start..]).await;
+                    notifier
+                        .send_history(&state.messages[replay_start..], replay_start)
+                        .await;
                 } else {
                     tracing::warn!(
                         session_id = %session_id,
@@ -1842,7 +1844,9 @@ impl LoomAcpAgent {
         loom_llm::message::strip_background_review_in_messages(&mut owned);
         let mut page: Vec<SessionHistoryMessage> = Vec::with_capacity(owned.len());
         for (offset, message) in owned.iter().enumerate() {
-            let Some(updates) = SessionNotifier::message_session_updates(message) else {
+            let Some(updates) =
+                SessionNotifier::message_session_updates(session_id, start + offset, message)
+            else {
                 continue;
             };
             let role = match message {

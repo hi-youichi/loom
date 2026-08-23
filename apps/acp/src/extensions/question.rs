@@ -172,6 +172,25 @@ impl QuestionStore {
             .len()
     }
 
+    fn rebind_session(
+        &self,
+        session_id: &str,
+        connection_id: &str,
+    ) -> Result<Vec<QuestionRequest>, ExtensionError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| internal_error("question store lock failed", "mutex poisoned"))?;
+        let mut requests = Vec::new();
+        for record in state.pending.values_mut() {
+            if record.owner_session_id.as_deref() == Some(session_id) {
+                record.owner_connection_id = connection_id.to_string();
+                requests.push(record.request.clone());
+            }
+        }
+        Ok(requests)
+    }
+
     fn remember_completed(state: &mut StoreState, id: String) {
         if state.completed.insert(id.clone()) {
             state.completed_order.push_back(id);
@@ -388,6 +407,44 @@ impl QuestionHandler {
         session_id: Option<&str>,
     ) -> Result<usize, ExtensionError> {
         self.store.cancel_connection(connection_id, session_id)
+    }
+
+    /// Move pending, deadline-bound questions to a replacement transport and
+    /// resend their cards. The original timeout task remains authoritative.
+    pub async fn rebind_session(
+        &self,
+        session_id: &str,
+        connection_id: &str,
+    ) -> Result<usize, ExtensionError> {
+        let requests = self.store.rebind_session(session_id, connection_id)?;
+        if requests.is_empty() {
+            return Ok(0);
+        }
+        let connections = self.connections.as_ref().ok_or_else(|| {
+            internal_error("question rebind failed", "connection registry unavailable")
+        })?;
+        let connection = connections
+            .get(connection_id)
+            .ok_or_else(|| internal_error("question rebind failed", "connection not found"))?;
+        let capabilities = connection
+            .require_capabilities()
+            .await
+            .map_err(|error| internal_error("question rebind failed", error))?;
+        if !capabilities.supports_question() {
+            return Err(ExtensionError::capability_not_supported("question"));
+        }
+        for request in &requests {
+            connection
+                .outbound_tx
+                .send(ConnectionOutbound::ExtensionNotification {
+                    method: "_loomdesk.dev/question/request".into(),
+                    params: serde_json::to_value(request)
+                        .map_err(|error| internal_error("question rebind failed", error))?,
+                })
+                .await
+                .map_err(|error| internal_error("question rebind failed", error))?;
+        }
+        Ok(requests.len())
     }
 
     /// Request a question from an in-process agent tool.
@@ -809,5 +866,35 @@ mod tests {
             .expect("question result");
         assert_eq!(result["status"], "answered");
         assert_eq!(result["choice"], "fast");
+    }
+
+    #[test]
+    fn pending_question_can_move_to_replacement_connection() {
+        let store = QuestionStore::new();
+        let request: QuestionRequest = serde_json::from_value(json!({
+            "questionId": "question-rebind",
+            "sessionId": "session-1",
+            "prompt": "Continue?",
+            "choices": [{ "value": "yes", "label": "Yes" }]
+        }))
+        .expect("request");
+        let (sender, _receiver) = oneshot::channel();
+        store
+            .insert(
+                request,
+                "connection-old".into(),
+                Some("session-1".into()),
+                sender,
+            )
+            .expect("insert");
+
+        let rebound = store
+            .rebind_session("session-1", "connection-new")
+            .expect("rebind");
+        assert_eq!(rebound.len(), 1);
+        let taken = store
+            .take_validated("question-rebind", &context("connection-new"), |_| Ok(()))
+            .expect("take");
+        assert!(taken.is_some());
     }
 }

@@ -1185,7 +1185,9 @@ impl FilesHandler {
             let mut child = if cfg!(target_os = "macos") {
                 tokio::process::Command::new("open").arg(&resolved).spawn()
             } else {
-                tokio::process::Command::new("xdg-open").arg(&resolved).spawn()
+                tokio::process::Command::new("xdg-open")
+                    .arg(&resolved)
+                    .spawn()
             }?;
             if let Some(mut stdin) = child.stdin.take() {
                 let _ = stdin.write_all(b"").await;

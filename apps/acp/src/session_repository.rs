@@ -458,7 +458,9 @@ impl SessionRepository {
             .prepare("SELECT 1 FROM pragma_table_info('acp_sessions') WHERE name = 'archived_at'")?
             .exists([])?;
         if !has_archived {
-            if let Err(error) = connection.execute_batch("ALTER TABLE acp_sessions ADD COLUMN archived_at TEXT") {
+            if let Err(error) =
+                connection.execute_batch("ALTER TABLE acp_sessions ADD COLUMN archived_at TEXT")
+            {
                 // Another ACP runtime may have added the column after the
                 // pragma check and before this ALTER. Treat only that exact
                 // race as a successful, idempotent migration.
@@ -1410,7 +1412,8 @@ impl SessionRepository {
             return Ok(None);
         };
 
-        let ancestors = ancestor_chain(&transaction, &owner_principal, parent_session_id.as_deref())?;
+        let ancestors =
+            ancestor_chain(&transaction, &owner_principal, parent_session_id.as_deref())?;
         let index_version = allocate_owner_version(&transaction, &owner_principal)?;
         let deleted_at = utc_now_microseconds();
         transaction.execute(
@@ -1429,24 +1432,42 @@ impl SessionRepository {
                 .map(|value| value.is_some())
         };
         if table_exists("review_status")? {
-            transaction.execute("DELETE FROM review_status WHERE session_id = ?1", [session_id])?;
+            transaction.execute(
+                "DELETE FROM review_status WHERE session_id = ?1",
+                [session_id],
+            )?;
         }
         if table_exists("review_history")? {
-            transaction.execute("DELETE FROM review_history WHERE session_id = ?1", [session_id])?;
+            transaction.execute(
+                "DELETE FROM review_history WHERE session_id = ?1",
+                [session_id],
+            )?;
         }
         if table_exists("session_config")? {
-            transaction.execute("DELETE FROM session_config WHERE session_id = ?1", [session_id])?;
+            transaction.execute(
+                "DELETE FROM session_config WHERE session_id = ?1",
+                [session_id],
+            )?;
         }
         if table_exists("acp_session_data")? {
-            transaction.execute("DELETE FROM acp_session_data WHERE session_id = ?1", [session_id])?;
+            transaction.execute(
+                "DELETE FROM acp_session_data WHERE session_id = ?1",
+                [session_id],
+            )?;
         }
         if table_exists("checkpoint_writes")? {
-            transaction.execute("DELETE FROM checkpoint_writes WHERE thread_id = ?1", [thread_id])?;
+            transaction.execute(
+                "DELETE FROM checkpoint_writes WHERE thread_id = ?1",
+                [thread_id],
+            )?;
         }
         if table_exists("checkpoints")? {
             transaction.execute("DELETE FROM checkpoints WHERE thread_id = ?1", [thread_id])?;
         }
-        transaction.execute("DELETE FROM acp_sessions WHERE session_id = ?1", [session_id])?;
+        transaction.execute(
+            "DELETE FROM acp_sessions WHERE session_id = ?1",
+            [session_id],
+        )?;
 
         // The deleted node is no longer part of the visible descendant CTE.
         // Recompute every persisted ancestor after removal so tree activity
@@ -1479,14 +1500,16 @@ impl SessionRepository {
             .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
         let affected_ancestors = ancestors
             .into_iter()
-            .filter_map(|ancestor_id| self.get_index_record(&owner_principal, &ancestor_id).transpose())
+            .filter_map(|ancestor_id| {
+                self.get_index_record(&owner_principal, &ancestor_id)
+                    .transpose()
+            })
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(Some(SessionDeleteResult {
             tombstone,
             affected_ancestors,
         }))
     }
-
 }
 
 #[cfg(test)]
@@ -1659,7 +1682,9 @@ mod tests {
             "index_version",
         ] {
             assert!(
-                !session_columns.iter().any(|column| column == migrated_column),
+                !session_columns
+                    .iter()
+                    .any(|column| column == migrated_column),
                 "failed migration left partial column {migrated_column}"
             );
         }
@@ -1717,7 +1742,10 @@ mod tests {
                 .expect("concurrent schema initialization failed");
         }
         let repository = SessionRepository::new(db_path.as_ref()).unwrap();
-        assert!(repository.list_index_for_owner("owner-a", None, "all").unwrap().is_empty());
+        assert!(repository
+            .list_index_for_owner("owner-a", None, "all")
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -1924,7 +1952,10 @@ mod tests {
         let after = &result.affected_ancestors[0];
         assert!(after.revision > before.revision);
         assert_eq!(after.tree_activity_at, after.activity_at);
-        assert!(repository.get_index_record("owner-a", "child").unwrap().is_none());
+        assert!(repository
+            .get_index_record("owner-a", "child")
+            .unwrap()
+            .is_none());
         assert!(repository.get_tombstone("child").unwrap().is_some());
     }
 
@@ -2089,10 +2120,23 @@ mod tests {
             .set_archived_index_records("child", "owner-a", true)
             .unwrap()
             .expect("target exists");
-        assert_eq!(changed.iter().map(|record| record.session_id.as_str()).collect::<Vec<_>>(), ["child", "root"]);
-        assert!(changed.iter().all(|record| record.index_version == changed[0].index_version));
+        assert_eq!(
+            changed
+                .iter()
+                .map(|record| record.session_id.as_str())
+                .collect::<Vec<_>>(),
+            ["child", "root"]
+        );
+        assert!(changed
+            .iter()
+            .all(|record| record.index_version == changed[0].index_version));
         assert!(changed.iter().all(|record| record.revision >= 2));
-        assert!(changed.iter().find(|record| record.session_id == "child").unwrap().archived_at.is_some());
+        assert!(changed
+            .iter()
+            .find(|record| record.session_id == "child")
+            .unwrap()
+            .archived_at
+            .is_some());
     }
 
     #[test]
@@ -2125,7 +2169,10 @@ mod tests {
                 transaction
                     .execute(
                         "INSERT INTO acp_session_data (session_id, metadata_json) VALUES (?1, ?2)",
-                        params![format!("session-{index}"), format!(r#"{{"payload":"{metadata}"}}"#)],
+                        params![
+                            format!("session-{index}"),
+                            format!(r#"{{"payload":"{metadata}"}}"#)
+                        ],
                     )
                     .unwrap();
             }
@@ -2142,7 +2189,10 @@ mod tests {
         }
         durations.sort_unstable();
         let p95 = durations[(durations.len() * 95).div_ceil(100) - 1];
-        eprintln!("session index 10k full-read p95: {} ms", p95.as_secs_f64() * 1000.0);
+        eprintln!(
+            "session index 10k full-read p95: {} ms",
+            p95.as_secs_f64() * 1000.0
+        );
         if std::env::var_os("LOOM_ACP_STRICT_PERF").is_some() {
             assert!(
                 p95 <= std::time::Duration::from_millis(500),
@@ -2175,7 +2225,9 @@ mod tests {
                             Some("Concurrent"),
                             Some(&serde_json::json!({ "worker": worker, "index": index })),
                         )
-                        .unwrap_or_else(|error| panic!("atomic create {session_id} failed: {error}"));
+                        .unwrap_or_else(|error| {
+                            panic!("atomic create {session_id} failed: {error}")
+                        });
                 }
             }));
         }
@@ -2187,7 +2239,9 @@ mod tests {
             .list_index_for_owner("owner-a", None, "active")
             .unwrap();
         assert_eq!(records.len(), 32);
-        assert!(records.iter().all(|record| record.metadata["worker"].is_number()));
+        assert!(records
+            .iter()
+            .all(|record| record.metadata["worker"].is_number()));
     }
 
     #[test]

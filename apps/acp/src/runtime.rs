@@ -1,6 +1,7 @@
 //! Server-owned ACP runtime shared by all transports.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -19,6 +20,7 @@ use crate::extensions::{register::register_default_extensions, ExtensionRegistry
 use crate::notification_router::NotificationRouter;
 use crate::prompt_executor::{AcpPromptExecutor, LoomPromptExecutor};
 use crate::session_bindings::SessionBindings;
+use crate::session_sync::SessionSyncService;
 use crate::tools::ClientBridgeTrait;
 use crate::LoomAcpAgent;
 
@@ -57,6 +59,7 @@ pub struct AcpRuntime {
     pub extensions: Arc<ExtensionRegistry>,
     pub question_handler: Arc<crate::extensions::question::QuestionHandler>,
     pub global_bus: Arc<crate::global_events::GlobalEventBus>,
+    pub session_sync: Arc<SessionSyncService>,
     prompt_executor: Arc<dyn AcpPromptExecutor>,
     prompt_capacity: Arc<Semaphore>,
     metrics: Arc<AcpRuntimeMetrics>,
@@ -83,9 +86,22 @@ impl AcpRuntime {
     pub fn with_prompt_executor(
         prompt_executor: Arc<dyn AcpPromptExecutor>,
     ) -> Result<Arc<Self>, Box<dyn std::error::Error + Send + Sync>> {
+        Self::with_prompt_executor_and_db_path(
+            prompt_executor,
+            checkpoint_sqlite_store::default_memory_db_path(),
+        )
+    }
+
+    /// Construct an embedded runtime whose session metadata, checkpoints and
+    /// session-sync event stream share an explicit SQLite database.
+    pub fn with_prompt_executor_and_db_path(
+        prompt_executor: Arc<dyn AcpPromptExecutor>,
+        db_path: impl Into<PathBuf>,
+    ) -> Result<Arc<Self>, Box<dyn std::error::Error + Send + Sync>> {
         let (updates_tx, mut updates_rx) = mpsc::channel(256);
         let global_bus = Arc::new(crate::global_events::GlobalEventBus::new());
         let connections = Arc::new(ConnectionRegistry::default());
+        let bindings = Arc::new(SessionBindings::new());
         let mut extension_registry = ExtensionRegistry::new();
         let extension_handles = register_default_extensions(
             &mut extension_registry,
@@ -93,14 +109,22 @@ impl AcpRuntime {
             Some(connections.clone()),
         );
         let extensions = Arc::new(extension_registry);
-        let agent = Arc::new(LoomAcpAgent::new_with_extension_registry(
+        let agent = Arc::new(LoomAcpAgent::new_with_extension_registry_and_db_path(
             extensions.clone(),
             Some(updates_tx.clone()),
+            db_path.into(),
+        )?);
+        let session_sync = Arc::new(SessionSyncService::new(
+            connections.clone(),
+            bindings.clone(),
+            &agent.checkpoint_db_path,
         )?);
         extension_handles.session_history.bind(&agent);
         let session_list_handler = extension_handles.session_list.clone();
         session_list_handler.bind(&agent);
-        let bindings = Arc::new(SessionBindings::new());
+        extension_handles
+            .session_sync
+            .bind(&agent, &session_sync, &extension_handles.question);
         global_bus.bind_registry(connections.clone());
         let notification_router = Arc::new(NotificationRouter::new(
             bindings.clone(),
@@ -117,6 +141,7 @@ impl AcpRuntime {
             extensions,
             question_handler: extension_handles.question,
             global_bus,
+            session_sync: session_sync.clone(),
             prompt_executor,
             prompt_capacity: Arc::new(Semaphore::new(
                 std::env::var("LOOM_ACP_MAX_CONCURRENT_PROMPTS")
@@ -133,6 +158,7 @@ impl AcpRuntime {
         });
 
         let router = runtime.notification_router.clone();
+        let session_sync_for_router = session_sync;
         let metrics_for_router = metrics;
         tokio::spawn(async move {
             // Sessions whose history is currently being replayed via
@@ -188,6 +214,9 @@ impl AcpRuntime {
                 // SessionIndex mutations: the canonical list event is
                 // published by the mutation boundary with revision/index
                 // metadata, while dropped events are recovered by resync.
+                if !replaying_sessions.contains(&update_session_id) {
+                    session_sync_for_router.record(&update).await;
+                }
                 if let Err(error) = router.send(update).await {
                     metrics_for_router
                         .route_failures
@@ -328,6 +357,7 @@ impl AcpRuntime {
         if let Some(connection) = self.connections.remove(connection_id) {
             connection.deactivate();
         }
+        self.session_sync.close_connection(connection_id);
         let sessions = self.bindings.unbind_connection(connection_id);
         for session_id in &sessions {
             if cancel_bound_turns {

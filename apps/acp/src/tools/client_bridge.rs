@@ -71,59 +71,84 @@ pub trait ClientBridgeTrait: Send + Sync {
 
 pub struct AcpClientBridge {
     session_id: agent_client_protocol::schema::v1::SessionId,
-    conn: Arc<
-        tokio::sync::RwLock<
-            Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>,
-        >,
-    >,
+    connections: Arc<crate::connection_registry::ConnectionRegistry>,
+    bindings: Arc<crate::session_bindings::SessionBindings>,
     terminal_ids: tokio::sync::Mutex<HashSet<String>>,
-    connection_id: Option<String>,
     question_handler: Option<Arc<QuestionHandler>>,
-    client_capabilities: Option<ClientCapabilitiesInfo>,
 }
 
 impl AcpClientBridge {
     pub fn new(
         session_id: impl Into<String>,
-        conn: Arc<
-            tokio::sync::RwLock<
-                Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>,
-            >,
-        >,
+        connections: Arc<crate::connection_registry::ConnectionRegistry>,
+        bindings: Arc<crate::session_bindings::SessionBindings>,
     ) -> Self {
         Self {
             session_id: agent_client_protocol::schema::v1::SessionId::new(session_id.into()),
-            conn,
+            connections,
+            bindings,
             terminal_ids: tokio::sync::Mutex::new(HashSet::new()),
-            connection_id: None,
             question_handler: None,
-            client_capabilities: None,
         }
     }
 
-    pub fn with_question_handler(
-        mut self,
-        connection_id: impl Into<String>,
-        question_handler: Arc<QuestionHandler>,
-        client_capabilities: ClientCapabilitiesInfo,
-    ) -> Self {
-        self.connection_id = Some(connection_id.into());
+    pub fn with_question_handler(mut self, question_handler: Arc<QuestionHandler>) -> Self {
         self.question_handler = Some(question_handler);
-        self.client_capabilities = Some(client_capabilities);
         self
+    }
+
+    async fn current_connection(
+        &self,
+    ) -> Result<
+        (
+            String,
+            Arc<
+                tokio::sync::RwLock<
+                    Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>,
+                >,
+            >,
+            ClientCapabilitiesInfo,
+        ),
+        String,
+    > {
+        let session_id = crate::session::SessionId::new(self.session_id.to_string());
+        for connection_id in self.bindings.connections_for(&session_id) {
+            let Some(connection) = self.connections.get(&connection_id) else {
+                continue;
+            };
+            if !connection.is_active() {
+                continue;
+            }
+            let Ok(capabilities) = connection.require_capabilities().await else {
+                continue;
+            };
+            return Ok((connection_id, connection.sdk_client_slot(), capabilities));
+        }
+        Err("No active ACP connection available for session".to_string())
     }
 }
 
 #[async_trait::async_trait]
 impl ClientBridgeTrait for AcpClientBridge {
     fn is_available(&self) -> bool {
-        true
+        let session_id = crate::session::SessionId::new(self.session_id.to_string());
+        self.bindings
+            .connections_for(&session_id)
+            .into_iter()
+            .any(|connection_id| {
+                self.connections
+                    .get(&connection_id)
+                    .is_some_and(|connection| connection.is_active())
+            })
     }
 
     async fn cleanup(&self) {
         let terminal_ids = std::mem::take(&mut *self.terminal_ids.lock().await);
         for terminal_id in terminal_ids {
-            let guard = self.conn.read().await;
+            let Ok((_, slot, _)) = self.current_connection().await else {
+                continue;
+            };
+            let guard = slot.read().await;
             let Some(conn) = guard.as_ref() else {
                 continue;
             };
@@ -140,9 +165,8 @@ impl ClientBridgeTrait for AcpClientBridge {
         line: Option<u32>,
         limit: Option<u32>,
     ) -> Result<String, String> {
-        let guard: tokio::sync::RwLockReadGuard<
-            Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>,
-        > = self.conn.read().await;
+        let (_, slot, _) = self.current_connection().await?;
+        let guard = slot.read().await;
         let conn = guard
             .as_ref()
             .ok_or_else(|| "No connection available".to_string())?;
@@ -150,9 +174,8 @@ impl ClientBridgeTrait for AcpClientBridge {
     }
 
     async fn write_text_file(&self, path: &str, content: &str) -> Result<(), String> {
-        let guard: tokio::sync::RwLockReadGuard<
-            Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>,
-        > = self.conn.read().await;
+        let (_, slot, _) = self.current_connection().await?;
+        let guard = slot.read().await;
         let conn = guard
             .as_ref()
             .ok_or_else(|| "No connection available".to_string())?;
@@ -168,9 +191,8 @@ impl ClientBridgeTrait for AcpClientBridge {
         cwd: Option<String>,
         output_byte_limit: Option<u64>,
     ) -> Result<String, String> {
-        let guard: tokio::sync::RwLockReadGuard<
-            Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>,
-        > = self.conn.read().await;
+        let (_, slot, _) = self.current_connection().await?;
+        let guard = slot.read().await;
         let conn = guard
             .as_ref()
             .ok_or_else(|| "No connection available".to_string())?;
@@ -193,9 +215,8 @@ impl ClientBridgeTrait for AcpClientBridge {
         _session_id: &str,
         terminal_id: &str,
     ) -> Result<TerminalOutput, String> {
-        let guard: tokio::sync::RwLockReadGuard<
-            Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>,
-        > = self.conn.read().await;
+        let (_, slot, _) = self.current_connection().await?;
+        let guard = slot.read().await;
         let conn = guard
             .as_ref()
             .ok_or_else(|| "No connection available".to_string())?;
@@ -207,9 +228,8 @@ impl ClientBridgeTrait for AcpClientBridge {
         _session_id: &str,
         terminal_id: &str,
     ) -> Result<TerminalExitResult, String> {
-        let guard: tokio::sync::RwLockReadGuard<
-            Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>,
-        > = self.conn.read().await;
+        let (_, slot, _) = self.current_connection().await?;
+        let guard = slot.read().await;
         let conn = guard
             .as_ref()
             .ok_or_else(|| "No connection available".to_string())?;
@@ -217,9 +237,8 @@ impl ClientBridgeTrait for AcpClientBridge {
     }
 
     async fn terminal_kill(&self, _session_id: &str, terminal_id: &str) -> Result<(), String> {
-        let guard: tokio::sync::RwLockReadGuard<
-            Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>,
-        > = self.conn.read().await;
+        let (_, slot, _) = self.current_connection().await?;
+        let guard = slot.read().await;
         let conn = guard
             .as_ref()
             .ok_or_else(|| "No connection available".to_string())?;
@@ -227,9 +246,8 @@ impl ClientBridgeTrait for AcpClientBridge {
     }
 
     async fn terminal_release(&self, _session_id: &str, terminal_id: &str) -> Result<(), String> {
-        let guard: tokio::sync::RwLockReadGuard<
-            Option<agent_client_protocol::ConnectionTo<agent_client_protocol::Client>>,
-        > = self.conn.read().await;
+        let (_, slot, _) = self.current_connection().await?;
+        let guard = slot.read().await;
         let conn = guard
             .as_ref()
             .ok_or_else(|| "No connection available".to_string())?;
@@ -246,22 +264,15 @@ impl ClientBridgeTrait for AcpClientBridge {
             .question_handler
             .as_ref()
             .ok_or_else(|| "Question capability is unavailable".to_string())?;
-        let connection_id = self
-            .connection_id
-            .as_ref()
-            .ok_or_else(|| "No ACP connection available".to_string())?;
-        let capabilities = self
-            .client_capabilities
-            .as_ref()
-            .ok_or_else(|| "Question capability is unavailable".to_string())?;
+        let (connection_id, _, capabilities) = self.current_connection().await?;
         let mut request = request;
         request.session_id = Some(self.session_id.to_string());
         handler
             .request_for_agent(
                 request,
-                connection_id.clone(),
+                connection_id,
                 Some(self.session_id.to_string()),
-                capabilities.clone(),
+                capabilities,
             )
             .await
             .map_err(|error| error.to_string())

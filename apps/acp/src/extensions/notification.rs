@@ -372,7 +372,9 @@ impl ExtensionHandler for NotificationHandler {
                     .and_then(|v| v.as_bool())
                     .ok_or_else(|| ExtensionError::invalid_params("enabled is required"))?;
                 let mut state = self.state.lock().map_err(|e| internal(e.to_string()))?;
-                state.session_auto_accept.insert(session_id.clone(), enabled);
+                state
+                    .session_auto_accept
+                    .insert(session_id.clone(), enabled);
                 Ok(serde_json::json!({
                     "success": true,
                     "sessionId": session_id,
