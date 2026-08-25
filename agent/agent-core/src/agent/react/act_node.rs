@@ -9,8 +9,8 @@ use tracing::{debug, warn};
 
 use crate::state::ReActState;
 use checkpoint::RunnableConfig;
-use loom_graph_core::GraphError;
-use loom_graph_core::{Next, Node, RunContext};
+use anureo_graph_core::GraphError;
+use anureo_graph_core::{Next, Node, RunContext};
 use stream_event::StreamMode;
 use tool_core::active_operation::RunCancellation;
 use tool_core::ToolRegistryLocked;

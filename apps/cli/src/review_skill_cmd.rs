@@ -1,8 +1,8 @@
 use crate::args::ReviewSkillArgs;
 use agent::ReactBuildConfig;
 use config::{load_full_config, ProviderDef};
-use loom_curator::review::uuid_v4;
-use loom_curator::{run_review, ReviewConfig, ReviewOutcome};
+use anureo_curator::review::uuid_v4;
+use anureo_curator::{run_review, ReviewConfig, ReviewOutcome};
 use std::io::{self, Read};
 use std::path::PathBuf;
 use tracing::info;
@@ -10,7 +10,7 @@ use tracing::info;
 fn resolve_review_provider(
     model_override: Option<&str>,
 ) -> Result<(ProviderDef, String), Box<dyn std::error::Error>> {
-    let config = load_full_config("loom")?;
+    let config = load_full_config("anureo")?;
 
     let provider = if let Some(ref name) = config.default_provider {
         config
@@ -27,7 +27,7 @@ fn resolve_review_provider(
 
     let model = model_override
         .map(|m| m.to_string())
-        .or_else(|| std::env::var("LOOM_MODEL").ok())
+        .or_else(|| std::env::var("ANUREO_MODEL").ok())
         .or_else(|| std::env::var("MODEL").ok())
         .or_else(|| provider.model.clone())
         .unwrap_or_else(|| "gpt-4o-mini".to_string());

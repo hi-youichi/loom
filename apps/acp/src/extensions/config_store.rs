@@ -5,7 +5,7 @@ use serde_json::{Map, Value};
 
 use super::{ExtensionContext, ExtensionError};
 
-pub const LOOMDESK_DIR_NAME: &str = ".loomdesk";
+pub const ANUREO_DIR_NAME: &str = ".anureo";
 pub const AGENT_DIR_NAME: &str = "agents";
 pub const COMMAND_DIR_NAME: &str = "commands";
 pub const JSON_SECTION_AGENT: &str = "agent";
@@ -62,7 +62,7 @@ impl From<StoreError> for ExtensionError {
 }
 
 pub fn user_home() -> Result<PathBuf, StoreError> {
-    if let Ok(test_home) = std::env::var("LOOMDESK_TEST_USER_HOME") {
+    if let Ok(test_home) = std::env::var("ANUREO_TEST_USER_HOME") {
         if !test_home.trim().is_empty() {
             return Ok(PathBuf::from(test_home));
         }
@@ -73,12 +73,8 @@ pub fn user_home() -> Result<PathBuf, StoreError> {
         .map_err(|_| StoreError::internal("unable to resolve user home directory"))
 }
 
-pub fn loomdesk_config_dir() -> Result<PathBuf, StoreError> {
-    Ok(user_home()?.join(".config").join("loomdesk"))
-}
-
-pub fn loom_config_dir() -> Result<PathBuf, StoreError> {
-    Ok(user_home()?.join(".config").join("loom"))
+pub fn anureo_config_dir() -> Result<PathBuf, StoreError> {
+    Ok(user_home()?.join(".config").join("anureo"))
 }
 
 pub fn validate_entity_name(name: &str) -> Result<(), StoreError> {
@@ -354,10 +350,10 @@ pub struct ConfigLayers {
 
 pub fn project_config_candidates(working_dir: &Path) -> Vec<PathBuf> {
     vec![
-        working_dir.join("loomdesk.json"),
-        working_dir.join("loomdesk.jsonc"),
-        working_dir.join(LOOMDESK_DIR_NAME).join("loomdesk.json"),
-        working_dir.join(LOOMDESK_DIR_NAME).join("loomdesk.jsonc"),
+        working_dir.join("anureo.json"),
+        working_dir.join("anureo.jsonc"),
+        working_dir.join(ANUREO_DIR_NAME).join("anureo.json"),
+        working_dir.join(ANUREO_DIR_NAME).join("anureo.jsonc"),
     ]
 }
 
@@ -372,15 +368,15 @@ fn project_config_path(working_dir: Option<&Path>) -> Option<PathBuf> {
 }
 
 pub fn custom_config_path() -> Option<PathBuf> {
-    std::env::var("LOOM_CONFIG").ok().map(PathBuf::from)
+    std::env::var("ANUREO_CONFIG").ok().map(PathBuf::from)
 }
 
 pub fn read_config_layers(working_dir: Option<&Path>) -> Result<ConfigLayers, StoreError> {
-    let config_dir = loomdesk_config_dir()?;
+    let config_dir = anureo_config_dir()?;
     let user_candidates = [
         config_dir.join("config.json"),
-        config_dir.join("loomdesk.json"),
-        config_dir.join("loomdesk.jsonc"),
+        config_dir.join("anureo.json"),
+        config_dir.join("anureo.jsonc"),
     ];
     let user_path = user_candidates
         .iter()
@@ -419,7 +415,7 @@ pub fn merge_configs(base: &Value, override_value: &Value) -> Value {
 
 pub fn write_config(config: &Map<String, Value>, path: &Path) -> Result<(), StoreError> {
     if path.exists() {
-        let backup = path.with_extension("loomdesk.backup");
+        let backup = path.with_extension("anureo.backup");
         std::fs::copy(path, &backup)
             .map_err(|e| StoreError::internal(format!("failed to back up config: {e}")))?;
     }
@@ -557,7 +553,7 @@ pub fn resolve_prompt_file_path(reference: &str) -> Option<PathBuf> {
     if target.is_empty() {
         return None;
     }
-    let config_dir = loomdesk_config_dir().ok()?;
+    let config_dir = anureo_config_dir().ok()?;
     if let Some(rel) = target.strip_prefix("./") {
         return Some(config_dir.join(rel));
     }
@@ -628,7 +624,7 @@ pub fn fields_list(frontmatter: &Map<String, Value>, extra_field: Option<&str>) 
 pub type Frontmatter = Map<String, Value>;
 
 pub fn ensure_agent_dirs() -> Result<(), StoreError> {
-    let config_dir = loomdesk_config_dir()?;
+    let config_dir = anureo_config_dir()?;
     for dir in [
         config_dir.clone(),
         config_dir.join(AGENT_DIR_NAME),

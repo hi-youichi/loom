@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use loom_git::cli::run_process_sync;
+use anureo_git::cli::run_process_sync;
 
 pub struct FixtureRepo {
     pub dir: PathBuf,
@@ -21,7 +21,7 @@ fn run_git_at(dir: &Path, args: &[&str]) -> String {
 impl FixtureRepo {
     pub fn new(tag: &str) -> Self {
         let dir = std::env::temp_dir().join(format!(
-            "loom-git-parity-{tag}-{}",
+            "anureo-git-parity-{tag}-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

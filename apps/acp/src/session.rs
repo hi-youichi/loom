@@ -6,7 +6,7 @@
 //! ## NewSessionRequest -> SessionStore
 //!
 //! - **session_id**: Generated uniquely by Agent in new_session (e.g. `session-{nanos}` or UUID); all later prompt/cancel/load use this ID.
-//! - **thread_id**: Same as Loom's `RunOptions::thread_id`, usually the string form of session_id for checkpointer and multi-turn consistency.
+//! - **thread_id**: Same as anureo's `RunOptions::thread_id`, usually the string form of session_id for checkpointer and multi-turn consistency.
 //! - **working_directory**: From `NewSessionRequest::working_directory` (protocol requires **absolute path**), maps to `RunOptions::working_folder`; if absent the caller may use process cwd or a temp dir.
 //! - **mcp_servers**: Stored in the session and connected lazily on the first
 //!   prompt; idle connections are evicted and recreated on demand.
@@ -82,11 +82,11 @@ pub struct SessionConfig {
 /// Metadata and cancel flag for a single session.
 ///
 /// Written by [`SessionStore::create`], read by [`SessionStore::get`].
-/// Prompt handling uses `thread_id` and `working_directory` to build [`loom::RunOptions`]
+/// Prompt handling uses `thread_id` and `working_directory` to build [`anureo::RunOptions`]
 /// and [`SessionStore::is_cancelled`] to decide whether to abort with Cancelled.
 #[derive(Debug)]
 pub struct SessionEntry {
-    /// Thread/session id used by Loom; 1:1 with ACP session_id.
+    /// Thread/session id used by anureo; 1:1 with ACP session_id.
     pub thread_id: String,
     /// Authenticated principal that owns this session.
     pub owner_principal: String,
@@ -103,12 +103,12 @@ pub struct SessionEntry {
     pub lifecycle: Arc<std::sync::RwLock<SessionLifecycle>>,
     /// Raw-message index boundary of history already delivered to clients.
     /// `session/load` stores its tail-truncated replay start index here;
-    /// the `_loomdesk.dev/session-history/page` extension pages backward
+    /// the `_anureo.dev/session-history/page` extension pages backward
     /// from it. `usize::MAX` means no truncated replay happened yet (fresh
     /// or live session — nothing earlier to fetch). Shared via Arc so entry
     /// clones observe the same cursor.
     pub history_cursor: Arc<std::sync::atomic::AtomicUsize>,
-    /// MCP servers from ACP session/new or session/load, pre-converted to Loom's [`config::McpServerDef`].
+    /// MCP servers from ACP session/new or session/load, pre-converted to anureo's [`config::McpServerDef`].
     pub mcp_servers: Vec<config::McpServerDef>,
     pub mcp_runtime: Arc<SessionMcpRuntime>,
 }

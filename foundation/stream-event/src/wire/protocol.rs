@@ -1,19 +1,19 @@
-//! Protocol-level event types ([protocol_spec §4](https://github.com/loom/loom/blob/main/docs/protocol_spec.md#4-message-structure-events): type + payload).
-//! State-carrying variants use `serde_json::Value`; the bridge in loom serializes `S` into that.
+//! Protocol-level event types ([protocol_spec §4](https://github.com/anureo/anureo/blob/main/docs/protocol_spec.md#4-message-structure-events): type + payload).
+//! State-carrying variants use `serde_json::Value`; the bridge in anureo serializes `S` into that.
 //!
 //! # Architecture
 //!
-//! Single pipeline (loom produces, this crate defines wire shape and envelope injection):
+//! Single pipeline (anureo produces, this crate defines wire shape and envelope injection):
 //!
 //! ```text
-//!   [loom]                                    [stream-event]
+//!   [anureo]                                    [stream-event]
 //!   Agent emits StreamEvent<S>                This crate
 //!
 //!   StreamEvent<S>  ──stream_event_to_protocol_event()──►  ProtocolEvent  ──to_json(ev, &mut state)──►  JSON frame
-//!   (internal)         (in loom)                           (this enum)    (envelope injected here)    (on wire)
+//!   (internal)         (in anureo)                           (this enum)    (envelope injected here)    (on wire)
 //! ```
 //!
-//! - **ProtocolEvent**: wire shape (type + payload only). Loom converts `StreamEvent<S>` into it; [`to_json`] takes it and produces the final frame.
+//! - **ProtocolEvent**: wire shape (type + payload only). anureo converts `StreamEvent<S>` into it; [`to_json`] takes it and produces the final frame.
 //! - **to_json(event, &mut EnvelopeState)**: serializes the event and injects `session_id`, `node_id`, `event_id` from state (see [`crate::envelope`] and [`EnvelopeState`]).
 //!
 //! [`to_json`]: crate::to_json
@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Protocol event: wire shape for one stream event (type + payload).
-/// Matches [protocol_spec §4.2](https://github.com/loom/loom/blob/main/docs/protocol_spec.md#42-event-types-and-payloads); envelope (`session_id`, `node_id`, `event_id`) is applied separately via [`to_json`](crate::to_json) and [`EnvelopeState`](crate::EnvelopeState).
+/// Matches [protocol_spec §4.2](https://github.com/anureo/anureo/blob/main/docs/protocol_spec.md#42-event-types-and-payloads); envelope (`session_id`, `node_id`, `event_id`) is applied separately via [`to_json`](crate::to_json) and [`EnvelopeState`](crate::EnvelopeState).
 ///
 /// Note on naming:
 /// - `id` in payload = node name (e.g. "think", "act"); see [`EnvelopeState`](crate::EnvelopeState) for how envelope `node_id` is derived from `NodeEnter.id`.
@@ -282,13 +282,13 @@ mod tests {
         let event = ProtocolEvent::ToolOutput {
             call_id: Some("call_1".to_string()),
             name: "bash".to_string(),
-            content: "Compiling loom v0.1.0\n".to_string(),
+            content: "Compiling anureo v0.1.0\n".to_string(),
         };
         let v = event.to_value().unwrap();
         assert_eq!(v["type"], "tool_output");
         assert_eq!(v["call_id"], "call_1");
         assert_eq!(v["name"], "bash");
-        assert_eq!(v["content"], "Compiling loom v0.1.0\n");
+        assert_eq!(v["content"], "Compiling anureo v0.1.0\n");
     }
 
     #[test]

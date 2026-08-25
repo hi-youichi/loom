@@ -2,7 +2,7 @@
 name = "config"
 version.workspace = true
 edition.workspace = true
-description = "Load .env and TOML config for Loom (single place for all env/config under ~/.loom)"
+description = "Load .env and TOML config for anureo (single place for all env/config under ~/.anureo)"
 license.workspace = true
 authors.workspace = true
 
@@ -11,11 +11,11 @@ path = "src/lib.rs"
 
 [features]
 default = []
-# Shared tracing file appender + path resolution for CLI / loom-acp (optional to keep `config` lean).
+# Shared tracing file appender + path resolution for CLI / anureo-acp (optional to keep `config` lean).
 tracing-init = ["dep:tracing-subscriber", "dep:tracing-appender", "dep:tracing-core", "dep:chrono"]
 
 [dependencies]
-loom-home = { path = "../loom-home" }
+anureo-home = { path = "../anureo-home" }
 toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

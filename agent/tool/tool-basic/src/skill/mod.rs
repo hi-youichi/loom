@@ -31,7 +31,7 @@ pub use list::SkillListTool;
 pub use manage::{SkillManagerTool, TOOL_SKILL_MANAGE};
 pub use view::SkillViewTool;
 
-const SKILLS_SUBDIR: &str = ".loom/skills";
+const SKILLS_SUBDIR: &str = ".anureo/skills";
 
 pub(crate) struct SkillContext {
     pub registry: Option<Arc<SkillRegistry>>,
@@ -64,8 +64,8 @@ impl SkillContext {
     }
 
     /// Construct from an explicit skills directory path, bypassing the
-    /// `.loom/skills` join logic. Used by curator/background-review where
-    /// the skills storage root is already known (e.g. `~/.loom/data/skills/`).
+    /// `.anureo/skills` join logic. Used by curator/background-review where
+    /// the skills storage root is already known (e.g. `~/.anureo/data/skills/`).
     pub(crate) fn from_skills_dir(skills_dir: std::path::PathBuf) -> Self {
         let store = SkillUsageStore::new(&skills_dir);
         Self {
@@ -108,9 +108,9 @@ pub fn make_skill_tools_with_registry(
 
 /// Build skill tools from an explicit skills directory path.
 ///
-/// Unlike `make_skill_tools_with_folder`, this does NOT append `.loom/skills`
+/// Unlike `make_skill_tools_with_folder`, this does NOT append `.anureo/skills`
 /// to the path. Use this when the caller already knows the exact skills
-/// storage directory (e.g. curator background review: `~/.loom/data/skills/`).
+/// storage directory (e.g. curator background review: `~/.anureo/data/skills/`).
 pub fn make_skill_tools_with_skills_dir(
     skills_dir: &std::path::Path,
     usage: Option<SkillUsageStore>,

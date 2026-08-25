@@ -2,14 +2,14 @@
 //!
 //! ACP `session/prompt` carries `content_blocks: Vec<ContentBlock>`, where each block can be
 //! Text, ResourceLink, Image, Audio, Resource, etc. This module merges such a list into
-//! a **single user message string** for Loom. Protocol and type support are described in [`crate::protocol`].
+//! a **single user message string** for anureo. Protocol and type support are described in [`crate::protocol`].
 //!
-//! ## ContentBlock types and Loom support
+//! ## ContentBlock types and anureo support
 //!
-//! | Variant | Description | Loom support |
+//! | Variant | Description | anureo support |
 //! |---------|-------------|--------------|
 //! | **Text** | Plain text or Markdown | **Required**: concatenate in order with `\n\n` between blocks. |
-//! | **ResourceLink** | Reference (URI) to a resource the agent can fetch | **Required**: e.g. "Reference: …" or append context; if Loom cannot fetch, put URI in message only. |
+//! | **ResourceLink** | Reference (URI) to a resource the agent can fetch | **Required**: e.g. "Reference: …" or append context; if anureo cannot fetch, put URI in message only. |
 //! | **Resource** | Embedded resource (full content in message) | **Supported** (requires `embeddedContext` capability): text resources formatted with metadata; binary resources skipped. |
 //! | **Image** | Image content | Optional; needs promptCapabilities.image. If not declared, UnsupportedBlock. |
 //! | **Audio** | Audio | Same; promptCapabilities.audio. |
@@ -23,8 +23,8 @@
 
 use serde::{Deserialize, Serialize};
 
-// Re-export from loom for compatibility
-pub use loom_llm::message::{ContentPart, UserContent};
+// Re-export from anureo for compatibility
+pub use anureo_llm::message::{ContentPart, UserContent};
 
 /// Parse a slice of content blocks into a single user message string.
 ///
@@ -44,7 +44,7 @@ pub use loom_llm::message::{ContentPart, UserContent};
 /// # Example
 ///
 /// ```
-/// use loom_acp::content::{content_blocks_to_message, ContentBlockLike, ContentError};
+/// use anureo_acp::content::{content_blocks_to_message, ContentBlockLike, ContentError};
 ///
 /// struct TextBlock(pub String);
 /// impl ContentBlockLike for TextBlock {

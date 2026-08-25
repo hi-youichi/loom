@@ -1,4 +1,4 @@
-//! Load configuration from `~/.loom/config.toml` and project `.env`, then apply to the process
+//! Load configuration from `~/.anureo/config.toml` and project `.env`, then apply to the process
 //! environment with priority: **existing env > .env > providers > config.toml `[env]`**.
 
 mod dotenv;
@@ -38,7 +38,7 @@ use thiserror::Error;
 
 const DEFAULT_MODELS_DEV_URL: &str = "https://models.dev/api.json";
 const MODELS_DEV_URL_ENV: &str = "MODELS_DEV_URL";
-const MODELS_DEV_INLINE_JSON_ENV: &str = "LOOM_MODELS_DEV_API_JSON";
+const MODELS_DEV_INLINE_JSON_ENV: &str = "ANUREO_MODELS_DEV_API_JSON";
 
 /// Masks a key for logging: keeps first `prefix_len` and last `suffix_len` chars, middle becomes `***`.
 pub fn mask_key(key: &str, prefix_len: usize, suffix_len: usize) -> String {
@@ -223,20 +223,20 @@ fn resolve_provider_api_base_from_models_dev(provider_name: &str) -> Option<Stri
 /// Resolve a provider API base URL from the models.dev catalog.
 ///
 /// This is used by CLI configuration tooling when a provider does not declare
-/// `base_url` explicitly. An inline catalog from `LOOM_MODELS_DEV_API_JSON` is
+/// `base_url` explicitly. An inline catalog from `ANUREO_MODELS_DEV_API_JSON` is
 /// honored before the network catalog, matching normal config loading.
 pub fn resolve_provider_base_url(provider_name: &str) -> Option<String> {
     resolve_provider_api_base_from_models_dev(provider_name)
 }
 
-/// Loads config from `~/.loom/config.toml` and optional project `.env`, then sets environment
+/// Loads config from `~/.anureo/config.toml` and optional project `.env`, then sets environment
 /// variables only for keys that are **not** already set (so existing env has highest priority).
 ///
 /// Order of precedence when a key is missing in the process environment:
 /// 1. Value from project `.env` (current directory or `override_dir` if given)
-/// 2. Value from `~/.loom/config.toml` `[env]` table
+/// 2. Value from `~/.anureo/config.toml` `[env]` table
 ///
-/// * `app_name`: e.g. `"loom"` — kept for API compatibility (config path is now always `~/.loom/config.toml`).
+/// * `app_name`: e.g. `"anureo"` — kept for API compatibility (config path is now always `~/.anureo/config.toml`).
 /// * `override_dir`: if `Some`, look for `.env` in this directory instead of `std::env::current_dir()`.
 pub fn load_and_apply(app_name: &str, override_dir: Option<&Path>) -> Result<(), LoadError> {
     let _ = load_and_apply_with_report(app_name, override_dir)?;
@@ -406,7 +406,7 @@ mod tests {
     fn existing_env_wins() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
         env::set_var("CONFIG_TEST_EXISTING", "from_env");
-        let _ = load_and_apply("loom", None);
+        let _ = load_and_apply("anureo", None);
         assert_eq!(env::var("CONFIG_TEST_EXISTING").as_deref(), Ok("from_env"));
         env::remove_var("CONFIG_TEST_EXISTING");
     }
@@ -415,19 +415,19 @@ mod tests {
     fn load_and_apply_no_config_ok() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
         let empty_home = tempfile::tempdir().unwrap();
-        let prev_loom = crate::home::override_path();
+        let prev_anureo = crate::home::override_path();
         crate::home::set_override(Some(empty_home.path().to_path_buf()));
-        let r = load_and_apply("loom", None::<&std::path::Path>);
-        crate::home::set_override(prev_loom);
+        let r = load_and_apply("anureo", None::<&std::path::Path>);
+        crate::home::set_override(prev_anureo);
         assert!(r.is_ok());
     }
 
     #[test]
     fn dotenv_overrides_config_toml() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
+        let anureo_home = tempfile::tempdir().unwrap();
         std::fs::write(
-            loom_home.path().join("config.toml"),
+            anureo_home.path().join("config.toml"),
             "[env]\nCONFIG_TEST_PRIORITY = \"from_config\"\n",
         )
         .unwrap();
@@ -439,14 +439,14 @@ mod tests {
         )
         .unwrap();
 
-        let prev_loom = crate::home::override_path();
-        crate::home::set_override(Some(loom_home.path().to_path_buf()));
+        let prev_anureo = crate::home::override_path();
+        crate::home::set_override(Some(anureo_home.path().to_path_buf()));
         env::remove_var("CONFIG_TEST_PRIORITY");
 
-        let _ = load_and_apply("loom", Some(dotenv_dir.path()));
+        let _ = load_and_apply("anureo", Some(dotenv_dir.path()));
         let val = env::var("CONFIG_TEST_PRIORITY").unwrap();
         env::remove_var("CONFIG_TEST_PRIORITY");
-        crate::home::set_override(prev_loom);
+        crate::home::set_override(prev_anureo);
 
         assert_eq!(val, "from_dotenv");
     }
@@ -454,23 +454,23 @@ mod tests {
     #[test]
     fn config_toml_applied_when_no_dotenv() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
+        let anureo_home = tempfile::tempdir().unwrap();
         std::fs::write(
-            loom_home.path().join("config.toml"),
-            "[env]\nCONFIG_TEST_LOOM_ONLY = \"from_config\"\n",
+            anureo_home.path().join("config.toml"),
+            "[env]\nCONFIG_TEST_ANUREO_ONLY = \"from_config\"\n",
         )
         .unwrap();
 
         let empty_dir = tempfile::tempdir().unwrap();
 
-        let prev_loom = crate::home::override_path();
-        crate::home::set_override(Some(loom_home.path().to_path_buf()));
-        env::remove_var("CONFIG_TEST_LOOM_ONLY");
+        let prev_anureo = crate::home::override_path();
+        crate::home::set_override(Some(anureo_home.path().to_path_buf()));
+        env::remove_var("CONFIG_TEST_ANUREO_ONLY");
 
-        let _ = load_and_apply("loom", Some(empty_dir.path()));
-        let val = env::var("CONFIG_TEST_LOOM_ONLY").unwrap();
-        env::remove_var("CONFIG_TEST_LOOM_ONLY");
-        crate::home::set_override(prev_loom);
+        let _ = load_and_apply("anureo", Some(empty_dir.path()));
+        let val = env::var("CONFIG_TEST_ANUREO_ONLY").unwrap();
+        env::remove_var("CONFIG_TEST_ANUREO_ONLY");
+        crate::home::set_override(prev_anureo);
 
         assert_eq!(val, "from_config");
     }
@@ -478,7 +478,7 @@ mod tests {
     #[test]
     fn dotenv_only_when_no_xdg() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
+        let anureo_home = tempfile::tempdir().unwrap();
         let dotenv_dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dotenv_dir.path().join(".env"),
@@ -486,13 +486,13 @@ mod tests {
         )
         .unwrap();
 
-        let prev_loom = crate::home::override_path();
-        crate::home::set_override(Some(loom_home.path().to_path_buf()));
+        let prev_anureo = crate::home::override_path();
+        crate::home::set_override(Some(anureo_home.path().to_path_buf()));
         env::remove_var("CONFIG_TEST_DOTENV_ONLY");
-        let _ = load_and_apply("loom", Some(dotenv_dir.path()));
+        let _ = load_and_apply("anureo", Some(dotenv_dir.path()));
         let val = env::var("CONFIG_TEST_DOTENV_ONLY").unwrap();
         env::remove_var("CONFIG_TEST_DOTENV_ONLY");
-        crate::home::set_override(prev_loom);
+        crate::home::set_override(prev_anureo);
 
         assert_eq!(val, "from_dotenv_only");
     }
@@ -500,14 +500,14 @@ mod tests {
     #[test]
     fn invalid_config_toml_fails_with_parse_error() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
-        std::fs::write(loom_home.path().join("config.toml"), "invalid [[[\n").unwrap();
+        let anureo_home = tempfile::tempdir().unwrap();
+        std::fs::write(anureo_home.path().join("config.toml"), "invalid [[[\n").unwrap();
 
-        let prev_loom = crate::home::override_path();
-        crate::home::set_override(Some(loom_home.path().to_path_buf()));
+        let prev_anureo = crate::home::override_path();
+        crate::home::set_override(Some(anureo_home.path().to_path_buf()));
 
-        let result = load_and_apply("loom", None::<&std::path::Path>);
-        crate::home::set_override(prev_loom);
+        let result = load_and_apply("anureo", None::<&std::path::Path>);
+        crate::home::set_override(prev_anureo);
 
         assert!(matches!(result, Err(LoadError::XdgParse(_))));
     }
@@ -515,15 +515,15 @@ mod tests {
     #[test]
     fn config_file_paths_returns_both_paths() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
-        std::fs::write(loom_home.path().join("config.toml"), "[env]\n").unwrap();
+        let anureo_home = tempfile::tempdir().unwrap();
+        std::fs::write(anureo_home.path().join("config.toml"), "[env]\n").unwrap();
         let dotenv_dir = tempfile::tempdir().unwrap();
         std::fs::write(dotenv_dir.path().join(".env"), "K=V\n").unwrap();
 
-        let prev_loom = crate::home::override_path();
-        crate::home::set_override(Some(loom_home.path().to_path_buf()));
-        let paths = config_file_paths("loom", Some(dotenv_dir.path()));
-        crate::home::set_override(prev_loom);
+        let prev_anureo = crate::home::override_path();
+        crate::home::set_override(Some(anureo_home.path().to_path_buf()));
+        let paths = config_file_paths("anureo", Some(dotenv_dir.path()));
+        crate::home::set_override(prev_anureo);
 
         assert!(paths.xdg.is_some());
         assert!(paths.dotenv.is_some());
@@ -533,10 +533,10 @@ mod tests {
     fn config_file_paths_returns_none_when_missing() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
         let empty = tempfile::tempdir().unwrap();
-        let prev_loom = crate::home::override_path();
+        let prev_anureo = crate::home::override_path();
         crate::home::set_override(Some(empty.path().to_path_buf()));
-        let paths = config_file_paths("loom", Some(empty.path()));
-        crate::home::set_override(prev_loom);
+        let paths = config_file_paths("anureo", Some(empty.path()));
+        crate::home::set_override(prev_anureo);
 
         assert!(paths.xdg.is_none());
         assert!(paths.dotenv.is_none());
@@ -545,20 +545,20 @@ mod tests {
     #[test]
     fn load_and_apply_with_report_returns_entries() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
+        let anureo_home = tempfile::tempdir().unwrap();
         std::fs::write(
-            loom_home.path().join("config.toml"),
+            anureo_home.path().join("config.toml"),
             "[env]\nCONFIG_TEST_REPORT_LOG = \"report_val\"\n",
         )
         .unwrap();
 
-        let prev_loom = crate::home::override_path();
-        crate::home::set_override(Some(loom_home.path().to_path_buf()));
+        let prev_anureo = crate::home::override_path();
+        crate::home::set_override(Some(anureo_home.path().to_path_buf()));
         env::remove_var("CONFIG_TEST_REPORT_LOG");
 
-        let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+        let report = load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
         env::remove_var("CONFIG_TEST_REPORT_LOG");
-        crate::home::set_override(prev_loom);
+        crate::home::set_override(prev_anureo);
 
         assert!(!report.entries.is_empty());
         let entry = report
@@ -574,20 +574,20 @@ mod tests {
     #[test]
     fn load_and_apply_with_report_masks_secret_values() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
+        let anureo_home = tempfile::tempdir().unwrap();
         std::fs::write(
-            loom_home.path().join("config.toml"),
+            anureo_home.path().join("config.toml"),
             "[env]\nCONFIG_TEST_API_KEY = \"super_secret\"\n",
         )
         .unwrap();
 
-        let prev_loom = crate::home::override_path();
-        crate::home::set_override(Some(loom_home.path().to_path_buf()));
+        let prev_anureo = crate::home::override_path();
+        crate::home::set_override(Some(anureo_home.path().to_path_buf()));
         env::remove_var("CONFIG_TEST_API_KEY");
 
-        let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+        let report = load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
         env::remove_var("CONFIG_TEST_API_KEY");
-        crate::home::set_override(prev_loom);
+        crate::home::set_override(prev_anureo);
 
         let entry = report
             .entries
@@ -691,9 +691,9 @@ mod tests {
     #[test]
     fn provider_settings_applied_when_default_provider_set() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
+        let anureo_home = tempfile::tempdir().unwrap();
         std::fs::write(
-            loom_home.path().join("config.toml"),
+            anureo_home.path().join("config.toml"),
             r#"
 [default]
 provider = "my-llm"
@@ -707,13 +707,13 @@ model = "test-model"
         )
         .unwrap();
 
-        let prev_loom = crate::home::override_path();
-        crate::home::set_override(Some(loom_home.path().to_path_buf()));
+        let prev_anureo = crate::home::override_path();
+        crate::home::set_override(Some(anureo_home.path().to_path_buf()));
         env::remove_var("OPENAI_API_KEY");
         env::remove_var("OPENAI_BASE_URL");
         env::remove_var("MODEL");
 
-        let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+        let report = load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
 
         let api_key = env::var("OPENAI_API_KEY").unwrap_or_default();
         let base_url = env::var("OPENAI_BASE_URL").unwrap_or_default();
@@ -722,7 +722,7 @@ model = "test-model"
         env::remove_var("OPENAI_API_KEY");
         env::remove_var("OPENAI_BASE_URL");
         env::remove_var("MODEL");
-        crate::home::set_override(prev_loom);
+        crate::home::set_override(prev_anureo);
 
         assert_eq!(api_key, "sk-test-provider");
         assert_eq!(base_url, "https://example.com/v1");
@@ -736,9 +736,9 @@ model = "test-model"
     #[test]
     fn provider_type_no_longer_sets_llm_provider_env() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
+        let anureo_home = tempfile::tempdir().unwrap();
         std::fs::write(
-            loom_home.path().join("config.toml"),
+            anureo_home.path().join("config.toml"),
             r#"
 [default]
 provider = "bigmodel"
@@ -753,13 +753,13 @@ type = "bigmodel"
         )
         .unwrap();
 
-        let prev_loom = crate::home::override_path();
-        crate::home::set_override(Some(loom_home.path().to_path_buf()));
+        let prev_anureo = crate::home::override_path();
+        crate::home::set_override(Some(anureo_home.path().to_path_buf()));
         env::remove_var("OPENAI_API_KEY");
         env::remove_var("LLM_PROVIDER");
         env::remove_var("MODEL");
 
-        let _ = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+        let _ = load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
 
         let llm_provider = env::var("LLM_PROVIDER").unwrap_or_default();
         let model = env::var("MODEL").unwrap_or_default();
@@ -767,7 +767,7 @@ type = "bigmodel"
         env::remove_var("OPENAI_API_KEY");
         env::remove_var("LLM_PROVIDER");
         env::remove_var("MODEL");
-        crate::home::set_override(prev_loom);
+        crate::home::set_override(prev_anureo);
 
         assert!(
             llm_provider.is_empty(),
@@ -779,9 +779,9 @@ type = "bigmodel"
     #[test]
     fn dotenv_overrides_provider_settings() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
+        let anureo_home = tempfile::tempdir().unwrap();
         std::fs::write(
-            loom_home.path().join("config.toml"),
+            anureo_home.path().join("config.toml"),
             r#"
 [default]
 provider = "base"
@@ -796,15 +796,15 @@ model = "model-from-provider"
         let dotenv_dir = tempfile::tempdir().unwrap();
         std::fs::write(dotenv_dir.path().join(".env"), "MODEL=model-from-dotenv\n").unwrap();
 
-        let prev_loom = crate::home::override_path();
-        crate::home::set_override(Some(loom_home.path().to_path_buf()));
+        let prev_anureo = crate::home::override_path();
+        crate::home::set_override(Some(anureo_home.path().to_path_buf()));
         env::remove_var("MODEL");
 
-        let _ = load_and_apply_with_report("loom", Some(dotenv_dir.path())).unwrap();
+        let _ = load_and_apply_with_report("anureo", Some(dotenv_dir.path())).unwrap();
         let model = env::var("MODEL").unwrap_or_default();
 
         env::remove_var("MODEL");
-        crate::home::set_override(prev_loom);
+        crate::home::set_override(prev_anureo);
 
         assert_eq!(model, "model-from-dotenv");
     }
@@ -812,9 +812,9 @@ model = "model-from-provider"
     #[test]
     fn process_env_wins_over_provider() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
+        let anureo_home = tempfile::tempdir().unwrap();
         std::fs::write(
-            loom_home.path().join("config.toml"),
+            anureo_home.path().join("config.toml"),
             r#"
 [default]
 provider = "base"
@@ -826,15 +826,15 @@ model = "model-from-provider"
         )
         .unwrap();
 
-        let prev_loom = crate::home::override_path();
-        crate::home::set_override(Some(loom_home.path().to_path_buf()));
+        let prev_anureo = crate::home::override_path();
+        crate::home::set_override(Some(anureo_home.path().to_path_buf()));
         env::set_var("MODEL", "model-from-env");
 
-        let _ = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+        let _ = load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
         let model = env::var("MODEL").unwrap_or_default();
 
         env::remove_var("MODEL");
-        crate::home::set_override(prev_loom);
+        crate::home::set_override(prev_anureo);
 
         assert_eq!(model, "model-from-env");
     }
@@ -842,9 +842,9 @@ model = "model-from-provider"
     #[test]
     fn unknown_provider_name_applies_nothing() {
         let _g = CONFIG_ENV_LOCK.lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
+        let anureo_home = tempfile::tempdir().unwrap();
         std::fs::write(
-            loom_home.path().join("config.toml"),
+            anureo_home.path().join("config.toml"),
             r#"
 [default]
 provider = "nonexistent"
@@ -856,14 +856,14 @@ model = "other-model"
         )
         .unwrap();
 
-        let prev_loom = crate::home::override_path();
-        crate::home::set_override(Some(loom_home.path().to_path_buf()));
+        let prev_anureo = crate::home::override_path();
+        crate::home::set_override(Some(anureo_home.path().to_path_buf()));
         env::remove_var("MODEL");
 
-        let _ = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+        let _ = load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
         let model = env::var("MODEL").ok();
 
-        crate::home::set_override(prev_loom);
+        crate::home::set_override(prev_anureo);
 
         assert!(model.is_none());
     }

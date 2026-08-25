@@ -5,11 +5,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::state::ReActState;
-use loom_graph_core::GraphError;
-use loom_graph_core::{
+use anureo_graph_core::GraphError;
+use anureo_graph_core::{
     CompilationError, CompiledStateGraph, Next, Node, RunContext, StateGraph, END, START,
 };
-use loom_llm::LlmProvider;
+use anureo_llm::LlmProvider;
 
 use super::compact_node::CompactNode;
 use super::config::CompactionConfig;
@@ -81,9 +81,9 @@ mod tests {
     use std::sync::Arc;
 
     use crate::state::ReActState;
-    use loom_llm::client::{FixedLlmProvider, MockLlm};
-    use loom_llm::message::{Message, UserContent};
-    use loom_llm::LlmProvider;
+    use anureo_llm::client::{FixedLlmProvider, MockLlm};
+    use anureo_llm::message::{Message, UserContent};
+    use anureo_llm::LlmProvider;
 
     use super::*;
 

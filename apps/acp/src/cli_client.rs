@@ -1,7 +1,7 @@
 //! CLI-facing ACP client.
 //!
-//! `loom acp` is the IDE stdio bridge. This module is the other direction:
-//! the normal `loom --acp` command acts as an ACP client and talks directly to
+//! `anureo acp` is the IDE stdio bridge. This module is the other direction:
+//! the normal `anureo --acp` command acts as an ACP client and talks directly to
 //! the server WebSocket endpoint.
 
 use std::path::PathBuf;
@@ -40,7 +40,7 @@ pub async fn run(options: CliAcpOptions) -> Result<(), Box<dyn std::error::Error
         "initialize",
         json!({
             "protocolVersion": 1,
-            "clientInfo": {"name": "loom-cli", "version": env!("CARGO_PKG_VERSION")},
+            "clientInfo": {"name": "anureo-cli", "version": env!("CARGO_PKG_VERSION")},
             "clientCapabilities": {}
         }),
         &options,

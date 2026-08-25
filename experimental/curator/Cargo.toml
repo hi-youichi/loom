@@ -1,8 +1,8 @@
 [package]
-name = "loom-curator"
+name = "anureo-curator"
 version.workspace = true
 edition.workspace = true
-description = "Curator system for Loom - background review, skill curation, and memory updates"
+description = "Curator system for anureo - background review, skill curation, and memory updates"
 license.workspace = true
 authors.workspace = true
 
@@ -13,11 +13,11 @@ path = "src/lib.rs"
 testing = []
 
 [dependencies]
-# LLM client (loom-llm crate)
-loom-llm = { path = "../../foundation/llm" }
+# LLM client (anureo-llm crate)
+anureo-llm = { path = "../../foundation/llm" }
 
 
-# Config crate for loom_home
+# Config crate for anureo_home
 env_config = { path = "../../foundation/config", package = "config" }
 
 # SQLite for review history persistence
@@ -50,8 +50,8 @@ tool-basic = { path = "../../agent/tool/tool-basic" }
 tool-experimental = { path = "../../agent/tool/tool-experimental" }
 memory-v2 = { path = "../../experimental/memory-v2" }
 agent = { path = "../../agent/agent-core" }
-loom-graph-core = { path = "../../foundation/graph-core" }
-loom-util = { path = "../../foundation/loom-util" }
+anureo-graph-core = { path = "../../foundation/graph-core" }
+anureo-util = { path = "../../foundation/anureo-util" }
 
 # Archive handling for curator backup
 flate2 = "1.0"

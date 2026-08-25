@@ -129,8 +129,8 @@ where
     /// # Example
     ///
     /// ```rust,ignore
-    /// use loom_graph_core::StateGraph;
-    /// use loom_graph_core::channels::FieldBasedUpdater;
+    /// use anureo_graph_core::StateGraph;
+    /// use anureo_graph_core::channels::FieldBasedUpdater;
     /// use std::sync::Arc;
     ///
     /// #[derive(Clone, Debug)]
@@ -159,7 +159,7 @@ where
     /// # Example
     ///
     /// ```rust,no_run
-    /// use loom_graph_core::{StateGraph, RetryPolicy};
+    /// use anureo_graph_core::{StateGraph, RetryPolicy};
     /// use std::time::Duration;
     ///
     /// let graph = StateGraph::<String>::new()
@@ -186,7 +186,7 @@ where
     /// # Example
     ///
     /// ```rust,no_run
-    /// use loom_graph_core::{StateGraph, DefaultInterruptHandler};
+    /// use anureo_graph_core::{StateGraph, DefaultInterruptHandler};
     /// use std::sync::Arc;
     ///
     /// let graph = StateGraph::<String>::new()
@@ -243,7 +243,7 @@ where
     /// # Example
     ///
     /// ```rust,ignore
-    /// use loom_graph_core::{StateGraph, END};
+    /// use anureo_graph_core::{StateGraph, END};
     /// use std::collections::HashMap;
     /// use std::sync::Arc;
     ///

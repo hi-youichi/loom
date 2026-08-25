@@ -1,13 +1,13 @@
 //! L1 e2e: discover → read file → parse in real temp dirs and env.
-//! No dependency on loom.
+//! No dependency on anureo.
 
 use config::{discover_mcp_config_path, load_mcp_config_from_path, McpConfigError, McpServerDef};
 use std::path::Path;
 use std::sync::Mutex;
 
-static LOOM_HOME_LOCK: Mutex<()> = Mutex::new(());
+static ANUREO_HOME_LOCK: Mutex<()> = Mutex::new(());
 
-fn restore_loom_home(prev: Option<std::path::PathBuf>) {
+fn restore_anureo_home(prev: Option<std::path::PathBuf>) {
     config::home::set_override(prev);
 }
 
@@ -19,8 +19,8 @@ fn e2e_discover_then_load_override() {
     let content = r#"{"mcpServers":{"one":{"command":"cmd","args":["a","b"]}}}"#;
     std::fs::write(&custom, content).unwrap();
     let working = dir.path().join("proj");
-    std::fs::create_dir_all(working.join(".loom")).unwrap();
-    std::fs::write(working.join(".loom").join("mcp.json"), "{}").unwrap();
+    std::fs::create_dir_all(working.join(".anureo")).unwrap();
+    std::fs::write(working.join(".anureo").join("mcp.json"), "{}").unwrap();
 
     let path = discover_mcp_config_path(Some(&custom), Some(working.as_path())).unwrap();
     assert_eq!(path.as_path(), custom);
@@ -45,22 +45,22 @@ fn e2e_discover_then_load_override() {
 #[test]
 #[ignore]
 fn e2e_discover_then_load_project() {
-    let _lock = LOOM_HOME_LOCK.lock().unwrap();
+    let _lock = ANUREO_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let working = dir.path().join("proj");
-    std::fs::create_dir_all(working.join(".loom")).unwrap();
-    let project_mcp = working.join(".loom").join("mcp.json");
+    std::fs::create_dir_all(working.join(".anureo")).unwrap();
+    let project_mcp = working.join(".anureo").join("mcp.json");
     let content = r#"{"mcpServers":{"proj-server":{"command":"node","args":["server.js"]}}}"#;
     std::fs::write(&project_mcp, content).unwrap();
 
-    let loom_home = dir.path().join("loom_home");
-    std::fs::create_dir_all(&loom_home).unwrap();
-    std::fs::write(loom_home.join("mcp.json"), "{}").unwrap();
+    let anureo_home = dir.path().join("anureo_home");
+    std::fs::create_dir_all(&anureo_home).unwrap();
+    std::fs::write(anureo_home.join("mcp.json"), "{}").unwrap();
     let prev = config::home::override_path();
-    config::home::set_override(Some(loom_home.clone()));
+    config::home::set_override(Some(anureo_home.clone()));
 
     let path = discover_mcp_config_path(None::<&Path>, Some(working.as_path())).unwrap();
-    restore_loom_home(prev);
+    restore_anureo_home(prev);
     assert_eq!(path.as_path(), project_mcp);
 
     let list = load_mcp_config_from_path(&path).unwrap();
@@ -83,21 +83,21 @@ fn e2e_discover_then_load_project() {
 #[test]
 #[ignore]
 fn e2e_discover_then_load_global() {
-    let _lock = LOOM_HOME_LOCK.lock().unwrap();
+    let _lock = ANUREO_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let working = dir.path().join("empty");
     std::fs::create_dir_all(&working).unwrap();
-    let loom_home = dir.path().join("loom_home");
-    std::fs::create_dir_all(&loom_home).unwrap();
-    let global_mcp = loom_home.join("mcp.json");
+    let anureo_home = dir.path().join("anureo_home");
+    std::fs::create_dir_all(&anureo_home).unwrap();
+    let global_mcp = anureo_home.join("mcp.json");
     let content = r#"{"mcpServers":{"global":{"command":"npx","args":["-y","mcp-server"]}}}"#;
     std::fs::write(&global_mcp, content).unwrap();
 
     let prev = config::home::override_path();
-    config::home::set_override(Some(loom_home.clone()));
+    config::home::set_override(Some(anureo_home.clone()));
 
     let path = discover_mcp_config_path(None::<&Path>, Some(working.as_path())).unwrap();
-    restore_loom_home(prev);
+    restore_anureo_home(prev);
     assert_eq!(path.as_path(), global_mcp);
 
     let list = load_mcp_config_from_path(&path).unwrap();
@@ -120,51 +120,51 @@ fn e2e_discover_then_load_global() {
 #[test]
 #[ignore]
 fn e2e_discover_order_override_over_project() {
-    let _lock = LOOM_HOME_LOCK.lock().unwrap();
+    let _lock = ANUREO_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let override_path = dir.path().join("override.json");
     std::fs::write(&override_path, r#"{"mcpServers":{"ov":{"command":"ov"}}}"#).unwrap();
     let working = dir.path().join("proj");
-    std::fs::create_dir_all(working.join(".loom")).unwrap();
+    std::fs::create_dir_all(working.join(".anureo")).unwrap();
     std::fs::write(
-        working.join(".loom").join("mcp.json"),
+        working.join(".anureo").join("mcp.json"),
         r#"{"mcpServers":{}}"#,
     )
     .unwrap();
-    let loom_home = dir.path().join("loom_home");
-    std::fs::create_dir_all(&loom_home).unwrap();
-    std::fs::write(loom_home.join("mcp.json"), "{}").unwrap();
+    let anureo_home = dir.path().join("anureo_home");
+    std::fs::create_dir_all(&anureo_home).unwrap();
+    std::fs::write(anureo_home.join("mcp.json"), "{}").unwrap();
 
     let prev = config::home::override_path();
-    config::home::set_override(Some(loom_home.clone()));
+    config::home::set_override(Some(anureo_home.clone()));
 
     let path = discover_mcp_config_path(Some(&override_path), Some(working.as_path())).unwrap();
-    restore_loom_home(prev);
+    restore_anureo_home(prev);
     assert_eq!(path.as_path(), override_path);
 }
 
 #[test]
 #[ignore]
 fn e2e_discover_order_project_over_global() {
-    let _lock = LOOM_HOME_LOCK.lock().unwrap();
+    let _lock = ANUREO_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let working = dir.path().join("proj");
-    std::fs::create_dir_all(working.join(".loom")).unwrap();
-    let project_mcp = working.join(".loom").join("mcp.json");
+    std::fs::create_dir_all(working.join(".anureo")).unwrap();
+    let project_mcp = working.join(".anureo").join("mcp.json");
     std::fs::write(&project_mcp, r#"{"mcpServers":{"p":{"command":"p"}}}"#).unwrap();
-    let loom_home = dir.path().join("loom_home");
-    std::fs::create_dir_all(&loom_home).unwrap();
+    let anureo_home = dir.path().join("anureo_home");
+    std::fs::create_dir_all(&anureo_home).unwrap();
     std::fs::write(
-        loom_home.join("mcp.json"),
+        anureo_home.join("mcp.json"),
         r#"{"mcpServers":{"g":{"command":"g"}}}"#,
     )
     .unwrap();
 
     let prev = config::home::override_path();
-    config::home::set_override(Some(loom_home.clone()));
+    config::home::set_override(Some(anureo_home.clone()));
 
     let path = discover_mcp_config_path(None::<&Path>, Some(working.as_path())).unwrap();
-    restore_loom_home(prev);
+    restore_anureo_home(prev);
     assert_eq!(path.as_path(), project_mcp);
 }
 
@@ -206,18 +206,18 @@ fn e2e_load_disabled_filtered_out() {
 #[test]
 #[ignore]
 fn e2e_discover_none_when_nothing_exists() {
-    let _lock = LOOM_HOME_LOCK.lock().unwrap();
+    let _lock = ANUREO_HOME_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let working = dir.path().join("empty");
     std::fs::create_dir_all(&working).unwrap();
 
-    let loom_home = dir.path().join("loom_home");
-    std::fs::create_dir_all(&loom_home).unwrap();
+    let anureo_home = dir.path().join("anureo_home");
+    std::fs::create_dir_all(&anureo_home).unwrap();
     let prev = config::home::override_path();
-    config::home::set_override(Some(loom_home.clone()));
+    config::home::set_override(Some(anureo_home.clone()));
 
     let path = discover_mcp_config_path(None::<&Path>, Some(working.as_path()));
-    restore_loom_home(prev);
+    restore_anureo_home(prev);
 
     assert!(path.is_none());
 }

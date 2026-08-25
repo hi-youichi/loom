@@ -18,19 +18,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .skip_while(|arg| arg.as_str() != "--db-path")
         .nth(1)
         .map(std::path::PathBuf::from);
-    let executor = Arc::new(loom_acp::prompt_executor::DeterministicPromptExecutor);
+    let executor = Arc::new(anureo_acp::prompt_executor::DeterministicPromptExecutor);
     let runtime = match db_path {
         Some(path) => {
-            loom_acp::runtime::AcpRuntime::with_prompt_executor_and_db_path(executor, path)?
+            anureo_acp::runtime::AcpRuntime::with_prompt_executor_and_db_path(executor, path)?
         }
-        None => loom_acp::runtime::AcpRuntime::with_prompt_executor(executor)?,
+        None => anureo_acp::runtime::AcpRuntime::with_prompt_executor(executor)?,
     };
-    let hub = Arc::new(loom_server::acp_hub::AcpHub::with_runtime(
-        loom_server::acp_hub::AcpHubConfig::default(),
+    let hub = Arc::new(anureo_server::acp_hub::AcpHub::with_runtime(
+        anureo_server::acp_hub::AcpHubConfig::default(),
         runtime,
     ));
-    let state = loom_server::state::new_server_state_with_acp_hub(hub);
-    let app = loom_server::routes::build_router(state);
+    let state = anureo_server::state::new_server_state_with_acp_hub(hub);
+    let app = anureo_server::routes::build_router(state);
     let listener = TcpListener::bind(("127.0.0.1", port)).await?;
     let address = listener.local_addr()?;
     println!("ACP_TEST_SERVER_URL=ws://{address}/acp");

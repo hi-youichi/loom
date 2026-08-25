@@ -16,7 +16,7 @@ pub use tool_core::tool_name::TOOL_SEARCH_MEMORIES;
 /// # Examples
 ///
 /// ```no_run
-/// use loom_tools::tools::{RememberTool, SearchMemoriesTool, Tool};
+/// use anureo_tools::tools::{RememberTool, SearchMemoriesTool, Tool};
 /// use checkpoint::{InMemoryStore, Namespace};
 /// use std::sync::Arc;
 /// use serde_json::json;
@@ -58,7 +58,7 @@ impl SearchMemoriesTool {
     /// # Examples
     ///
     /// ```
-    /// use loom_tools::tools::SearchMemoriesTool;
+    /// use anureo_tools::tools::SearchMemoriesTool;
     /// use checkpoint::{InMemoryStore, Namespace};
     /// use std::sync::Arc;
     ///

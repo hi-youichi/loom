@@ -1,4 +1,4 @@
-// Navigate into OpenChamber like a user, capture WS churn with timings.
+// Navigate into anureo like a user, capture WS churn with timings.
 // Usage: node ws-trace.mjs [--url http://localhost:5180/] [--wait 20000] [--click <text>]
 import { chromium } from "playwright";
 

@@ -40,11 +40,11 @@ fn path_string(path: &std::path::Path) -> Value {
 
 fn project_agent_path(wd: &std::path::Path, name: &str) -> PathBuf {
     let plural = wd
-        .join(store::LOOMDESK_DIR_NAME)
+        .join(store::ANUREO_DIR_NAME)
         .join("agents")
         .join(format!("{name}.md"));
     let legacy = wd
-        .join(store::LOOMDESK_DIR_NAME)
+        .join(store::ANUREO_DIR_NAME)
         .join("agent")
         .join(format!("{name}.md"));
     if legacy.is_file() && !plural.is_file() {
@@ -55,13 +55,13 @@ fn project_agent_path(wd: &std::path::Path, name: &str) -> PathBuf {
 }
 
 fn user_agent_flat_path(name: &str) -> Result<PathBuf, store::StoreError> {
-    Ok(store::loomdesk_config_dir()?
+    Ok(store::anureo_config_dir()?
         .join("agents")
         .join(format!("{name}.md")))
 }
 
 fn user_agent_legacy_path(name: &str) -> Result<PathBuf, store::StoreError> {
-    Ok(store::loomdesk_config_dir()?
+    Ok(store::anureo_config_dir()?
         .parent()
         .map(|p| p.join("agent").join(format!("{name}.md")))
         .unwrap_or_else(|| PathBuf::from(format!("agent/{name}.md"))))
@@ -76,7 +76,7 @@ fn user_agent_path(name: &str) -> Result<PathBuf, store::StoreError> {
     if legacy.is_file() {
         return Ok(legacy);
     }
-    if let Ok(config_dir) = store::loomdesk_config_dir() {
+    if let Ok(config_dir) = store::anureo_config_dir() {
         let agents_dir = config_dir.join("agents");
         let index = store::index_md_files_recursive(&agents_dir);
         if let Some(found) = index.get(name) {
@@ -435,7 +435,7 @@ fn update_entity(
     } else {
         store::get_json_write_target(
             &layers,
-            prefer_project_json && wd.join(store::LOOMDESK_DIR_NAME).exists(),
+            prefer_project_json && wd.join(store::ANUREO_DIR_NAME).exists(),
         )
     };
 
@@ -697,7 +697,7 @@ fn create_entity(
     let json_source = store::get_json_entry_source(&layers, section_key, name);
     if json_source.exists {
         return Err(store::StoreError::conflict(format!(
-            "{name} already exists in loomdesk.json"
+            "{name} already exists in anureo.json"
         )));
     }
 
@@ -781,11 +781,11 @@ fn delete_command(ctx: &ExtensionContext, name: &str) -> Result<(), store::Store
     let mut deleted = false;
 
     let project = wd
-        .join(store::LOOMDESK_DIR_NAME)
+        .join(store::ANUREO_DIR_NAME)
         .join("commands")
         .join(format!("{name}.md"));
     let project_legacy = wd
-        .join(store::LOOMDESK_DIR_NAME)
+        .join(store::ANUREO_DIR_NAME)
         .join("command")
         .join(format!("{name}.md"));
     for path in [project, project_legacy] {
@@ -797,7 +797,7 @@ fn delete_command(ctx: &ExtensionContext, name: &str) -> Result<(), store::Store
         }
     }
 
-    let config_dir = store::loomdesk_config_dir()?;
+    let config_dir = store::anureo_config_dir()?;
     let user_plural = config_dir.join("commands").join(format!("{name}.md"));
     let user_legacy = config_dir.join("command").join(format!("{name}.md"));
     for path in [user_plural, user_legacy] {
@@ -840,12 +840,12 @@ struct Snippet {
 
 fn snippet_dirs(ctx: &ExtensionContext) -> Result<Vec<(PathBuf, &'static str)>, store::StoreError> {
     let mut dirs = Vec::new();
-    let global = store::loom_config_dir()?;
+    let global = store::anureo_config_dir()?;
     dirs.push((global.join("snippets"), "global"));
     dirs.push((global.join("snippet"), "global"));
     if let Some(wd) = store::optional_working_dir(ctx) {
-        dirs.push((wd.join(".loom").join("snippets"), "project"));
-        dirs.push((wd.join(".loom").join("snippet"), "project"));
+        dirs.push((wd.join(".anureo").join("snippets"), "project"));
+        dirs.push((wd.join(".anureo").join("snippet"), "project"));
     }
     Ok(dirs)
 }
@@ -964,14 +964,14 @@ fn snippet_json(snippet: &Snippet) -> Value {
 fn writable_snippet_dir(ctx: &ExtensionContext, scope: &str) -> Result<PathBuf, store::StoreError> {
     if scope == "project" {
         let wd = store::working_dir_or_error(ctx)?;
-        let preferred = wd.join(".loom").join("snippet");
-        let alternate = wd.join(".loom").join("snippets");
+        let preferred = wd.join(".anureo").join("snippet");
+        let alternate = wd.join(".anureo").join("snippets");
         if alternate.is_dir() && !preferred.is_dir() {
             return Ok(alternate);
         }
         return Ok(preferred);
     }
-    let global = store::loom_config_dir()?;
+    let global = store::anureo_config_dir()?;
     let alt = global.join("snippets");
     let preferred = global.join("snippet");
     if alt.is_dir() && !preferred.is_dir() {
@@ -1245,11 +1245,11 @@ impl ExtensionHandler for ConfigEntityHandler {
                         store::JSON_SECTION_COMMAND,
                         |wd| {
                             let plural = wd
-                                .join(store::LOOMDESK_DIR_NAME)
+                                .join(store::ANUREO_DIR_NAME)
                                 .join("commands")
                                 .join(format!("{name}.md"));
                             let legacy = wd
-                                .join(store::LOOMDESK_DIR_NAME)
+                                .join(store::ANUREO_DIR_NAME)
                                 .join("command")
                                 .join(format!("{name}.md"));
                             if legacy.is_file() && !plural.is_file() {
@@ -1259,7 +1259,7 @@ impl ExtensionHandler for ConfigEntityHandler {
                             }
                         },
                         |n| {
-                            let config_dir = store::loomdesk_config_dir()?;
+                            let config_dir = store::anureo_config_dir()?;
                             let plural = config_dir.join("commands").join(format!("{n}.md"));
                             let legacy = config_dir.join("command").join(format!("{n}.md"));
                             if legacy.is_file() && !plural.is_file() {
@@ -1305,11 +1305,11 @@ impl ExtensionHandler for ConfigEntityHandler {
                     "template",
                     |wd| {
                         let plural = wd
-                            .join(store::LOOMDESK_DIR_NAME)
+                            .join(store::ANUREO_DIR_NAME)
                             .join("commands")
                             .join(format!("{name}.md"));
                         let legacy = wd
-                            .join(store::LOOMDESK_DIR_NAME)
+                            .join(store::ANUREO_DIR_NAME)
                             .join("command")
                             .join(format!("{name}.md"));
                         if legacy.is_file() && !plural.is_file() {
@@ -1319,7 +1319,7 @@ impl ExtensionHandler for ConfigEntityHandler {
                         }
                     },
                     |n| {
-                        let config_dir = store::loomdesk_config_dir()?;
+                        let config_dir = store::anureo_config_dir()?;
                         let plural = config_dir.join("commands").join(format!("{n}.md"));
                         let legacy = config_dir.join("command").join(format!("{n}.md"));
                         if legacy.is_file() && !plural.is_file() {
@@ -1360,11 +1360,11 @@ impl ExtensionHandler for ConfigEntityHandler {
                     store::JSON_SECTION_COMMAND,
                     |wd| {
                         let plural = wd
-                            .join(store::LOOMDESK_DIR_NAME)
+                            .join(store::ANUREO_DIR_NAME)
                             .join("commands")
                             .join(format!("{name}.md"));
                         let legacy = wd
-                            .join(store::LOOMDESK_DIR_NAME)
+                            .join(store::ANUREO_DIR_NAME)
                             .join("command")
                             .join(format!("{name}.md"));
                         if legacy.is_file() && !plural.is_file() {
@@ -1374,7 +1374,7 @@ impl ExtensionHandler for ConfigEntityHandler {
                         }
                     },
                     |n| {
-                        let config_dir = store::loomdesk_config_dir()?;
+                        let config_dir = store::anureo_config_dir()?;
                         let plural = config_dir.join("commands").join(format!("{n}.md"));
                         let legacy = config_dir.join("command").join(format!("{n}.md"));
                         if legacy.is_file() && !plural.is_file() {
@@ -1581,8 +1581,8 @@ mod tests {
 
     impl HomeGuard {
         fn set(home: &std::path::Path) -> Self {
-            let old = std::env::var("LOOMDESK_TEST_USER_HOME").ok();
-            std::env::set_var("LOOMDESK_TEST_USER_HOME", home);
+            let old = std::env::var("ANUREO_TEST_USER_HOME").ok();
+            std::env::set_var("ANUREO_TEST_USER_HOME", home);
             Self { old }
         }
     }
@@ -1590,8 +1590,8 @@ mod tests {
     impl Drop for HomeGuard {
         fn drop(&mut self) {
             match &self.old {
-                Some(v) => std::env::set_var("LOOMDESK_TEST_USER_HOME", v),
-                None => std::env::remove_var("LOOMDESK_TEST_USER_HOME"),
+                Some(v) => std::env::set_var("ANUREO_TEST_USER_HOME", v),
+                None => std::env::remove_var("ANUREO_TEST_USER_HOME"),
             }
         }
     }
@@ -1684,7 +1684,7 @@ mod tests {
         let user_md = home
             .path()
             .join(".config")
-            .join("loomdesk")
+            .join("anureo")
             .join("agents")
             .join("reviewer.md");
         assert!(user_md.is_file());
@@ -1756,7 +1756,7 @@ mod tests {
         let user_config = home
             .path()
             .join(".config")
-            .join("loomdesk")
+            .join("anureo")
             .join("config.json");
         fs::create_dir_all(user_config.parent().unwrap()).unwrap();
         fs::write(
@@ -1809,7 +1809,7 @@ mod tests {
         let user_md = home
             .path()
             .join(".config")
-            .join("loomdesk")
+            .join("anureo")
             .join("commands")
             .join("ship.md");
         assert!(user_md.is_file());
@@ -1913,7 +1913,7 @@ mod tests {
         let ctx = make_ctx(project.path());
         let handler = ConfigEntityHandler::new();
 
-        let global = home.path().join(".config").join("loom").join("snippets");
+        let global = home.path().join(".config").join("anureo").join("snippets");
         write_snippet(&global, "greet", "hello from greet", "");
         write_snippet(
             &global,
@@ -1965,10 +1965,10 @@ mod tests {
         let ctx = make_ctx(project.path());
         let handler = ConfigEntityHandler::new();
 
-        let global = home.path().join(".config").join("loom").join("snippets");
+        let global = home.path().join(".config").join("anureo").join("snippets");
         write_snippet(&global, "dup", "global version", "");
 
-        let project_snippets = project.path().join(".loom").join("snippets");
+        let project_snippets = project.path().join(".anureo").join("snippets");
         write_snippet(&project_snippets, "dup", "project version", "");
 
         let got = call(

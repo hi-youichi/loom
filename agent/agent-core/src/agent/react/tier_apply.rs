@@ -1,6 +1,6 @@
 //! Apply tier resolution results to [`ReactBuildConfig`].
 //!
-//! Migrated from `loom-tier/src/apply.rs`. Lives in `loom-react-config` because
+//! Migrated from `anureo-tier/src/apply.rs`. Lives in `anureo-react-config` because
 //! it reads and writes `ReactBuildConfig` fields.
 
 use model_spec_core::{registry::ModelEntry, DefaultTierResolver, TierResolver};

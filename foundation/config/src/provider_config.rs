@@ -12,9 +12,9 @@ pub fn load_provider_configs(config: &FullConfig) -> Vec<ProviderConfig> {
         .collect()
 }
 
-/// Convenience: load from XDG config path (`~/.loom/config.toml`).
+/// Convenience: load from XDG config path (`~/.anureo/config.toml`).
 pub fn load_provider_configs_from_xdg() -> Option<Vec<ProviderConfig>> {
-    let config = crate::load_full_config("loom").ok()?;
+    let config = crate::load_full_config("anureo").ok()?;
     Some(load_provider_configs(&config))
 }
 

@@ -5,7 +5,7 @@
 //! - rebuilds an in-memory `InstanceMeta` from `checkpoint.json` + events +
 //!   `workflow.lua` (slow path) when `instance.json` is absent, and returns
 //!   it without writing back to disk
-//! - returns "running" when only the directory exists under `.loom/instances/`
+//! - returns "running" when only the directory exists under `.anureo/instances/`
 //! - returns an error when neither `instance.json` nor `checkpoint.json`
 //!   exists under `.luft/runs/<dir>/`
 //! - strips `workflow.path`, per-agent `output_ref`, file-backed `report.ref`,
@@ -25,8 +25,8 @@ use tempfile::TempDir;
 use tool_core::{Tool, ToolCallContent};
 use tool_workflow::{WorkflowRuntime, WorkflowStatusTool};
 
-const LEGACY_TS: &str = "loom-instance_1783783769";
-const NEW_TS: &str = "loom-instance_1700000000";
+const LEGACY_TS: &str = "anureo-instance_1783783769";
+const NEW_TS: &str = "anureo-instance_1700000000";
 
 fn tool_with(working_folder: PathBuf) -> WorkflowStatusTool {
     let cfg = AgentConfig {
@@ -137,7 +137,7 @@ fn pre_written_instance_json(schema_version: u32) -> String {
     let meta = json!({
         "schema_version": schema_version,
         "instance_dir": NEW_TS,
-        "workflow": {"kind": "file", "name": "pre-built", "path": ".loom/workflows/pre-built.lua"},
+        "workflow": {"kind": "file", "name": "pre-built", "path": ".anureo/workflows/pre-built.lua"},
         "status": "completed",
         "task": "pre-built fixture",
         "created_at": 1_700_000_000u64,
@@ -160,7 +160,7 @@ fn status_reads_existing_instance_json_and_sanitizes() {
     let instance_dir = NEW_TS;
     let dir = tmp
         .path()
-        .join(".loom")
+        .join(".anureo")
         .join("instances")
         .join(instance_dir);
     fs::create_dir_all(&dir).unwrap();
@@ -186,7 +186,7 @@ fn status_rebuilds_in_memory_when_checkpoint_present() {
     let instance_dir = NEW_TS;
     let dir = tmp
         .path()
-        .join(".loom")
+        .join(".anureo")
         .join("instances")
         .join(instance_dir);
     write_run_fixture(&dir);
@@ -217,7 +217,7 @@ fn status_rebuild_does_not_write_instance_json_back_to_disk() {
     let instance_dir = NEW_TS;
     let dir = tmp
         .path()
-        .join(".loom")
+        .join(".anureo")
         .join("instances")
         .join(instance_dir);
     write_run_fixture(&dir);
@@ -269,7 +269,7 @@ fn status_returns_running_when_only_dir_exists() {
     let instance_dir = NEW_TS;
     let dir = tmp
         .path()
-        .join(".loom")
+        .join(".anureo")
         .join("instances")
         .join(instance_dir);
     fs::create_dir_all(&dir).unwrap();
@@ -286,7 +286,7 @@ fn status_returns_running_when_checkpoint_non_terminal() {
     let instance_dir = NEW_TS;
     let dir = tmp
         .path()
-        .join(".loom")
+        .join(".anureo")
         .join("instances")
         .join(instance_dir);
     fs::create_dir_all(&dir).unwrap();
@@ -316,7 +316,7 @@ fn status_returns_running_when_checkpoint_non_terminal() {
 #[test]
 fn status_errors_on_legacy_dir_without_checkpoint() {
     let tmp = TempDir::new().unwrap();
-    let instance_dir = "loom-instance_corrupt";
+    let instance_dir = "anureo-instance_corrupt";
     let dir = tmp.path().join(".luft").join("runs").join(instance_dir);
     fs::create_dir_all(&dir).unwrap();
 
@@ -336,7 +336,7 @@ fn status_sanitizes_per_agent_output_refs() {
     let instance_dir = NEW_TS;
     let dir = tmp
         .path()
-        .join(".loom")
+        .join(".anureo")
         .join("instances")
         .join(instance_dir);
     fs::create_dir_all(&dir).unwrap();

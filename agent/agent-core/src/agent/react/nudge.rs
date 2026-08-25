@@ -8,7 +8,7 @@
 //! When the counter reaches the interval, the corresponding `should_review_*` flag is set and the
 //! counter resets to 0.
 //!
-//! Loom's graph runner is stateless across invocations, so this struct carries the mutable counters
+//! anureo's graph runner is stateless across invocations, so this struct carries the mutable counters
 //! that a higher-level conversation coordinator (CLI / ACP / goal runner) holds between turns.
 
 use crate::agent::ReactBuildConfig;

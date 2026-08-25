@@ -1,7 +1,7 @@
 //! MCP server config: parse JSON (Cursor/Claude-compatible) and discover config file path.
 //!
-//! Used by loom to load `mcp.json` from project `.loom/mcp.json` or
-//! `~/.loom/mcp.json`. No dependency on loom.
+//! Used by anureo to load `mcp.json` from project `.anureo/mcp.json` or
+//! `~/.anureo/mcp.json`. No dependency on anureo.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -43,7 +43,7 @@ pub struct McpServerEntry {
     pub headers: HashMap<String, String>,
     #[serde(default)]
     pub oauth: Option<OAuthConfig>,
-    /// Whether Loom must fail the run when this server cannot start.
+    /// Whether anureo must fail the run when this server cannot start.
     #[serde(default)]
     pub required: bool,
     /// Maximum time allowed for the initial MCP handshake and tool discovery.
@@ -200,7 +200,7 @@ pub fn load_mcp_config_from_path(path: &Path) -> Result<Vec<McpServerDef>, McpCo
 /// Returns the path to the MCP config file to use, or `None` if none exists.
 ///
 /// Order: if `override_path` is `Some` and that file exists, use it; else
-/// `working_dir/.loom/mcp.json` if it exists; else `~/.loom/mcp.json` if it exists.
+/// `working_dir/.anureo/mcp.json` if it exists; else `~/.anureo/mcp.json` if it exists.
 pub fn discover_mcp_config_path(
     override_path: Option<&Path>,
     working_dir: Option<&Path>,
@@ -211,12 +211,12 @@ pub fn discover_mcp_config_path(
         }
     }
     if let Some(wd) = working_dir {
-        let project = wd.join(".loom").join("mcp.json");
+        let project = wd.join(".anureo").join("mcp.json");
         if project.exists() {
             return Some(project);
         }
     }
-    let global = crate::home::loom_home().join("mcp.json");
+    let global = crate::home::anureo_home().join("mcp.json");
     if global.exists() {
         return Some(global);
     }
@@ -309,7 +309,7 @@ pub fn load_mcp_config_file(path: &Path) -> Result<McpConfigFile, McpConfigError
 
 /// Gets the default MCP config path, creating the file if it doesn't exist.
 pub fn get_or_create_mcp_config_path() -> Result<PathBuf, McpConfigError> {
-    let home = crate::home::loom_home();
+    let home = crate::home::anureo_home();
     let config_path = home.join("mcp.json");
     create_mcp_config_if_missing(&config_path)?;
     Ok(config_path)
@@ -528,8 +528,8 @@ mod tests {
         let override_path = dir.path().join("custom.json");
         std::fs::write(&override_path, r#"{"mcpServers":{}}"#).unwrap();
         let working = dir.path().join("proj");
-        std::fs::create_dir_all(working.join(".loom")).unwrap();
-        std::fs::write(working.join(".loom").join("mcp.json"), "{}").unwrap();
+        std::fs::create_dir_all(working.join(".anureo")).unwrap();
+        std::fs::write(working.join(".anureo").join("mcp.json"), "{}").unwrap();
 
         let got = discover_mcp_config_path(Some(&override_path), Some(working.as_path()));
         assert_eq!(got.as_deref(), Some(override_path.as_path()));
@@ -540,15 +540,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let override_path = dir.path().join("nonexistent.json");
         let working = dir.path().join("proj");
-        std::fs::create_dir_all(working.join(".loom")).unwrap();
-        let project_mcp = working.join(".loom").join("mcp.json");
+        std::fs::create_dir_all(working.join(".anureo")).unwrap();
+        let project_mcp = working.join(".anureo").join("mcp.json");
         std::fs::write(&project_mcp, "{}").unwrap();
 
-        let loom_home = dir.path().join("loom_home");
-        std::fs::create_dir_all(&loom_home).unwrap();
-        std::fs::write(loom_home.join("mcp.json"), "{}").unwrap();
+        let anureo_home = dir.path().join("anureo_home");
+        std::fs::create_dir_all(&anureo_home).unwrap();
+        std::fs::write(anureo_home.join("mcp.json"), "{}").unwrap();
         let prev = crate::home::override_path();
-        crate::home::set_override(Some(loom_home.clone()));
+        crate::home::set_override(Some(anureo_home.clone()));
 
         let got = discover_mcp_config_path(Some(&override_path), Some(working.as_path()));
         if let Some(ref p) = prev {
@@ -566,10 +566,10 @@ mod tests {
         let working = dir.path().join("empty");
         std::fs::create_dir_all(&working).unwrap();
 
-        let loom_home = dir.path().join("loom_home");
-        std::fs::create_dir_all(&loom_home).unwrap();
+        let anureo_home = dir.path().join("anureo_home");
+        std::fs::create_dir_all(&anureo_home).unwrap();
         let prev = crate::home::override_path();
-        crate::home::set_override(Some(loom_home.clone()));
+        crate::home::set_override(Some(anureo_home.clone()));
 
         let got = discover_mcp_config_path(None, Some(working.as_path()));
         if let Some(ref p) = prev {
@@ -610,7 +610,7 @@ mod tests {
 
     #[test]
     fn load_mcp_config_from_nonexistent_returns_io_error() {
-        let path = Path::new("/nonexistent/loom/mcp.json");
+        let path = Path::new("/nonexistent/anureo/mcp.json");
         let err = load_mcp_config_from_path(path).unwrap_err();
         assert!(matches!(err, McpConfigError::Io(_)));
     }

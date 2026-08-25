@@ -2,7 +2,7 @@
 name = "tool-experimental"
 version.workspace = true
 edition.workspace = true
-description = "Experimental tool implementations for Loom agents"
+description = "Experimental tool implementations for anureo agents"
 license.workspace = true
 authors.workspace = true
 
@@ -17,7 +17,7 @@ serde_json = "1.0"
 
 tool-core = { path = "../tool-core" }
 tool-basic = { path = "../tool-basic" }
-loom-llm = { path = "../../../foundation/llm" }
+anureo-llm = { path = "../../../foundation/llm" }
 model-spec-core = { path = "../../../foundation/model-spec-core" }
 checkpoint = { path = "../../../foundation/checkpoint" }
 memory-v2 = { path = "../../../experimental/memory-v2" }

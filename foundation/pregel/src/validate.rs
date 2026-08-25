@@ -10,7 +10,7 @@ use crate::channel::ChannelKind;
 use crate::config::PregelConfig;
 use crate::node::{PregelGraph, PregelNode};
 use crate::types::{ReservedWrite, TASKS_CHANNEL};
-use loom_graph_core::GraphError;
+use anureo_graph_core::GraphError;
 
 impl PregelGraph {
     /// Validates graph topology, channel references, and configured interrupts.
@@ -214,7 +214,7 @@ mod tests {
             &self,
             _input: crate::node::PregelNodeInput,
             _ctx: &crate::node::PregelNodeContext,
-        ) -> Result<crate::node::PregelNodeOutput, loom_graph_core::GraphError> {
+        ) -> Result<crate::node::PregelNodeOutput, anureo_graph_core::GraphError> {
             Ok(crate::node::PregelNodeOutput::default())
         }
 

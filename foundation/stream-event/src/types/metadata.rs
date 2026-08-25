@@ -4,8 +4,8 @@ use std::fmt::Debug;
 /// Metadata attached to streamed messages.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamMetadata {
-    /// Loom node id that produced the message.
-    pub loom_node: String,
+    /// anureo node id that produced the message.
+    pub anureo_node: String,
     /// Optional namespace for subgraph events.
     pub namespace: Option<String>,
 }
@@ -40,17 +40,17 @@ mod tests {
     #[test]
     fn stream_metadata_fields() {
         let m = StreamMetadata {
-            loom_node: "think".to_string(),
+            anureo_node: "think".to_string(),
             namespace: Some("sub".to_string()),
         };
-        assert_eq!(m.loom_node, "think");
+        assert_eq!(m.anureo_node, "think");
         assert_eq!(m.namespace.as_deref(), Some("sub"));
     }
 
     #[test]
     fn stream_metadata_no_namespace() {
         let m = StreamMetadata {
-            loom_node: "act".to_string(),
+            anureo_node: "act".to_string(),
             namespace: None,
         };
         assert!(m.namespace.is_none());

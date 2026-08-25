@@ -192,7 +192,7 @@ impl NotificationRouter {
     }
 
     /// Route a batched history replay as ONE custom notification
-    /// (`_loomdesk.dev/session-history/batch`) to the connections bound to
+    /// (`_anureo.dev/session-history/batch`) to the connections bound to
     /// the session, replacing N `session/update` frames for a `session/load`
     /// tail replay.
     pub async fn send_history_batch(

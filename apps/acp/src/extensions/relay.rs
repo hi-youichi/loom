@@ -234,7 +234,7 @@ mod tests {
         registry.register("relay", Arc::new(RelayHandler::new()));
         let ctx = make_ctx("relay-abc123", "user");
         let result = registry
-            .dispatch("_loomdesk.dev/relay/status", json!({}), &ctx)
+            .dispatch("_anureo.dev/relay/status", json!({}), &ctx)
             .await
             .unwrap();
         assert_eq!(result["connected"], true);
@@ -247,7 +247,7 @@ mod tests {
         registry.register("relay", Arc::new(RelayHandler::new()));
         let ctx = make_ctx("conn-1", "user");
         let result = registry
-            .dispatch("_loomdesk.dev/relay/unknown", json!({}), &ctx)
+            .dispatch("_anureo.dev/relay/unknown", json!({}), &ctx)
             .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().code, -32601);
@@ -259,7 +259,7 @@ mod tests {
         registry.register("relay", Arc::new(RelayHandler::new()));
         let ctx = make_ctx("conn-1", "user");
         let result = registry
-            .dispatch("_loomdesk.dev/relay", json!({}), &ctx)
+            .dispatch("_anureo.dev/relay", json!({}), &ctx)
             .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().code, -32601);
@@ -753,7 +753,7 @@ mod tests {
         registry.register("relay", Arc::new(RelayHandler::new()));
         let ctx = make_ctx("relay-abc", "user");
         let result = registry
-            .dispatch("_loomdesk.dev/other_domain/status", json!({}), &ctx)
+            .dispatch("_anureo.dev/other_domain/status", json!({}), &ctx)
             .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().code, -32001);
@@ -765,7 +765,7 @@ mod tests {
         registry.register("relay", Arc::new(RelayHandler::new()));
         let ctx = make_ctx("relay-abc", "user");
         let result = registry
-            .dispatch("_loomdesk.dev/other_domain/status", json!({}), &ctx)
+            .dispatch("_anureo.dev/other_domain/status", json!({}), &ctx)
             .await
             .unwrap_err();
         assert_eq!(result.code, -32001);
@@ -779,7 +779,7 @@ mod tests {
         registry.register("relay", Arc::new(RelayHandler::new()));
         let ctx = make_ctx("relay-abc", "user");
         let result = registry
-            .dispatch("_loomdesk.dev/relay/", json!({}), &ctx)
+            .dispatch("_anureo.dev/relay/", json!({}), &ctx)
             .await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().code, -32601);
@@ -823,7 +823,7 @@ mod tests {
             let ctx = Arc::new(make_ctx(cid, "user"));
             handles.push(tokio::spawn(async move {
                 registry
-                    .dispatch("_loomdesk.dev/relay/status", json!({}), &ctx)
+                    .dispatch("_anureo.dev/relay/status", json!({}), &ctx)
                     .await
             }));
         }
@@ -1175,7 +1175,7 @@ mod tests {
         registry.register("relay", Arc::new(RelayHandler::new()));
         let ctx = make_ctx("relay-abc", "user");
         let r1 = registry
-            .dispatch("_loomdesk.dev/relay/status", json!({}), &ctx)
+            .dispatch("_anureo.dev/relay/status", json!({}), &ctx)
             .await
             .unwrap();
         let handler = RelayHandler::new();
@@ -1191,7 +1191,7 @@ mod tests {
         let mut registry = super::super::ExtensionRegistry::new();
         registry.register("relay", Arc::new(RelayHandler::new()));
         let r2 = registry
-            .dispatch("_loomdesk.dev/relay/status", json!({}), &ctx)
+            .dispatch("_anureo.dev/relay/status", json!({}), &ctx)
             .await
             .unwrap();
         assert_eq!(r1.to_string(), r2.to_string());
@@ -1429,11 +1429,11 @@ mod tests {
         registry2.register("relay", Arc::new(RelayHandler::new()));
         let ctx = make_ctx("relay-abc", "user");
         let r1 = registry1
-            .dispatch("_loomdesk.dev/relay/status", json!({}), &ctx)
+            .dispatch("_anureo.dev/relay/status", json!({}), &ctx)
             .await
             .unwrap();
         let r2 = registry2
-            .dispatch("_loomdesk.dev/relay/status", json!({}), &ctx)
+            .dispatch("_anureo.dev/relay/status", json!({}), &ctx)
             .await
             .unwrap();
         assert_eq!(r1.to_string(), r2.to_string());

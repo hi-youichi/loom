@@ -69,11 +69,11 @@ pub async fn connect(
 ///
 /// - `initialize` → structured `-32001 { authRequired: true }` error (keeps
 ///   auth-state probes working without leaking protocol details).
-/// - `_loomdesk.dev/auth/status` → gate configuration (password configured,
+/// - `_anureo.dev/auth/status` → gate configuration (password configured,
 ///   passkey availability). Read-only, safe pre-auth.
-/// - `_loomdesk.dev/auth/login` → scrypt password verify + per-IP rate
+/// - `_anureo.dev/auth/login` → scrypt password verify + per-IP rate
 ///   limiting + JWT mint; success hands the socket to [`handle_socket`].
-/// - `_loomdesk.dev/auth/authenticate` → session-token verify (tokens minted
+/// - `_anureo.dev/auth/authenticate` → session-token verify (tokens minted
 ///   here or Express cookies share one HS256 secret); success likewise
 ///   upgrades to [`handle_socket`].
 ///
@@ -136,7 +136,7 @@ async fn pre_auth_dispatch(peer_ip: &str, text: &str) -> PreAuthOutcome {
 
     match method {
         "initialize" => PreAuthOutcome::Respond(auth_error_response(&id)),
-        "_loomdesk.dev/auth/status" => {
+        "_anureo.dev/auth/status" => {
             let password_configured = ui_password_configured();
             PreAuthOutcome::Respond(
                 serde_json::json!({
@@ -153,7 +153,7 @@ async fn pre_auth_dispatch(peer_ip: &str, text: &str) -> PreAuthOutcome {
                 .to_string(),
             )
         }
-        "_loomdesk.dev/auth/login" => {
+        "_anureo.dev/auth/login" => {
             let password = params
                 .get("password")
                 .and_then(|p| p.as_str())
@@ -215,7 +215,7 @@ async fn pre_auth_dispatch(peer_ip: &str, text: &str) -> PreAuthOutcome {
                 )
             }
         }
-        "_loomdesk.dev/auth/authenticate" => {
+        "_anureo.dev/auth/authenticate" => {
             let token = params
                 .get("sessionToken")
                 .and_then(|t| t.as_str())
@@ -244,7 +244,7 @@ fn auth_error_response(id: &serde_json::Value) -> String {
         "error": {
             "code": AUTH_REQUIRED_ERROR_CODE,
             "message": "authentication required",
-            "data": { "authRequired": true, "realm": "loomdesk-ui" }
+            "data": { "authRequired": true, "realm": "anureo-ui" }
         }
     })
     .to_string()
@@ -257,7 +257,7 @@ fn origin_allowed(headers: &HeaderMap) -> bool {
     let Some(origin) = headers.get(ORIGIN).and_then(|value| value.to_str().ok()) else {
         return true;
     };
-    if let Ok(configured) = std::env::var("LOOM_ACP_ALLOWED_ORIGINS") {
+    if let Ok(configured) = std::env::var("ANUREO_ACP_ALLOWED_ORIGINS") {
         return configured
             .split(',')
             .map(str::trim)
@@ -287,7 +287,7 @@ fn is_localhost_origin(origin: &str) -> bool {
 
 /// Extract the session owner from the Authorization header.
 ///
-/// If `LOOM_AUTH_TOKEN` is set, the bearer token must match and the principal
+/// If `ANUREO_AUTH_TOKEN` is set, the bearer token must match and the principal
 /// is the token itself (truncated for display). If not set, the owner is
 /// `local-anonymous`.
 fn extract_owner(headers: &HeaderMap) -> SessionOwner {
@@ -295,7 +295,7 @@ fn extract_owner(headers: &HeaderMap) -> SessionOwner {
         return SessionOwner::anonymous();
     };
     let token = auth_header.strip_prefix("Bearer ").unwrap_or(auth_header);
-    if let Ok(expected) = std::env::var("LOOM_AUTH_TOKEN") {
+    if let Ok(expected) = std::env::var("ANUREO_AUTH_TOKEN") {
         if token == expected {
             use std::collections::hash_map::DefaultHasher;
             use std::hash::{Hash, Hasher};
@@ -384,7 +384,7 @@ async fn handle_socket(state: SharedState, owner: SessionOwner, socket: WebSocke
     let shutdown = async move {
         let _ = ws_closed_rx.await;
     };
-    if let Err(e) = loom_acp::stdio_loop::run_agent_connection(
+    if let Err(e) = anureo_acp::stdio_loop::run_agent_connection(
         lease.runtime,
         lease.connection,
         lease.outbound_rx,
@@ -469,7 +469,7 @@ mod tests {
         // All env-var-dependent tests in one function to avoid parallel races.
 
         // Default: local + native allowed
-        std::env::remove_var("LOOM_ACP_ALLOWED_ORIGINS");
+        std::env::remove_var("ANUREO_ACP_ALLOWED_ORIGINS");
         assert!(origin_allowed(&HeaderMap::new()));
         let mut h = HeaderMap::new();
         h.insert(ORIGIN, "http://localhost:3000".parse().unwrap());
@@ -481,23 +481,23 @@ mod tests {
         assert!(!origin_allowed(&h));
 
         // Remote browser allowed via env
-        std::env::set_var("LOOM_ACP_ALLOWED_ORIGINS", "https://trusted.example");
+        std::env::set_var("ANUREO_ACP_ALLOWED_ORIGINS", "https://trusted.example");
         let mut h = HeaderMap::new();
         h.insert(ORIGIN, "https://trusted.example".parse().unwrap());
         assert!(origin_allowed(&h));
-        std::env::remove_var("LOOM_ACP_ALLOWED_ORIGINS");
+        std::env::remove_var("ANUREO_ACP_ALLOWED_ORIGINS");
 
         // Owner extraction: anonymous without auth
-        std::env::remove_var("LOOM_AUTH_TOKEN");
+        std::env::remove_var("ANUREO_AUTH_TOKEN");
         let owner = extract_owner(&HeaderMap::new());
         assert_eq!(owner.principal, "local-anonymous");
 
         // Owner extraction: from bearer when token configured
-        std::env::set_var("LOOM_AUTH_TOKEN", "secret123");
+        std::env::set_var("ANUREO_AUTH_TOKEN", "secret123");
         let mut h = HeaderMap::new();
         h.insert(AUTHORIZATION, "Bearer secret123".parse().unwrap());
         let owner = extract_owner(&h);
         assert!(owner.principal.starts_with("token-"));
-        std::env::remove_var("LOOM_AUTH_TOKEN");
+        std::env::remove_var("ANUREO_AUTH_TOKEN");
     }
 }

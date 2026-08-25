@@ -2,7 +2,7 @@
 name = "lsp"
 version.workspace = true
 edition.workspace = true
-description = "LSP (Language Server Protocol) integration for Loom"
+description = "LSP (Language Server Protocol) integration for anureo"
 license.workspace = true
 authors.workspace = true
 

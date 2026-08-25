@@ -2,15 +2,15 @@
 //!
 //! Three credential modes, combinable:
 //!
-//! 1. `LOOM_AUTH_TOKEN` — programmatic `Authorization: Bearer <token>`.
-//! 2. UI session JWTs (`oc_ui_session` cookie or `_loomdesk.dev/auth/*`
+//! 1. `ANUREO_AUTH_TOKEN` — programmatic `Authorization: Bearer <token>`.
+//! 2. UI session JWTs (`oc_ui_session` cookie or `_anureo.dev/auth/*`
 //!    pre-auth protocol messages). The HS256 secret is resolved from
-//!    `LOOMDESK_JWT_SECRET`, `OPENCODE_JWT_SECRET`, or the shared Loom Desk
+//!    `ANUREO_JWT_SECRET`, `OPENCODE_JWT_SECRET`, or the shared anureo Desk
 //!    data-dir file `<data-dir>/jwt-secret` (same file the Express ui-auth
 //!    controller generates), so cookies minted by Express and tokens minted
 //!    over the ACP pre-auth protocol verify interchangeably.
-//! 3. `LOOMDESK_UI_PASSWORD` — password login over the `/acp` pre-auth
-//!    protocol (`_loomdesk.dev/auth/login`), mirroring Express `POST
+//! 3. `ANUREO_UI_PASSWORD` — password login over the `/acp` pre-auth
+//!    protocol (`_anureo.dev/auth/login`), mirroring Express `POST
 //!    /auth/session` (scrypt verify + per-IP rate limiting + JWT mint).
 //!
 //! When no token/secret/password is configured, development mode allows all
@@ -30,18 +30,18 @@ pub const AUTHORIZATION: &str = "authorization";
 /// Environment variable holding the required bearer token. Unset/empty ⇒
 /// not enforced. Set ⇒ requests must present a matching
 /// `Authorization: Bearer <token>` header.
-pub const AUTH_TOKEN_ENV: &str = "LOOM_AUTH_TOKEN";
+pub const AUTH_TOKEN_ENV: &str = "ANUREO_AUTH_TOKEN";
 
-/// Environment variable holding the Loom Desk Express JWT secret (contents of
+/// Environment variable holding the anureo Desk Express JWT secret (contents of
 /// `<data-dir>/jwt-secret`). Unset/empty ⇒ cookie auth not enforced.
-pub const JWT_SECRET_ENV: &str = "LOOMDESK_JWT_SECRET";
+pub const JWT_SECRET_ENV: &str = "ANUREO_JWT_SECRET";
 
 /// Legacy alias Express reads first for the JWT secret.
-pub const JWT_SECRET_ENV_LEGACY: &str = "LOOM_JWT_SECRET";
+pub const JWT_SECRET_ENV_LEGACY: &str = "ANUREO_JWT_SECRET";
 
-/// Environment variable holding the Loom Desk UI password (same variable the
+/// Environment variable holding the anureo Desk UI password (same variable the
 /// Express server reads; `options.uiPassword` in Express maps to it).
-pub const UI_PASSWORD_ENV: &str = "LOOMDESK_UI_PASSWORD";
+pub const UI_PASSWORD_ENV: &str = "ANUREO_UI_PASSWORD";
 
 /// Session cookie name minted by Express ui-auth (`SESSION_COOKIE_NAME`).
 pub const UI_SESSION_COOKIE: &str = "oc_ui_session";
@@ -89,10 +89,10 @@ fn configured_token() -> Option<String> {
         .filter(|t| !t.is_empty())
 }
 
-/// The Loom Desk data dir shared with the Express server
-/// (`LOOMDESK_DATA_DIR` or `~/.config/loomdesk`).
-fn loomdesk_data_dir() -> std::path::PathBuf {
-    if let Ok(dir) = std::env::var("LOOMDESK_DATA_DIR") {
+/// The anureo Desk data dir shared with the Express server
+/// (`ANUREO_DATA_DIR` or `~/.config/anureo`).
+fn anureo_data_dir() -> std::path::PathBuf {
+    if let Ok(dir) = std::env::var("ANUREO_DATA_DIR") {
         if !dir.trim().is_empty() {
             return std::path::PathBuf::from(dir.trim());
         }
@@ -102,10 +102,10 @@ fn loomdesk_data_dir() -> std::path::PathBuf {
         .unwrap_or_else(|_| ".".to_string());
     std::path::PathBuf::from(home)
         .join(".config")
-        .join("loomdesk")
+        .join("anureo")
 }
 
-/// Read the configured Express JWT secret: `LOOMDESK_JWT_SECRET` /
+/// Read the configured Express JWT secret: `ANUREO_JWT_SECRET` /
 /// `OPENCODE_JWT_SECRET` env override first, then the shared data-dir file
 /// the Express ui-auth controller generates (`<data-dir>/jwt-secret`, hex).
 fn configured_jwt_secret() -> Option<String> {
@@ -123,7 +123,7 @@ fn configured_jwt_secret() -> Option<String> {
     {
         return Some(secret);
     }
-    std::fs::read_to_string(loomdesk_data_dir().join("jwt-secret"))
+    std::fs::read_to_string(anureo_data_dir().join("jwt-secret"))
         .ok()
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
@@ -132,7 +132,7 @@ fn configured_jwt_secret() -> Option<String> {
 /// Resolve the signing secret, generating and persisting a fresh one (same
 /// format Express writes: 32 random bytes as hex, mode 0600) when none exists
 /// yet. Called only on the mint path (password login); verification keeps
-/// using [`configured_jwt_secret`] so a loom-only install without logins
+/// using [`configured_jwt_secret`] so a anureo-only install without logins
 /// never materializes a secret file.
 fn ensure_jwt_secret_for_minting() -> Option<String> {
     if let Some(secret) = configured_jwt_secret() {
@@ -143,7 +143,7 @@ fn ensure_jwt_secret_for_minting() -> Option<String> {
         uuid::Uuid::new_v4().simple(),
         uuid::Uuid::new_v4().simple()
     );
-    let dir = loomdesk_data_dir();
+    let dir = anureo_data_dir();
     if let Err(error) =
         std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(dir.join("jwt-secret"), &secret))
     {
@@ -197,7 +197,7 @@ fn configured_ui_password() -> Option<String> {
 }
 
 /// Whether the UI password gate is configured (drives `auth/status` and the
-/// availability of `_loomdesk.dev/auth/login`).
+/// availability of `_anureo.dev/auth/login`).
 pub fn ui_password_configured() -> bool {
     configured_ui_password().is_some()
 }
@@ -301,7 +301,7 @@ fn now_ms() -> u64 {
 }
 
 fn login_rate_max_attempts() -> u32 {
-    std::env::var("LOOMDESK_RATE_LIMIT_MAX_ATTEMPTS")
+    std::env::var("ANUREO_RATE_LIMIT_MAX_ATTEMPTS")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(RATE_LIMIT_DEFAULT_MAX_ATTEMPTS)
@@ -438,16 +438,16 @@ fn token_eq(a: &[u8], b: &[u8]) -> bool {
 /// pre-auth gate, which cannot surface an HTTP 401 to browser clients
 /// (the WebSocket API hides upgrade status codes).
 pub fn credentials_valid(headers: &HeaderMap) -> bool {
-    let loom_token = configured_token();
+    let anureo_token = configured_token();
     let jwt_secret = configured_jwt_secret();
     let ui_password = configured_ui_password();
 
     // Development mode: nothing gates the gateway.
-    if loom_token.is_none() && jwt_secret.is_none() && ui_password.is_none() {
+    if anureo_token.is_none() && jwt_secret.is_none() && ui_password.is_none() {
         return true;
     }
 
-    if let Some(expected) = &loom_token {
+    if let Some(expected) = &anureo_token {
         let header = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok());
         if let Some(provided) = bearer_from_header(header) {
             if token_eq(provided.as_bytes(), expected.as_bytes()) {
@@ -466,13 +466,13 @@ pub fn credentials_valid(headers: &HeaderMap) -> bool {
 
     // Password gate configured (and no credential presented above): the
     // socket enters the pre-auth handshake and must login via
-    // `_loomdesk.dev/auth/login` to mint a session token.
+    // `_anureo.dev/auth/login` to mint a session token.
     false
 }
 
 /// Auth enforcement.
 ///
-/// When neither `LOOM_AUTH_TOKEN` nor `LOOMDESK_JWT_SECRET` is set →
+/// When neither `ANUREO_AUTH_TOKEN` nor `ANUREO_JWT_SECRET` is set →
 /// development mode (allow all). Otherwise a request must present either a
 /// matching Bearer token or a valid `oc_ui_session` session cookie.
 pub async fn require_valid_token(req: Request, next: Next) -> Response {

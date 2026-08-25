@@ -1,6 +1,6 @@
-//! Loom Graph Crate
+//! anureo Graph Crate
 //!
-//! Core graph structures and types for the Loom agent framework.
+//! Core graph structures and types for the anureo agent framework.
 
 pub mod agent;
 pub mod cancellable;

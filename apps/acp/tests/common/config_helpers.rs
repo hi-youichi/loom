@@ -3,7 +3,7 @@ use std::path::Path;
 
 #[allow(dead_code)]
 pub fn create_agent_config(home: &Path, tier: &str) {
-    let agents_dir = home.join(".loom/agents");
+    let agents_dir = home.join(".anureo/agents");
     fs::create_dir_all(&agents_dir).expect("Failed to create agents directory");
 
     let default_dir = agents_dir.join("default");
@@ -16,7 +16,7 @@ pub fn create_agent_config(home: &Path, tier: &str) {
 
 #[allow(dead_code)]
 pub fn create_subagent_config(home: &Path, agent_name: &str, tier: &str) {
-    let agent_dir = home.join(".loom/agents").join(agent_name);
+    let agent_dir = home.join(".anureo/agents").join(agent_name);
     fs::create_dir_all(&agent_dir).expect("Failed to create agent directory");
 
     let config_path = agent_dir.join("config.yaml");
@@ -38,7 +38,7 @@ pub fn write_last_model_file(home: &Path, model: &str) {
 }
 #[allow(dead_code)]
 pub fn create_test_agents_config(home: &Path) {
-    let _agents_dir = home.join(".loom/agents");
+    let _agents_dir = home.join(".anureo/agents");
 
     // Create product-manager agent with low tier
     create_subagent_config(home, "product-manager", "low");

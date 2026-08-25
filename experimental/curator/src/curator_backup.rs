@@ -67,16 +67,16 @@ pub struct SnapshotMeta {
 /// - Snapshot list and cleanup
 #[derive(Debug, Clone)]
 pub struct CuratorBackup {
-    /// Snapshot storage directory (default `~/.loom/backups/`)
+    /// Snapshot storage directory (default `~/.anureo/backups/`)
     backup_dir: PathBuf,
 }
 
 impl CuratorBackup {
-    /// Use default backup directory (`~/.loom/backups/`)
+    /// Use default backup directory (`~/.anureo/backups/`)
     pub fn new() -> Self {
         let backup_dir = dirs::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("loom")
+            .join("anureo")
             .join("backups");
         Self { backup_dir }
     }
@@ -97,7 +97,7 @@ impl CuratorBackup {
     /// Returns snapshot filename (without path), e.g. `curator-2025-08-19T12-34-56.tar.gz`
     ///
     /// # Arguments
-    /// * `skills_dir` — `.loom/skills/` directory
+    /// * `skills_dir` — `.anureo/skills/` directory
     /// * `description` — optional snapshot description
     pub fn snapshot(&self, skills_dir: &Path, description: Option<&str>) -> Result<String> {
         if !skills_dir.exists() {
@@ -111,7 +111,7 @@ impl CuratorBackup {
         //   `curator-YYYY-MM-DDTHH-MM-SSZ` in UTC, with optional `-<n>`
         //   collision suffix when two snapshots land in the same second.
         // We strip the nanos tail and append `Z` so the format is
-        // cross-tool portable (Hermes Python and Loom Rust both can sort
+        // cross-tool portable (Hermes Python and anureo Rust both can sort
         // and parse it directly).
         let base_ts = chrono::Utc::now().format("%Y-%m-%dT%H-%M-%SZ").to_string();
         let filename = if !self
@@ -694,7 +694,7 @@ impl CuratorBackup {
     ) -> Option<PathBuf> {
         let skills_dir = dirs::data_local_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("loom")
+            .join("anureo")
             .join("skills");
 
         // 1. Check enabled

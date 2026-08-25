@@ -9,7 +9,7 @@ use async_trait::async_trait;
 
 pub use sqlite_store::SqliteUserMessageStore;
 
-use loom_llm::message::Message;
+use anureo_llm::message::Message;
 
 /// Error from [`UserMessageStore`] operations.
 #[derive(Debug, thiserror::Error)]

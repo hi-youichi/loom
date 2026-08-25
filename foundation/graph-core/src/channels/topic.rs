@@ -12,7 +12,7 @@
 //! # Example
 //!
 //! ```rust
-//! use loom_graph_core::channels::{Topic, TopicSingleWrite, Channel};
+//! use anureo_graph_core::channels::{Topic, TopicSingleWrite, Channel};
 //!
 //! // Create a topic that accumulates across steps
 //! let mut topic: Topic<String> = Topic::new(true);

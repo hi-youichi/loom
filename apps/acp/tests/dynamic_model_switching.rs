@@ -14,9 +14,9 @@ async fn test_dynamic_model_switching() {
 
     // 2. 初始模型选择
     let initial_model = "gpt-3.5-medium";
-    write_last_model_file(&test_env.loom_home, initial_model);
+    write_last_model_file(&test_env.anureo_home, initial_model);
 
-    let current_model = read_last_model_file(&test_env.loom_home);
+    let current_model = read_last_model_file(&test_env.anureo_home);
     assert_eq!(current_model, initial_model, "Initial model should be set");
 
     let initial_tier = mock_server.get_tier_from_model(&current_model);
@@ -28,9 +28,9 @@ async fn test_dynamic_model_switching() {
 
     // 3. 模拟动态切换到high tier
     let switched_model = "gpt-4-high";
-    write_last_model_file(&test_env.loom_home, switched_model);
+    write_last_model_file(&test_env.anureo_home, switched_model);
 
-    let new_model = read_last_model_file(&test_env.loom_home);
+    let new_model = read_last_model_file(&test_env.anureo_home);
     assert_eq!(new_model, switched_model, "Model should be switched");
 
     let new_tier = mock_server.get_tier_from_model(&new_model);
@@ -63,9 +63,9 @@ async fn test_multiple_dynamic_switches() {
     let mut previous_tier = None;
 
     for (model, expected_tier) in switch_sequence {
-        write_last_model_file(&test_env.loom_home, model);
+        write_last_model_file(&test_env.anureo_home, model);
 
-        let current_model = read_last_model_file(&test_env.loom_home);
+        let current_model = read_last_model_file(&test_env.anureo_home);
         assert_eq!(
             current_model, model,
             "Model {} should be set correctly",
@@ -108,9 +108,9 @@ async fn test_switch_to_same_tier_different_model() {
     ];
 
     for model in medium_models {
-        write_last_model_file(&test_env.loom_home, model);
+        write_last_model_file(&test_env.anureo_home, model);
 
-        let current_model = read_last_model_file(&test_env.loom_home);
+        let current_model = read_last_model_file(&test_env.anureo_home);
         assert_eq!(current_model, model, "Model {} should be set", model);
 
         // 即使模型名称不同，但属于同一tier
@@ -139,9 +139,9 @@ async fn test_rapid_switching_stability() {
     ];
 
     for model in models {
-        write_last_model_file(&test_env.loom_home, model);
+        write_last_model_file(&test_env.anureo_home, model);
 
-        let current_model = read_last_model_file(&test_env.loom_home);
+        let current_model = read_last_model_file(&test_env.anureo_home);
         assert_eq!(
             current_model, model,
             "Rapid switch to {} should succeed",
@@ -157,7 +157,7 @@ async fn test_rapid_switching_stability() {
     }
 
     // 最终验证最后一次切换
-    let final_model = read_last_model_file(&test_env.loom_home);
+    let final_model = read_last_model_file(&test_env.anureo_home);
     assert_eq!(
         final_model, "gpt-3.5-low",
         "Final model should be the last one set"
@@ -173,14 +173,14 @@ async fn test_switch_persistence_after_dynamic_change() {
 
     // 1. 设置初始模型
     let initial_model = "gpt-3.5-medium";
-    write_last_model_file(&test_env.loom_home, initial_model);
+    write_last_model_file(&test_env.anureo_home, initial_model);
 
     // 2. 动态切换模型
     let switched_model = "gpt-4-high";
-    write_last_model_file(&test_env.loom_home, switched_model);
+    write_last_model_file(&test_env.anureo_home, switched_model);
 
     // 3. 验证切换后的模型被保存
-    let saved_model = read_last_model_file(&test_env.loom_home);
+    let saved_model = read_last_model_file(&test_env.anureo_home);
     assert_eq!(
         saved_model, switched_model,
         "Switched model should be persisted"
@@ -195,7 +195,7 @@ async fn test_switch_persistence_after_dynamic_change() {
         .expect("Should be able to copy last-model file");
 
     // 5. 验证重启后仍然保持切换后的模型
-    let restored_model = read_last_model_file(&test_env_restarted.loom_home);
+    let restored_model = read_last_model_file(&test_env_restarted.anureo_home);
     assert_eq!(
         restored_model, switched_model,
         "Switched model should persist after restart"

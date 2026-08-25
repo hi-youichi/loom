@@ -4,7 +4,7 @@ use agent_client_protocol::schema::v1::{LoadSessionRequest, LoadSessionResponse}
 
 use crate::connection::AcpConnection;
 use crate::runtime::AcpRuntime;
-use crate::session::{SessionId as LoomSessionId, SessionLifecycle};
+use crate::session::{SessionId as AnureoSessionId, SessionLifecycle};
 use crate::session_update_log::{SessionLoadPromptState, SessionReplayMode};
 
 use super::{add_session_load_response_meta, parse_session_load_meta, session_event_notification};
@@ -19,7 +19,7 @@ pub(crate) async fn load_session(
     connection: Arc<AcpConnection>,
     request: LoadSessionRequest,
 ) -> agent_client_protocol::Result<LoadSessionResponse> {
-    let session_id = LoomSessionId::new(request.session_id.to_string());
+    let session_id = AnureoSessionId::new(request.session_id.to_string());
     let load_meta = parse_session_load_meta(&request)?;
 
     if let Some(load_meta) = load_meta.as_ref().filter(|value| value.cursor.is_some()) {
@@ -40,7 +40,7 @@ async fn load_delta_session(
     runtime: &AcpRuntime,
     connection: &AcpConnection,
     request: LoadSessionRequest,
-    session_id: LoomSessionId,
+    session_id: AnureoSessionId,
     load_meta: &super::metadata::SessionLoadMeta,
 ) -> agent_client_protocol::Result<LoadSessionResponse> {
     let response = runtime
@@ -113,7 +113,7 @@ async fn load_full_session(
     runtime: &AcpRuntime,
     connection: &AcpConnection,
     request: LoadSessionRequest,
-    session_id: LoomSessionId,
+    session_id: AnureoSessionId,
     load_requested: bool,
 ) -> agent_client_protocol::Result<LoadSessionResponse> {
     if load_requested {
@@ -166,7 +166,7 @@ async fn load_and_flush_full(
     runtime: &AcpRuntime,
     connection: &AcpConnection,
     request: LoadSessionRequest,
-    session_id: LoomSessionId,
+    session_id: AnureoSessionId,
     load_requested: bool,
 ) -> agent_client_protocol::Result<LoadSessionResponse> {
     let response = runtime
@@ -204,7 +204,7 @@ async fn load_and_flush_full(
 
 fn current_prompt_state(
     runtime: &AcpRuntime,
-    session_id: &LoomSessionId,
+    session_id: &AnureoSessionId,
 ) -> SessionLoadPromptState {
     if runtime.agent.sessions().has_active_prompt(session_id) {
         SessionLoadPromptState::Running

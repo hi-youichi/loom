@@ -8,7 +8,7 @@ filter = "test(e2e_)"
 slow-timeout = { period = "30s", terminate-after = 2 }
 
 [[profile.default.overrides]]
-filter = "package(loom-acp)"
+filter = "package(anureo-acp)"
 slow-timeout = { period = "20s", terminate-after = 2 }
 
 [profile.ci]

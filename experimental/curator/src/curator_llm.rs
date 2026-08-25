@@ -172,9 +172,9 @@ fn build_curator_tools(skills_base_dir: &std::path::Path) -> Vec<Arc<dyn Tool>> 
     let usage_store = Arc::new(SkillUsageStore::new(skills_base_dir));
 
     // Use make_skill_tools_with_skills_dir (not _with_folder) — the base_dir
-    // is already the skills storage root (e.g. ~/.loom/data/skills/), not a
-    // working folder. Using _with_folder would join ".loom/skills" again,
-    // producing a non-existent double path like ~/.loom/data/skills/.loom/skills.
+    // is already the skills storage root (e.g. ~/.anureo/data/skills/), not a
+    // working folder. Using _with_folder would join ".anureo/skills" again,
+    // producing a non-existent double path like ~/.anureo/data/skills/.anureo/skills.
     let view_usage = SkillUsageStore::new(skills_base_dir);
     let (list_tool, view_tool) =
         make_skill_tools_with_skills_dir(skills_base_dir, Some(view_usage));
@@ -265,7 +265,7 @@ pub async fn run_curator_llm_pass(
     let gate = ReviewToolGate::with_allowed(vec!["skill_list", "skill_view", "skill_manage"]);
     let mut config = base_config;
 
-    // Hermes parity: thread LOOM_CURATOR_* env vars through to this pass.
+    // Hermes parity: thread ANUREO_CURATOR_* env vars through to this pass.
     // `resolve_curator_overrides()` reads the env once and returns an
     // overrides bag; we apply it BEFORE the aux-model override below so the
     // two never fight (explicit env wins; aux is only used when nothing is
@@ -374,7 +374,7 @@ pub async fn run_curator_llm_pass(
                     if is_error {
                         warn!(
                             tool = %name,
-                            preview = %loom_util::text::truncate::truncate(&result, 200),
+                            preview = %anureo_util::text::truncate::truncate(&result, 200),
                             "Curator tool '{}' failed",
                             name
                         );

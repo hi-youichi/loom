@@ -1,10 +1,10 @@
-//! Agent core implementations for Loom.
+//! Agent core implementations for anureo.
 //!
 //! This crate contains:
 //! - ReAct agent pattern (Think, Act, Observe nodes)
 //! - DUP/ToT/GoT agent patterns (merged from agent-extensions)
 //! - Agent tools (agent, bash, read, edit, etc.)
-//! - Run orchestration (config building + runner execution, merged from loom crate)
+//! - Run orchestration (config building + runner execution, merged from anureo crate)
 //! - Profile loading, tier resolution, prompt assembly
 
 pub mod agent;
@@ -57,7 +57,7 @@ pub use agent::tot::{
 };
 pub use agent::{dup, got, tot};
 
-// Run orchestration (merged from loom crate)
+// Run orchestration (merged from anureo crate)
 pub use run::{
     build_react_config, load_memory_prompt, resolve_model_config, run_agent_from_config,
     AgentRunResult, ResolvedModelConfig, RunCmd, RunCompletion, RunError, RunOptions, RunParams,
@@ -79,8 +79,8 @@ pub use run_types::{
 // Cancellation
 pub use tool_core::active_operation::RunCancellation;
 
-// Compress (merged from loom-compress)
+// Compress (merged from anureo-compress)
 pub use compress::{build_graph, CompactionConfig, CompressionGraphNode};
 
-// Commands (merged from loom-commands)
+// Commands (merged from anureo-commands)
 pub use commands::{execute, execute_async, parse, Command, CommandResult};

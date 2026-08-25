@@ -21,7 +21,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 
 /**
- * OpenChamber Web Server 地址。
+ * anureo Web Server 地址。
  * 默认 http://localhost:3000，可通过 E2E_BASE_URL 覆盖（CI 场景常用）。
  */
 function getBaseUrl(): string {
@@ -85,7 +85,7 @@ export default defineConfig({
   // `npm run dev` 定义在仓库根 package.json，因此 cwd 指向仓库根目录。
   // 设置 E2E_NO_AUTOSTART=1 可禁用自动启动（连接外部已运行的 server）。
   //
-  // E2E_NODE_FALLBACK=1 时：直接用 node 运行 openchamber serve --foreground，
+  // E2E_NODE_FALLBACK=1 时：直接用 node 运行 anureo serve --foreground，
   // 不走 npm run dev → scripts/dev-web-hmr.mjs → spawn bun 的链路。
   // playwright 的 env 不支持直接在 command 字符串里设变量，
   // 所以用单独的 env 对象注入 E2E_NO_AUTOSTART=1 来绕过 npm dev 脚本，

@@ -16,7 +16,7 @@ pub use tool_core::tool_name::TOOL_REMEMBER;
 /// # Examples
 ///
 /// ```no_run
-/// use loom_tools::tools::{RememberTool, Tool};
+/// use anureo_tools::tools::{RememberTool, Tool};
 /// use checkpoint::{InMemoryStore, Namespace};
 /// use std::sync::Arc;
 /// use serde_json::json;
@@ -58,7 +58,7 @@ impl RememberTool {
     /// # Examples
     ///
     /// ```
-    /// use loom_tools::tools::RememberTool;
+    /// use anureo_tools::tools::RememberTool;
     /// use checkpoint::{InMemoryStore, Namespace};
     /// use std::sync::Arc;
     ///

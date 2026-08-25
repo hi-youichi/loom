@@ -1,13 +1,13 @@
 # 标题生成功能测试脚本
-# 使用 loom CLI 测试 session 标题生成
+# 使用 anureo CLI 测试 session 标题生成
 
 $ErrorActionPreference = "Stop"
 
 # 配置
 $Port = 3031
-$HomeDir = ".loom-home"
-$PidFile = ".loom-home/loom-server.pid"
-$LogFile = ".loom-home/loom-server.log"
+$HomeDir = ".anureo-home"
+$PidFile = ".anureo-home/anureo-server.pid"
+$LogFile = ".anureo-home/anureo-server.log"
 
 Write-Host "=== 标题生成功能测试 ===" -ForegroundColor Cyan
 Write-Host ""
@@ -26,7 +26,7 @@ Write-Host "   ✓ OPENAI_API_KEY: $($env:OPENAI_API_KEY.Substring(0, 10))..."
 Write-Host "   ✓ OPENAI_BASE_URL: $env:OPENAI_BASE_URL"
 Write-Host ""
 
-# 创建 .loom-home 目录（如果不存在）
+# 创建 .anureo-home 目录（如果不存在）
 if (-not (Test-Path $HomeDir)) {
     New-Item -ItemType Directory -Path $HomeDir -Force | Out-Null
     Write-Host "   ✓ 创建 $HomeDir 目录" -ForegroundColor Green
@@ -39,8 +39,8 @@ if (Test-Path $PidFile) {
 }
 Write-Host ""
 
-# 启动 loom server
-Write-Host "2. 启动 loom server..." -ForegroundColor Yellow
+# 启动 anureo server
+Write-Host "2. 启动 anureo server..." -ForegroundColor Yellow
 Write-Host "   端口: $Port"
 Write-Host "   Home: $HomeDir"
 Write-Host "   PID 文件: $PidFile"
@@ -83,7 +83,7 @@ Write-Host "4. 测试步骤（需要手动执行）:" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "   步骤 1: 在新终端中启动 ACP agent"
 Write-Host "   ```powershell"
-Write-Host "   cargo run -p cli -- acp"
+Write-Host "   cargo run -p anureo-cli -- acp"
 Write-Host "   ```"
 Write-Host ""
 Write-Host "   步骤 2: 发送第一轮测试消息，例如："

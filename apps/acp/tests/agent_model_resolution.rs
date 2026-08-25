@@ -2,10 +2,10 @@
 //!
 //! Tests the priority: ACP explicit model > agent model name > agent tier > default config
 
-use loom_acp::agent_registry::AgentRegistry;
-use loom_acp::session::SessionConfig;
-use loom_acp::LoomAcpAgent;
-use loom_acp::{ModelOption, ModelProvider};
+use anureo_acp::agent_registry::AgentRegistry;
+use anureo_acp::session::SessionConfig;
+use anureo_acp::AnureoAcpAgent;
+use anureo_acp::{ModelOption, ModelProvider};
 use std::sync::Arc;
 
 struct MockModelProvider;
@@ -28,8 +28,8 @@ impl ModelProvider for MockModelProvider {
     }
 }
 
-fn create_test_agent() -> LoomAcpAgent {
-    LoomAcpAgent::new()
+fn create_test_agent() -> AnureoAcpAgent {
+    AnureoAcpAgent::new()
         .unwrap()
         .with_model_provider(Arc::new(MockModelProvider))
 }

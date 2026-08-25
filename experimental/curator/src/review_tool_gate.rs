@@ -7,7 +7,7 @@ use tool_core::BuiltinToolFilter;
 /// fork installs a thread-local whitelist derived from `get_tool_definitions(
 /// enabled_toolsets=["memory", "skills"])`. Hermes's Python tool name is
 /// `skills_list` (plural) — see `hermes-agent/tools/skills_tool.py:1449` —
-/// but Loom's unified Rust implementation renamed it to `skill_list`
+/// but anureo's unified Rust implementation renamed it to `skill_list`
 /// (singular) to match the rest of the `skill_*` family (`skill_view`,
 /// `skill_manage`). See `tool_core::tool_name::TOOL_SKILL_LIST`. The
 /// other three names are identical between Python and Rust.

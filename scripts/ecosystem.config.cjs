@@ -1,34 +1,36 @@
-// pm2 process definitions for the OpenChamber + Loom dev environment.
+// pm2 process definitions for the anureo + anureo dev environment.
 //
 // Usage (from the repo root):
 //   pm2 start scripts/ecosystem.config.cjs
-//   cargo build -p cli; pm2 restart loom-dev     # after Rust changes
-//   pm2 logs loom-dev --lines 100
+//   cargo build -p anureo-cli; pm2 restart anureo-dev     # after Rust changes
+//   pm2 logs anureo-dev --lines 100
 //
 // Notes:
-// - Requires `cargo build -p cli` first: pm2 runs target/debug/loom.exe
+// - Requires `cargo build -p anureo-cli` first: pm2 runs target/debug/anureo.exe
 //   directly (no `cargo run` wrapper, so signals reach the server).
-// - The 3030 default instance (~/.loom) is NOT managed here; only the
+// - The 3030 default instance (~/.anureo) is NOT managed here; only the
 //   isolated 3031 dev instance.
 // - LLM creds (OPENAI_API_KEY / OPENAI_BASE_URL) are snapshotted from the
-//   shell at `pm2 start`; refresh with `pm2 restart loom-dev --update-env`.
+//   shell at `pm2 start`; refresh with `pm2 restart anureo-dev --update-env`.
 // - `watch` is intentionally disabled: target/ churn would cause endless
 //   restarts. Restart manually after rebuilding.
 
 const path = require("path");
 
-const LOOM_ROOT = path.resolve(__dirname, "..");
-const CHAMBER_ROOT = path.resolve(__dirname, "..", "..", "openchamber-feat-dev");
+const ANUREO_ROOT = path.resolve(__dirname, "..");
+const CHAMBER_ROOT = process.env.ANUREO_FRONTEND_ROOT
+  ? path.resolve(process.env.ANUREO_FRONTEND_ROOT)
+  : path.resolve(__dirname, "..", "..", "openchamber-feat-dev");
 
 const HOME = process.env.USERPROFILE || process.env.HOME;
 
 module.exports = {
   apps: [
     {
-      name: "loom-dev",
-      script: LOOM_ROOT + "/target/debug/loom.exe",
-      args: "server --port 3031 --home .loom-home --pid-file .loom-home/loom-server.pid --log-level trace --log-file .loom-home/loom-dev.log",
-      cwd: LOOM_ROOT,
+      name: "anureo-dev",
+      script: ANUREO_ROOT + "/target/debug/anureo.exe",
+      args: "server --port 3031 --home .anureo-home --pid-file .anureo-home/anureo-server.pid --log-level trace --log-file .anureo-home/anureo-dev.log",
+      cwd: ANUREO_ROOT,
       time: true,
       max_restarts: 10,
       min_uptime: "10s",

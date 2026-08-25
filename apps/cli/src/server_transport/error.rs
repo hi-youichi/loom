@@ -1,9 +1,9 @@
-//! Typed error mapping for the loom-server transport layer.
+//! Typed error mapping for the anureo-server transport layer.
 //!
 //! All errors are wrapped in [`TransportError`] which distinguishes:
 //!
 //! - **Network errors** — connection failures, timeouts, DNS resolution.
-//! - **HTTP errors** — loom-server returned a non-2xx status. The raw body
+//! - **HTTP errors** — anureo-server returned a non-2xx status. The raw body
 //!   is captured so callers can deserialize server-side error details.
 //! - **SSE errors** — malformed event lines, WebSocket handshake failures.
 //! - **JSON errors** — request/response serialization failures.
@@ -31,7 +31,7 @@ pub enum TransportError {
     TlsFailed(String),
 
     // ─── HTTP layer ───────────────────────────────────────────────────
-    /// loom-server returned a non-2xx HTTP status.
+    /// anureo-server returned a non-2xx HTTP status.
     #[error("HTTP {status} from {base_url}{path}: {body}")]
     HttpError {
         status: u16,
@@ -53,7 +53,7 @@ pub enum TransportError {
     #[error("SSE stream closed unexpectedly")]
     SseStreamClosed,
 
-    /// WebSocket handshake with loom-server failed.
+    /// WebSocket handshake with anureo-server failed.
     #[error("WebSocket handshake failed: {0}")]
     WebSocketFailed(String),
 
@@ -84,7 +84,7 @@ pub enum TransportError {
     #[error("invalid session state: {reason}")]
     InvalidSessionState { reason: String },
 
-    /// loom-server returned an explicit error in the response body.
+    /// anureo-server returned an explicit error in the response body.
     #[error("server error: {message}")]
     ServerError { message: String },
 

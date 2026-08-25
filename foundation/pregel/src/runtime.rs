@@ -29,7 +29,7 @@ use checkpoint::{
     Checkpoint, CheckpointError, CheckpointListItem, CheckpointSource, Checkpointer,
     RunnableConfig, Store,
 };
-use loom_graph_core::GraphError;
+use anureo_graph_core::GraphError;
 use stream_event::{StreamEvent, StreamMode};
 use tokio_util::sync::CancellationToken;
 

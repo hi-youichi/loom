@@ -1,9 +1,9 @@
-//! Server transport runner: orchestrates a CLI run against a running loom-server.
+//! Server transport runner: orchestrates a CLI run against a running anureo-server.
 //!
 //! Entry point is [`run_server_mode`]. It:
-//! 1. Parses the `--server URL` (or `LOOM_SERVER_URL` env var) from `Args`.
-//! 2. Builds a [`LoomServerClient`] with the configured base URL and auth.
-//! 3. Creates a session with loom-server (`POST /session`).
+//! 1. Parses the `--server URL` (or `ANUREO_SERVER_URL` env var) from `Args`.
+//! 2. Builds a [`AnureoServerClient`] with the configured base URL and auth.
+//! 3. Creates a session with anureo-server (`POST /session`).
 //! 4. Sends the user prompt via the synchronous `prompt()` endpoint (v1/v2).
 //!    Falls back to `prompt_async` + SSE + polling if sync prompt fails.
 //! 5. Streams events to stdout (text mode) or emits NDJSON lines (JSON mode).
@@ -11,8 +11,8 @@
 //!
 //! # Auth
 //!
-//! loom-server supports bearer-token auth. Pass the token via the
-//! `LOOM_SERVER_AUTH` environment variable. Without this variable, the CLI
+//! anureo-server supports bearer-token auth. Pass the token via the
+//! `ANUREO_SERVER_AUTH` environment variable. Without this variable, the CLI
 //! sends requests without an `Authorization` header (for local development).
 
 use std::time::Duration;
@@ -22,10 +22,10 @@ use serde_json::Value;
 use tokio::time::sleep;
 
 use cli::server_transport::{
-    LoomServerClient, PromptRequest, PromptResponse, SessionCreateRequest, SseChannelKind, SseEvent,
+    AnureoServerClient, PromptRequest, PromptResponse, SessionCreateRequest, SseChannelKind, SseEvent,
 };
 
-/// Default loom-server base URL when `--server` is not provided.
+/// Default anureo-server base URL when `--server` is not provided.
 const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:3030";
 
 /// Maximum time to wait for session to reach a terminal state.
@@ -34,13 +34,13 @@ const COMPLETION_TIMEOUT: Duration = Duration::from_secs(300);
 /// Run the CLI in remote server mode.
 ///
 /// This function is called from `main.rs` when `--server URL` is set (or
-/// `LOOM_SERVER_URL` is set). It replaces the entire in-process agent run
-/// with a remote loop against the configured loom-server instance.
+/// `ANUREO_SERVER_URL` is set). It replaces the entire in-process agent run
+/// with a remote loop against the configured anureo-server instance.
 ///
 /// # Arguments
 ///
 /// - `args`: the parsed CLI arguments (for `--json`, `--verbose`, etc.)
-/// - `server_url`: the loom-server base URL (e.g. `"http://127.0.0.1:3030"`)
+/// - `server_url`: the anureo-server base URL (e.g. `"http://127.0.0.1:3030"`)
 ///
 /// # Errors
 ///
@@ -57,8 +57,8 @@ pub(crate) async fn run_server_mode(
     };
 
     // Build the HTTP client
-    let mut client_builder = LoomServerClient::builder(&url).timeout(COMPLETION_TIMEOUT);
-    if let Ok(token) = std::env::var("LOOM_SERVER_AUTH") {
+    let mut client_builder = AnureoServerClient::builder(&url).timeout(COMPLETION_TIMEOUT);
+    if let Ok(token) = std::env::var("ANUREO_SERVER_AUTH") {
         client_builder = client_builder.with_auth_token(token);
     }
     let client = client_builder
@@ -128,7 +128,7 @@ pub(crate) async fn run_server_mode(
 ///    async + SSE streaming with a polling fallback.
 /// 3. SSE is subscribed BEFORE the async prompt is sent to avoid missing events.
 async fn run_prompt(
-    client: &LoomServerClient,
+    client: &AnureoServerClient,
     session_id: &str,
     prompt_req: &PromptRequest,
     output_json: bool,
@@ -249,7 +249,7 @@ fn extract_reply_from_response(response: &PromptResponse) -> String {
 /// If the SSE stream closes without reaching a terminal state, falls back to
 /// polling `GET /session/:id` until a terminal state is observed.
 async fn run_async_with_sse(
-    client: &LoomServerClient,
+    client: &AnureoServerClient,
     session_id: &str,
     prompt_req: &PromptRequest,
     output_json: bool,
@@ -302,7 +302,7 @@ async fn run_async_with_sse(
                             return Err(format!("session {} not found", session_id));
                         }
                         if err_str.contains("401") || err_str.contains("unauthorized") {
-                            return Err("server requires authentication (set LOOM_SERVER_AUTH)".to_string());
+                            return Err("server requires authentication (set ANUREO_SERVER_AUTH)".to_string());
                         }
                         // Connection errors during streaming — fall to polling
                         tracing::warn!("SSE error: {e}, falling back to polling");
@@ -449,7 +449,7 @@ fn handle_sse_event(
 /// - The session reaches a terminal state (completed/failed/cancelled/error)
 /// - The global timeout is exceeded
 async fn poll_session_until_terminal(
-    client: &LoomServerClient,
+    client: &AnureoServerClient,
     session_id: &str,
     final_reply: &mut Option<String>,
     finish_reason: &mut Option<String>,

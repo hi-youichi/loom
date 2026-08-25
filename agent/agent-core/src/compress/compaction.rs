@@ -6,8 +6,8 @@
 
 use tracing::{debug, info};
 
-use loom_graph_core::GraphError;
-use loom_llm::message::{Message, ToolCallContent, UserContent};
+use anureo_graph_core::GraphError;
+use anureo_llm::message::{Message, ToolCallContent, UserContent};
 
 use super::config::CompactionConfig;
 use super::context_window::estimate_tokens;
@@ -108,7 +108,7 @@ pub fn prune(messages: Vec<Message>, config: &CompactionConfig) -> Vec<Message> 
 /// Output is `[one summary System message] + [last compact_keep_recent original messages]`.
 pub async fn compact(
     messages: &[Message],
-    llm: &dyn loom_llm::LlmClient,
+    llm: &dyn anureo_llm::LlmClient,
     config: &CompactionConfig,
 ) -> Result<Vec<Message>, GraphError> {
     let keep = config.compact_keep_recent;
@@ -228,7 +228,7 @@ pub fn build_summary_prompt(msgs: &[Message]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use loom_llm::message::{Message, UserContent};
+    use anureo_llm::message::{Message, UserContent};
 
     use super::*;
 

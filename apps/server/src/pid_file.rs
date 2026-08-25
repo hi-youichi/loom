@@ -1,15 +1,15 @@
-//! Cross-process ownership for a running Loom server.
+//! Cross-process ownership for a running anureo server.
 
 use fs4::fs_std::FileExt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 
-const DEFAULT_PID_FILE: &str = "loom-server.pid";
+const DEFAULT_PID_FILE: &str = "anureo-server.pid";
 
-/// The server's default PID file: `{loom_home}/loom-server.pid`.
+/// The server's default PID file: `{anureo_home}/anureo-server.pid`.
 pub fn default_path() -> PathBuf {
-    config::home::loom_home().join(DEFAULT_PID_FILE)
+    config::home::anureo_home().join(DEFAULT_PID_FILE)
 }
 
 pub fn resolve_path(path: Option<&Path>) -> PathBuf {

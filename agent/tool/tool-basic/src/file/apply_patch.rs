@@ -1,4 +1,4 @@
-//! Apply-patch tool: apply loom-style multi-file patches (Add/Update/Delete/Move).
+//! Apply-patch tool: apply anureo-style multi-file patches (Add/Update/Delete/Move).
 
 use std::sync::Arc;
 
@@ -174,7 +174,7 @@ impl Tool for ApplyPatchTool {
                 "properties": {
                     "patchText": {
                         "type": "string",
-                        "description": "Full patch text in loom format."
+                        "description": "Full patch text in anureo format."
                     }
                 },
                 "required": ["patchText"]

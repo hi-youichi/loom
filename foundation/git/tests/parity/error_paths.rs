@@ -1,9 +1,9 @@
 //! Error-path coverage: invalid inputs must map to typed errors on both
 //! backends (NotFound / InvalidParams / Conflict).
 
-use loom_git::cli::CliBackend;
-use loom_git::git2_backend::Git2Backend;
-use loom_git::GitBackend;
+use anureo_git::cli::CliBackend;
+use anureo_git::git2_backend::Git2Backend;
+use anureo_git::GitBackend;
 
 fn rt() -> tokio::runtime::Runtime {
     tokio::runtime::Runtime::new().unwrap()
@@ -27,7 +27,7 @@ fn stage_missing_file_is_not_found() {
             .block_on(b.stage_file(repo.path(), "does-not-exist.txt"))
             .unwrap_err();
         assert!(
-            matches!(err.kind(), loom_git::GitErrorKind::NotFound),
+            matches!(err.kind(), anureo_git::GitErrorKind::NotFound),
             "({name}) stage missing file must be NotFound, got {err:?}"
         );
     }
@@ -44,7 +44,7 @@ fn checkout_missing_branch_is_not_found() {
             .block_on(b.checkout_branch(repo.path(), "nope"))
             .unwrap_err();
         assert!(
-            matches!(err.kind(), loom_git::GitErrorKind::NotFound),
+            matches!(err.kind(), anureo_git::GitErrorKind::NotFound),
             "({name}) checkout missing branch must be NotFound, got {err:?}"
         );
     }
@@ -61,7 +61,7 @@ fn reset_missing_commit_is_not_found() {
             .block_on(b.reset_to_commit(repo.path(), "deadbeefdeadbeef", "hard"))
             .unwrap_err();
         assert!(
-            matches!(err.kind(), loom_git::GitErrorKind::NotFound),
+            matches!(err.kind(), anureo_git::GitErrorKind::NotFound),
             "({name}) reset missing commit must be NotFound, got {err:?}"
         );
     }
@@ -78,7 +78,7 @@ fn reset_unknown_mode_is_invalid_params() {
             .block_on(b.reset_to_commit(repo.path(), "HEAD", "bogus"))
             .unwrap_err();
         assert!(
-            matches!(err.kind(), loom_git::GitErrorKind::InvalidParams),
+            matches!(err.kind(), anureo_git::GitErrorKind::InvalidParams),
             "({name}) reset bogus mode must be InvalidParams, got {err:?}"
         );
     }
@@ -97,7 +97,7 @@ fn commit_without_identity_is_invalid_params() {
         let err = r
             .block_on(b.commit(
                 repo.path(),
-                loom_git::types::CommitRequest {
+                anureo_git::types::CommitRequest {
                     message: "no identity".into(),
                     amend: false,
                     signoff: false,
@@ -105,7 +105,7 @@ fn commit_without_identity_is_invalid_params() {
             ))
             .unwrap_err();
         assert!(
-            matches!(err.kind(), loom_git::GitErrorKind::InvalidParams),
+            matches!(err.kind(), anureo_git::GitErrorKind::InvalidParams),
             "({name}) commit without identity must be InvalidParams, got {err:?}"
         );
     }
@@ -122,7 +122,7 @@ fn apply_bad_patch_is_invalid_params() {
             .block_on(b.stage_hunk(repo.path(), "this is not a diff at all"))
             .unwrap_err();
         assert!(
-            matches!(err.kind(), loom_git::GitErrorKind::InvalidParams),
+            matches!(err.kind(), anureo_git::GitErrorKind::InvalidParams),
             "({name}) malformed patch must be InvalidParams, got {err:?}"
         );
     }
@@ -138,7 +138,7 @@ fn commit_no_staged_changes_is_invalid_params() {
         let err = r
             .block_on(b.commit(
                 repo.path(),
-                loom_git::types::CommitRequest {
+                anureo_git::types::CommitRequest {
                     message: "empty".into(),
                     amend: false,
                     signoff: false,
@@ -146,7 +146,7 @@ fn commit_no_staged_changes_is_invalid_params() {
             ))
             .unwrap_err();
         assert!(
-            matches!(err.kind(), loom_git::GitErrorKind::InvalidParams),
+            matches!(err.kind(), anureo_git::GitErrorKind::InvalidParams),
             "({name}) commit without staged changes must be InvalidParams, got {err:?}"
         );
     }

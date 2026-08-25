@@ -1,4 +1,4 @@
-//! Tool name constants for all built-in Loom tools.
+//! Tool name constants for all built-in anureo tools.
 //!
 //! These constants are the single source of truth for tool names used across
 //! the workspace. All tool implementations should import from this module
@@ -38,7 +38,7 @@ pub const TOOL_MOVE_FILE: &str = "move_file";
 /// create_dir — create a directory; parent directories are created if needed.
 pub const TOOL_CREATE_DIR: &str = "create_dir";
 
-/// apply_patch — apply a multi-file patch in loom format.
+/// apply_patch — apply a multi-file patch in anureo format.
 pub const TOOL_APPLY_PATCH: &str = "apply_patch";
 
 // ============================================================================
@@ -115,7 +115,7 @@ pub const TOOL_SKILL_LIST: &str = "skill_list";
 /// skill_view — load a skill's full content by name.
 pub const TOOL_SKILL_VIEW: &str = "skill_view";
 
-/// help — show help information about Loom, Skills, and MCP.
+/// help — show help information about anureo, Skills, and MCP.
 pub const TOOL_HELP: &str = "help";
 
 /// batch — execute multiple independent tool calls in parallel.

@@ -568,7 +568,7 @@ fn validate_optional(field: &str, value: Option<&str>) -> Result<(), ExtensionEr
 }
 
 fn emit(state: &mut CommandState, change: CommandChange, id: &str, availability: bool) {
-    state.notifications.push(serde_json::json!({"jsonrpc":"2.0","method":"_loomdesk.dev/command/changed","params": CommandChangedNotification { change, id: id.into() }}));
+    state.notifications.push(serde_json::json!({"jsonrpc":"2.0","method":"_anureo.dev/command/changed","params": CommandChangedNotification { change, id: id.into() }}));
     if availability {
         state.notifications.push(serde_json::json!({"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"available_commands_update"}}}));
     }
@@ -599,8 +599,8 @@ fn internal_error(message: &str) -> ExtensionError {
 }
 
 /// Built-in slash commands, synthesized per request (not stored, not
-/// user-mutable). Names mirror the loom runtime's shipped set so the FE
-/// command palette keeps its baseline after the loom removal.
+/// user-mutable). Names mirror the anureo runtime's shipped set so the FE
+/// command palette keeps its baseline after the anureo removal.
 fn builtin_commands() -> Vec<CommandItem> {
     const EPOCH: DateTime<Utc> = DateTime::UNIX_EPOCH;
     fn cmd(id: &str, name: &str, description: &str, template: &str) -> CommandItem {

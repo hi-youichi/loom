@@ -71,7 +71,7 @@ impl Spinner {
         let is_tty = is_stderr_tty();
 
         let handle = std::thread::Builder::new()
-            .name("loom-spinner".to_string())
+            .name("anureo-spinner".to_string())
             .spawn(move || {
                 if is_tty {
                     run_tty_spinner(rx, &label);

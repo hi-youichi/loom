@@ -455,7 +455,7 @@ where
     /// # Example
     ///
     /// ```rust,ignore
-    /// use loom_graph_core::RunContext;
+    /// use anureo_graph_core::RunContext;
     /// use checkpoint::{RunnableConfig, InMemoryStore};
     /// use std::sync::Arc;
     ///

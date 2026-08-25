@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use super::{ExtensionContext, ExtensionError, ExtensionHandler};
 
-const RECAP_NOTIFICATION_METHOD: &str = "_loomdesk.dev/session-assist/recap";
+const RECAP_NOTIFICATION_METHOD: &str = "_anureo.dev/session-assist/recap";
 const MAX_SESSION_ID_LEN: usize = 256;
 const MAX_RECAP_LEN: usize = 16 * 1024;
 const MAX_SUGGESTION_LEN: usize = 2 * 1024;

@@ -1,4 +1,4 @@
-//! Backend selection (`LOOM_GIT_BACKEND=git2|cli`) + method-level delegation.
+//! Backend selection (`ANUREO_GIT_BACKEND=git2|cli`) + method-level delegation.
 //!
 //! Transition strategy (docs/design/git2-migration.md §4): the git2 backend
 //! delegates unimplemented methods to CliBackend, so the git2 default is
@@ -39,7 +39,7 @@ impl BackendKind {
 
 pub fn backend_kind() -> BackendKind {
     static KIND: std::sync::OnceLock<BackendKind> = std::sync::OnceLock::new();
-    *KIND.get_or_init(|| BackendKind::parse(std::env::var("LOOM_GIT_BACKEND").ok().as_deref()))
+    *KIND.get_or_init(|| BackendKind::parse(std::env::var("ANUREO_GIT_BACKEND").ok().as_deref()))
 }
 
 /// Primary backend per the env flag.

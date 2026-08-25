@@ -13,10 +13,10 @@ async fn test_acp_model_overrides_agent_tier() {
     let mock_server = MultiTierMockServer::new().await;
 
     // 2. 配置代理使用 medium tier
-    create_agent_config(&test_env.loom_home, "medium");
+    create_agent_config(&test_env.anureo_home, "medium");
 
     // 3. 验证初始配置
-    let config_path = test_env.loom_home.join(".loom/agents/default/config.yaml");
+    let config_path = test_env.anureo_home.join(".anureo/agents/default/config.yaml");
     assert!(config_path.exists(), "Agent config should exist");
 
     // 4. 模拟用户选择 high tier 模型
@@ -32,10 +32,10 @@ async fn test_acp_model_overrides_agent_tier() {
     );
 
     // 6. 模拟持久化操作
-    write_last_model_file(&test_env.loom_home, selected_model);
+    write_last_model_file(&test_env.anureo_home, selected_model);
 
     // 7. 验证持久化结果
-    let last_model = read_last_model_file(&test_env.loom_home);
+    let last_model = read_last_model_file(&test_env.anureo_home);
     assert_eq!(
         last_model, selected_model,
         "Last model should be persisted correctly"
@@ -58,11 +58,11 @@ async fn test_agent_tier_respected_without_user_selection() {
     let mock_server = MultiTierMockServer::new().await;
 
     // 配置代理使用 medium tier
-    create_agent_config(&test_env.loom_home, "medium");
+    create_agent_config(&test_env.anureo_home, "medium");
 
     // 验证配置文件存在且包含正确的tier
     let config_content =
-        std::fs::read_to_string(test_env.loom_home.join(".loom/agents/default/config.yaml"))
+        std::fs::read_to_string(test_env.anureo_home.join(".anureo/agents/default/config.yaml"))
             .expect("Should be able to read config file");
     assert!(
         config_content.contains("medium"),
@@ -88,7 +88,7 @@ async fn test_model_tier_priority_chain() {
     let mock_server = MultiTierMockServer::new().await;
 
     // 设置代理tier为low（最低优先级）
-    create_agent_config(&test_env.loom_home, "low");
+    create_agent_config(&test_env.anureo_home, "low");
 
     // 1. 测试最低优先级：代理tier
     let low_tier = mock_server.get_tier_from_model("gpt-3.5-low");
@@ -96,10 +96,10 @@ async fn test_model_tier_priority_chain() {
 
     // 2. 模拟用户明确选择high tier模型（最高优先级）
     let user_selection = "gpt-4-high";
-    write_last_model_file(&test_env.loom_home, user_selection);
+    write_last_model_file(&test_env.anureo_home, user_selection);
 
     // 3. 验证用户选择覆盖了代理tier
-    let last_model = read_last_model_file(&test_env.loom_home);
+    let last_model = read_last_model_file(&test_env.anureo_home);
     assert_eq!(
         last_model, user_selection,
         "User selection should override agent tier"

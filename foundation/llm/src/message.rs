@@ -240,7 +240,7 @@ impl UserContent {
     }
 
     /// Returns the list of modalities used in this content.
-    /// Note: Requires model_spec_core - use a wrapper in loom that calls this.
+    /// Note: Requires model_spec_core - use a wrapper in anureo that calls this.
     pub fn modalities_fallback(&self) -> Vec<String> {
         match self {
             UserContent::Text(_) => vec!["Text".to_string()],

@@ -553,12 +553,12 @@ mod tests {
             .await
             .unwrap();
 
-        let val = serde_json::json!({"iteration": 5, "tool": "loom"});
+        let val = serde_json::json!({"iteration": 5, "tool": "anureo"});
         db.set_meta(&task.id, "goal", &val).await.unwrap();
 
         let got = db.get_meta(&task.id, "goal").await.unwrap().unwrap();
         assert_eq!(got["iteration"], 5);
-        assert_eq!(got["tool"], "loom");
+        assert_eq!(got["tool"], "anureo");
     }
 
     #[tokio::test]

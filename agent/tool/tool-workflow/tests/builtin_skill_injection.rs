@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use agent::run::build_react_config;
 use agent::run::RunOptions;
-use loom_llm::message::UserContent;
+use anureo_llm::message::UserContent;
 use tool_core::Tool;
 use tool_workflow::default_workflow_tool_provider;
 

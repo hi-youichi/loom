@@ -1,4 +1,4 @@
-//! SQLite-backed Checkpointer and Store implementations for Loom.
+//! SQLite-backed Checkpointer and Store implementations for anureo.
 //!
 //! This crate provides persistent, file-backed implementations of the
 //! checkpointing and store traits defined in [`checkpoint`]:
@@ -28,7 +28,7 @@ pub use user_message::{
     NoOpUserMessageStore, SqliteUserMessageStore, UserMessageStore, UserMessageStoreError,
 };
 
-/// Returns the default SQLite memory database path (`~/.loom/memory.db`).
+/// Returns the default SQLite memory database path (`~/.anureo/memory.db`).
 ///
 /// Creates the parent directory if missing. Falls back to `memory.db`
 /// (cwd-relative) if the home directory is unavailable.

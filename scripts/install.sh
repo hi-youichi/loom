@@ -1,21 +1,21 @@
 #!/usr/bin/env sh
 set -eu
 
-REPOSITORY="${LOOM_REPO:-hi-youichi/loom}"
-VERSION="${LOOM_VERSION:-latest}"
-INSTALL_DIR="${LOOM_INSTALL_DIR:-$HOME/.local/bin}"
+REPOSITORY="${ANUREO_REPO:-hi-youichi/anureo}"
+VERSION="${ANUREO_VERSION:-latest}"
+INSTALL_DIR="${ANUREO_INSTALL_DIR:-$HOME/.local/bin}"
 
 usage() {
     cat <<'EOF'
-Install Loom from GitHub Releases.
+Install anureo from GitHub Releases.
 
 Usage:
   ./install.sh [--version VERSION] [--install-dir DIR] [--repo OWNER/REPO]
 
 Environment variables:
-  LOOM_VERSION       Release tag without the leading v (default: latest)
-  LOOM_INSTALL_DIR   Installation directory (default: ~/.local/bin)
-  LOOM_REPO          GitHub repository (default: hi-youichi/loom)
+  ANUREO_VERSION       Release tag without the leading v (default: latest)
+  ANUREO_INSTALL_DIR   Installation directory (default: ~/.local/bin)
+  ANUREO_REPO          GitHub repository (default: hi-youichi/anureo)
 EOF
 }
 
@@ -61,11 +61,11 @@ case "$OS/$ARCH" in
 esac
 
 command -v curl >/dev/null 2>&1 || {
-    echo "curl is required to install Loom" >&2
+    echo "curl is required to install anureo" >&2
     exit 1
 }
 command -v tar >/dev/null 2>&1 || {
-    echo "tar is required to install Loom" >&2
+    echo "tar is required to install anureo" >&2
     exit 1
 }
 
@@ -76,35 +76,35 @@ else
     RELEASE_URL="https://github.com/$REPOSITORY/releases/download/v$VERSION"
 fi
 
-ARCHIVE="loom-${VERSION}-${TARGET}.tar.gz"
+ARCHIVE="anureo-${VERSION}-${TARGET}.tar.gz"
 if [ "$VERSION" = "latest" ]; then
-    ARCHIVE="loom-latest-${TARGET}.tar.gz"
+    ARCHIVE="anureo-latest-${TARGET}.tar.gz"
     # GitHub's latest-download URL uses the actual release version in the
     # filename, so resolve the tag before downloading the archive.
     TAG="$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/$REPOSITORY/releases/latest" | sed -n 's#.*/tag/##p')"
-    [ -n "$TAG" ] || { echo "could not determine the latest Loom release" >&2; exit 1; }
+    [ -n "$TAG" ] || { echo "could not determine the latest anureo release" >&2; exit 1; }
     VERSION="${TAG#v}"
     RELEASE_URL="https://github.com/$REPOSITORY/releases/download/$TAG"
-    ARCHIVE="loom-${VERSION}-${TARGET}.tar.gz"
+    ARCHIVE="anureo-${VERSION}-${TARGET}.tar.gz"
 fi
 
-TMP_DIR="$(mktemp -d 2>/dev/null || mktemp -d -t loom-install)"
+TMP_DIR="$(mktemp -d 2>/dev/null || mktemp -d -t anureo-install)"
 cleanup() { rm -rf "$TMP_DIR"; }
 trap cleanup EXIT INT TERM
 
 ARCHIVE_PATH="$TMP_DIR/$ARCHIVE"
-echo "Downloading Loom $VERSION for $TARGET..."
+echo "Downloading anureo $VERSION for $TARGET..."
 curl -fL --retry 3 --proto '=https' --tlsv1.2 \
     "$RELEASE_URL/$ARCHIVE" -o "$ARCHIVE_PATH"
 
 mkdir -p "$INSTALL_DIR"
 tar -xzf "$ARCHIVE_PATH" -C "$TMP_DIR"
-[ -f "$TMP_DIR/loom" ] || { echo "release archive does not contain loom" >&2; exit 1; }
-chmod 755 "$TMP_DIR/loom"
-mv "$TMP_DIR/loom" "$INSTALL_DIR/loom"
+[ -f "$TMP_DIR/anureo" ] || { echo "release archive does not contain anureo" >&2; exit 1; }
+chmod 755 "$TMP_DIR/anureo"
+mv "$TMP_DIR/anureo" "$INSTALL_DIR/anureo"
 
-echo "Loom installed to $INSTALL_DIR/loom"
+echo "anureo installed to $INSTALL_DIR/anureo"
 case ":${PATH:-}:" in
     *:"$INSTALL_DIR":*) ;;
-    *) echo "Add $INSTALL_DIR to PATH to run: loom" ;;
+    *) echo "Add $INSTALL_DIR to PATH to run: anureo" ;;
 esac

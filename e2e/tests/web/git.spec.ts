@@ -1,23 +1,23 @@
 /**
  * e2e/tests/web/git.spec.ts
  *
- * OpenChamber Web Git Tests
+ * anureo Web Git Tests
  *
  * 使用 fixtures:
  * - app: 提供 baseURL fixture
  * - temp-git-repo: 创建临时 git 仓库
  *
- * 参考 docs/references/openchamber-text-acceptance-test-cases.md §6
+ * 参考 docs/references/anureo-text-acceptance-test-cases.md §6
  */
 
 import { test as base, expect } from "@playwright/test";
 import { app } from "../../fixtures/app";
-import { mockLoom } from "../../fixtures/mock-loom";
+import { mockanureo } from "../../fixtures/mock-anureo";
 
-// 合并 fixtures：mockLoom 的 page 必须不被覆盖
+// 合并 fixtures：mockanureo 的 page 必须不被覆盖
 const test = base.extend({
   ...app,
-  ...mockLoom,
+  ...mockanureo,
 });
 
 /**

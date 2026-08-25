@@ -1,4 +1,4 @@
-//! Wraps loom::run_agent_with_options with stderr display callback.
+//! Wraps anureo::run_agent_with_options with stderr display callback.
 //! Uses protocol format (type + payload) and optional envelope per protocol_spec.
 
 use agent::build_react_run_context;
@@ -11,8 +11,8 @@ use agent::state::ToolResult;
 use agent::ResolvedAgent;
 use agent::{DupState, GotState, TotState};
 use chrono::Local;
-use loom_llm::support::uuid6::uuid6;
-use loom_llm::ToolCall;
+use anureo_llm::support::uuid6::uuid6;
+use anureo_llm::ToolCall;
 use model_spec_core::resolver::{
     build_composite_resolver, ConfigModelEntry, ConfigProviderEntry, ModelResolver,
 };
@@ -35,7 +35,7 @@ use stream_event::StreamEvent;
 
 use agent::run::RunError;
 
-/// Provider for Loom's default extra tools (currently the workflow tool).
+/// Provider for anureo's default extra tools (currently the workflow tool).
 ///
 /// Thin re-export of `tool_workflow::default_workflow_tool_provider` so CLI
 /// internals can use `crate::run::default_workflow_tool_provider()` without
@@ -47,7 +47,7 @@ pub fn default_workflow_tool_provider() -> agent::run::ExtraToolsProvider {
 }
 
 fn load_config_providers() -> Vec<ConfigProviderEntry> {
-    let full = config::load_full_config("loom").ok();
+    let full = config::load_full_config("anureo").ok();
     full.map(|f| {
         f.providers
             .into_iter()
@@ -231,8 +231,8 @@ async fn run_agent_wrapper_inner(
     // one mechanism. `.instrument()` is used instead of a manual span guard
     // to avoid the `!Send` future issue from holding a guard across awaits.
 
-    let loom_opts = opts.clone();
-    let (mut config, resolved_agent, skill_registry) = build_react_config(&loom_opts);
+    let anureo_opts = opts.clone();
+    let (mut config, resolved_agent, skill_registry) = build_react_config(&anureo_opts);
 
     if config.model.is_none() && config.model_tier.is_some() {
         config = agent::resolve_tier_and_build_config(&config).await;
@@ -297,7 +297,7 @@ async fn run_agent_wrapper_inner(
                 let v = match v {
                     Ok(x) => x,
                     Err(e) => {
-                        eprintln!("loom: failed to serialize stream event: {}", e);
+                        eprintln!("anureo: failed to serialize stream event: {}", e);
                         serde_json::json!({ "type": "_error", "_serialize_error": format!("{}", e) })
                     }
                 };
@@ -345,7 +345,7 @@ async fn run_agent_wrapper_inner(
                     }
                 }
                 Err(e) => {
-                    eprintln!("loom: failed to serialize stream event to JSON: {}", e);
+                    eprintln!("anureo: failed to serialize stream event to JSON: {}", e);
                     if let Ok(mut vec) = events_clone.lock() {
                         vec.push(serde_json::json!({
                             "type": "_error",
@@ -1084,7 +1084,7 @@ mod tests {
     use agent::run::RunCmd;
     use agent::{TaskGraph, TaskNode, TaskNodeState, TaskStatus, TotExtension, UnderstandOutput};
 
-    use loom_llm::{message::Message, ToolCall};
+    use anureo_llm::{message::Message, ToolCall};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
 
@@ -1422,7 +1422,7 @@ mod tests {
             &StreamEvent::TextDelta {
                 content: "tok".to_string(),
                 metadata: stream_event::StreamMetadata {
-                    loom_node: "think_expand".to_string(),
+                    anureo_node: "think_expand".to_string(),
                     namespace: None,
                 },
             },
@@ -1476,7 +1476,7 @@ mod tests {
             &StreamEvent::TextDelta {
                 content: "chunk".to_string(),
                 metadata: stream_event::StreamMetadata {
-                    loom_node: "execute_graph".to_string(),
+                    anureo_node: "execute_graph".to_string(),
                     namespace: None,
                 },
             },
@@ -1496,10 +1496,10 @@ mod tests {
 
     fn invalid_opts(output_json: bool) -> agent::RunOptions {
         agent::RunOptions {
-            message: loom_llm::message::UserContent::text("hello".to_string()),
+            message: anureo_llm::message::UserContent::text("hello".to_string()),
             // Deterministic failure path in build context (invalid file-tool root).
             working_folder: Some(PathBuf::from(
-                "/definitely/not/exist/loom-cli-run-agent-tests",
+                "/definitely/not/exist/anureo-cli-run-agent-tests",
             )),
             session_id: None,
             cancellation: None,

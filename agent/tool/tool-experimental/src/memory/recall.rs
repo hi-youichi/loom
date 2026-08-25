@@ -16,7 +16,7 @@ pub use tool_core::tool_name::TOOL_RECALL;
 /// # Examples
 ///
 /// ```no_run
-/// use loom_tools::tools::{RecallTool, RememberTool, Tool};
+/// use anureo_tools::tools::{RecallTool, RememberTool, Tool};
 /// use checkpoint::{InMemoryStore, Namespace};
 /// use std::sync::Arc;
 /// use serde_json::json;
@@ -57,7 +57,7 @@ impl RecallTool {
     /// # Examples
     ///
     /// ```
-    /// use loom_tools::tools::RecallTool;
+    /// use anureo_tools::tools::RecallTool;
     /// use checkpoint::{InMemoryStore, Namespace};
     /// use std::sync::Arc;
     ///

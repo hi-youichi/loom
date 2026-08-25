@@ -1,4 +1,4 @@
-//! `_loomdesk.dev/session-history/*` — backward paging of session history
+//! `_anureo.dev/session-history/*` — backward paging of session history
 //! that `session/load` tail-truncated on replay.
 //!
 //! * `info`: read-only probe (`hasMore` for the "load earlier" UI affordance)
@@ -13,13 +13,13 @@ use std::sync::{Arc, RwLock, Weak};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use crate::agent::LoomAcpAgent;
+use crate::agent::AnureoAcpAgent;
 use crate::extensions::{ExtensionContext, ExtensionError, ExtensionHandler};
 
 pub const DOMAIN: &str = "session-history";
 
 /// Default and maximum page size; mirrors the server-side clamp in
-/// `LoomAcpAgent::session_history_page`.
+/// `AnureoAcpAgent::session_history_page`.
 const DEFAULT_PAGE_LIMIT: usize = 50;
 const MAX_PAGE_LIMIT: usize = 200;
 
@@ -28,7 +28,7 @@ const MAX_PAGE_LIMIT: usize = 200;
 /// (the registry is injected into the agent), so `AcpRuntime` calls
 /// [`bind`](Self::bind) once the agent exists.
 pub struct SessionHistoryHandler {
-    agent: RwLock<Option<Weak<LoomAcpAgent>>>,
+    agent: RwLock<Option<Weak<AnureoAcpAgent>>>,
 }
 
 impl SessionHistoryHandler {
@@ -38,11 +38,11 @@ impl SessionHistoryHandler {
         }
     }
 
-    pub fn bind(&self, agent: &Arc<LoomAcpAgent>) {
+    pub fn bind(&self, agent: &Arc<AnureoAcpAgent>) {
         *self.agent.write().expect("session-history agent slot") = Some(Arc::downgrade(agent));
     }
 
-    fn resolve(&self) -> Result<Arc<LoomAcpAgent>, ExtensionError> {
+    fn resolve(&self) -> Result<Arc<AnureoAcpAgent>, ExtensionError> {
         self.agent
             .read()
             .expect("session-history agent slot")

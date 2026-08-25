@@ -1,18 +1,18 @@
-//! # Loom ACP — Run Loom as an ACP Agent
+//! # anureo ACP — Run anureo as an ACP Agent
 //!
 //! This crate implements the **Agent side** of the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
-//! IDEs (Zed, JetBrains, Neovim, etc.) launch `loom acp` as a subprocess; the process
-//! connects to a local **loom-server** via WebSocket and relays JSON-RPC between the IDE's
+//! IDEs (Zed, JetBrains, Neovim, etc.) launch `anureo acp` as a subprocess; the process
+//! connects to a local **anureo-server** via WebSocket and relays JSON-RPC between the IDE's
 //! stdio and the server's WebSocket endpoint.
 //!
 //! ## Design principles
 //!
-//! - **Transport-only bridge**: `loom acp` is a thin stdio↔WebSocket relay — all agent logic
-//!   runs on loom-server.
-//! - **Reuse**: Do not reimplement ReAct/ToT/GoT; only the ACP ↔ Loom adapter layer.
-//! - **Session consistency**: ACP `session_id` maps 1:1 to Loom `thread_id` for multi-turn
+//! - **Transport-only bridge**: `anureo acp` is a thin stdio↔WebSocket relay — all agent logic
+//!   runs on anureo-server.
+//! - **Reuse**: Do not reimplement ReAct/ToT/GoT; only the ACP ↔ anureo adapter layer.
+//! - **Session consistency**: ACP `session_id` maps 1:1 to anureo `thread_id` for multi-turn
 //!   and checkpointer consistency.
-//! - **Auto-spawn**: If loom-server is not running, the bridge spawns it automatically.
+//! - **Auto-spawn**: If anureo-server is not running, the bridge spawns it automatically.
 //! - **Auto-reconnect**: On WebSocket disconnect, the bridge retries with exponential
 //!   back-off; stdin/stdout channels persist across reconnections.
 //!
@@ -25,7 +25,7 @@
 //!                        │ stdin (JSON-RPC requests)         │ stdout (JSON-RPC responses)
 //!                        ▼                                   ▲
 //! ┌───────────────────────────────────────────────────────────────────────────────┐
-//! │                         loom acp (this crate)                                 │
+//! │                         anureo acp (this crate)                                 │
 //! │                                                                               │
 //! │  ┌─────────────────────────────────────────────────────────────────────────┐  │
 //! │  │  ws_bridge.rs — stdio↔WebSocket relay                                    │  │
@@ -34,14 +34,14 @@
 //! │  │                                        ├──► relay_loop ──► WebSocket ──► │  │
 //! │  │  stdout writer ◄── std mpsc channel ◄──┘    (cancel-aware)               │  │
 //! │  │                                                                          │  │
-//! │  │  Auto-spawn: probe /global/health ──► spawn loom-server if not running   │  │
+//! │  │  Auto-spawn: probe /global/health ──► spawn anureo-server if not running   │  │
 //! │  │  Auto-reconnect: exponential back-off (500ms → 10s max)                  │  │
 //! │  └─────────────────────────────────────────────────────────────────────────┘  │
 //! └───────────────────────────────────┬───────────────────────────────────────────┘
 //!                                     │ WebSocket (ws://127.0.0.1:3030/acp)
 //!                                     ▼
 //! ┌───────────────────────────────────────────────────────────────────────────────┐
-//! │                         loom-server                                           │
+//! │                         anureo-server                                           │
 //! │                                                                               │
 //! │  ┌─────────────────────────────────────────────────────────────────────────┐  │
 //! │  │  handlers/acp.rs — WebSocket accept + per-connection task                │  │
@@ -55,7 +55,7 @@
 //! │  └───────────────────────────────┬─────────────────────────────────────────┘  │
 //! │                                  ▼                                             │
 //! │  ┌─────────────────────────────────────────────────────────────────────────┐  │
-//! │  │  agent.rs — LoomAcpAgent (impl Agent)                                    │  │
+//! │  │  agent.rs — AnureoAcpAgent (impl Agent)                                    │  │
 //! │  │  initialize / authenticate / new_session / prompt / cancel /             │  │
 //! │  │  fork_session / load_session / list_sessions /                           │  │
 //! │  │  set_session_config_option / set_session_mode                            │  │
@@ -65,7 +65,7 @@
 //! │  │ session  │ │ content   │ │ stream_     │ │ tools            │                │
 //! │  │ .rs      │ │ .rs       │ │ bridge.rs   │ │ (fs/terminal)    │                │
 //! │  │          │ │           │ │             │ │                  │                │
-//! │  │ Session  │ │ ContentBlk│ │ Loom event  │ │ ReadTextFile     │                │
+//! │  │ Session  │ │ ContentBlk│ │ anureo event  │ │ ReadTextFile     │                │
 //! │  │ Store    │ │ → message │ │ → ACP Update│ │ WriteTextFile    │                │
 //! │  │ Cancel   │ │           │ │ Token usage │ │ ClientBridge     │                │
 //! │  └──────────┘ └───────────┘ └─────────────┘ └──────────────────┘                │
@@ -73,7 +73,7 @@
 //! │         └───────────┴──────────────┘                                           │
 //! │                     ▼                                                          │
 //! │  ┌─────────────────────────────────────────────────────────────────────────┐  │
-//! │  │  Loom core — run_agent_from_config / build_react_config                 │  │
+//! │  │  anureo core — run_agent_from_config / build_react_config                 │  │
 //! │  │  ReAct graph execution, MCP tools, checkpoint persistence               │  │
 //! │  └─────────────────────────────────────────────────────────────────────────┘  │
 //! └───────────────────────────────────────────────────────────────────────────────┘
@@ -82,8 +82,8 @@
 //! ## Entrypoint
 //!
 //! ```sh
-//! loom acp                          # connect to ws://127.0.0.1:3030/acp
-//! loom acp ws://host:port/acp       # custom URL
+//! anureo acp                          # connect to ws://127.0.0.1:3030/acp
+//! anureo acp ws://host:port/acp       # custom URL
 //! ```
 //!
 //! All ACP protocol parameters (working directory, MCP servers, etc.) come from
@@ -92,7 +92,7 @@
 //! ## Request/response flow (single prompt turn)
 //!
 //! ```text
-//!   IDE                ws_bridge              loom-server               LoomAcpAgent           Loom
+//!   IDE                ws_bridge              anureo-server               AnureoAcpAgent           anureo
 //!    │                    │                       │                          │                    │
 //!    │── initialize ─────►│ relay ──► WS ───────►│ run_agent_connection ──►│ initialize()        │
 //!    │◄─── response ──────│◄── WS ◄──────────────│◄────────────────────────│                    │
@@ -124,7 +124,7 @@
 //!          ▼                      ▼                      ▼
 //!   ┌─────────────┐      ┌───────────────┐      ┌──────────────┐
 //!   │ ws_bridge   │      │ stdio_loop    │      │ agent        │
-//!   │ (client     │      │ run_agent_    │      │ LoomAcpAgent │
+//!   │ (client     │      │ run_agent_    │      │ AnureoAcpAgent │
 //!   │  side)      │      │  connection   │      │ (server side)│
 //!   └─────────────┘      └───────┬───────┘      └──────┬───────┘
 //!                                 │                     │
@@ -137,7 +137,7 @@
 //!                    │                                   │
 //!                    ▼                                   ▼
 //!              ┌──────────────────────────────────────────┐
-//!              │  Loom core (agent crate)                  │
+//!              │  anureo core (agent crate)                  │
 //!              │  run_agent_from_config / build_react_config│
 //!              └──────────────────────────────────────────┘
 //! ```
@@ -170,12 +170,12 @@
 //!
 //! | Module | Lines | Responsibility |
 //! |--------|-------|---------------|
-//! | [`agent`] | ~2200 | [`LoomAcpAgent`]: ACP Agent trait impl, model resolution, prompt dispatch |
+//! | [`agent`] | ~2200 | [`AnureoAcpAgent`]: ACP Agent trait impl, model resolution, prompt dispatch |
 //! | [`ws_bridge`] | ~520 | Stdio↔WebSocket relay with auto-spawn and auto-reconnect |
 //! | [`stdio_loop`] | ~250 | `run_agent_connection()`: generic ACP dispatch loop |
-//! | [`stream_bridge`] | ~1400 | Loom `TypedAnyStreamEvent` → ACP `SessionUpdate`, token usage tracking |
+//! | [`stream_bridge`] | ~1400 | anureo `TypedAnyStreamEvent` → ACP `SessionUpdate`, token usage tracking |
 //! | [`session`] | ~450 | `SessionStore`, `SessionEntry`, cancellation state, prompt guard |
-//! | [`content`] | ~640 | ACP `ContentBlock` → Loom `UserContent` conversion |
+//! | [`content`] | ~640 | ACP `ContentBlock` → anureo `UserContent` conversion |
 //! | [`connection`]) | ~75 | Per-connection state: capabilities, notification channel, bridge |
 //! | [`tools`] | ~670 | FS tools (read/write text file), client bridge, terminal executor |
 //! | [`review_runner`] | ~690 | Background curator review (memory + skills) |
@@ -184,7 +184,7 @@
 //! | [`terminal`]) | ~440 | Terminal session manager (unused — ACP terminal disabled) |
 //! | [`session_config_store`] | ~220 | Persistent session config (SQLite) |
 //! | [`client_capabilities`] | ~470 | Parse and query client capabilities from `initialize` |
-//! | [`mcp_convert`] | ~210 | Convert ACP MCP server defs → Loom MCP config |
+//! | [`mcp_convert`] | ~210 | Convert ACP MCP server defs → anureo MCP config |
 //! | [`agent_registry`] | ~75 | Agent profile registry (modes: ask, default, dev, etc.) |
 //! | [`goal_runner`] | ~70 | `/goal` command handler |
 //! | [`logging`] | ~160 | Log initialization with working-directory-aware file paths |
@@ -226,13 +226,13 @@ pub mod stream_bridge;
 pub mod terminal;
 pub mod tools;
 pub mod ws_bridge;
-pub use agent::{LoomAcpAgent, ModelOption, ModelProvider};
+pub use agent::{AnureoAcpAgent, ModelOption, ModelProvider};
 pub use content::{content_blocks_to_message, ContentBlockLike, ContentError};
 pub use high_freq_usage::{HighFreqUsageTracker, UsageUpdateInfo};
 pub use session::{SessionConfig, SessionEntry, SessionId, SessionStore};
 pub use stdio_loop::run_agent_connection;
 pub use stream_bridge::{
-    loom_event_to_updates, stream_update_to_session_notification, StreamUpdate,
+    anureo_event_to_updates, stream_update_to_session_notification, StreamUpdate,
 };
 
 static LOG_CONFIG: OnceLock<logging::LogConfig> = OnceLock::new();

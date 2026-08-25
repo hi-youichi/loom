@@ -1,22 +1,22 @@
 /**
  * e2e/tests/web/settings.spec.ts
  *
- * OpenChamber Web Settings Tests
+ * anureo Web Settings Tests
  *
  * 使用 fixtures:
  * - app: 提供 baseURL fixture
  * - auth: 提供 Bearer Token 注入（已认证状态）
  *
- * 参考 docs/references/openchamber-text-acceptance-test-cases.md §11
+ * 参考 docs/references/anureo-text-acceptance-test-cases.md §11
  */
 
 import { test as base, expect } from "@playwright/test";
 
-// 使用 mock-loom 的 page 拦截
-import { mockLoom } from "../../fixtures/mock-loom";
+// 使用 mock-anureo 的 page 拦截
+import { mockanureo } from "../../fixtures/mock-anureo";
 
 const test = base.extend({
-  ...mockLoom,
+  ...mockanureo,
   baseURL: async ({}, use) => {
     await use(process.env.E2E_BASE_URL ?? "http://localhost:3000");
   },

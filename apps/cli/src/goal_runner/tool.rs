@@ -52,7 +52,7 @@ impl CodingTool for ShellTool {
         let mut cmd = tokio::process::Command::new(&self.command);
         cmd.args(&self.args)
             .current_dir(working_dir)
-            .env("LOOM_GOAL_PROMPT", prompt)
+            .env("ANUREO_GOAL_PROMPT", prompt)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
         #[cfg(windows)]
@@ -135,7 +135,7 @@ impl CodingTool for ShellTool {
     }
 }
 
-pub struct LoomTool {
+pub struct AnureoTool {
     session_id: String,
     _working_dir: PathBuf,
     mcp_config_path: PathBuf,
@@ -152,7 +152,7 @@ pub struct LoomTool {
     any_stream_event_sender: Option<Arc<dyn Fn(FullTypedAnyStreamEvent) + Send + Sync>>,
 }
 
-impl LoomTool {
+impl AnureoTool {
     pub fn new(session_id: String, working_dir: PathBuf, mcp_config_path: PathBuf) -> Self {
         Self {
             session_id,
@@ -200,11 +200,11 @@ impl LoomTool {
 }
 
 #[async_trait]
-impl CodingTool for LoomTool {
+impl CodingTool for AnureoTool {
     async fn execute(&self, prompt: &str, working_dir: &Path) -> Result<TurnResult, ToolError> {
         use agent::run::RunCmd;
         use agent::run::RunOptions;
-        use loom_llm::message::UserContent;
+        use anureo_llm::message::UserContent;
 
         let tool_summaries: Arc<Mutex<Vec<ToolCallSummary>>> = Arc::new(Mutex::new(Vec::new()));
 
@@ -282,7 +282,7 @@ impl CodingTool for LoomTool {
         let result = run_agent_from_config(&config, &RunCmd::React, params, on_event)
             .await
             .map_err(|e| {
-                let msg = format!("loom agent error: {}", e);
+                let msg = format!("anureo agent error: {}", e);
                 if ToolError::is_transient_api_error(&msg) {
                     ToolError::RateLimited(msg)
                 } else {
@@ -305,7 +305,7 @@ impl CodingTool for LoomTool {
     }
 
     fn name(&self) -> &str {
-        "loom"
+        "anureo"
     }
 }
 

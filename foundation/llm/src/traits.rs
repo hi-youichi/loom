@@ -1,6 +1,6 @@
 //! Core LLM traits and types.
 //!
-//! This module defines the contract between Loom's agent runtime
+//! This module defines the contract between anureo's agent runtime
 //! and LLM provider implementations.
 
 use std::collections::HashMap;
@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::LlmError;
 use crate::message::Message;
-use loom_graph_core::GraphError;
+use anureo_graph_core::GraphError;
 
 // ============================================================================
 // Headers

@@ -437,7 +437,7 @@ impl QuestionHandler {
             connection
                 .outbound_tx
                 .send(ConnectionOutbound::ExtensionNotification {
-                    method: "_loomdesk.dev/question/request".into(),
+                    method: "_anureo.dev/question/request".into(),
                     params: serde_json::to_value(request)
                         .map_err(|error| internal_error("question rebind failed", error))?,
                 })
@@ -464,7 +464,7 @@ impl QuestionHandler {
             .map_err(|e| internal_error("question request serialization failed", e))?;
         let ctx = ExtensionContext {
             session_id,
-            principal: "loom-agent".into(),
+            principal: "anureo-agent".into(),
             connection_id,
             working_directory: None,
             client_capabilities,
@@ -669,7 +669,7 @@ impl ExtensionHandler for QuestionHandler {
                     connection
                         .outbound_tx
                         .send(ConnectionOutbound::ExtensionNotification {
-                            method: "_loomdesk.dev/question/request".into(),
+                            method: "_anureo.dev/question/request".into(),
                             params,
                         })
                         .await
@@ -807,7 +807,7 @@ mod tests {
             connection_id: connection_id.into(),
             working_directory: None,
             client_capabilities: ClientCapabilitiesInfo::from_json(Some(json!({
-                "_meta": { "loomdesk.dev": { "question": { "request": true } } }
+                "_meta": { "anureo.dev": { "question": { "request": true } } }
             }))),
         }
     }
@@ -838,7 +838,7 @@ mod tests {
         let ConnectionOutbound::ExtensionNotification { method, params } = outbound else {
             panic!("expected extension notification");
         };
-        assert_eq!(method, "_loomdesk.dev/question/request");
+        assert_eq!(method, "_anureo.dev/question/request");
         assert_eq!(params["questionId"], "question-1");
 
         let listed = handler

@@ -1,6 +1,6 @@
-//! Provider catalog and API-key management for Loom ACP clients.
+//! Provider catalog and API-key management for anureo ACP clients.
 //!
-//! Provider definitions live in `{loom_home}/config.toml` as `[[providers]]`.
+//! Provider definitions live in `{anureo_home}/config.toml` as `[[providers]]`.
 //! Secrets are write-only through this extension: responses never contain the
 //! configured API key.
 
@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use super::{ExtensionContext, ExtensionError, ExtensionHandler};
 
 fn config_path() -> PathBuf {
-    config::home::loom_home().join("config.toml")
+    config::home::anureo_home().join("config.toml")
 }
 
 fn internal(message: impl Into<String>) -> ExtensionError {
@@ -30,26 +30,26 @@ fn read_document() -> Result<toml::Table, ExtensionError> {
         return Ok(toml::Table::new());
     }
     let content = fs::read_to_string(&path)
-        .map_err(|error| internal(format!("failed to read Loom config: {error}")))?;
+        .map_err(|error| internal(format!("failed to read anureo config: {error}")))?;
     content
         .parse::<toml::Table>()
-        .map_err(|error| internal(format!("failed to parse Loom config: {error}")))
+        .map_err(|error| internal(format!("failed to parse anureo config: {error}")))
 }
 
 fn write_document(document: &toml::Table) -> Result<(), ExtensionError> {
     let path = config_path();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| {
-            internal(format!("failed to create Loom config directory: {error}"))
+            internal(format!("failed to create anureo config directory: {error}"))
         })?;
     }
     let content = toml::to_string_pretty(document)
-        .map_err(|error| internal(format!("failed to serialize Loom config: {error}")))?;
+        .map_err(|error| internal(format!("failed to serialize anureo config: {error}")))?;
     let temporary = path.with_extension(format!("toml.tmp-{}", std::process::id()));
     fs::write(&temporary, content)
-        .map_err(|error| internal(format!("failed to write Loom config: {error}")))?;
+        .map_err(|error| internal(format!("failed to write anureo config: {error}")))?;
     fs::rename(&temporary, &path)
-        .map_err(|error| internal(format!("failed to replace Loom config: {error}")))
+        .map_err(|error| internal(format!("failed to replace anureo config: {error}")))
 }
 
 fn provider_id(params: &Value) -> Result<String, ExtensionError> {
@@ -153,7 +153,7 @@ impl ExtensionHandler for ProviderHandler {
                     .or_insert_with(|| toml::Value::Array(Vec::new()))
                     .as_array_mut()
                     .ok_or_else(|| {
-                        ExtensionError::invalid_params("Loom config 'providers' must be an array")
+                        ExtensionError::invalid_params("anureo config 'providers' must be an array")
                     })?;
                 let index = values
                     .iter()

@@ -1,8 +1,8 @@
-//! Convert ACP protocol MCP server definitions to Loom's internal [`McpServerDef`].
+//! Convert ACP protocol MCP server definitions to anureo's internal [`McpServerDef`].
 //!
 //! ACP's [`agent_client_protocol::schema::v1::McpServer`] enum has four variants
 //! (Stdio, Http, Sse, Acp), with `Vec<EnvVariable>` / `Vec<HttpHeader>` instead of
-//! Loom's `HashMap<String, String>`. This module bridges the gap.
+//! anureo's `HashMap<String, String>`. This module bridges the gap.
 
 use std::collections::HashMap;
 
@@ -12,11 +12,11 @@ use agent_client_protocol::schema::v1::{
 
 use config::McpServerDef;
 
-/// Convert a list of ACP MCP servers to Loom's [`McpServerDef`] list.
+/// Convert a list of ACP MCP servers to anureo's [`McpServerDef`] list.
 ///
 /// Unsupported variants (e.g. `Acp` when `unstable_mcp_over_acp` is disabled) are
 /// silently skipped with a `tracing::warn`.
-pub fn acp_mcp_to_loom(servers: &[McpServer]) -> Vec<McpServerDef> {
+pub fn acp_mcp_to_anureo(servers: &[McpServer]) -> Vec<McpServerDef> {
     servers.iter().filter_map(mcp_server_to_def).collect()
 }
 
@@ -94,9 +94,9 @@ mod tests {
     #[test]
     fn stdio_conversion() {
         let acp = McpServer::Stdio(McpServerStdio::new("my-server", "/usr/bin/node"));
-        let loom = acp_mcp_to_loom(&[acp]);
-        assert_eq!(loom.len(), 1);
-        match &loom[0] {
+        let anureo = acp_mcp_to_anureo(&[acp]);
+        assert_eq!(anureo.len(), 1);
+        match &anureo[0] {
             McpServerDef::Stdio {
                 name,
                 command,
@@ -125,9 +125,9 @@ mod tests {
             EnvVariable::new("NODE_ENV", "production"),
         ];
         let acp = McpServer::Stdio(stdio);
-        let loom = acp_mcp_to_loom(&[acp]);
-        assert_eq!(loom.len(), 1);
-        match &loom[0] {
+        let anureo = acp_mcp_to_anureo(&[acp]);
+        assert_eq!(anureo.len(), 1);
+        match &anureo[0] {
             McpServerDef::Stdio {
                 name,
                 command,
@@ -153,9 +153,9 @@ mod tests {
         let mut http = McpServerHttp::new("remote", "https://mcp.example.com/api");
         http.headers = vec![HttpHeader::new("Authorization", "Bearer token123")];
         let acp = McpServer::Http(http);
-        let loom = acp_mcp_to_loom(&[acp]);
-        assert_eq!(loom.len(), 1);
-        match &loom[0] {
+        let anureo = acp_mcp_to_anureo(&[acp]);
+        assert_eq!(anureo.len(), 1);
+        match &anureo[0] {
             McpServerDef::Http {
                 name,
                 url,
@@ -179,9 +179,9 @@ mod tests {
     fn sse_conversion_maps_to_http() {
         let sse = McpServerSse::new("sse-server", "https://mcp.example.com/sse");
         let acp = McpServer::Sse(sse);
-        let loom = acp_mcp_to_loom(&[acp]);
-        assert_eq!(loom.len(), 1);
-        match &loom[0] {
+        let anureo = acp_mcp_to_anureo(&[acp]);
+        assert_eq!(anureo.len(), 1);
+        match &anureo[0] {
             McpServerDef::Http { name, url, .. } => {
                 assert_eq!(name, "sse-server");
                 assert_eq!(url, "https://mcp.example.com/sse");
@@ -192,8 +192,8 @@ mod tests {
 
     #[test]
     fn empty_list() {
-        let loom = acp_mcp_to_loom(&[]);
-        assert!(loom.is_empty());
+        let anureo = acp_mcp_to_anureo(&[]);
+        assert!(anureo.is_empty());
     }
 
     #[test]
@@ -202,17 +202,17 @@ mod tests {
             McpServer::Stdio(McpServerStdio::new("a", "cmd-a")),
             McpServer::Http(McpServerHttp::new("b", "https://b.example.com")),
         ];
-        let loom = acp_mcp_to_loom(&servers);
-        assert_eq!(loom.len(), 2);
-        assert_eq!(loom[0].name(), "a");
-        assert_eq!(loom[1].name(), "b");
+        let anureo = acp_mcp_to_anureo(&servers);
+        assert_eq!(anureo.len(), 2);
+        assert_eq!(anureo[0].name(), "a");
+        assert_eq!(anureo[1].name(), "b");
     }
 
     #[test]
     fn stdio_command_pathbuf_to_string() {
         let acp = McpServer::Stdio(McpServerStdio::new("p", "/path/with spaces/server"));
-        let loom = acp_mcp_to_loom(&[acp]);
-        match &loom[0] {
+        let anureo = acp_mcp_to_anureo(&[acp]);
+        match &anureo[0] {
             McpServerDef::Stdio { command, .. } => {
                 assert_eq!(command, "/path/with spaces/server");
             }

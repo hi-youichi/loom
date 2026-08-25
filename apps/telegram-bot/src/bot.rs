@@ -40,7 +40,7 @@ impl BotManager {
         let span_name = name.clone();
         let cancellation_token = self.cancellation_token.clone();
 
-        // Initialize Telegram API for loom tools
+        // Initialize Telegram API for anureo tools
         crate::telegram_tools::init_telegram_api(bot.clone());
 
         // Hermes `gateway/run.py:62-72` analogue: bound the startup

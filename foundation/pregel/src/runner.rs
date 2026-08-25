@@ -4,18 +4,18 @@ use std::sync::Arc;
 
 use crate::algo::{ExecutableTask, PreparedTask, TaskOutcome};
 use crate::node::{PregelGraph, PregelNodeContext};
-use loom_graph_core::GraphError;
+use anureo_graph_core::GraphError;
 use stream_event::{StreamEvent, StreamMode};
 
 /// Executes a frontier of prepared tasks.
 #[derive(Debug, Clone)]
 pub struct PregelRunner {
-    pub retry_policy: loom_graph_core::RetryPolicy,
+    pub retry_policy: anureo_graph_core::RetryPolicy,
 }
 
 impl PregelRunner {
     /// Creates a new runner.
-    pub fn new(retry_policy: loom_graph_core::RetryPolicy) -> Self {
+    pub fn new(retry_policy: anureo_graph_core::RetryPolicy) -> Self {
         Self { retry_policy }
     }
 

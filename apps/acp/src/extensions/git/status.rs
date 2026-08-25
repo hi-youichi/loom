@@ -11,7 +11,7 @@ pub async fn handle_status(params: Value, ctx: &ExtensionContext) -> Result<Valu
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let status = loom_git::facade::status(&repo_dir)
+    let status = anureo_git::facade::status(&repo_dir)
         .await
         .map_err(ext_err_from_git)?;
     Ok(serde_json::to_value(status).unwrap_or(Value::Null))
@@ -36,13 +36,13 @@ pub async fn handle_log(params: Value, ctx: &ExtensionContext) -> Result<Value, 
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let query = loom_git::backend::LogQuery {
+    let query = anureo_git::backend::LogQuery {
         limit,
         skip,
         branch: branch.clone(),
         file_path: file_path.clone(),
     };
-    let items = loom_git::facade::log(&repo_dir, &query)
+    let items = anureo_git::facade::log(&repo_dir, &query)
         .await
         .map_err(ext_err_from_git)?;
 

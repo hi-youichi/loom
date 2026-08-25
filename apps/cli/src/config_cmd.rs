@@ -1,4 +1,4 @@
-//! CLI management for Loom's named model providers.
+//! CLI management for anureo's named model providers.
 //!
 //! This module edits only the relevant TOML tables so unrelated configuration
 //! (including `[env]`, logging, sessions, and declared model metadata) remains
@@ -199,7 +199,7 @@ fn render_provider_tui(
     status: &str,
 ) -> Result<()> {
     execute!(stdout, Clear(ClearType::All), MoveTo(0, 0))?;
-    writeln!(stdout, "Loom provider configuration")?;
+    writeln!(stdout, "anureo provider configuration")?;
     writeln!(stdout, "===========================")?;
     if items.is_empty() {
         writeln!(stdout, "No providers configured. Press 'a' to add one.")?;
@@ -351,7 +351,7 @@ fn edit_provider_values(
 }
 
 fn config_path() -> PathBuf {
-    config::home::loom_home().join("config.toml")
+    config::home::anureo_home().join("config.toml")
 }
 
 fn load_document(path: &Path) -> Result<Table> {

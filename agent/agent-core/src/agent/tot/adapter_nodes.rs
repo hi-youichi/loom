@@ -7,9 +7,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::agent::react::{ActNode, ObserveNode};
-use loom_graph_core::GraphError;
-use loom_graph_core::Next;
-use loom_graph_core::Node;
+use anureo_graph_core::GraphError;
+use anureo_graph_core::Next;
+use anureo_graph_core::Node;
 use tool_core::ToolRegistryLocked;
 
 use super::state::TotState;

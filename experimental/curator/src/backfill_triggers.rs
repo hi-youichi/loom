@@ -8,7 +8,7 @@
 //! ## Usage
 //!
 //! ```text
-//! loom curator backfill-triggers [--dry-run] [--skill <name>] [--batch-size <n>]
+//! anureo curator backfill-triggers [--dry-run] [--skill <name>] [--batch-size <n>]
 //! ```
 //!
 //! ## LLM call shape
@@ -41,7 +41,7 @@ pub struct BackfillTriggersOutcome {
     pub dry_run: bool,
 }
 
-const BACKFILL_SYSTEM_PROMPT: &str = "You are a skill metadata assistant for Loom. \
+const BACKFILL_SYSTEM_PROMPT: &str = "You are a skill metadata assistant for anureo. \
 Your only job is to infer trigger phrases for skills. \
 Return ONLY valid JSON — no explanation, no markdown fences.";
 

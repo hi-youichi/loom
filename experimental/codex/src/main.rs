@@ -7,7 +7,7 @@ mod thread_log;
 use clap::Parser;
 
 #[derive(Parser, Clone, Debug)]
-#[command(name = "loom-codex", about = "Loom codex app-server compatible daemon")]
+#[command(name = "anureo-codex", about = "anureo codex app-server compatible daemon")]
 pub struct CodexServerArgs {
     #[arg(long, default_value = "claude-sonnet-4-6")]
     pub model: String,

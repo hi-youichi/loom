@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Loom Browser",
+  "name": "anureo Browser",
   "version": "1.0.0",
-  "description": "Browser automation extension for Loom Agent. Control any Chromium browser via MCP.",
+  "description": "Browser automation extension for anureo Agent. Control any Chromium browser via MCP.",
   "minimum_chrome_version": "116",
   "permissions": [
     "tabs",

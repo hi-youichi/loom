@@ -10,7 +10,7 @@ use crate::error::BotError;
 use crate::formatting::telegram::markdown_notice;
 use crate::handler_deps::HandlerDeps;
 use crate::traits::AgentRunContext;
-use agent::commands as loom_command;
+use agent::commands as anureo_command;
 use teloxide::types::Message;
 
 pub struct MessageContext<'a> {
@@ -122,10 +122,10 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
     if let Some(text) = ctx.msg.text() {
         tracing::info!("Text: {}", text);
 
-        // 1. Try loom core commands (/reset, /clear, /new)
-        if let Some(cmd) = loom_command::parse(text) {
+        // 1. Try anureo core commands (/reset, /clear, /new)
+        if let Some(cmd) = anureo_command::parse(text) {
             match cmd {
-                loom_command::Command::ResetContext => {
+                anureo_command::Command::ResetContext => {
                     let thread_id = format!("telegram_{}", ctx.chat_id());
                     match ctx.deps.session.reset(&thread_id).await {
                         Ok(count) => {
@@ -149,7 +149,7 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                     }
                     return Ok(());
                 }
-                loom_command::Command::Compact { instructions } => {
+                anureo_command::Command::Compact { instructions } => {
                     let _thread_id = format!("telegram_{}", ctx.chat_id());
                     let compact_prompt = instructions.as_deref().unwrap_or(
                         "Compress the conversation history, keeping the most important context.",
@@ -173,7 +173,7 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                         model_override: Some(model),
                     };
 
-                    match crate::streaming::run_loom_agent_streaming(
+                    match crate::streaming::run_anureo_agent_streaming(
                         compact_prompt,
                         chat_id,
                         sender,
@@ -201,7 +201,7 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                     }
                     return Ok(());
                 }
-                loom_command::Command::Summarize => {
+                anureo_command::Command::Summarize => {
                     let _thread_id = format!("telegram_{}", ctx.chat_id());
 
                     ctx.deps
@@ -222,7 +222,7 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                         model_override: Some(model),
                     };
 
-                    match crate::streaming::run_loom_agent_streaming(
+                    match crate::streaming::run_anureo_agent_streaming(
                         "Summarize the conversation so far.",
                         chat_id,
                         sender,
@@ -250,23 +250,23 @@ pub async fn handle_common_message(ctx: &MessageContext<'_>) -> Result<(), BotEr
                     }
                     return Ok(());
                 }
-                loom_command::Command::Models { .. } | loom_command::Command::ModelsUse { .. } => {
+                anureo_command::Command::Models { .. } | anureo_command::Command::ModelsUse { .. } => {
                     // fall through to existing model handling below
                 }
-                loom_command::Command::Goal { .. } => {
+                anureo_command::Command::Goal { .. } => {
                     // fall through to normal message handling
                 }
-                loom_command::Command::ReviewSkill { .. } => {
+                anureo_command::Command::ReviewSkill { .. } => {
                     // not supported in telegram bot; fall through
                 }
-                loom_command::Command::Help { .. }
-                | loom_command::Command::Tools
-                | loom_command::Command::Model { .. }
-                | loom_command::Command::Resume { .. }
-                | loom_command::Command::Undo
-                | loom_command::Command::Retry
-                | loom_command::Command::History { .. }
-                | loom_command::Command::Exit => {
+                anureo_command::Command::Help { .. }
+                | anureo_command::Command::Tools
+                | anureo_command::Command::Model { .. }
+                | anureo_command::Command::Resume { .. }
+                | anureo_command::Command::Undo
+                | anureo_command::Command::Retry
+                | anureo_command::Command::History { .. }
+                | anureo_command::Command::Exit => {
                     // not supported in telegram bot; fall through
                 }
             }

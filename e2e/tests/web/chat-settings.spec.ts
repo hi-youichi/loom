@@ -1,23 +1,23 @@
 /**
  * e2e/tests/web/chat-settings.spec.ts
  *
- * OpenChamber Web Chat + Settings Tests
+ * anureo Web Chat + Settings Tests
  * 覆盖：CHAT-003~008, SET-002, SET-005, SET-006（共 9 用例）
  *
  * 使用 fixtures:
  * - app: 提供 baseURL
- * - mock-loom: 拦截 HTTP API
+ * - mock-anureo: 拦截 HTTP API
  *
- * 参考 docs/references/openchamber-text-acceptance-test-cases.md §3, §7
+ * 参考 docs/references/anureo-text-acceptance-test-cases.md §3, §7
  */
 
 import { test as base, expect } from "@playwright/test";
 import { app } from "../../fixtures/app";
-import { mockLoom } from "../../fixtures/mock-loom";
+import { mockanureo } from "../../fixtures/mock-anureo";
 
 const test = base.extend({
   ...app,
-  ...mockLoom,
+  ...mockanureo,
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $hostDir = Join-Path $scriptDir "host"
-$hostName = "com.loom.browser"
+$hostName = "com.anureo.browser"
 $wrapperPath = Join-Path $hostDir "native-host-wrapper.bat"
 
 $nodePath = (Get-Command node -ErrorAction Stop).Source
@@ -21,7 +21,7 @@ $origins = ($ExtensionIds | ForEach-Object { "chrome-extension://$_/" }) -join "
 $manifestJson = @"
 {
   "name": "$hostName",
-  "description": "Loom Browser Extension Native Messaging Host",
+  "description": "anureo Browser Extension Native Messaging Host",
   "path": "$($wrapperPath.Replace('\','\\'))",
   "type": "stdio",
   "allowed_origins": [
@@ -55,4 +55,4 @@ Register-NativeHost "Brave Browser" "HKCU:\Software\BraveSoftware\Brave-Browser\
 Write-Host ""
 Write-Host "Done! Next steps:"
 Write-Host "  1. Restart your browser (close all windows)"
-Write-Host "  2. Start Loom - it will auto-connect via .loom/mcp.json"
+Write-Host "  2. Start anureo - it will auto-connect via .anureo/mcp.json"

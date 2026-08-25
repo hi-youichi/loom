@@ -8,7 +8,7 @@ use crate::display_limits::{generate_session_id, max_message_len};
 use crate::output::{emit_run_output, make_stream_out, EventSink, OutputConfig};
 use crate::repl::{run_one_turn, run_repl_loop};
 use cli::RunOptions;
-use loom_llm::message::UserContent;
+use anureo_llm::message::UserContent;
 use tool_core::active_operation::RunCancellation;
 
 use crate::args::Command;
@@ -25,7 +25,7 @@ pub(crate) async fn handle_task_command(ta: &TaskArgs) -> Result<(), Box<dyn std
         } => {
             let desc = description.join(" ");
             if desc.trim().is_empty() {
-                eprintln!("loom task new: provide a task description");
+                eprintln!("anureo task new: provide a task description");
                 std::process::exit(1);
             }
 

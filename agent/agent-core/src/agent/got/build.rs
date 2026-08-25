@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::agent::ReactBuildConfig;
-use loom_llm::LlmClient;
+use anureo_llm::LlmClient;
 
 use crate::agent::react::build::{
     build_checkpointer_for_state, build_default_llm_with_tool_source, build_react_run_context,

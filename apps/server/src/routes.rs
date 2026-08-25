@@ -23,7 +23,7 @@ pub fn build_router(state: SharedState) -> Router {
 /// `static_dir`.
 ///
 /// Static assets bypass auth-token enforcement so the browser can load
-/// the app shell before any credentials exist (loomdesk's public-shell
+/// the app shell before any credentials exist (anureo's public-shell
 /// model); API routes keep full enforcement.
 pub fn build_router_with_static(state: SharedState, static_dir: Option<PathBuf>) -> Router {
     // `/acp` allows unauthenticated upgrades so browser clients can probe

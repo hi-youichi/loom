@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::state::ReActState;
 use checkpoint::{Checkpointer, RunnableConfig, Store};
 use checkpoint_sqlite_store::user_message::UserMessageStore;
-use loom_llm::LlmProvider;
+use anureo_llm::LlmProvider;
 use tool_core::ToolRegistryLocked;
 
 /// Optional configuration for [`super::run_agent`] and [`super::run_react_graph_stream`].
@@ -42,9 +42,9 @@ pub struct ResolvedRunAgentOptions {
 
 pub(super) fn resolve_run_agent_options(opts: AgentOptions) -> ResolvedRunAgentOptions {
     let provider = opts.provider.unwrap_or_else(|| {
-        let llm = loom_llm::client::MockLlm::first_tools_then_end();
-        Arc::new(loom_llm::client::FixedLlmProvider {
-            client: Arc::from(Box::new(llm) as Box<dyn loom_llm::LlmClient>),
+        let llm = anureo_llm::client::MockLlm::first_tools_then_end();
+        Arc::new(anureo_llm::client::FixedLlmProvider {
+            client: Arc::from(Box::new(llm) as Box<dyn anureo_llm::LlmClient>),
             model_id: "mock/default".to_string(),
         })
     });

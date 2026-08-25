@@ -2,7 +2,7 @@ use skill::discovery::SkillRegistry;
 use std::path::Path;
 
 fn main() {
-    println!("=== loom home = {:?}", env_config::home::loom_home());
+    println!("=== anureo home = {:?}", env_config::home::anureo_home());
     println!("=== USERPROFILE = {:?}", std::env::var("USERPROFILE").ok());
 
     let reg = SkillRegistry::discover(Path::new("."), &[]).expect("discover");

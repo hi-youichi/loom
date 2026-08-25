@@ -1,6 +1,6 @@
 //! Runner execution: build_runner + run_agent_from_config.
 //!
-//! Extracted from the former `loom::agent_run::dispatch` module.
+//! Extracted from the former `anureo::agent_run::dispatch` module.
 //! The `run_agent` convenience wrapper that combined config building + execution
 //! \+ app-side side effects (worktree, debug_llm, curator spawn) has been removed.
 //! Consumers should call `build_react_config` then `run_agent_from_config`.
@@ -19,8 +19,8 @@ use crate::agent::tot::{TotRunner, TotState};
 use crate::agent::ReactBuildConfig;
 use crate::runner_common;
 use crate::state::ReActState;
-use loom_llm::support::uuid6::uuid6;
-use loom_llm::LlmClient;
+use anureo_llm::support::uuid6::uuid6;
+use anureo_llm::LlmClient;
 use serde_json::Value;
 use stream_event::wire::convert::{
     stream_event_to_format_a, stream_event_to_protocol_envelope, ProtocolEventEnvelope,
@@ -64,7 +64,7 @@ pub enum AnyRunner {
 
 /// Execution parameters passed alongside the config.
 pub struct RunParams {
-    pub message: loom_llm::message::UserContent,
+    pub message: anureo_llm::message::UserContent,
     pub verbose: bool,
     pub cancellation: Option<RunCancellation>,
     pub any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
@@ -256,12 +256,12 @@ pub async fn build_runner(
 ) -> Result<AnyRunner, RunError> {
     let config = crate::resolve_tier_and_build_config(config).await;
     let cancellation = params.cancellation.as_ref().map(RunCancellation::token);
-    let llm_override_provider: Option<Arc<dyn loom_llm::LlmProvider>> =
+    let llm_override_provider: Option<Arc<dyn anureo_llm::LlmProvider>> =
         params.llm_override.take().map(|llm| {
-            Arc::new(loom_llm::client::FixedLlmProvider {
+            Arc::new(anureo_llm::client::FixedLlmProvider {
                 client: Arc::from(llm),
                 model_id: "override".to_string(),
-            }) as Arc<dyn loom_llm::LlmProvider>
+            }) as Arc<dyn anureo_llm::LlmProvider>
         });
     match cmd {
         RunCmd::React => {

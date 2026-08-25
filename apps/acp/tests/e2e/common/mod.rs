@@ -1,4 +1,4 @@
-//! E2E test common utilities for `loom-acp` (plan 026).
+//! E2E test common utilities for `anureo-acp` (plan 026).
 //!
 //! Modules here are imported by both `tests/e2e_mega.rs` (via `#[path]`) and
 //! the micro cases under `tests/e2e/`. Keep this surface area small and
@@ -11,7 +11,7 @@ pub mod mock_llm;
 pub mod permissions;
 
 #[allow(unused_imports)]
-pub use env::{binary_path, with_loom_home, TestEnv};
+pub use env::{binary_path, with_anureo_home, TestEnv};
 #[allow(unused_imports)]
 pub use harness::AcpTestHarness;
 #[allow(unused_imports)]

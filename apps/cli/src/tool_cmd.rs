@@ -2,15 +2,15 @@
 //!
 //! Lists or displays tool specs (name, description, input_schema) from the same
 //! tool source used by agent runners. Uses [`build_react_config`](crate::run::build_react_config)
-//! and [`build_react_run_context`](loom::build_react_run_context) so the output
+//! and [`build_react_run_context`](anureo::build_react_run_context) so the output
 //! matches what would be used for `react`/`dup`/`tot`/`got`.
 //!
-//! **Interaction**: Called from the `loom` binary when the user runs `loom tool list`
-//! or `loom tool show <NAME>`. Uses [`RunOptions`](crate::run::RunOptions) with a
+//! **Interaction**: Called from the `anureo` binary when the user runs `anureo tool list`
+//! or `anureo tool show <NAME>`. Uses [`RunOptions`](crate::run::RunOptions) with a
 //! placeholder message (not used for execution).
 
 use agent::{build_react_run_context, BuildRunnerError};
-use loom_graph_core::GraphError;
+use anureo_graph_core::GraphError;
 use serde::{Deserialize, Serialize};
 use tool_core::ToolSpec;
 
@@ -43,10 +43,10 @@ pub enum ToolShowFormat {
 /// Lists all tools: builds run context from opts, then prints name and description (table or JSON).
 ///
 /// Interacts with [`build_react_config`](crate::run::build_react_config) and
-/// [`build_react_run_context`](loom::build_react_run_context).
+/// [`build_react_run_context`](anureo::build_react_run_context).
 pub async fn list_tools(opts: &RunOptions) -> Result<(), RunError> {
-    let loom_opts = opts.clone();
-    let (config, _resolved_agent, _) = build_react_config(&loom_opts);
+    let anureo_opts = opts.clone();
+    let (config, _resolved_agent, _) = build_react_config(&anureo_opts);
     // `build_react_config` now registers the workflow tool (and its
     // `workflow` builtin skill) via `RunOptions::default_extra_tools_provider`,
     // so no post-mutation is needed here.
@@ -106,16 +106,16 @@ fn draw_tools_table(tools: &[ToolSpec]) -> String {
 
 /// Shows a single tool definition (JSON or YAML).
 ///
-/// **Interaction**: Called from the `loom` binary when the user runs `loom tool show <NAME>`.
-/// Uses [`build_react_config`](crate::run::build_react_config) and [`build_react_run_context`](loom::build_react_run_context)
+/// **Interaction**: Called from the `anureo` binary when the user runs `anureo tool show <NAME>`.
+/// Uses [`build_react_config`](crate::run::build_react_config) and [`build_react_run_context`](anureo::build_react_run_context)
 /// to get the tool spec from the context.
 pub async fn show_tool(
     name: &str,
     format: ToolShowFormat,
     opts: &RunOptions,
 ) -> Result<(), RunError> {
-    let loom_opts = opts.clone();
-    let (config, _resolved_agent, _) = build_react_config(&loom_opts);
+    let anureo_opts = opts.clone();
+    let (config, _resolved_agent, _) = build_react_config(&anureo_opts);
     // `build_react_config` now registers the workflow tool (and its
     // `workflow` builtin skill) via `RunOptions::default_extra_tools_provider`,
     // so no post-mutation is needed here.
@@ -151,7 +151,7 @@ pub async fn show_tool(
     }
 }
 
-/// Helper to serialize tool spec for display. Mirrors [`loom::tool_source::ToolSpec`]
+/// Helper to serialize tool spec for display. Mirrors [`anureo::tool_source::ToolSpec`]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ToolSpecOutput {
     pub name: String,

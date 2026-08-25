@@ -1,15 +1,15 @@
 //! ReAct state and tool types.
 
-use loom_llm::message::{AssistantToolCall, Message};
-use loom_llm::support::uuid6::uuid6;
-use loom_llm::LlmUsage;
-use loom_llm::ToolChoiceMode;
+use anureo_llm::message::{AssistantToolCall, Message};
+use anureo_llm::support::uuid6::uuid6;
+use anureo_llm::LlmUsage;
+use anureo_llm::ToolChoiceMode;
 use model_spec_core::ModelTier;
 use serde::{Deserialize, Serialize};
 
-// Re-export ToolCall and ToolOutputStrategy from loom-llm
-pub use loom_llm::tool::ToolOutputStrategy;
-pub use loom_llm::ToolCall;
+// Re-export ToolCall and ToolOutputStrategy from anureo-llm
+pub use anureo_llm::tool::ToolOutputStrategy;
+pub use anureo_llm::ToolCall;
 
 /// Reference to a persisted tool output file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -299,8 +299,8 @@ impl From<NormalizedToolOutput> for ToolResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_llm::LlmUsage;
-    use loom_llm::ToolCall;
+    use anureo_llm::LlmUsage;
+    use anureo_llm::ToolCall;
 
     #[test]
     fn last_reasoning_content_returns_latest_value() {

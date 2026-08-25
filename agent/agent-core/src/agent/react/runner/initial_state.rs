@@ -2,7 +2,7 @@
 
 use crate::state::ReActState;
 use checkpoint::{CheckpointError, Checkpointer, RunnableConfig};
-use loom_llm::message::{Message, UserContent};
+use anureo_llm::message::{Message, UserContent};
 
 use crate::runner_common::{load_from_checkpoint_or_build, resume_from_checkpoint};
 

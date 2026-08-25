@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use loom_acp::content::{ContentBlock, ToolCallContent};
+    use anureo_acp::content::{ContentBlock, ToolCallContent};
 
     #[test]
     fn test_text_content() {

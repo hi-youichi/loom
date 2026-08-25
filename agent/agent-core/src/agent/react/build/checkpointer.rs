@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::state::ReActState;
 use checkpoint::{Checkpointer, JsonSerializer, RunnableConfig};
 use checkpoint_sqlite_store::SqliteSaver;
-use loom_graph_core::GraphError;
+use anureo_graph_core::GraphError;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 

@@ -1,8 +1,8 @@
 [package]
-name = "cli"
+name = "anureo-cli"
 version.workspace = true
 edition.workspace = true
-description = "CLI for Loom: run ReAct agent from the command line"
+description = "CLI for anureo: run ReAct agent from the command line"
 license.workspace = true
 authors.workspace = true
 
@@ -11,24 +11,24 @@ name = "cli"
 path = "src/lib.rs"
 
 [[bin]]
-name = "loom"
+name = "anureo"
 path = "src/main.rs"
 
 [dependencies]
 agent = { path = "../../agent/agent-core" }
-loom-llm = { path = "../../foundation/llm" }
-loom-graph-core = { path = "../../foundation/graph-core" }
+anureo-llm = { path = "../../foundation/llm" }
+anureo-graph-core = { path = "../../foundation/graph-core" }
 skill = { path = "../../agent/skill" }
 
 tool-core = { path = "../../agent/tool/tool-core" }
 tool-workflow = { path = "../../agent/tool/tool-workflow" }
-loom-curator = { path = "../../experimental/curator" }
+anureo-curator = { path = "../../experimental/curator" }
 tool-experimental = { path = "../../agent/tool/tool-experimental" }
 memory-v2 = { path = "../../experimental/memory-v2" }
 model-spec-core = { path = "../../foundation/model-spec-core" }
 checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
-loom-acp = { package = "loom-acp", path = "../acp" }
-loom_server = { package = "loom-server-core", path = "../server" }
+anureo-acp = { package = "anureo-acp", path = "../acp" }
+anureo_server = { package = "anureo-server-core", path = "../server" }
 
 stream-event = { path = "../../foundation/stream-event" }
 config = { path = "../../foundation/config", features = ["tracing-init"] }

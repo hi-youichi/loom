@@ -23,7 +23,7 @@ pub enum PermissionPolicy {
     AllowOnce,
     /// Reject every request_permission call.
     DenyOnce,
-    /// Mark the call as cancelled (matches Loom `StopReason::Cancelled`).
+    /// Mark the call as cancelled (matches anureo `StopReason::Cancelled`).
     Cancelled,
     /// Do not respond (used to verify the agent does not hang on missing replies).
     Timeout,

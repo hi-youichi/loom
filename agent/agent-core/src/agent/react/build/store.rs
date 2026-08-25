@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use loom_graph_core::GraphError;
+use anureo_graph_core::GraphError;
 
 use super::super::config::ReactBuildConfig;
 

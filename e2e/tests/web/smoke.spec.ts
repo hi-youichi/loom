@@ -1,27 +1,27 @@
 /**
  * e2e/tests/web/smoke.spec.ts
  *
- * OpenChamber Web Smoke Tests
+ * anureo Web Smoke Tests
  *
  * 使用 fixtures:
  * - app: 提供 baseURL fixture
  * - auth: 提供 Bearer Token 注入（已认证状态）
- * - mock-loom: 拦截 /api/sessions 和 /api/models 请求（返回空列表）
+ * - mock-anureo: 拦截 /api/sessions 和 /api/models 请求（返回空列表）
  *
- * 参考 docs/references/openchamber-text-acceptance-test-cases.md §2
+ * 参考 docs/references/anureo-text-acceptance-test-cases.md §2
  */
 
 import { test as base, expect } from "@playwright/test";
 
 // 合并所有 fixtures
-// 使用 mock-loom fixture 的 page 拦截（自动注册 route handlers + token 注入）
+// 使用 mock-anureo fixture 的 page 拦截（自动注册 route handlers + token 注入）
 // + auth fixture 的 loginWithPassword。
-// 不要在这里定义自己的 page fixture — 会 shadow mock-loom 的拦截器。
-import { mockLoom } from "../../fixtures/mock-loom";
+// 不要在这里定义自己的 page fixture — 会 shadow mock-anureo 的拦截器。
+import { mockanureo } from "../../fixtures/mock-anureo";
 import { auth } from "../../fixtures/auth";
 
 const test = base.extend({
-  ...mockLoom,
+  ...mockanureo,
   ...auth,
   baseURL: async ({}, use) => {
     await use(process.env.E2E_BASE_URL ?? "http://localhost:3000");

@@ -5,10 +5,10 @@ use tracing::{debug, warn};
 
 use crate::state::ReActState;
 use checkpoint::uuid6;
-use loom_graph_core::GraphError;
-use loom_graph_core::Next;
-use loom_graph_core::Node;
-use loom_llm::message::{message_summary, Message};
+use anureo_graph_core::GraphError;
+use anureo_graph_core::Next;
+use anureo_graph_core::Node;
+use anureo_llm::message::{message_summary, Message};
 use tool_core::ToolCallContent;
 
 pub struct ObserveNode {
@@ -153,8 +153,8 @@ impl Node<ReActState> for ObserveNode {
 mod tests {
     use super::*;
     use crate::state::{ReActState, ToolResult, ToolStorageRef};
-    use loom_llm::message::Message;
-    use loom_llm::ToolCall;
+    use anureo_llm::message::Message;
+    use anureo_llm::ToolCall;
     use std::path::PathBuf;
 
     fn make_tool_result(call_id: &str, name: &str, content: &str, is_error: bool) -> ToolResult {

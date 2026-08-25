@@ -1,13 +1,13 @@
 [package]
-name = "loom-pregel"
+name = "anureo-pregel"
 version.workspace = true
 edition.workspace = true
-description = "Pregel-style BSP graph runtime for Loom"
+description = "Pregel-style BSP graph runtime for anureo"
 license.workspace = true
 
 [dependencies]
 # Core dependencies
-loom-graph-core = { path = "../graph-core" }
+anureo-graph-core = { path = "../graph-core" }
 checkpoint = { path = "../checkpoint" }
 stream-event = { path = "../stream-event" }
 

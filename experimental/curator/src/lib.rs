@@ -1,4 +1,4 @@
-//! Background review system for Loom.
+//! Background review system for anureo.
 //!
 //! This crate provides the background review functionality that analyzes
 //! completed conversations and updates memory/skills. It includes:

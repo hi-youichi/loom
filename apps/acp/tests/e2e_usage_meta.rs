@@ -1,8 +1,8 @@
 //! Wire-level e2e test for `_meta.token_usage` extension in `usage_update` notifications.
 //!
 //! Verifies that when the LLM response SSE includes a `usage` block in the final chunk,
-//! the Loom ACP server emits a `session/update` notification whose payload contains
-//! the ACP-standard `used`/`size` fields AND the Loom extension `_meta.token_usage`
+//! the anureo ACP server emits a `session/update` notification whose payload contains
+//! the ACP-standard `used`/`size` fields AND the anureo extension `_meta.token_usage`
 //! with billing-level input/output/total/cached tokens.
 //!
 //! Wire schema (when `with_usage_acc` is wired):
@@ -34,7 +34,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{with_loom_home, AcpTestHarness, MockLlmServer, TestEnv};
+use common::{with_anureo_home, AcpTestHarness, MockLlmServer, TestEnv};
 use serde_json::{json, Value};
 
 /// Find the last `session/update` notification whose `update.sessionUpdate == "usage_update"`.
@@ -68,7 +68,7 @@ async fn e2e_usage_update_carries_token_usage_meta() {
     );
     llm.expect_chat_completion_sse(&sse, 1, None).await;
 
-    with_loom_home(&env, async {
+    with_anureo_home(&env, async {
         let h = AcpTestHarness::spawn(&env, &llm.url()).await;
 
         // initialize + session/new
@@ -108,7 +108,7 @@ async fn e2e_usage_update_carries_token_usage_meta() {
         assert!(usage_update["used"].is_u64(), "used must be u64");
         assert!(usage_update["size"].is_u64(), "size must be u64");
 
-        // Loom extension: _meta.token_usage
+        // anureo extension: _meta.token_usage
         let meta = usage_update["_meta"]
             .as_object()
             .expect("_meta must be an object");
@@ -138,7 +138,7 @@ async fn e2e_usage_update_carries_token_usage_meta() {
 
         // shutdown
         let status = h.shutdown().await;
-        assert!(status.success(), "loom-acp exited non-zero: {status:?}");
+        assert!(status.success(), "anureo-acp exited non-zero: {status:?}");
     })
     .await;
 
@@ -152,14 +152,14 @@ async fn e2e_usage_update_omits_meta_when_cached_tokens_absent() {
     let llm = MockLlmServer::start().await;
 
     // SSE without cached_tokens — cached_tokens field should still be present in _meta
-    // but with value 0 (Loom normalizes missing cached tokens to 0).
+    // but with value 0 (anureo normalizes missing cached tokens to 0).
     let sse = MockLlmServer::sse_text_chunks_with_usage(
         "ok", /* prompt_tokens */ 50, /* completion_tokens */ 10,
         /* total_tokens */ 60, /* cached_tokens */ None,
     );
     llm.expect_chat_completion_sse(&sse, 1, None).await;
 
-    with_loom_home(&env, async {
+    with_anureo_home(&env, async {
         let h = AcpTestHarness::spawn(&env, &llm.url()).await;
 
         let _ = h.request("initialize", json!({"protocolVersion": 1})).await;
@@ -194,7 +194,7 @@ async fn e2e_usage_update_omits_meta_when_cached_tokens_absent() {
         assert_eq!(token_usage["cached_tokens"], json!(0));
 
         let status = h.shutdown().await;
-        assert!(status.success(), "loom-acp exited non-zero: {status:?}");
+        assert!(status.success(), "anureo-acp exited non-zero: {status:?}");
     })
     .await;
 
@@ -216,7 +216,7 @@ async fn e2e_usage_update_token_usage_grows_across_multiple_prompts() {
     )
     .await;
 
-    with_loom_home(&env, async {
+    with_anureo_home(&env, async {
         let h = AcpTestHarness::spawn(&env, &llm.url()).await;
         let _ = h.request("initialize", json!({"protocolVersion": 1})).await;
         let new_sess = h
@@ -256,7 +256,7 @@ async fn e2e_usage_update_token_usage_grows_across_multiple_prompts() {
         assert_eq!(token_usage["cached_tokens"], json!(5));
 
         let status = h.shutdown().await;
-        assert!(status.success(), "loom-acp exited non-zero: {status:?}");
+        assert!(status.success(), "anureo-acp exited non-zero: {status:?}");
     })
     .await;
 

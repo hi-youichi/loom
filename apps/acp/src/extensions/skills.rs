@@ -45,17 +45,17 @@ fn valid_skill_name(name: &str) -> bool {
 }
 
 /// Candidate skill roots in precedence order (project first).
-/// Mirrors Loom's discovery chain: `.agents/skills`, `.loom/skills`, and the
-/// user-level `~/.loom/skills` directory.
+/// Mirrors anureo's discovery chain: `.agents/skills`, `.anureo/skills`, and the
+/// user-level `~/.anureo/skills` directory.
 fn skill_roots(ctx: &ExtensionContext) -> Vec<(PathBuf, &'static str)> {
     let mut roots = Vec::new();
     if let Some(wd) = &ctx.working_directory {
         roots.push((wd.join(".agents").join("skills"), "project"));
-        roots.push((wd.join(".loom").join("skills"), "project"));
+        roots.push((wd.join(".anureo").join("skills"), "project"));
     }
     if let Ok(home) = store::user_home() {
         roots.push((home.join(".agents").join("skills"), "user"));
-        roots.push((home.join(".loom").join("skills"), "user"));
+        roots.push((home.join(".anureo").join("skills"), "user"));
     }
     roots
 }
@@ -105,7 +105,7 @@ fn writable_skill_root(ctx: &ExtensionContext, scope: &str) -> Result<PathBuf, E
             .map(Path::to_path_buf)
             .ok_or_else(|| ExtensionError::invalid_params("working directory required"))?;
         let preferred = wd.join(".agents").join("skills");
-        let alternate = wd.join(".loom").join("skills");
+        let alternate = wd.join(".anureo").join("skills");
         if alternate.is_dir() && !preferred.is_dir() {
             return Ok(alternate);
         }
@@ -113,7 +113,7 @@ fn writable_skill_root(ctx: &ExtensionContext, scope: &str) -> Result<PathBuf, E
     }
     let home = store::user_home().map_err(|e| internal(e.message))?;
     let preferred = home.join(".agents").join("skills");
-    let alternate = home.join(".config").join("loom").join("skills");
+    let alternate = home.join(".config").join("anureo").join("skills");
     if alternate.is_dir() && !preferred.is_dir() {
         return Ok(alternate);
     }
@@ -446,7 +446,7 @@ impl SkillsHandler {
                 code: -32603,
                 message: "internal_error".into(),
                 data: Some(Value::String(
-                    "clawdhub catalog requires the Express registry; pending loom port".into(),
+                    "clawdhub catalog requires the Express registry; pending anureo port".into(),
                 )),
             });
         }

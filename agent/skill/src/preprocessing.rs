@@ -3,7 +3,7 @@
 use std::path::Path;
 
 static TEMPLATE_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-    regex::Regex::new(r"\$\{(LOOM_SKILL_DIR|HERMES_SKILL_DIR|LOOM_SESSION_ID|HERMES_SESSION_ID)\}")
+    regex::Regex::new(r"\$\{(ANUREO_SKILL_DIR|HERMES_SKILL_DIR|ANUREO_SESSION_ID|HERMES_SESSION_ID)\}")
         .unwrap()
 });
 
@@ -21,9 +21,9 @@ pub fn substitute_template_vars(
     TEMPLATE_RE
         .replace_all(content, |caps: &regex::Captures| {
             match &caps[1] {
-                // Legacy HERMES_* variables are deprecated aliases for LOOM_* equivalents.
-                "LOOM_SKILL_DIR" | "HERMES_SKILL_DIR" => dir_str.clone(),
-                "LOOM_SESSION_ID" | "HERMES_SESSION_ID" => session_id.unwrap_or("").to_string(),
+                // Legacy HERMES_* variables are deprecated aliases for ANUREO_* equivalents.
+                "ANUREO_SKILL_DIR" | "HERMES_SKILL_DIR" => dir_str.clone(),
+                "ANUREO_SESSION_ID" | "HERMES_SESSION_ID" => session_id.unwrap_or("").to_string(),
                 _ => caps[0].to_string(),
             }
         })
@@ -77,30 +77,30 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn substitute_loom_skill_dir() {
-        let content = "Path: ${LOOM_SKILL_DIR}/scripts/setup.sh";
-        let dir = Path::new("/home/user/.loom/skills/my-skill");
+    fn substitute_anureo_skill_dir() {
+        let content = "Path: ${ANUREO_SKILL_DIR}/scripts/setup.sh";
+        let dir = Path::new("/home/user/.anureo/skills/my-skill");
         let result = substitute_template_vars(content, dir, None);
         assert_eq!(
             result,
-            "Path: /home/user/.loom/skills/my-skill/scripts/setup.sh"
+            "Path: /home/user/.anureo/skills/my-skill/scripts/setup.sh"
         );
     }
 
     #[test]
     fn substitute_legacy_skill_dir_backward_compat() {
         let content = "Path: ${HERMES_SKILL_DIR}/scripts/setup.sh";
-        let dir = Path::new("/home/user/.loom/skills/my-skill");
+        let dir = Path::new("/home/user/.anureo/skills/my-skill");
         let result = substitute_template_vars(content, dir, None);
         assert_eq!(
             result,
-            "Path: /home/user/.loom/skills/my-skill/scripts/setup.sh"
+            "Path: /home/user/.anureo/skills/my-skill/scripts/setup.sh"
         );
     }
 
     #[test]
     fn substitute_session_id() {
-        let content = "Session: ${LOOM_SESSION_ID}";
+        let content = "Session: ${ANUREO_SESSION_ID}";
         let dir = Path::new(".");
         let result = substitute_template_vars(content, dir, Some("sess-123"));
         assert_eq!(result, "Session: sess-123");
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn substitute_session_id_none_yields_empty() {
-        let content = "Session: ${LOOM_SESSION_ID}";
+        let content = "Session: ${ANUREO_SESSION_ID}";
         let dir = Path::new(".");
         let result = substitute_template_vars(content, dir, None);
         assert_eq!(result, "Session: ");
@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn substitute_multiple_vars_in_one_line() {
-        let content = "dir=${LOOM_SKILL_DIR} sid=${LOOM_SESSION_ID}";
+        let content = "dir=${ANUREO_SKILL_DIR} sid=${ANUREO_SESSION_ID}";
         let dir = Path::new("/skills/x");
         let result = substitute_template_vars(content, dir, Some("abc"));
         assert_eq!(result, "dir=/skills/x sid=abc");

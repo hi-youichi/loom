@@ -106,9 +106,9 @@ fn plugin_file_dir(scope: &str, ctx: &ExtensionContext) -> Result<PathBuf, Exten
             .as_deref()
             .map(std::path::Path::to_path_buf)
             .ok_or_else(|| ExtensionError::invalid_params("working directory required"))?;
-        return Ok(wd.join(store::LOOMDESK_DIR_NAME).join("plugins"));
+        return Ok(wd.join(store::ANUREO_DIR_NAME).join("plugins"));
     }
-    Ok(store::loomdesk_config_dir()
+    Ok(store::anureo_config_dir()
         .map_err(|e| internal(e.message))?
         .join("plugins"))
 }
@@ -244,7 +244,7 @@ impl PluginHandler {
 
         let (mut config, path) = store::get_json_write_target(
             &layers,
-            scope == "project" && wd.join(store::LOOMDESK_DIR_NAME).exists(),
+            scope == "project" && wd.join(store::ANUREO_DIR_NAME).exists(),
         );
         config.insert("plugin".into(), Value::Array(existing));
         store::write_config(&config, &path).map_err(|e| internal(e.message))?;

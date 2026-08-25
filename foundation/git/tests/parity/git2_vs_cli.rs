@@ -2,10 +2,10 @@
 
 use std::path::Path;
 
-use loom_git::backend::{GitBackend, LogQuery};
-use loom_git::cli::CliBackend;
-use loom_git::git2_backend::Git2Backend;
-use loom_git::types::{GitDiffSummary, GitStatus};
+use anureo_git::backend::{GitBackend, LogQuery};
+use anureo_git::cli::CliBackend;
+use anureo_git::git2_backend::Git2Backend;
+use anureo_git::types::{GitDiffSummary, GitStatus};
 
 fn rt() -> tokio::runtime::Runtime {
     tokio::runtime::Runtime::new().unwrap()
@@ -318,7 +318,7 @@ fn parity_stage_unstage_commit_roundtrip() {
                 let res = r
                     .block_on(cli.commit(
                         repo.path(),
-                        loom_git::types::CommitRequest {
+                        anureo_git::types::CommitRequest {
                             message: "second".into(),
                             amend: false,
                             signoff: false,
@@ -335,7 +335,7 @@ fn parity_stage_unstage_commit_roundtrip() {
                 let res = r
                     .block_on(g2.commit(
                         repo.path(),
-                        loom_git::types::CommitRequest {
+                        anureo_git::types::CommitRequest {
                             message: "second".into(),
                             amend: false,
                             signoff: false,

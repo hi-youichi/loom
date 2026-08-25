@@ -1,5 +1,5 @@
 # Telegram Bot 配置示例
-# 复制此文件到 ~/.loom/telegram-bot.toml
+# 复制此文件到 ~/.anureo/telegram-bot.toml
 
 # 全局设置
 [settings]

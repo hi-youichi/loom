@@ -939,13 +939,13 @@ mod tests {
     #[test]
     fn preview_read_strips_cat_line_numbers() {
         let args = r#"{"path":"README.md"}"#;
-        let result = "  1\t# Loom\n  2\t\n  3\tA graph-based agent";
+        let result = "  1\t# anureo\n  2\t\n  3\tA graph-based agent";
         let output = format_preview("read", args, result, false).unwrap();
         // Should show content without double line numbers
-        assert!(output.contains("Loom"));
+        assert!(output.contains("anureo"));
         assert!(output.contains("A graph-based agent"));
         // Should NOT contain the raw "1\t" prefix in the displayed content
-        assert!(!output.contains("1\t# Loom"));
+        assert!(!output.contains("1\t# anureo"));
     }
 
     #[test]

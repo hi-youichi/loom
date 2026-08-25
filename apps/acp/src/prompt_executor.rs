@@ -7,13 +7,13 @@ use agent_client_protocol::schema::v1::{PromptRequest, PromptResponse};
 use crate::client_capabilities::ClientCapabilitiesInfo;
 use crate::notification_router::NotificationRouter;
 use crate::tools::ClientBridgeTrait;
-use crate::LoomAcpAgent;
+use crate::AnureoAcpAgent;
 
 #[async_trait::async_trait]
 pub trait AcpPromptExecutor: Send + Sync {
     async fn execute(
         &self,
-        agent: &LoomAcpAgent,
+        agent: &AnureoAcpAgent,
         router: &NotificationRouter,
         request: PromptRequest,
         capabilities: ClientCapabilitiesInfo,
@@ -22,13 +22,13 @@ pub trait AcpPromptExecutor: Send + Sync {
 }
 
 #[derive(Debug, Default)]
-pub struct LoomPromptExecutor;
+pub struct AnureoPromptExecutor;
 
 #[async_trait::async_trait]
-impl AcpPromptExecutor for LoomPromptExecutor {
+impl AcpPromptExecutor for AnureoPromptExecutor {
     async fn execute(
         &self,
-        agent: &LoomAcpAgent,
+        agent: &AnureoAcpAgent,
         _router: &NotificationRouter,
         request: PromptRequest,
         capabilities: ClientCapabilitiesInfo,
@@ -49,7 +49,7 @@ pub struct DeterministicPromptExecutor;
 impl AcpPromptExecutor for DeterministicPromptExecutor {
     async fn execute(
         &self,
-        agent: &LoomAcpAgent,
+        agent: &AnureoAcpAgent,
         router: &NotificationRouter,
         request: PromptRequest,
         _capabilities: ClientCapabilitiesInfo,

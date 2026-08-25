@@ -1,17 +1,17 @@
 //! Configuration loader with environment variable interpolation
 //!
-//! Loads configuration from `~/.loom/telegram-bot.toml` (relocated by `--home DIR`).
+//! Loads configuration from `~/.anureo/telegram-bot.toml` (relocated by `--home DIR`).
 
 use crate::config::error::ConfigError;
 use crate::config::types::TelegramBotConfig;
-use config::home::loom_home;
+use config::home::anureo_home;
 use std::path::{Path, PathBuf};
 use tracing::info;
 
 const CONFIG_FILE: &str = "telegram-bot.toml";
 
 pub fn load_config() -> Result<TelegramBotConfig, ConfigError> {
-    let candidates = [loom_home().join(CONFIG_FILE), PathBuf::from(CONFIG_FILE)];
+    let candidates = [anureo_home().join(CONFIG_FILE), PathBuf::from(CONFIG_FILE)];
 
     for path in &candidates {
         if path.exists() {

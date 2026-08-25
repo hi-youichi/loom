@@ -18,11 +18,11 @@ use crate::connection::{AcpConnection, ConnectionOutbound};
 use crate::connection_registry::ConnectionRegistry;
 use crate::extensions::{register::register_default_extensions, ExtensionRegistry};
 use crate::notification_router::NotificationRouter;
-use crate::prompt_executor::{AcpPromptExecutor, LoomPromptExecutor};
+use crate::prompt_executor::{AcpPromptExecutor, AnureoPromptExecutor};
 use crate::session_bindings::SessionBindings;
 use crate::session_update_log::SessionUpdateLog;
 use crate::tools::ClientBridgeTrait;
-use crate::LoomAcpAgent;
+use crate::AnureoAcpAgent;
 
 pub struct OpenConnection {
     pub connection: Arc<AcpConnection>,
@@ -50,9 +50,9 @@ pub struct AcpRuntimeMetricsSnapshot {
     pub legacy_session_list_alias_calls: u64,
 }
 
-/// One Loom agent core plus all transient ACP connection state.
+/// One anureo agent core plus all transient ACP connection state.
 pub struct AcpRuntime {
-    pub agent: Arc<LoomAcpAgent>,
+    pub agent: Arc<AnureoAcpAgent>,
     pub bindings: Arc<SessionBindings>,
     pub connections: Arc<ConnectionRegistry>,
     pub notification_router: Arc<NotificationRouter>,
@@ -80,7 +80,7 @@ impl std::fmt::Debug for AcpRuntime {
 
 impl AcpRuntime {
     pub fn new() -> Result<Arc<Self>, Box<dyn std::error::Error + Send + Sync>> {
-        Self::with_prompt_executor(Arc::new(LoomPromptExecutor))
+        Self::with_prompt_executor(Arc::new(AnureoPromptExecutor))
     }
 
     pub fn with_prompt_executor(
@@ -109,7 +109,7 @@ impl AcpRuntime {
             Some(connections.clone()),
         );
         let extensions = Arc::new(extension_registry);
-        let agent = Arc::new(LoomAcpAgent::new_with_extension_registry_and_db_path(
+        let agent = Arc::new(AnureoAcpAgent::new_with_extension_registry_and_db_path(
             extensions.clone(),
             Some(updates_tx.clone()),
             db_path.into(),
@@ -141,7 +141,7 @@ impl AcpRuntime {
             session_update_log: session_update_log.clone(),
             prompt_executor,
             prompt_capacity: Arc::new(Semaphore::new(
-                std::env::var("LOOM_ACP_MAX_CONCURRENT_PROMPTS")
+                std::env::var("ANUREO_ACP_MAX_CONCURRENT_PROMPTS")
                     .ok()
                     .and_then(|value| value.parse::<usize>().ok())
                     .filter(|value| *value > 0)
@@ -172,7 +172,7 @@ impl AcpRuntime {
                         updates,
                     } => {
                         // Batched `session/load` tail replay: one envelope →
-                        // one `_loomdesk.dev/session-history/batch` custom
+                        // one `_anureo.dev/session-history/batch` custom
                         // notification per bound connection. A load is a read,
                         // so no cross-connection `session.updated` broadcast.
                         if let Err(error) = router.send_history_batch(&session_id, updates).await {
@@ -185,7 +185,7 @@ impl AcpRuntime {
                     }
                 };
                 let update_session_id = update.session_id.to_string();
-                if update_session_id.starts_with("__loom_flush__") {
+                if update_session_id.starts_with("__anureo_flush__") {
                     if let Some(waiter) = flush_waiters.lock().await.remove(&update_session_id) {
                         let _ = waiter.send(());
                     }
@@ -304,7 +304,7 @@ impl AcpRuntime {
         &self,
         session_id: &crate::session::SessionId,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let marker_id = format!("__loom_flush__{}", Uuid::new_v4());
+        let marker_id = format!("__anureo_flush__{}", Uuid::new_v4());
         let (ack_tx, ack_rx) = oneshot::channel();
         self.flush_waiters
             .lock()

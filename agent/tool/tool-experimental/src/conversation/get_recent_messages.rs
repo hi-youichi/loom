@@ -2,7 +2,7 @@ use async_trait::async_trait;
 
 use serde_json::{json, Value};
 
-use loom_llm::Message;
+use anureo_llm::Message;
 use tool_core::{
     Tool, ToolCallContent, ToolCallContext, ToolOutputHint, ToolOutputStrategy, ToolSourceError,
 };
@@ -20,10 +20,10 @@ pub const TOOL_GET_RECENT_MESSAGES: &str = "get_recent_messages";
 /// ```no_run
 /// # #[tokio::main]
 /// # async fn main() {
-/// use loom_tools::tools::{GetRecentMessagesTool, Tool};
-/// use loom_llm::Message;
-/// use loom_llm::message::UserContent;
-/// use loom_tools::tool_source::ToolCallContext;
+/// use anureo_tools::tools::{GetRecentMessagesTool, Tool};
+/// use anureo_llm::Message;
+/// use anureo_llm::message::UserContent;
+/// use anureo_tools::tool_source::ToolCallContext;
 /// use serde_json::json;
 ///
 /// let tool = GetRecentMessagesTool;
@@ -55,7 +55,7 @@ impl GetRecentMessagesTool {
     /// # Examples
     ///
     /// ```
-    /// use loom_tools::tools::GetRecentMessagesTool;
+    /// use anureo_tools::tools::GetRecentMessagesTool;
     ///
     /// let tool = GetRecentMessagesTool;
     /// ```

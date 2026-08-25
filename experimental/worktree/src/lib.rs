@@ -77,7 +77,7 @@ pub enum WorktreeState {
 pub struct WorktreeConfig {
     /// Base ref for the new worktree branch.
     pub base_ref: BaseRef,
-    /// Override storage directory (default: `.loom/worktrees/`).
+    /// Override storage directory (default: `.anureo/worktrees/`).
     pub storage_dir: Option<PathBuf>,
     /// Prefix for auto-generated branch names (default: `worktree-`).
     pub branch_prefix: Option<String>,
@@ -533,20 +533,20 @@ sparse_paths:
         let dir = TempDir::new().unwrap();
         let git_dir = dir.path().join(".git");
 
-        // Create a .git file that points to a Loom worktree
-        std::fs::write(&git_dir, "gitdir: /path/to/.loom/worktrees/agent-123/.git").unwrap();
+        // Create a .git file that points to a anureo worktree
+        std::fs::write(&git_dir, "gitdir: /path/to/.anureo/worktrees/agent-123/.git").unwrap();
 
         assert!(detect_worktree_nesting(dir.path()));
     }
 
     #[test]
-    fn detect_worktree_nesting_with_non_loom_git_file() {
+    fn detect_worktree_nesting_with_non_anureo_git_file() {
         use tempfile::TempDir;
         let dir = TempDir::new().unwrap();
         let git_dir = dir.path().join(".git");
 
         // Any `.git` file (not directory) with `gitdir:` contents signals
-        // we are inside SOME worktree, even if not Loom-managed.
+        // we are inside SOME worktree, even if not anureo-managed.
         std::fs::write(&git_dir, "gitdir: /other/path/.git").unwrap();
 
         assert!(detect_worktree_nesting(dir.path()));

@@ -6,9 +6,9 @@ use async_trait::async_trait;
 use tracing::debug;
 
 use crate::state::ReActState;
-use loom_graph_core::GraphError;
-use loom_graph_core::{Next, Node};
-use loom_llm::LlmClient;
+use anureo_graph_core::GraphError;
+use anureo_graph_core::{Next, Node};
+use anureo_llm::LlmClient;
 
 use super::compaction;
 use super::config::CompactionConfig;
@@ -83,7 +83,7 @@ impl Node<ReActState> for CompactNode {
     async fn run_with_context(
         &self,
         state: ReActState,
-        _ctx: &loom_graph_core::RunContext<ReActState>,
+        _ctx: &anureo_graph_core::RunContext<ReActState>,
     ) -> Result<(ReActState, Next), GraphError> {
         // For now, delegate to run. Implement proper context handling if needed.
         self.run(state).await
@@ -95,8 +95,8 @@ mod tests {
     use std::sync::Arc;
 
     use crate::state::ReActState;
-    use loom_llm::client::MockLlm;
-    use loom_llm::message::Message;
+    use anureo_llm::client::MockLlm;
+    use anureo_llm::message::Message;
 
     use super::*;
 

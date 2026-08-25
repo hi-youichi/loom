@@ -42,14 +42,14 @@ pub enum TaskOutcome {
     },
     Interrupted {
         task: ExecutableTask,
-        interrupt: loom_graph_core::Interrupt,
+        interrupt: anureo_graph_core::Interrupt,
     },
     Cancelled {
         task: ExecutableTask,
     },
     Failed {
         task: ExecutableTask,
-        error: loom_graph_core::GraphError,
+        error: anureo_graph_core::GraphError,
     },
 }
 
@@ -584,7 +584,7 @@ mod tests {
     use crate::node::PregelNode;
     use crate::node::{PregelNodeContext, PregelNodeInput, PregelNodeOutput};
     use async_trait::async_trait;
-    use loom_graph_core::GraphError;
+    use anureo_graph_core::GraphError;
     use std::collections::HashMap;
     use std::sync::Arc;
 

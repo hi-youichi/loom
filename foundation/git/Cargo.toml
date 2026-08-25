@@ -1,5 +1,5 @@
 [package]
-name = "loom-git"
+name = "anureo-git"
 description = "Git facade: typed backend trait, CLI backend, git2 backend (B1+)"
 version.workspace = true
 edition.workspace = true

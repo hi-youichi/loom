@@ -38,10 +38,10 @@ static FTS_TRIGRAM_AVAILABLE: OnceLock<bool> = OnceLock::new();
 pub fn probe_fts_capability(conn: &rusqlite::Connection) -> (bool, bool) {
     let fts = *FTS_ENABLED.get_or_init(|| {
         let ok = conn
-            .execute_batch("CREATE VIRTUAL TABLE IF NOT EXISTS _loom_fts_probe USING fts5(x); DROP TABLE _loom_fts_probe;")
+            .execute_batch("CREATE VIRTUAL TABLE IF NOT EXISTS _anureo_fts_probe USING fts5(x); DROP TABLE _anureo_fts_probe;")
             .is_ok();
         if !ok {
-            tracing::warn!("loom-cli: FTS5 unavailable; falling back to LIKE-based session search");
+            tracing::warn!("anureo-cli: FTS5 unavailable; falling back to LIKE-based session search");
         }
         ok
     });
@@ -50,10 +50,10 @@ pub fn probe_fts_capability(conn: &rusqlite::Connection) -> (bool, bool) {
             false
         } else {
             let ok = conn
-                .execute_batch("CREATE VIRTUAL TABLE IF NOT EXISTS _loom_trigram_probe USING fts5(x, tokenize='trigram'); DROP TABLE _loom_trigram_probe;")
+                .execute_batch("CREATE VIRTUAL TABLE IF NOT EXISTS _anureo_trigram_probe USING fts5(x, tokenize='trigram'); DROP TABLE _anureo_trigram_probe;")
                 .is_ok();
             if !ok {
-                tracing::warn!("loom-cli: trigram tokenizer unavailable; CJK search will use per-token LIKE");
+                tracing::warn!("anureo-cli: trigram tokenizer unavailable; CJK search will use per-token LIKE");
             }
             ok
         }
@@ -257,7 +257,7 @@ pub struct RichSessionInfo {
 /// Hermes parity (`hermes_state.py`): the Python implementation
 /// exposes every method through `__getattr__` which dispatches into
 /// `asyncio.to_thread` so the synchronous `sqlite3` driver doesn't
-/// block the event loop. Loom's `SessionManager` is synchronous
+/// block the event loop. anureo's `SessionManager` is synchronous
 /// because the SQLite dependency (`rusqlite::Connection`) is itself
 /// sync — calling `Connection::open` from inside a `tokio::main`
 /// future stalls the runtime.
@@ -591,7 +591,7 @@ impl SessionManager {
             match serde_json::from_slice::<agent::state::ReActState>(&data) {
                 Ok(state) => {
                     let first_user = state.messages.iter().find_map(|m| match m {
-                        loom_llm::message::Message::User(s) => Some(s.as_text().to_string()),
+                        anureo_llm::message::Message::User(s) => Some(s.as_text().to_string()),
                         _ => None,
                     });
                     (
@@ -619,7 +619,7 @@ impl SessionManager {
             .map_err(|e| format!("Failed to open database: {}", e))?;
         // Cascade-aware delete (priority #23 gap, Hermes `hermes_state.py`).
         //
-        // Loom's checkpoint table doesn't yet have a `parent_thread_id`
+        // anureo's checkpoint table doesn't yet have a `parent_thread_id`
         // column, but `extract_session_text` and friends surface related
         // threads via the most-recent `metadata_summary` cell. For now
         // we delete the requested thread inside `BEGIN IMMEDIATE` so the
@@ -684,7 +684,7 @@ impl SessionManager {
     // Hermes tracks session metadata in a dedicated `sessions` table
     // (id, parent_session_id, end_reason, model_config JSON, archived_at)
     // so compression and branching can be reconstructed even after
-    // checkpoints have been pruned. Loom's `checkpoints` table only
+    // checkpoints have been pruned. anureo's `checkpoints` table only
     // stores the JSON state blob per thread; there is no SQL-side
     // linkage between compressed and live sessions.
     //
@@ -920,7 +920,7 @@ impl SessionManager {
     /// Hermes parity (`hermes_state.py`): the messages table tracks
     /// three flags per row — `active=1` (still visible), `compacted=1`
     /// (rolled into a summary), `rewound=1` (rolled back via /rewind).
-    /// Loom's checkpoint table stores messages inside the JSON
+    /// anureo's checkpoint table stores messages inside the JSON
     /// `payload` blob, so the SQL columns are mirrored in a sidecar
     /// `message_state` table keyed by `(thread_id, message_id)`.
     ///
@@ -960,7 +960,7 @@ impl SessionManager {
     /// Implementation: marks all rows for `thread_id` whose
     /// `created_at >= target.created_at` as active=0, rewound=1.
     /// Uses the `payload.metadata_created_at` ISO-8601 string for
-    /// ordering because Loom's message table doesn't have a
+    /// ordering because anureo's message table doesn't have a
     /// SQL-side created_at column.
     pub fn rewind_to_message(
         &self,
@@ -1408,15 +1408,15 @@ impl SessionManager {
             if let Ok(state) = serde_json::from_slice::<agent::state::ReActState>(data) {
                 for msg in &state.messages {
                     match msg {
-                        loom_llm::message::Message::User(u) => {
+                        anureo_llm::message::Message::User(u) => {
                             parts.push(format!("User: {}", u.as_text()))
                         }
-                        loom_llm::message::Message::Assistant(a) => {
+                        anureo_llm::message::Message::Assistant(a) => {
                             if !a.content.is_empty() {
                                 parts.push(format!("Assistant: {}", a.content));
                             }
                         }
-                        loom_llm::message::Message::Tool { content, .. } => {
+                        anureo_llm::message::Message::Tool { content, .. } => {
                             if let Some(text) = content.as_text() {
                                 if !text.is_empty() {
                                     parts.push(format!("Tool: {}", text));
@@ -1432,7 +1432,7 @@ impl SessionManager {
         // replayed text doesn't appear to invoke memory/skill tools at
         // inference time (Hermes `hermes_state.py` #10).
         let assembled = parts.join("\n");
-        Ok(loom_llm::message::strip_background_review_harness(
+        Ok(anureo_llm::message::strip_background_review_harness(
             &assembled,
         ))
     }

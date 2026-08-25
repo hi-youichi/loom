@@ -141,7 +141,7 @@ impl GithubHandler {
             .as_deref()
             .ok_or_else(|| ExtensionError::invalid_params("owner/repo cannot be inferred"))?;
         let _ = boundary::validate_path(".", Some(dir))?;
-        let output = loom_git::facade::run_raw(Some(dir), &["remote", "get-url", "origin"])
+        let output = anureo_git::facade::run_raw(Some(dir), &["remote", "get-url", "origin"])
             .await
             .map_err(|_| Self::internal("unable to inspect git remote"))?;
         let raw = output.trim().to_string();
@@ -176,7 +176,7 @@ impl GithubHandler {
             .client
             .request(method, format!("{API}{path}"))
             .bearer_auth(token)
-            .header("User-Agent", "loom-acp")
+            .header("User-Agent", "anureo-acp")
             .header("Accept", "application/vnd.github+json");
         if let Some(body) = body {
             request = request.json(&body);
@@ -328,7 +328,7 @@ impl ExtensionHandler for GithubHandler {
                     .client
                     .post("https://github.com/login/device/code")
                     .header("Accept", "application/json")
-                    .header("User-Agent", "loom-acp")
+                    .header("User-Agent", "anureo-acp")
                     .form(&[
                         ("client_id", device_client_id()),
                         ("scope", scopes.join(" ")),
@@ -360,7 +360,7 @@ impl ExtensionHandler for GithubHandler {
                     .and_then(Value::as_u64)
                     .unwrap_or(900);
                 let interval = body.get("interval").and_then(Value::as_u64).unwrap_or(5);
-                let code = format!("loom-{}", uuid::Uuid::new_v4());
+                let code = format!("anureo-{}", uuid::Uuid::new_v4());
                 self.state.write().await.flows.insert(
                     code.clone(),
                     Flow {
@@ -401,7 +401,7 @@ impl ExtensionHandler for GithubHandler {
                     .client
                     .post("https://github.com/login/oauth/access_token")
                     .header("Accept", "application/json")
-                    .header("User-Agent", "loom-acp")
+                    .header("User-Agent", "anureo-acp")
                     .form(&[
                         ("client_id", device_client_id()),
                         ("device_code", device_code),
@@ -444,7 +444,7 @@ impl ExtensionHandler for GithubHandler {
                             .client
                             .get("https://api.github.com/user")
                             .bearer_auth(&access_token)
-                            .header("User-Agent", "loom-acp")
+                            .header("User-Agent", "anureo-acp")
                             .header("Accept", "application/vnd.github+json")
                             .send()
                             .await;
@@ -468,7 +468,7 @@ impl ExtensionHandler for GithubHandler {
                             .and_then(Value::as_str)
                             .unwrap_or("github")
                             .to_string();
-                        // loom picks the token up from the environment on the
+                        // anureo picks the token up from the environment on the
                         // next start; surface it so the host can persist it.
                         self.state.write().await.active = Some(login.clone());
                         self.state.write().await.flows.remove(&code);

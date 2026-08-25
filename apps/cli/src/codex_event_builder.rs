@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use agent::state::ReActState;
-use loom_llm::message::{AssistantPayload, Message};
-use loom_llm::LlmUsage;
+use anureo_llm::message::{AssistantPayload, Message};
+use anureo_llm::LlmUsage;
 use stream_event::codex::{
     agent_message_item, command_execution_item, mcp_tool_call_item, reasoning_item, CodexEvent,
     CodexUsage, McpToolCallItemError,
@@ -255,7 +255,7 @@ fn resolve_tool_result_from_map(
 fn split_server_tool(name: &str) -> (String, String) {
     match name.split_once('/') {
         Some((server, tool)) => (server.to_string(), tool.to_string()),
-        None => ("loom".to_string(), name.to_string()),
+        None => ("anureo".to_string(), name.to_string()),
     }
 }
 
@@ -365,8 +365,8 @@ pub fn print_cat_text(events: &[CodexEvent]) {
 #[cfg(test)]
 mod tests {
     use agent::state::ReActState;
-    use loom_llm::message::{AssistantPayload, AssistantToolCall, Message};
-    use loom_llm::LlmUsage;
+    use anureo_llm::message::{AssistantPayload, AssistantToolCall, Message};
+    use anureo_llm::LlmUsage;
     use stream_event::codex::{CodexEvent, CodexUsage};
     use tool_core::ToolCallContent;
 

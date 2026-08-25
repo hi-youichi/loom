@@ -9,7 +9,7 @@ use crate::Model;
 
 /// A resolver backed by YAML plugin files.
 ///
-/// YAML files in `~/.loom/providers/*.yaml` define custom providers
+/// YAML files in `~/.anureo/providers/*.yaml` define custom providers
 /// that completely replace models.dev data for the given provider ID.
 pub struct PluginModelResolver {
     /// provider_id → (provider_type, models)
@@ -110,11 +110,11 @@ pub fn load_default_plugins() -> PluginModelResolver {
     PluginModelResolver::load(&dir)
 }
 
-/// Resolve the default providers directory (~/.loom/providers/).
+/// Resolve the default providers directory (~/.anureo/providers/).
 pub fn default_providers_dir() -> std::path::PathBuf {
     dirs_default_providers_dir()
 }
 
 fn dirs_default_providers_dir() -> PathBuf {
-    loom_home::loom_home().join("providers")
+    anureo_home::anureo_home().join("providers")
 }

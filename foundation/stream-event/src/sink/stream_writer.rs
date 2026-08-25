@@ -138,7 +138,7 @@ where
             let event = StreamEvent::TextDelta {
                 content: content.into(),
                 metadata: StreamMetadata {
-                    loom_node: node_id.into(),
+                    anureo_node: node_id.into(),
                     namespace: None,
                 },
             };
@@ -159,7 +159,7 @@ where
             let event = StreamEvent::TextDelta {
                 content: content.into(),
                 metadata: StreamMetadata {
-                    loom_node: node_id.into(),
+                    anureo_node: node_id.into(),
                     namespace: None,
                 },
             };

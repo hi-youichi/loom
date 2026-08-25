@@ -7,7 +7,7 @@
 //!
 //! Run manually:
 //! ```sh
-//! cargo test -p loom-server-core --test acp_ws_real_llm -- --ignored --nocapture
+//! cargo test -p anureo-server-core --test acp_ws_real_llm -- --ignored --nocapture
 //! ```
 
 #![cfg(test)]
@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use axum::Router;
 use futures::{SinkExt, StreamExt};
-use loom_server::{routes::build_router, state::new_state};
+use anureo_server::{routes::build_router, state::new_state};
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
@@ -24,14 +24,14 @@ use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, Web
 type WsStream = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 
 async fn start_server() -> (String, tokio::task::JoinHandle<()>) {
-    // Isolate from any real ~/.config/loomdesk/jwt-secret (development mode).
-    let data_dir = std::env::temp_dir().join("loom-acp-ws-e2e-data");
+    // Isolate from any real ~/.config/anureo/jwt-secret (development mode).
+    let data_dir = std::env::temp_dir().join("anureo-acp-ws-e2e-data");
     std::fs::create_dir_all(&data_dir).unwrap();
     let _ = std::fs::remove_file(data_dir.join("jwt-secret"));
-    std::env::set_var("LOOMDESK_DATA_DIR", &data_dir);
-    std::env::remove_var("LOOMDESK_JWT_SECRET");
-    std::env::remove_var("LOOM_JWT_SECRET");
-    std::env::remove_var("LOOM_AUTH_TOKEN");
+    std::env::set_var("ANUREO_DATA_DIR", &data_dir);
+    std::env::remove_var("ANUREO_JWT_SECRET");
+    std::env::remove_var("ANUREO_JWT_SECRET");
+    std::env::remove_var("ANUREO_AUTH_TOKEN");
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("addr");
     let app: Router = build_router(new_state());

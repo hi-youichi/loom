@@ -283,7 +283,7 @@ pub fn skills_default_path_public() -> std::path::PathBuf {
 /// when `Some(_)`, the curator gate checks that the underlying session
 /// hasn't seen activity within that window before running. The
 /// auto-spawned path in `apps/acp/src/agent.rs` resolves this from
-/// `LOOM_CURATOR_IDLE_SECS` (default 300s). `None` preserves the old
+/// `ANUREO_CURATOR_IDLE_SECS` (default 300s). `None` preserves the old
 /// always-run behaviour, used by the manual `curator run` subcommand
 /// where the user is explicitly requesting a pass.
 pub async fn maybe_run_curator(
@@ -324,16 +324,16 @@ fn has_idle_elapsed(thread_id: Option<&str>, idle_secs: u64) -> bool {
     // timestamp from the checkpoint SQLite store and compare to
     // `Instant::now()`. Without that table access in the curator
     // crate, we read a process-wide override from
-    // `LOOM_CURATOR_LAST_ACTIVITY` (an ISO-8601 string set by the
+    // `ANUREO_CURATOR_LAST_ACTIVITY` (an ISO-8601 string set by the
     // agent loop). If the env var isn't set, we default to "yes,
     // elapsed" so the auto-spawned path matches the pre-existing
     // behaviour.
-    match std::env::var("LOOM_CURATOR_LAST_ACTIVITY").ok() {
+    match std::env::var("ANUREO_CURATOR_LAST_ACTIVITY").ok() {
         Some(_ts) => {
             // Conservatively say yes — we don't have a chrono
             // dependency in this crate's workspace node, so the
             // caller (ACP agent.rs) is responsible for setting
-            // `LOOM_CURATOR_LAST_ACTIVITY` correctly. The `idle_secs`
+            // `ANUREO_CURATOR_LAST_ACTIVITY` correctly. The `idle_secs`
             // gate is still useful as a process-wide throttle when
             // the agent loop updates it on every turn.
             let _ = idle_secs;

@@ -191,7 +191,7 @@ impl ChatOpenAICompat {
         let mut builder = request_builder;
         builder = builder.header("X-Request-Id", request_id);
         if let Some(headers) = &self.headers {
-            builder = builder.header("X-App-Id", "loom");
+            builder = builder.header("X-App-Id", "anureo");
             if let Some(thread_id) = &headers.thread_id {
                 builder = builder.header("X-Thread-Id", thread_id);
             }
@@ -417,7 +417,7 @@ mod tests {
         );
         assert_eq!(
             extract_header(&received[0], "x-app-id"),
-            Some("loom".to_string())
+            Some("anureo".to_string())
         );
     }
 }

@@ -132,13 +132,13 @@ struct McpConfigSnapshot {
 // ── Config path helpers ────────────────────────────────────────────────
 
 fn global_config_path() -> PathBuf {
-    config::home::loom_home().join("mcp.json")
+    config::home::anureo_home().join("mcp.json")
 }
 
 fn project_config_path(ctx: &ExtensionContext) -> Option<PathBuf> {
     ctx.working_directory
         .as_ref()
-        .map(|wd| wd.join(".loom").join("mcp.json"))
+        .map(|wd| wd.join(".anureo").join("mcp.json"))
 }
 
 fn load_config_file(path: &Path) -> Result<McpConfigFile, ExtensionError> {
@@ -521,20 +521,20 @@ mod tests {
     }
 
     fn write_project_config(dir: &std::path::Path, json: &str) {
-        let loom_dir = dir.join(".loom");
-        fs::create_dir_all(&loom_dir).unwrap();
-        fs::write(loom_dir.join("mcp.json"), json).unwrap();
+        let anureo_dir = dir.join(".anureo");
+        fs::create_dir_all(&anureo_dir).unwrap();
+        fs::write(anureo_dir.join("mcp.json"), json).unwrap();
     }
 
-    fn write_global_config(loom_home: &std::path::Path, json: &str) {
-        fs::write(loom_home.join("mcp.json"), json).unwrap();
+    fn write_global_config(anureo_home: &std::path::Path, json: &str) {
+        fs::write(anureo_home.join("mcp.json"), json).unwrap();
     }
 
     fn setup_env() -> (TempDir, TempDir) {
         let project_dir = TempDir::new().unwrap();
-        let loom_home = TempDir::new().unwrap();
-        config::home::set_override(Some(loom_home.path().to_path_buf()));
-        (project_dir, loom_home)
+        let anureo_home = TempDir::new().unwrap();
+        config::home::set_override(Some(anureo_home.path().to_path_buf()));
+        (project_dir, anureo_home)
     }
 
     fn restore_env() {
@@ -544,7 +544,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_list_merged_global_and_project() {
-        let (project_dir, loom_home) = setup_env();
+        let (project_dir, anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         write_project_config(
@@ -552,7 +552,7 @@ mod tests {
             r#"{"mcpServers":{"fs":{"command":"npx","args":["-y","fs-server"]}}}"#,
         );
         write_global_config(
-            loom_home.path(),
+            anureo_home.path(),
             r#"{"mcpServers":{"github":{"url":"https://api.github.com/sse"}}}"#,
         );
 
@@ -575,7 +575,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_list_scope_filter_global() {
-        let (project_dir, loom_home) = setup_env();
+        let (project_dir, anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         write_project_config(
@@ -583,7 +583,7 @@ mod tests {
             r#"{"mcpServers":{"fs":{"command":"npx","args":[]}}}"#,
         );
         write_global_config(
-            loom_home.path(),
+            anureo_home.path(),
             r#"{"mcpServers":{"github":{"url":"https://api.github.com/sse"}}}"#,
         );
 
@@ -604,7 +604,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_list_scope_filter_project() {
-        let (project_dir, loom_home) = setup_env();
+        let (project_dir, anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         write_project_config(
@@ -612,7 +612,7 @@ mod tests {
             r#"{"mcpServers":{"fs":{"command":"npx","args":[]}}}"#,
         );
         write_global_config(
-            loom_home.path(),
+            anureo_home.path(),
             r#"{"mcpServers":{"github":{"url":"https://api.github.com/sse"}}}"#,
         );
 
@@ -633,7 +633,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_list_pagination() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         let config = r#"{"mcpServers":{
@@ -660,7 +660,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_list_empty() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         let handler = McpHandler::new();
@@ -680,7 +680,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_list_never_includes_env() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         write_project_config(
@@ -708,7 +708,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_list_transport_has_type_tag() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         write_project_config(
@@ -737,7 +737,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_get_existing_server() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         write_project_config(
@@ -765,7 +765,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_get_nonexistent_returns_not_found() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         let handler = McpHandler::new();
@@ -782,7 +782,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_get_empty_id_returns_invalid_params() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         let handler = McpHandler::new();
@@ -799,7 +799,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_get_strips_env() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         write_project_config(
@@ -824,7 +824,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_configure_creates_new_server() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         let handler = McpHandler::new();
@@ -850,7 +850,7 @@ mod tests {
         assert_eq!(result["configured"], true);
         assert_eq!(result["status"], "starting");
 
-        let config_path = project_dir.path().join(".loom").join("mcp.json");
+        let config_path = project_dir.path().join(".anureo").join("mcp.json");
         let config_content = fs::read_to_string(&config_path).unwrap();
         assert!(config_content.contains("new-server"));
         assert!(config_content.contains("node"));
@@ -861,7 +861,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_configure_already_exists_conflict() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         write_project_config(
@@ -890,7 +890,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_configure_overwrite_updates() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         write_project_config(
@@ -916,7 +916,7 @@ mod tests {
         assert_eq!(result["configured"], true);
 
         let config_content =
-            fs::read_to_string(project_dir.path().join(".loom").join("mcp.json")).unwrap();
+            fs::read_to_string(project_dir.path().join(".anureo").join("mcp.json")).unwrap();
         assert!(config_content.contains("newcmd"));
 
         restore_env();
@@ -925,7 +925,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_configure_invalid_transport_empty_command() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         let handler = McpHandler::new();
@@ -949,7 +949,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_configure_websocket_rejected() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         let handler = McpHandler::new();
@@ -973,7 +973,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_configure_enabled_false_returns_disabled() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         let handler = McpHandler::new();
@@ -998,7 +998,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_configure_enabled_none_preserves_disabled_status() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         write_project_config(
@@ -1028,7 +1028,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_configure_no_principal_forbidden() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "");
 
         let handler = McpHandler::new();
@@ -1045,7 +1045,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_configure_sse_transport() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         let handler = McpHandler::new();
@@ -1071,7 +1071,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_enable_then_get() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         write_project_config(
@@ -1103,7 +1103,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_disable_then_get() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         write_project_config(
@@ -1135,7 +1135,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_enable_nonexistent_returns_not_found() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         let handler = McpHandler::new();
@@ -1152,7 +1152,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_disable_nonexistent_returns_not_found() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         let handler = McpHandler::new();
@@ -1169,7 +1169,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_enable_no_principal_forbidden() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "");
 
         let handler = McpHandler::new();
@@ -1186,7 +1186,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_disable_no_principal_forbidden() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "");
 
         let handler = McpHandler::new();
@@ -1203,7 +1203,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_enable_already_enabled_is_idempotent() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         write_project_config(
@@ -1226,7 +1226,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_disable_already_disabled_is_idempotent() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         write_project_config(
@@ -1249,7 +1249,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_configure_then_list_shows_new_server() {
-        let (project_dir, _loom_home) = setup_env();
+        let (project_dir, _anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         let handler = McpHandler::new();
@@ -1282,11 +1282,11 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_project_overrides_global_same_id() {
-        let (project_dir, loom_home) = setup_env();
+        let (project_dir, anureo_home) = setup_env();
         let ctx = make_ctx(project_dir.path(), "test-user");
 
         write_global_config(
-            loom_home.path(),
+            anureo_home.path(),
             r#"{"mcpServers":{"srv":{"url":"https://global.example.com/sse"}}}"#,
         );
         write_project_config(

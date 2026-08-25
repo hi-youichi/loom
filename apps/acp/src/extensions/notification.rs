@@ -162,11 +162,11 @@ pub struct NotificationHandler {
 
 impl NotificationHandler {
     pub fn new() -> Self {
-        let vapid_public_key = std::env::var("LOOM_VAPID_PUBLIC_KEY")
+        let vapid_public_key = std::env::var("ANUREO_VAPID_PUBLIC_KEY")
             .or_else(|_| std::env::var("VAPID_PUBLIC_KEY"))
             .ok()
             .filter(|v| !v.trim().is_empty());
-        let apns_enabled = std::env::var("LOOM_APNS_ENABLED")
+        let apns_enabled = std::env::var("ANUREO_APNS_ENABLED")
             .or_else(|_| std::env::var("APNS_ENABLED"))
             .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
             .unwrap_or(false);

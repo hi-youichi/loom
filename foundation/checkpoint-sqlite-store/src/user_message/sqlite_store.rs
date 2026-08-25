@@ -8,7 +8,7 @@ use tracing::{debug, warn};
 
 use super::{UserMessageStore, UserMessageStoreError};
 use checkpoint::uuid6;
-use loom_llm::message::{AssistantPayload, Message, ToolCallContent, UserContent};
+use anureo_llm::message::{AssistantPayload, Message, ToolCallContent, UserContent};
 
 /// SQLite-backed store: one table `user_messages (id, thread_id, role, content)`.
 /// `id` is auto-increment and used as the pagination cursor (`before`).

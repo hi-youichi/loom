@@ -2,7 +2,7 @@
 name = "tool-workflow"
 version.workspace = true
 edition.workspace = true
-description = "Multi-agent workflow engine integration tool for Loom agents"
+description = "Multi-agent workflow engine integration tool for anureo agents"
 license.workspace = true
 authors.workspace = true
 
@@ -23,7 +23,7 @@ sha2 = "0.10"
 hex = "0.4"
 
 tool-core = { path = "../tool-core" }
-loom-llm = { path = "../../../foundation/llm" }
+anureo-llm = { path = "../../../foundation/llm" }
 agent = { path = "../../agent-core" }
 
 luft = "0.5"

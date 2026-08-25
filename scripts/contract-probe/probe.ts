@@ -1,7 +1,7 @@
-// Contract probe: compare Express HTTP responses vs loom ACP responses for
+// Contract probe: compare Express HTTP responses vs anureo ACP responses for
 // migrated domains. Usage:
 //   bun scripts/contract-probe/probe.ts --domain config-entity --wd <projectDir>
-// Requires: Express dev stack (3101) + loom dev stack (3031) running.
+// Requires: Express dev stack (3101) + anureo dev stack (3031) running.
 import { parseArgs } from "node:util";
 
 const { values } = parseArgs({
@@ -67,7 +67,7 @@ async function expressFetch(path: string, init?: RequestInit): Promise<Json> {
 
 let nextId = 1;
 async function acpCall(method: string, params: Json): Promise<Json> {
-  // Reuses the FE ACP transport contract: single WS, JSON-RPC, _loomdesk.dev/<domain>.<method>
+  // Reuses the FE ACP transport contract: single WS, JSON-RPC, _anureo.dev/<domain>.<method>
   const url = "ws://127.0.0.1:3031/acp";
   const ws = new WebSocket(url);
   await new Promise<void>((resolve, reject) => {
@@ -114,7 +114,7 @@ const probes: Record<string, () => Promise<void>> = {
     const name = `probe-${Date.now()}`;
 
     const exSources = await expressFetch(`/api/config/agents/${name}`);
-    const acpSources = await acpCall("_loomdesk.dev/config_entity/agents_sources", { name, cwd: values.wd });
+    const acpSources = await acpCall("_anureo.dev/config_entity/agents_sources", { name, cwd: values.wd });
     if (acpSources.error) console.log(`acp error: ${JSON.stringify(acpSources.error)}`);
     const acpSourcesBody = (acpSources.result ?? acpSources) as Json;
     report("agents_sources (missing agent)", exSources, acpSourcesBody);
@@ -124,7 +124,7 @@ const probes: Record<string, () => Promise<void>> = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ scope: "user", description: "probe", prompt: "p" }),
     });
-    const acpCreated = await acpCall("_loomdesk.dev/config_entity/agents_create", {
+    const acpCreated = await acpCall("_anureo.dev/config_entity/agents_create", {
       name: `${name}-ac`, cwd: values.wd,
       description: "probe",
       prompt: "p",
@@ -136,14 +136,14 @@ const probes: Record<string, () => Promise<void>> = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ text: "no #snippets here" }),
     });
-    const acpExpand = await acpCall("_loomdesk.dev/config_entity/snippets_expand", {
+    const acpExpand = await acpCall("_anureo.dev/config_entity/snippets_expand", {
       text: "no #snippets here", cwd: values.wd,
     });
     report("snippets_expand", exExpand, (acpExpand.result ?? acpExpand) as Json);
 
     // cleanup
     await expressFetch(`/api/config/agents/${name}`, { method: "DELETE" });
-    await acpCall("_loomdesk.dev/config_entity/agents_delete", { name: `${name}-ac`, cwd: values.wd });
+    await acpCall("_anureo.dev/config_entity/agents_delete", { name: `${name}-ac`, cwd: values.wd });
   },
 };
 

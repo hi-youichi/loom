@@ -1,6 +1,6 @@
 //! Terminal capability detection and ANSI styling utilities.
 //!
-//! Generic utilities with no Loom-specific concepts. Any Rust CLI crate
+//! Generic utilities with no anureo-specific concepts. Any Rust CLI crate
 //! can depend on this module.
 
 // ── Terminal size / TTY detection ───────────────────────────────────

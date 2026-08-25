@@ -1,6 +1,6 @@
 //! # Checkpoint: checkpointing and long-term store abstractions
 //!
-//! This crate provides the persistence abstractions for Loom, aligned with
+//! This crate provides the persistence abstractions for anureo, aligned with
 //! LangGraph's `langgraph-checkpoint` package:
 //!
 //! - [`Checkpointer`] stores per-run snapshots for resume, replay, branching,

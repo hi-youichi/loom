@@ -1,6 +1,6 @@
 //! ACP Client Tools — Tools that call Client methods via ACP protocol.
 //!
-//! These tools allow Loom to leverage IDE capabilities when running as an ACP agent:
+//! These tools allow anureo to leverage IDE capabilities when running as an ACP agent:
 //! - File system operations (fs/read_text_file, fs/write_text_file)
 //!
 //! Tools are only available when the Client declares support in initialize request.
@@ -107,7 +107,7 @@ mod tests {
     fn test_create_acp_tools_question_capability() {
         let caps_json = json!({
             "_meta": {
-                "loomdesk.dev": {
+                "anureo.dev": {
                     "question": { "request": true }
                 }
             }

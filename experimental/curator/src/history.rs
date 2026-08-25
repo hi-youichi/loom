@@ -56,9 +56,9 @@ pub struct ReviewHistory {
 }
 
 impl ReviewHistory {
-    /// Creates a handle backed by `<loom_home>/memory.db`.
-    pub fn new(loom_home: &Path) -> Self {
-        let db_path = loom_home.join("memory.db");
+    /// Creates a handle backed by `<anureo_home>/memory.db`.
+    pub fn new(anureo_home: &Path) -> Self {
+        let db_path = anureo_home.join("memory.db");
         Self { db_path }
     }
 
@@ -82,11 +82,11 @@ impl ReviewHistory {
     /// `history.jsonl.bak` does NOT (migration not yet done), import all
     /// records then rename the file to `.bak`.
     fn migrate_from_jsonl_if_needed(&self, conn: &Connection) -> Result<(), String> {
-        let Some(loom_home) = self.db_path.parent() else {
+        let Some(anureo_home) = self.db_path.parent() else {
             return Ok(());
         };
-        let jsonl_path = loom_home.join("data").join("review").join("history.jsonl");
-        let bak_path = loom_home
+        let jsonl_path = anureo_home.join("data").join("review").join("history.jsonl");
+        let bak_path = anureo_home
             .join("data")
             .join("review")
             .join("history.jsonl.bak");
@@ -534,8 +534,8 @@ mod tests {
     #[test]
     fn test_migrate_from_jsonl() {
         let (dir, history) = setup();
-        let loom_home = dir.path();
-        let review_dir = loom_home.join("data").join("review");
+        let anureo_home = dir.path();
+        let review_dir = anureo_home.join("data").join("review");
         std::fs::create_dir_all(&review_dir).unwrap();
         let jsonl_path = review_dir.join("history.jsonl");
 
@@ -565,8 +565,8 @@ mod tests {
     #[test]
     fn test_migration_not_repeated() {
         let (dir, history) = setup();
-        let loom_home = dir.path();
-        let review_dir = loom_home.join("data").join("review");
+        let anureo_home = dir.path();
+        let review_dir = anureo_home.join("data").join("review");
         std::fs::create_dir_all(&review_dir).unwrap();
         let jsonl_path = review_dir.join("history.jsonl");
 
@@ -627,8 +627,8 @@ mod tests {
     #[test]
     fn migrate_from_jsonl_skips_blank_lines() {
         let dir = TempDir::new().unwrap();
-        let loom_home = dir.path();
-        let review_dir = loom_home.join("data").join("review");
+        let anureo_home = dir.path();
+        let review_dir = anureo_home.join("data").join("review");
         std::fs::create_dir_all(&review_dir).unwrap();
         let jsonl_path = review_dir.join("history.jsonl");
 
@@ -637,7 +637,7 @@ mod tests {
         // Mix of empty lines (L102) and valid records
         std::fs::write(&jsonl_path, format!("\n{}\n\n", valid)).unwrap();
 
-        let history = ReviewHistory::with_db_path(loom_home.join("memory.db"));
+        let history = ReviewHistory::with_db_path(anureo_home.join("memory.db"));
         let records = history.list(10).unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].session_id, "blank-1");
@@ -646,14 +646,14 @@ mod tests {
     #[test]
     fn migrate_from_jsonl_invalid_json_returns_err() {
         let dir = TempDir::new().unwrap();
-        let loom_home = dir.path();
-        let review_dir = loom_home.join("data").join("review");
+        let anureo_home = dir.path();
+        let review_dir = anureo_home.join("data").join("review");
         std::fs::create_dir_all(&review_dir).unwrap();
         let jsonl_path = review_dir.join("history.jsonl");
 
         std::fs::write(&jsonl_path, "{\"session_id\":\"x\"}\nNOT_JSON\n").unwrap();
 
-        let history = ReviewHistory::with_db_path(loom_home.join("memory.db"));
+        let history = ReviewHistory::with_db_path(anureo_home.join("memory.db"));
         let result = history.list(10);
         assert!(result.is_err());
         let err = result.unwrap_err();

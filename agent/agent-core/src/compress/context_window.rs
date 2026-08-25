@@ -3,7 +3,7 @@
 //! Uses a heuristic (~4 chars per token) and, when available, hybrid strategy
 //! with last LLM usage + delta for messages after last think.
 
-use loom_llm::message::{ContentPart, Message, UserContent};
+use anureo_llm::message::{ContentPart, Message, UserContent};
 
 /// Heuristic: approximate characters per token for English/mixed text (used by `estimate_tokens`).
 const CHARS_PER_TOKEN: u32 = 4;
@@ -97,7 +97,7 @@ mod tests {
     //!
     //! Overflow when: current + reserve_tokens > max_context_tokens.
 
-    use loom_llm::message::Message;
+    use anureo_llm::message::Message;
 
     use super::*;
 

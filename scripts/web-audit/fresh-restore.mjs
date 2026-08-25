@@ -19,9 +19,9 @@ const state = await page.evaluate(() => {
   return {
     projects: projects.map((p) => ({ id: p.id, path: p.path, label: p.label })),
     activeProjectId: localStorage.getItem("activeProjectId"),
-    sidebarHasLoom: body.includes("Loom"),
+    sidebarHasanureo: body.includes("anureo"),
   };
 });
 console.log(JSON.stringify(state, null, 1));
-await page.screenshot({ path: "C:/Users/heycj/dev/loom/scripts/web-audit/fresh-restore.png" });
+await page.screenshot({ path: "C:/Users/heycj/dev/anureo/scripts/web-audit/fresh-restore.png" });
 await browser.close();

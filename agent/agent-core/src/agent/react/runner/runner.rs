@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::agent::react::REACT_SYSTEM_PROMPT;
 use crate::compress::{build_graph, CompactionConfig, CompressionGraphNode};
-use loom_graph_core::{
+use anureo_graph_core::{
     CompilationError, CompiledStateGraph, LoggingNodeMiddleware, StateGraph, END, START,
 };
 
@@ -13,8 +13,8 @@ use crate::runner_common;
 use crate::state::ReActState;
 use checkpoint::{Checkpointer, RunnableConfig, Store};
 use checkpoint_sqlite_store::user_message::UserMessageStore;
-use loom_llm::message::{Message, UserContent};
-use loom_llm::LlmProvider;
+use anureo_llm::message::{Message, UserContent};
+use anureo_llm::LlmProvider;
 use stream_event::StreamEvent;
 use tool_core::active_operation::RunCancellation;
 use tool_core::ToolRegistryLocked;
@@ -85,7 +85,7 @@ impl ReactRunner {
         cancellation: Option<RunCancellation>,
         verbose: bool,
         title_provider: Option<Arc<dyn LlmProvider>>,
-        title_headers: Option<loom_llm::LlmHeaders>,
+        title_headers: Option<anureo_llm::LlmHeaders>,
         any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,
     ) -> Result<Self, CompilationError> {
         let think = ThinkNode::new(Arc::clone(&provider));
@@ -117,7 +117,7 @@ impl ReactRunner {
             .add_node("think", Arc::new(think))
             .add_node(
                 "act",
-                Arc::clone(&act) as Arc<dyn loom_graph_core::Node<ReActState>>,
+                Arc::clone(&act) as Arc<dyn anureo_graph_core::Node<ReActState>>,
             )
             .add_node("observe", Arc::new(observe))
             .add_node("compress", compress_node)

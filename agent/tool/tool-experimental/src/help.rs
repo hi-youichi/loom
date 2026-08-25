@@ -5,11 +5,11 @@ use tool_core::{Tool, ToolCallContent, ToolCallContext, ToolSourceError, ToolSpe
 
 pub use tool_core::tool_name::TOOL_HELP;
 
-const HELP_TEXT: &str = r#"# Loom Help
+const HELP_TEXT: &str = r#"# anureo Help
 
-## What is Loom?
+## What is anureo?
 
-Loom is an AI agent framework that connects LLMs to tools and external services through a ReAct (Reason-Act) loop. It supports multiple agent strategies (ReAct, Tree-of-Thought, Graph-of-Thought, Helve) and provides a rich set of built-in tools for file operations, shell execution, web access, memory, and more.
+anureo is an AI agent framework that connects LLMs to tools and external services through a ReAct (Reason-Act) loop. It supports multiple agent strategies (ReAct, Tree-of-Thought, Graph-of-Thought, Helve) and provides a rich set of built-in tools for file operations, shell execution, web access, memory, and more.
 
 ## Skills
 
@@ -17,14 +17,14 @@ Skills are reusable instruction sets stored as markdown files. They extend the a
 
 - Skills are loaded on demand via the `skill` tool.
 - Use `skill` with `name="list"` to see all available skills.
-- Skills are discovered from `.loom/skills/` in the working folder or from built-in skill registries.
+- Skills are discovered from `.anureo/skills/` in the working folder or from built-in skill registries.
 - Each skill is a `.md` file containing instructions the agent follows when the skill is loaded.
 
 ## MCP (Model Context Protocol)
 
-MCP is a standardized protocol for discovering and calling external tools. Loom connects to MCP servers to extend its capabilities beyond built-in tools.
+MCP is a standardized protocol for discovering and calling external tools. anureo connects to MCP servers to extend its capabilities beyond built-in tools.
 
-- Configure MCP servers in `.loom/mcp.json` (project-level) or `~/.loom/mcp.json` (user-level).
+- Configure MCP servers in `.anureo/mcp.json` (project-level) or `~/.anureo/mcp.json` (user-level).
 - Both stdio and HTTP transports are supported.
 - MCP tools appear alongside built-in tools — the agent uses them automatically when available.
 - Common MCP integrations include GitHub, GitLab, filesystem servers, and custom tool servers.
@@ -60,7 +60,7 @@ impl Tool for HelpTool {
         ToolSpec {
             name: TOOL_HELP.to_string(),
             description: Some(
-                "Show help information about Loom, including what it is, how Skills work, and how MCP (Model Context Protocol) is used.".to_string(),
+                "Show help information about anureo, including what it is, how Skills work, and how MCP (Model Context Protocol) is used.".to_string(),
             ),
             input_schema: json!({
                 "type": "object",

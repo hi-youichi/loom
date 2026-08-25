@@ -1,7 +1,7 @@
 //! Pregel runtime configuration.
 
 use crate::types::NodeName;
-use loom_graph_core::RetryPolicy;
+use anureo_graph_core::RetryPolicy;
 use stream_event::StreamMode;
 
 /// Checkpoint durability behavior for Pregel runs.

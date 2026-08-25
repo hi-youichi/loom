@@ -13,7 +13,7 @@ use super::{Channel, ChannelError};
 /// # Example
 ///
 /// ```rust
-/// use loom_graph_core::channels::{Channel, EphemeralValue};
+/// use anureo_graph_core::channels::{Channel, EphemeralValue};
 ///
 /// let mut channel = EphemeralValue::new();
 /// channel.write(42);

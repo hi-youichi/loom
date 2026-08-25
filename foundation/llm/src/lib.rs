@@ -1,7 +1,7 @@
-//! loom-llm: LLM client abstractions for Loom agents
+//! anureo-llm: LLM client abstractions for anureo agents
 //!
 //! This crate provides the core LLM client traits, type definitions,
-//! and implementations used by Loom's agent runtime.
+//! and implementations used by anureo's agent runtime.
 
 pub mod client;
 pub mod error;
@@ -29,7 +29,7 @@ pub use tool::{ToolCall, ToolOutputHint, ToolOutputStrategy, ToolSourceError, To
 #[allow(deprecated)]
 pub use error::AgentError;
 pub use error::LlmError;
-pub use loom_graph_core::{GraphError, Interrupt};
+pub use anureo_graph_core::{GraphError, Interrupt};
 
 // Re-exports — LLM traits and response types
 pub use traits::{

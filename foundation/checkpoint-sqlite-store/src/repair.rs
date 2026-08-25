@@ -51,7 +51,7 @@ pub fn repair_state_db_schema(path: &Path) -> Result<rusqlite::Connection, Strin
         Ok(c) => Ok(c),
         Err(e) if is_malformed_db_error(&e) => {
             tracing::warn!(
-                "loom-checkpoint: memory.db is corrupt ({}); renaming and re-initializing",
+                "anureo-checkpoint: memory.db is corrupt ({}); renaming and re-initializing",
                 e
             );
             let corrupt_path = corrupt_rename_path(path);
@@ -106,7 +106,7 @@ mod tests {
     fn tmp_path(name: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
         p.push(format!(
-            "loom_repair_test_{}_{}.db",
+            "anureo_repair_test_{}_{}.db",
             std::process::id(),
             name
         ));

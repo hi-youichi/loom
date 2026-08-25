@@ -1,8 +1,8 @@
 //! `model` extension domain — provider/model catalog for clients
-//! (`_loomdesk.dev/model/*`).
+//! (`_anureo.dev/model/*`).
 //!
-//! Serves the model picker from the Loom config (`[[providers]]` +
-//! `[default]` in config.toml, resolved through the loom home directory/XDG). The default
+//! Serves the model picker from the anureo config (`[[providers]]` +
+//! `[default]` in config.toml, resolved through the anureo home directory/XDG). The default
 //! provider additionally gets a live `/v1/models` listing when credentials
 //! are available; every provider always exposes at least its declared or
 //! default model.
@@ -151,7 +151,7 @@ impl ModelHandler {
                         ),
                         ..Default::default()
                     };
-                    loom_llm::factory::create_llm_client(&entry, None).ok()
+                    anureo_llm::factory::create_llm_client(&entry, None).ok()
                 }
                 _ => None,
             };

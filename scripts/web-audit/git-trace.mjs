@@ -37,7 +37,7 @@ await page.addInitScript(() => {
 
 await page.goto("http://localhost:5180/", { waitUntil: "domcontentloaded" });
 await page.evaluate(() => {
-  const dir = "C:/Users/heycj/dev/loom";
+  const dir = "C:/Users/heycj/dev/anureo";
   localStorage.setItem("lastDirectory", dir);
   localStorage.setItem("directory-store", JSON.stringify({
     state: { currentDirectory: dir, directoryHistory: [dir], historyIndex: 0, homeDirectory: dir, hasPersistedDirectory: true, isHomeReady: true, isSwitchingDirectory: false },

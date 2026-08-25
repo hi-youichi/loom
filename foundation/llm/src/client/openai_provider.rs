@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use crate::client::ChatOpenAI;
 use crate::registry::ModelEntry;
 use crate::traits::{LlmClient, LlmHeaders, LlmProvider};
-use loom_graph_core::GraphError;
+use anureo_graph_core::GraphError;
 
 pub struct OpenAIProvider {
     config: OpenAIConfig,

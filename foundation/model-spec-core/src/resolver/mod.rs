@@ -98,7 +98,7 @@ pub fn build_composite_resolver(
 ) -> Arc<CompositeResolver> {
     let mut sources: Vec<Arc<dyn ModelResolver>> = Vec::new();
 
-    // 1. Highest priority: YAML plugins from ~/.loom/providers/*.yaml
+    // 1. Highest priority: YAML plugins from ~/.anureo/providers/*.yaml
     let plugin_resolver = PluginModelResolver::load(&plugin::default_providers_dir());
     if !plugin_resolver.provider_ids().is_empty() {
         sources.push(Arc::new(plugin_resolver));

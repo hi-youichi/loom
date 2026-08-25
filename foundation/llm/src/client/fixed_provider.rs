@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use crate::error::LlmError;
 use crate::traits::{LlmClient, LlmHeaders, LlmProvider};
-use loom_graph_core::GraphError;
+use anureo_graph_core::GraphError;
 
 pub struct CloneableLlmClient(pub Arc<dyn LlmClient>);
 

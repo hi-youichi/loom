@@ -6,10 +6,10 @@
 
 use async_trait::async_trait;
 
-use loom_graph_core::GraphError;
-use loom_graph_core::Node;
-use loom_graph_core::{Next, RunContext};
-use loom_llm::message::Message;
+use anureo_graph_core::GraphError;
+use anureo_graph_core::Node;
+use anureo_graph_core::{Next, RunContext};
+use anureo_llm::message::Message;
 use stream_event::StreamEvent;
 
 use super::state::{TotCandidate, TotState};
@@ -173,7 +173,7 @@ mod tests {
     use super::*;
     use crate::state::ReActState;
     use checkpoint::RunnableConfig;
-    use loom_llm::ToolCall;
+    use anureo_llm::ToolCall;
     use tokio::sync::mpsc;
 
     fn candidate(thought: &str, with_tool: bool) -> TotCandidate {

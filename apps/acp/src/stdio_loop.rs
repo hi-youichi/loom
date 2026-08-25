@@ -14,7 +14,7 @@ use crate::extensions::session_list::{
     tombstone_event_payload,
 };
 use crate::runtime::AcpRuntime;
-use crate::session::SessionId as LoomSessionId;
+use crate::session::SessionId as AnureoSessionId;
 use agent_client_protocol::schema::v1::{
     AuthenticateRequest, AuthenticateResponse, CancelNotification, CloseSessionRequest,
     CloseSessionResponse, DeleteSessionRequest, DeleteSessionResponse, ForkSessionRequest,
@@ -42,7 +42,7 @@ fn is_connection_closed_error_str(s: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// `_loomdesk.dev/*` extension dispatch
+// `_anureo.dev/*` extension dispatch
 // ---------------------------------------------------------------------------
 
 /// Build the extension context for a connection-scoped extension call.
@@ -252,7 +252,7 @@ where
                         .new_session_for_owner(req, &connection.principal)
                         .await;
                     if let Ok(response) = &result {
-                        let session_id = LoomSessionId::new(response.session_id.to_string());
+                        let session_id = AnureoSessionId::new(response.session_id.to_string());
                         runtime
                             .bindings
                             .bind_new_session(session_id.clone(), connection.id.clone());
@@ -278,7 +278,7 @@ where
                             if let Ok(response_json) = serde_json::to_value(response) {
                                 if let Some(ancestors) = response_json
                                     .get("_meta")
-                                    .and_then(|meta| meta.get("loomdesk.dev"))
+                                    .and_then(|meta| meta.get("anureo.dev"))
                                     .and_then(|meta| meta.get("affectedSessions"))
                                     .and_then(serde_json::Value::as_array)
                                 {
@@ -326,7 +326,7 @@ where
                 // the run keeps producing checkpointed/session-update events and
                 // a replacement connection can attach immediately.
                 tokio::spawn(async move {
-                    let session_id = LoomSessionId::new(req.session_id.to_string());
+                    let session_id = AnureoSessionId::new(req.session_id.to_string());
                     let result = if !runtime.bindings.is_connection_bound_to_session(&session_id, &connection.id) {
                         Err(agent_client_protocol::Error::new(
                             -32011,
@@ -379,7 +379,7 @@ where
                 let runtime = r_fork.clone();
                 let connection = conn_for_fork.clone();
                 async move {
-                    let source_id = LoomSessionId::new(req.session_id.to_string());
+                    let source_id = AnureoSessionId::new(req.session_id.to_string());
                     let result = if !runtime.bindings.is_connection_bound_to_session(&source_id, &connection.id) {
                         Err(agent_client_protocol::Error::new(
                             -32011,
@@ -389,7 +389,7 @@ where
                         runtime.agent.fork_session(req).await
                     };
                     if let Ok(response) = &result {
-                        let session_id = LoomSessionId::new(response.session_id.to_string());
+                        let session_id = AnureoSessionId::new(response.session_id.to_string());
                         runtime
                             .bindings
                             .bind_new_session(session_id.clone(), connection.id.clone());
@@ -437,7 +437,7 @@ where
                         ));
                         return Ok(());
                     }
-                    let session_id = LoomSessionId::new(req.session_id.to_string());
+                    let session_id = AnureoSessionId::new(req.session_id.to_string());
                     let previous_lifecycle =
                         match runtime.agent.sessions().begin_restore(&session_id) {
                             Ok(lifecycle) => lifecycle,
@@ -479,7 +479,7 @@ where
                 let runtime = r_close.clone();
                 let connection = conn_for_close.clone();
                 async move {
-                    let session_id = LoomSessionId::new(req.session_id.to_string());
+                    let session_id = AnureoSessionId::new(req.session_id.to_string());
                     let result = if !runtime.bindings.is_connection_bound_to_session(&session_id, &connection.id) {
                         Err(agent_client_protocol::Error::new(
                             -32011,
@@ -519,7 +519,7 @@ where
                 let runtime = r_delete.clone();
                 let connection = conn_for_delete.clone();
                 async move {
-                    let session_id = LoomSessionId::new(req.session_id.to_string());
+                    let session_id = AnureoSessionId::new(req.session_id.to_string());
                     let was_bound = runtime
                         .bindings
                         .is_connection_bound_to_session(&session_id, &connection.id);
@@ -571,7 +571,7 @@ where
                                     if let Ok(response_json) = serde_json::to_value(response) {
                                     if let Some(ancestors) = response_json
                                         .get("_meta")
-                                        .and_then(|meta| meta.get("loomdesk.dev"))
+                                        .and_then(|meta| meta.get("anureo.dev"))
                                         .and_then(|meta| meta.get("affectedSessions"))
                                         .and_then(serde_json::Value::as_array)
                                     {
@@ -619,7 +619,7 @@ where
                 let runtime = r_config.clone();
                 let connection = conn_for_config.clone();
                 async move {
-                    let session_id = LoomSessionId::new(req.session_id.to_string());
+                    let session_id = AnureoSessionId::new(req.session_id.to_string());
                     let result = if !runtime.bindings.is_connection_bound_to_session(&session_id, &connection.id) {
                         Err(agent_client_protocol::Error::new(-32011, "session is not bound to this connection"))
                     } else {
@@ -638,7 +638,7 @@ where
                 let runtime = r_mode.clone();
                 let connection = conn_for_mode.clone();
                 async move {
-                    let session_id = LoomSessionId::new(req.session_id.to_string());
+                    let session_id = AnureoSessionId::new(req.session_id.to_string());
                     let result = if !runtime.bindings.is_connection_bound_to_session(&session_id, &connection.id) {
                         Err(agent_client_protocol::Error::new(-32011, "session is not bound to this connection"))
                     } else {
@@ -655,7 +655,7 @@ where
                 let runtime = r_cancel.clone();
                 let connection = conn_for_cancel.clone();
                 async move {
-                    let session_id = LoomSessionId::new(notif.session_id.to_string());
+                    let session_id = AnureoSessionId::new(notif.session_id.to_string());
                     if runtime.bindings.is_connection_bound_to_session(&session_id, &connection.id) {
                         if let Err(e) = runtime.agent.cancel(notif).await {
                             tracing::error!(error = ?e, "cancel notification handler failed");

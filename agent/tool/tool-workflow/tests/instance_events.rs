@@ -2,7 +2,7 @@
 //!
 //! These tests construct a `WorkflowEventsTool` whose `working_folder`
 //! points at a tempdir, write a synthetic `events.jsonl` under
-//! `<working_folder>/.loom/instances/<instance_dir>/`, and exercise
+//! `<working_folder>/.anureo/instances/<instance_dir>/`, and exercise
 //! `Tool::call` with various filter / pagination shapes.
 //!
 //! Migrated from the legacy `instance-events` action on `WorkflowTool`.
@@ -55,8 +55,8 @@ fn build_tool(dir: &Path) -> WorkflowEventsTool {
 }
 
 fn setup_instance(dir: &Path, instance_dir: &str) -> WorkflowEventsTool {
-    let inst_path: PathBuf = dir.join(".loom").join("instances").join(instance_dir);
-    fs::create_dir_all(&inst_path).expect("mkdir .loom/instances/<dir>");
+    let inst_path: PathBuf = dir.join(".anureo").join("instances").join(instance_dir);
+    fs::create_dir_all(&inst_path).expect("mkdir .anureo/instances/<dir>");
     fs::write(inst_path.join("events.jsonl"), synthetic_events_jsonl())
         .expect("write events.jsonl");
     build_tool(dir)
@@ -284,7 +284,7 @@ async fn events_missing_instance_invalid_input() {
 #[tokio::test(flavor = "multi_thread")]
 async fn events_missing_events_jsonl_returns_empty_array() {
     let tmp = TempDir::new().unwrap();
-    let inst_path = tmp.path().join(".loom").join("instances").join("ghost");
+    let inst_path = tmp.path().join(".anureo").join("instances").join("ghost");
     fs::create_dir_all(&inst_path).unwrap();
 
     let tool = build_tool(tmp.path());
@@ -314,7 +314,7 @@ async fn events_unparseable_line_skipped_silently() {
     body.push_str("{also bad json\n");
     body.push('\n');
 
-    let inst_path = tmp.path().join(".loom").join("instances").join("noisy");
+    let inst_path = tmp.path().join(".anureo").join("instances").join("noisy");
     fs::create_dir_all(&inst_path).unwrap();
     fs::write(inst_path.join("events.jsonl"), body).unwrap();
 

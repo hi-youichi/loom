@@ -1,7 +1,7 @@
 //! GitWorktreeTool: manage git worktrees for agent isolation.
 //!
 //! Provides direct access to worktree lifecycle without binding to an agent invocation:
-//! - `list`:   show all active worktrees under `.loom/worktrees/`
+//! - `list`:   show all active worktrees under `.anureo/worktrees/`
 //! - `create`: create a new worktree (optionally reuse existing)
 //! - `cleanup`: remove a worktree and its branch
 //! - `diff`:    show diff between worktree and base ref

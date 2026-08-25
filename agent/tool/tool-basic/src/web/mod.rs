@@ -19,7 +19,7 @@ pub use tool_core::tool_name::TOOL_WEB_FETCHER;
 /// # Examples
 ///
 /// ```no_run
-/// use loom_tools::tools::{Tool, WebFetcherTool};
+/// use anureo_tools::tools::{Tool, WebFetcherTool};
 /// use serde_json::json;
 ///
 /// # #[tokio::main]
@@ -65,7 +65,7 @@ impl WebFetcherTool {
     /// # Examples
     ///
     /// ```
-    /// use loom_tools::tools::web::WebFetcherTool;
+    /// use anureo_tools::tools::web::WebFetcherTool;
     ///
     /// let tool = WebFetcherTool::new();
     /// ```
@@ -84,7 +84,7 @@ impl WebFetcherTool {
     /// # Examples
     ///
     /// ```
-    /// use loom_tools::tools::web::WebFetcherTool;
+    /// use anureo_tools::tools::web::WebFetcherTool;
     /// use std::time::Duration;
     ///
     /// let client = reqwest::Client::builder()

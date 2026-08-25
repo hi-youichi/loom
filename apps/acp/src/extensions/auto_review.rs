@@ -346,7 +346,7 @@ impl AutoReviewHandler {
         let operation_id = Uuid::new_v4().to_string();
         self.notifications
             .notify(
-                "_loomdesk.dev/auto-review/progress",
+                "_anureo.dev/auto-review/progress",
                 Self::encode(ProgressUpdate::started(
                     &operation_id,
                     "auto-review",
@@ -380,7 +380,7 @@ impl AutoReviewHandler {
         drop(states);
         self.notifications
             .notify(
-                "_loomdesk.dev/auto-review/progress",
+                "_anureo.dev/auto-review/progress",
                 Self::encode(ProgressUpdate::completed(
                     &operation_id,
                     "auto-review",
@@ -557,7 +557,7 @@ impl AutoReviewHandler {
         let params = Self::encode(result)?;
         drop(states);
         self.notifications
-            .notify("_loomdesk.dev/auto-review/result", params)
+            .notify("_anureo.dev/auto-review/result", params)
             .map_err(|_| Self::internal("result notification failed"))
     }
 

@@ -1,6 +1,6 @@
 //! Edit-file tool: performs exact string replacements in a file under the working folder.
 //!
-//! The fuzzy find-and-replace engine lives in [`loom_util::text`] and is
+//! The fuzzy find-and-replace engine lives in [`anureo_util::text`] and is
 //! re-exported here as [`replace`] for backward compatibility.
 
 use std::sync::Arc;
@@ -16,11 +16,11 @@ use super::path::resolve_path;
 /// Tool name for editing a file.
 pub use tool_core::tool_name::TOOL_EDIT_FILE;
 
-/// Re-export of the fuzzy find-and-replace engine from `loom-core`.
+/// Re-export of the fuzzy find-and-replace engine from `anureo-core`.
 ///
 /// Kept here so existing callers (`apply_patch`, `multiedit`, `file::mod`) can
 /// continue to use `super::edit_file::replace` without changing their imports.
-pub use loom_util::text::fuzzy_replace::replace;
+pub use anureo_util::text::fuzzy_replace::replace;
 
 const DESCRIPTION: &str = "\
 Performs exact string replacements in files.

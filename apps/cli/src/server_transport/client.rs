@@ -1,6 +1,6 @@
-//! High-level client for loom-server that combines HTTP and SSE.
+//! High-level client for anureo-server that combines HTTP and SSE.
 //!
-//! Provides [`LoomServerClient`] which owns an [`HttpTransport`] and
+//! Provides [`AnureoServerClient`] which owns an [`HttpTransport`] and
 //! [`SessionClient`], and can produce [`SseStream`] instances for
 //! real-time event consumption.
 
@@ -15,38 +15,38 @@ use super::session::{
 };
 use super::sse::{SseChannelKind, SseStream};
 
-/// High-level client for communicating with a running loom-server instance.
+/// High-level client for communicating with a running anureo-server instance.
 ///
 /// Combines HTTP session management and SSE event subscription in a single
 /// struct with a shared `HttpTransport` underneath.
 #[derive(Clone)]
-pub struct LoomServerClient {
+pub struct AnureoServerClient {
     http: HttpTransport,
     session: SessionClient,
 }
 
-impl fmt::Debug for LoomServerClient {
+impl fmt::Debug for AnureoServerClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("LoomServerClient")
+        f.debug_struct("AnureoServerClient")
             .field("base_url", &self.http.base_url())
             .field("has_auth", &self.http.has_auth())
             .finish()
     }
 }
 
-impl LoomServerClient {
+impl AnureoServerClient {
     /// Start building a client with the given base URL.
     ///
     /// # Example
     ///
     /// ```ignore
-    /// let client = LoomServerClient::builder("http://127.0.0.1:3030")
+    /// let client = AnureoServerClient::builder("http://127.0.0.1:3030")
     ///     .with_auth_token("my-token")
     ///     .timeout(Duration::from_secs(60))
     ///     .build();
     /// ```
-    pub fn builder(base_url: impl AsRef<str>) -> LoomServerClientBuilder {
-        LoomServerClientBuilder {
+    pub fn builder(base_url: impl AsRef<str>) -> AnureoServerClientBuilder {
+        AnureoServerClientBuilder {
             http: HttpTransport::builder(base_url),
         }
     }
@@ -156,14 +156,14 @@ impl LoomServerClient {
     }
 }
 
-/// Builder for [`LoomServerClient`].
+/// Builder for [`AnureoServerClient`].
 #[derive(Debug)]
-pub struct LoomServerClientBuilder {
+pub struct AnureoServerClientBuilder {
     http: HttpTransportBuilder,
 }
 
-impl LoomServerClientBuilder {
-    /// Set the base URL of loom-server.
+impl AnureoServerClientBuilder {
+    /// Set the base URL of anureo-server.
     pub fn base_url(mut self, url: impl AsRef<str>) -> Self {
         self.http = self.http.base_url(url);
         self
@@ -187,17 +187,17 @@ impl LoomServerClientBuilder {
         self
     }
 
-    /// Build the [`LoomServerClient`].
+    /// Build the [`AnureoServerClient`].
     ///
     /// # Errors
     ///
     /// Propagates errors from [`HttpTransportBuilder::build`]:
     /// - Missing base URL
     /// - Invalid URL scheme (only `http://` and `https://` accepted)
-    pub fn build(self) -> TransportResult<LoomServerClient> {
+    pub fn build(self) -> TransportResult<AnureoServerClient> {
         let http = self.http.build()?;
         let session = SessionClient::new(http.clone());
-        Ok(LoomServerClient { http, session })
+        Ok(AnureoServerClient { http, session })
     }
 }
 
@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn test_client_debug() {
-        let client = LoomServerClient::builder("http://127.0.0.1:3030")
+        let client = AnureoServerClient::builder("http://127.0.0.1:3030")
             .with_auth_token("secret")
             .build()
             .unwrap();
@@ -222,7 +222,7 @@ mod tests {
 
     #[test]
     fn test_builder_chain() {
-        let client = LoomServerClient::builder("http://localhost:3030")
+        let client = AnureoServerClient::builder("http://localhost:3030")
             .with_auth_token("tok")
             .timeout(Duration::from_secs(60))
             .max_body_bytes(1024 * 1024)
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn test_builder_fails_with_bad_scheme() {
-        let result = LoomServerClient::builder("ftp://example.com")
+        let result = AnureoServerClient::builder("ftp://example.com")
             .with_auth_token("tok")
             .build();
         assert!(result.is_err());

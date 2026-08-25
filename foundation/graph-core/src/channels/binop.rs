@@ -12,7 +12,7 @@ use super::{Channel, ChannelError};
 /// # Example
 ///
 /// ```rust
-/// use loom_graph_core::channels::{Channel, BinaryOperatorAggregate};
+/// use anureo_graph_core::channels::{Channel, BinaryOperatorAggregate};
 ///
 /// // Sum reducer
 /// let mut channel = BinaryOperatorAggregate::new(|a: i32, b: i32| a + b);
@@ -23,7 +23,7 @@ use super::{Channel, ChannelError};
 /// assert_eq!(channel.read(), Some(6));
 /// ```
 ///
-/// Note: This example requires `use loom_graph_core::channels::Channel;` to be in scope.
+/// Note: This example requires `use anureo_graph_core::channels::Channel;` to be in scope.
 pub struct BinaryOperatorAggregate<T, F> {
     value: Option<T>,
     reducer: F,

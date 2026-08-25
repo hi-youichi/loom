@@ -2,11 +2,11 @@
 //!
 //! Resolution order (after `config.toml` / `.env` are applied to the process environment):
 //! - `--log-level` overrides `RUST_LOG`; otherwise `RUST_LOG`, else `[logging].level` (config.toml), else verbosity (`-v`/`-vv`/`-vvv`), else `off`
-//! - `--log-file` overrides `LOG_FILE`; default: `~/.loom/loom.log`
+//! - `--log-file` overrides `LOG_FILE`; default: `~/.anureo/anureo.log`
 //! - `--log-format`: `text` (default) or `json`
 //! - `--log-rotate`: Rotation strategy when writing to a file (none, daily, hourly, minutely)
 //!
-//! Default log location: `~/.loom/loom.log`
+//! Default log location: `~/.anureo/anureo.log`
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -45,7 +45,7 @@ impl FromStr for LogFormat {
 /// Log configuration from CLI args and config.toml.
 #[derive(Debug, Clone)]
 pub struct LogArgs {
-    /// Log level filter (e.g., "info", "debug", "loom=debug")
+    /// Log level filter (e.g., "info", "debug", "anureo=debug")
     pub level: String,
     /// Optional log file path (supports {working_folder} variable)
     pub file: Option<std::path::PathBuf>,
@@ -94,7 +94,7 @@ pub struct LogGuard {
 /// 1. `--log-file` CLI argument
 /// 2. `LOG_FILE` environment variable (only from shell, not from config.toml [env])
 /// 3. `config.toml` [logging].path
-/// 4. `~/.loom/loom.log`
+/// 4. `~/.anureo/anureo.log`
 pub fn resolve_cli_log_path(
     cli_file: Option<&Path>,
     working_folder: Option<&Path>,
@@ -126,7 +126,7 @@ pub fn resolve_cli_log_path(
         }
     }
 
-    // 4. Default: ~/.loom/loom.log
+    // 4. Default: ~/.anureo/anureo.log
     Some(config::home::default_log_file())
 }
 
@@ -179,7 +179,7 @@ fn init_file_logging(
         let _ = std::fs::create_dir_all(parent);
     }
 
-    let (writer, guard) = tracing_init::file_non_blocking_writer(path, rotate, "loom-cli")
+    let (writer, guard) = tracing_init::file_non_blocking_writer(path, rotate, "anureo-cli")
         .unwrap_or_else(|e| panic!("failed to open log file {}: {}", path.display(), e));
 
     match format {

@@ -1,5 +1,5 @@
 --------------------------------------------
--- Goal:  Write and adversarially verify Loom user-guide documents
+-- Goal:  Write and adversarially verify anureo user-guide documents
 -- Arch:
 --   discover ==> documents[] ==> write ==> challenge[2] ==> revise ==> verify
 --   documents[] ==> global audit ==> report
@@ -9,7 +9,7 @@
 meta = {
   reasoning = "Decompose by document; assign one owner and two independent challengers to each document",
   phases = {
-    { label = "discover", description = "Define document units from Loom source", agents = 1 },
+    { label = "discover", description = "Define document units from anureo source", agents = 1 },
     { label = "write", description = "Write one document per owner", dynamic = true },
     { label = "challenge", description = "Challenge source facts and usability", dynamic = true },
     { label = "revise", description = "Fix critical and major findings", dynamic = true },
@@ -96,16 +96,16 @@ end
 function main()
   -- The workflow is executed from an external Luft runtime, so use explicit
   -- paths rather than relying on the runtime working directory or args table.
-  local repo = "C:/Users/heycj/dev/loom"
+  local repo = "C:/Users/heycj/dev/anureo"
   local dir = "docs/user-guide"
 
   phase("discover", 1)
   local p = agent({
     name = "document-planner",
-    description = "Plan Loom user-guide documents",
+    description = "Plan anureo user-guide documents",
     prompt = "In repository `" .. repo .. "`, read README.md, docs/, Cargo.toml, apps/cli/src/args.rs, "
       .. "CLI handlers, workflow sources, ACP sources, config sources, and examples. "
-      .. "Plan a task-oriented first-party user guide under `" .. dir .. "` for developers using Loom. "
+      .. "Plan a task-oriented first-party user guide under `" .. dir .. "` for developers using anureo. "
       .. "Return independent document units. For each give name, path, audience, purpose, exact source_paths, "
       .. "required_topics, and excluded_topics. Cover stable user paths first and mark experimental features.",
     schema = PLAN,
@@ -156,7 +156,7 @@ function main()
                 .. "Return evidence as an array of strings.", schema = CHALLENGE, timeout_ms = 180000 }
             end
             return { name = "usability-challenger-" .. x.document.name, description = "Test user path", prompt =
-              "Adversarially test `" .. target_path(repo, x.document.path) .. "` as a new Loom user. Check prerequisites, command order, "
+              "Adversarially test `" .. target_path(repo, x.document.path) .. "` as a new anureo user. Check prerequisites, command order, "
               .. "copy-paste examples, unexplained concepts, unsafe ambiguity, and whether the main task can be completed. "
               .. "Return every issue with claim, verdict, severity, evidence, correction. passed=true only with no critical "
               .. "or major blocker. If the target file is missing, return one critical finding and stop. "

@@ -2,8 +2,8 @@
 //!
 //! Spawns `run_review()` in a dedicated OS thread with its own tokio runtime,
 //! so the ACP prompt returns immediately while review proceeds in the background.
-//! This replaces the CLI path's external subprocess spawn (`loom review session`),
-//! which is a no-op under the ACP server (`loom acp` has no review subcommand).
+//! This replaces the CLI path's external subprocess spawn (`anureo review session`),
+//! which is a no-op under the ACP server (`anureo acp` has no review subcommand).
 
 use std::path::PathBuf;
 
@@ -12,9 +12,9 @@ use agent::run::ResolvedModelConfig;
 use agent::state::ReActState;
 use agent::ReactBuildConfig;
 use agent_client_protocol::schema::v1::{Meta, SessionId, SessionNotification};
-use loom_curator::workflow::global_registry;
-use loom_curator::{run_review, ReviewConfig, ReviewHistory, ReviewOutcome, ReviewRecord};
-use loom_llm::message::Message;
+use anureo_curator::workflow::global_registry;
+use anureo_curator::{run_review, ReviewConfig, ReviewHistory, ReviewOutcome, ReviewRecord};
+use anureo_llm::message::Message;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
@@ -93,7 +93,7 @@ fn extract_session_text(thread_id: &str) -> Result<String, String> {
     // instructions back into the LLM context. Hermes `hermes_state.py`
     // #10 parity.
     let assembled = parts.join("\n");
-    Ok(loom_llm::message::strip_background_review_harness(
+    Ok(anureo_llm::message::strip_background_review_harness(
         &assembled,
     ))
 }
@@ -361,7 +361,7 @@ fn build_summary_line(outcome: &ReviewOutcome) -> String {
 /// Format a single action's detailed summary.
 /// Uses the curator-provided summary which already contains
 /// create/update/delete info and character counts.
-fn format_action_summary(action: &loom_curator::ReviewActionSummary) -> String {
+fn format_action_summary(action: &anureo_curator::ReviewActionSummary) -> String {
     action.summary.clone()
 }
 
@@ -460,13 +460,13 @@ mod tests {
             summary: "memory(x) · skill(y)".into(),
             reply: "ok".into(),
             actions: vec![
-                loom_curator::ReviewActionSummary {
+                anureo_curator::ReviewActionSummary {
                     kind: "memory_create".to_string(),
                     target: "debug-logging".to_string(),
                     summary: "Memory 'debug-logging' created (345 chars)".to_string(),
                     succeeded: true,
                 },
-                loom_curator::ReviewActionSummary {
+                anureo_curator::ReviewActionSummary {
                     kind: "skill_update".to_string(),
                     target: "react-testing".to_string(),
                     summary: "Skill 'react-testing' updated (+567 chars)".to_string(),
@@ -592,13 +592,13 @@ mod tests {
             summary: "".into(),
             reply: "ok".into(),
             actions: vec![
-                loom_curator::ReviewActionSummary {
+                anureo_curator::ReviewActionSummary {
                     kind: "memory_create".to_string(),
                     target: "debug-logging".to_string(),
                     summary: "Memory 'debug-logging' created (345 chars)".to_string(),
                     succeeded: true,
                 },
-                loom_curator::ReviewActionSummary {
+                anureo_curator::ReviewActionSummary {
                     kind: "skill_update".to_string(),
                     target: "react-testing".to_string(),
                     summary: "Skill 'react-testing' updated (+567 chars)".to_string(),

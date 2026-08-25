@@ -8,19 +8,19 @@ use crate::error::BotError;
 use crate::sender::TeloxideSender;
 use crate::traits::{AgentRunContext, AgentRunner, MessageSender};
 
-pub struct LoomAgentRunner {
+pub struct AnureoAgentRunner {
     bot: Bot,
     settings: Arc<Settings>,
 }
 
-impl LoomAgentRunner {
+impl AnureoAgentRunner {
     pub fn new(bot: Bot, settings: Arc<Settings>) -> Self {
         Self { bot, settings }
     }
 }
 
 #[async_trait]
-impl AgentRunner for LoomAgentRunner {
+impl AgentRunner for AnureoAgentRunner {
     async fn run(
         &self,
         prompt: &str,
@@ -28,7 +28,7 @@ impl AgentRunner for LoomAgentRunner {
         context: AgentRunContext,
     ) -> Result<String, BotError> {
         let sender: Arc<dyn MessageSender> = Arc::new(TeloxideSender::new(self.bot.clone()));
-        crate::streaming::run_loom_agent_streaming(
+        crate::streaming::run_anureo_agent_streaming(
             prompt,
             chat_id,
             sender,

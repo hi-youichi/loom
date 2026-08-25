@@ -370,16 +370,16 @@ impl SkillUsageStore {
     // `.curator_suppressed` list (priority #20 gap, Hermes `skill_usage.py`).
     //
     // When the curator prunes a bundled skill, the next `sync_skills` /
-    // `loom update` pass would re-seed it from the bundled manifest.
+    // `anureo update` pass would re-seed it from the bundled manifest.
     // To prevent that, the curator appends the pruned name to
     // `.curator_suppressed` (a single-line-per-name text file alongside
-    // `usage.json`). On restore (e.g. user runs `loom skill restore`),
+    // `usage.json`). On restore (e.g. user runs `anureo skill restore`),
     // the name is removed so the next sync can re-fetch it.
     //
     // The list is consulted by `agent/skill/src/sync.rs` before applying
     // any bundled-skill write — sync_skills must not overwrite a file
     // the curator explicitly suppressed unless the user forces it
-    // (`LOOM_SKILL_FORCE=1`).
+    // (`ANUREO_SKILL_FORCE=1`).
     // ------------------------------------------------------------------
 
     /// Path of the suppression list, sibling of `usage.json`.

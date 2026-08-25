@@ -1,6 +1,6 @@
 //! JSON-RPC 2.0 plumbing for the e2e harness.
 //!
-//! Plan 026 §2.1.3: loom-acp exchanges newline-delimited JSON-RPC 2.0 frames
+//! Plan 026 §2.1.3: anureo-acp exchanges newline-delimited JSON-RPC 2.0 frames
 //! over stdio. A frame is one of:
 //!
 //! ```text

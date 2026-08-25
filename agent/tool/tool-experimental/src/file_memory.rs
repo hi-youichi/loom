@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use loom_llm::message::ToolCallContent;
-use loom_llm::tool::{ToolSourceError, ToolSpec};
+use anureo_llm::message::ToolCallContent;
+use anureo_llm::tool::{ToolSourceError, ToolSpec};
 use memory_v2::{
     AddResult, MemoryError, MemoryFile, MemoryProvenance, MemoryStore, RemoveResult, ReplaceResult,
 };

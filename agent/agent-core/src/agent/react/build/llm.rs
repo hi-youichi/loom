@@ -5,11 +5,11 @@
 
 use std::sync::Arc;
 
-use loom_graph_core::GraphError;
-use loom_llm::client::{FixedLlmProvider, RetryLlmClient};
-use loom_llm::factory::create_llm_client;
-use loom_llm::support::audit::LlmAuditLog;
-use loom_llm::{ChatOpenAI, ChatOpenAICompat, LlmClient, LlmProvider, ModelEntry};
+use anureo_graph_core::GraphError;
+use anureo_llm::client::{FixedLlmProvider, RetryLlmClient};
+use anureo_llm::factory::create_llm_client;
+use anureo_llm::support::audit::LlmAuditLog;
+use anureo_llm::{ChatOpenAI, ChatOpenAICompat, LlmClient, LlmProvider, ModelEntry};
 use model_spec_core::ModelTier;
 use tool_core::ToolRegistryLocked;
 
@@ -57,7 +57,7 @@ pub(crate) fn model_entry_from_config(
     });
 
     let matched = matched.or_else(|| {
-        let full_config = env_config::load_full_config("loom").ok()?;
+        let full_config = env_config::load_full_config("anureo").ok()?;
         let default_name = full_config.default_provider.as_deref()?;
         providers
             .iter()
@@ -183,7 +183,7 @@ pub async fn build_default_llm_with_tool_source(
                 .as_ref()
                 .or(config.thread_id.as_ref());
             if let Some(thread_id) = trace_id {
-                let headers = loom_llm::LlmHeaders::default().with_thread_id(thread_id);
+                let headers = anureo_llm::LlmHeaders::default().with_thread_id(thread_id);
                 client = client.with_headers(headers);
                 tracing::debug!("Set X-Thread-Id header: {}", thread_id);
             }
@@ -234,7 +234,7 @@ pub async fn build_default_llm_with_tool_source(
                 .as_ref()
                 .or(config.thread_id.as_ref());
             if let Some(thread_id) = trace_id {
-                let headers = loom_llm::LlmHeaders::default().with_thread_id(thread_id);
+                let headers = anureo_llm::LlmHeaders::default().with_thread_id(thread_id);
                 client = client.with_headers(headers);
                 tracing::debug!("Set X-Thread-Id header: {}", thread_id);
             }
@@ -297,7 +297,7 @@ pub(crate) async fn resolve_title_provider(
         .trace_thread_id
         .as_ref()
         .or(config.thread_id.as_ref());
-    let headers = thread_id.map(|tid| loom_llm::LlmHeaders::default().with_thread_id(tid));
+    let headers = thread_id.map(|tid| anureo_llm::LlmHeaders::default().with_thread_id(tid));
     let client = create_llm_client(&entry, headers).ok()?;
     Some(Arc::new(FixedLlmProvider {
         client: Arc::from(client),

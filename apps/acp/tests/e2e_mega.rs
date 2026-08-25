@@ -1,7 +1,7 @@
 //! Plan 026 e2e mega test (T2.1–T2.10).
 //!
-//! Single-process, single-binary end-to-end exercise of the loom-acp ACP
-//! protocol surface. Runs the real `loom-acp.exe` binary with a wiremock LLM
+//! Single-process, single-binary end-to-end exercise of the anureo-acp ACP
+//! protocol surface. Runs the real `anureo-acp.exe` binary with a wiremock LLM
 //! and asserts across all mega steps:
 //!
 //! 1. `initialize` handshake → capabilities
@@ -23,7 +23,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::{with_loom_home, AcpTestHarness, MockLlmServer, TestEnv};
+use common::{with_anureo_home, AcpTestHarness, MockLlmServer, TestEnv};
 use serde_json::{json, Value};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -33,7 +33,7 @@ async fn e2e_mega_full_protocol_flow() {
     let llm = MockLlmServer::start().await;
     llm.mount_default_chat_completion().await;
 
-    with_loom_home(&env, async {
+    with_anureo_home(&env, async {
         let h = AcpTestHarness::spawn(&env, &llm.url()).await;
 
         // ── Step 1: initialize ─────────────────────────────────────────
@@ -329,10 +329,10 @@ async fn e2e_mega_full_protocol_flow() {
         let status = h.shutdown().await;
         assert!(
             status.success(),
-            "loom-acp exited non-zero: {status:?}"
+            "anureo-acp exited non-zero: {status:?}"
         );
 
-        let pid_path = env.loom_home().join("acp").join("loom-acp.pid");
+        let pid_path = env.anureo_home().join("acp").join("anureo-acp.pid");
         assert!(
             !pid_path.exists(),
             "PID file should be removed on clean shutdown"

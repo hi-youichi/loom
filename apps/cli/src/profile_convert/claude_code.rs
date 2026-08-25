@@ -58,7 +58,7 @@ fn resolve_tools_field(profile: &AgentProfile) -> Option<String> {
 
     let mapped: Vec<&str> = enabled
         .iter()
-        .filter_map(|t| loom_to_claude_tool(t))
+        .filter_map(|t| anureo_to_claude_tool(t))
         .collect();
     if mapped.is_empty() {
         return None;
@@ -77,7 +77,7 @@ fn resolve_disallowed_tools(profile: &AgentProfile) -> Option<String> {
 
     let mapped: Vec<&str> = disabled
         .iter()
-        .filter_map(|t| loom_to_claude_tool(t))
+        .filter_map(|t| anureo_to_claude_tool(t))
         .collect();
     if mapped.is_empty() {
         return None;
@@ -89,7 +89,7 @@ fn resolve_max_turns(profile: &AgentProfile) -> Option<u32> {
     profile.behavior.as_ref()?.max_iterations
 }
 
-fn loom_to_claude_tool(name: &str) -> Option<&'static str> {
+fn anureo_to_claude_tool(name: &str) -> Option<&'static str> {
     Some(match name {
         "bash" => "Bash",
         "read" | "read_file" => "Read",

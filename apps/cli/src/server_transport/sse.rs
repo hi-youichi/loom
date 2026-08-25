@@ -1,6 +1,6 @@
-//! SSE (Server-Sent Events) stream consumer for loom-server.
+//! SSE (Server-Sent Events) stream consumer for anureo-server.
 //!
-//! loom-server exposes two SSE channels:
+//! anureo-server exposes two SSE channels:
 //!
 //! | Path | Version | Envelope |
 //! |------|---------|----------|
@@ -180,7 +180,7 @@ struct Shared {
 
 // ─── SseStream ───────────────────────────────────────────────────────────────
 
-/// An async `Stream` of parsed SSE events from loom-server.
+/// An async `Stream` of parsed SSE events from anureo-server.
 ///
 /// Construct via [`SseStream::builder`]:
 ///

@@ -1,6 +1,6 @@
 //! Stream event conversion: StreamEvent → ProtocolEvent / Format A JSON.
 //!
-//! Migrated from loom-protocol crate (responses.rs + stream.rs + export.rs).
+//! Migrated from anureo-protocol crate (responses.rs + stream.rs + export.rs).
 
 use crate::types::metadata::StreamMetadata;
 use crate::types::stream_event::StreamEvent;
@@ -68,19 +68,19 @@ where
         }
         StreamEvent::TextDelta {
             content,
-            metadata: StreamMetadata { loom_node, .. },
+            metadata: StreamMetadata { anureo_node, .. },
         } => ProtocolEvent::TextDelta {
             content: content.clone(),
-            id: loom_node.clone(),
+            id: anureo_node.clone(),
         },
         StreamEvent::ReasoningDelta {
             id,
             content,
-            metadata: StreamMetadata { loom_node, .. },
+            metadata: StreamMetadata { anureo_node, .. },
         } => ProtocolEvent::ReasoningDelta {
             reasoning_id: id.clone(),
             content: content.clone(),
-            id: loom_node.clone(),
+            id: anureo_node.clone(),
         },
         StreamEvent::TurnFinish { usage, .. } => ProtocolEvent::Usage {
             input: usage.input,
@@ -455,7 +455,7 @@ mod tests {
         let ev: StreamEvent<DummyState> = StreamEvent::TextDelta {
             content: "hello".to_string(),
             metadata: StreamMetadata {
-                loom_node: "think".to_string(),
+                anureo_node: "think".to_string(),
                 namespace: None,
             },
         };
@@ -472,7 +472,7 @@ mod tests {
             id: "r0".to_string(),
             content: "reasoning step".to_string(),
             metadata: StreamMetadata {
-                loom_node: "think".to_string(),
+                anureo_node: "think".to_string(),
                 namespace: None,
             },
         };
@@ -585,7 +585,7 @@ mod tests {
             id: "r0".to_string(),
             content: "reasoning content".to_string(),
             metadata: StreamMetadata {
-                loom_node: "think".to_string(),
+                anureo_node: "think".to_string(),
                 namespace: None,
             },
         };
@@ -611,7 +611,7 @@ mod tests {
         let msg: StreamEvent<DummyState> = StreamEvent::TextDelta {
             content: "final reply".to_string(),
             metadata: StreamMetadata {
-                loom_node: "think".to_string(),
+                anureo_node: "think".to_string(),
                 namespace: None,
             },
         };
@@ -911,13 +911,13 @@ mod tests {
         let ev: StreamEvent<DummyState> = StreamEvent::TextDelta {
             content: "hello".to_string(),
             metadata: StreamMetadata {
-                loom_node: "think".to_string(),
+                anureo_node: "think".to_string(),
                 namespace: None,
             },
         };
         let v = stream_event_to_format_a(&ev).unwrap();
         assert_eq!(v["TextDelta"]["content"], "hello");
-        assert_eq!(v["TextDelta"]["metadata"]["loom_node"], "think");
+        assert_eq!(v["TextDelta"]["metadata"]["anureo_node"], "think");
     }
 
     #[test]

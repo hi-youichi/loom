@@ -15,7 +15,7 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 thiserror = "1.0"
 tokio = { workspace = true }
-loom-git = { path = "../../foundation/git" }
+anureo-git = { path = "../../foundation/git" }
 tracing = "0.1"
 
 [dev-dependencies]

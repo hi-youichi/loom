@@ -269,7 +269,7 @@ pub fn load_lsp_config(path: &PathBuf) -> Result<LspConfig, LspConfigError> {
 pub fn discover_lsp_config_path() -> Option<PathBuf> {
     // Check XDG config home first
     if let Some(xdg_config) = std::env::var_os("XDG_CONFIG_HOME") {
-        let path = PathBuf::from(xdg_config).join("loom/lsp.toml");
+        let path = PathBuf::from(xdg_config).join("anureo/lsp.toml");
         if path.exists() {
             return Some(path);
         }
@@ -277,7 +277,7 @@ pub fn discover_lsp_config_path() -> Option<PathBuf> {
 
     // Check home directory
     if let Some(home) = dirs::home_dir() {
-        let path = home.join(".config/loom/lsp.toml");
+        let path = home.join(".config/anureo/lsp.toml");
         if path.exists() {
             return Some(path);
         }

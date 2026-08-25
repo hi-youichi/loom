@@ -115,8 +115,8 @@ async fn cancel_rejects_path_traversal() {
 async fn status_reads_cancelled_terminal() {
     let tmp = tempfile::TempDir::new().unwrap();
     let runtime = make_runtime(&tmp);
-    let dir = "loom-instance_cancelled";
-    let instance_path = tmp.path().join(".loom").join("instances").join(dir);
+    let dir = "anureo-instance_cancelled";
+    let instance_path = tmp.path().join(".anureo").join("instances").join(dir);
     tokio::fs::create_dir_all(&instance_path).await.unwrap();
 
     let status = runtime.terminal_checkpoint_status(dir).await;
@@ -128,8 +128,8 @@ async fn status_reads_cancelled_terminal() {
 async fn status_after_cancel_reflects_cancelled() {
     let tmp = tempfile::TempDir::new().unwrap();
     let runtime = make_runtime(&tmp);
-    let dir = "loom-instance_after_cancel";
-    let instance_path = tmp.path().join(".loom").join("instances").join(dir);
+    let dir = "anureo-instance_after_cancel";
+    let instance_path = tmp.path().join(".anureo").join("instances").join(dir);
     tokio::fs::create_dir_all(&instance_path).await.unwrap();
     tokio::fs::write(
         instance_path.join("checkpoint.json"),
@@ -139,7 +139,7 @@ async fn status_after_cancel_reflects_cancelled() {
     .unwrap();
     tokio::fs::write(
         instance_path.join("instance.json"),
-        r#"{"status":"cancelled","instance_id":"loom-instance_after_cancel"}"#,
+        r#"{"status":"cancelled","instance_id":"anureo-instance_after_cancel"}"#,
     )
     .await
     .unwrap();
@@ -161,10 +161,10 @@ async fn status_after_cancel_reflects_cancelled() {
 async fn status_running_when_active() {
     let tmp = tempfile::TempDir::new().unwrap();
     let runtime = make_runtime(&tmp);
-    let dir = "loom-instance_active";
+    let dir = "anureo-instance_active";
     // The instance directory must exist on disk; no terminal checkpoint means
     // the workflow is still running.
-    let instance_path = tmp.path().join(".loom").join("instances").join(dir);
+    let instance_path = tmp.path().join(".anureo").join("instances").join(dir);
     tokio::fs::create_dir_all(&instance_path).await.unwrap();
     // events.jsonl is optional — we just need the instance dir present.
     tokio::fs::write(instance_path.join("events.jsonl"), "")

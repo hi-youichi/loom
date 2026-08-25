@@ -10,7 +10,7 @@ use agent::run::{
     build_react_config, run_agent_from_config, RunCmd, RunCompletion, RunError, RunOptions,
     RunParams,
 };
-use loom_llm::message::UserContent;
+use anureo_llm::message::UserContent;
 use stream_event::codex::{CodexErrorInfo, CodexEvent, CodexUsage};
 use tool_core::active_operation::RunCancellation;
 

@@ -8,7 +8,7 @@ use super::auth;
 use super::pagination::{PaginatedResult, PaginationParams};
 use super::{ExtensionContext, ExtensionError, ExtensionHandler};
 
-use config::home::loom_home;
+use config::home::anureo_home;
 
 const DEFAULT_LIMIT: usize = 50;
 const MAX_LIMIT: usize = 200;
@@ -155,9 +155,9 @@ pub struct GoalChangedNotification {
 
 fn goals_file_path(ctx: &ExtensionContext) -> PathBuf {
     if let Some(wd) = &ctx.working_directory {
-        wd.join(".loom").join("goals.json")
+        wd.join(".anureo").join("goals.json")
     } else {
-        loom_home().join("goals.json")
+        anureo_home().join("goals.json")
     }
 }
 

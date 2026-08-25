@@ -13,7 +13,7 @@ use crate::types::{
     ResumeMap,
 };
 use checkpoint::RunnableConfig;
-use loom_graph_core::{GraphError, Interrupt};
+use anureo_graph_core::{GraphError, Interrupt};
 use stream_event::{MessageChunk, StreamEvent, StreamMetadata, StreamMode, StreamWriter};
 use tokio_util::sync::CancellationToken;
 
@@ -86,7 +86,7 @@ impl PregelNodeContext {
         };
         let node_id = node_id.into();
         let metadata = StreamMetadata {
-            loom_node: node_id.clone(),
+            anureo_node: node_id.clone(),
             namespace: if self.run_config.checkpoint_ns.is_empty() {
                 None
             } else {

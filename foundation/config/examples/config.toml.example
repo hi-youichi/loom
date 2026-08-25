@@ -1,5 +1,5 @@
-# Example: ~/.loom/config.toml
-# Copy to ~/.loom/config.toml (or $LOOM_HOME/config.toml) and fill in your values.
+# Example: ~/.anureo/config.toml
+# Copy to ~/.anureo/config.toml (or $ANUREO_HOME/config.toml) and fill in your values.
 # Keys match graphweave/.env; only [env] is read.
 
 [env]
@@ -8,10 +8,10 @@ OPENAI_BASE_URL = "https://api.openai.com/v1"
 OPENAI_API_KEY = "sk-your-key"
 LANGGRAPH_API_KEY = "your-secret-key"
 
-# Logging: applied as env vars; loom CLI reads LOG_FILE / RUST_LOG after loading this file.
+# Logging: applied as env vars; anureo CLI reads LOG_FILE / RUST_LOG after loading this file.
 # LOG_FILE can be absolute or relative path (relative paths are resolved against working_folder in ACP mode).
 RUST_LOG = "info"
-LOG_FILE = "logs/loom.log"
+LOG_FILE = "logs/anureo.log"
 
 # Model
 MODEL = "gpt-4o"
@@ -48,13 +48,13 @@ MCP_EXA_USE_HTTP = "1"
 HELVE_MAX_MESSAGE_LEN = "100"
 
 # Context compression (auto-manage context window)
-LOOM_COMPRESSION_AUTO = "true"
-LOOM_COMPRESSION_PRUNE = "true"
-LOOM_COMPRESSION_MAX_TOKENS = "128000"
-LOOM_COMPRESSION_RESERVE_TOKENS = "4096"
-LOOM_COMPRESSION_PRUNE_KEEP_TOKENS = "40000"
-LOOM_COMPRESSION_PRUNE_MINIMUM = "20000"
-LOOM_COMPRESSION_KEEP_RECENT = "20"
+ANUREO_COMPRESSION_AUTO = "true"
+ANUREO_COMPRESSION_PRUNE = "true"
+ANUREO_COMPRESSION_MAX_TOKENS = "128000"
+ANUREO_COMPRESSION_RESERVE_TOKENS = "4096"
+ANUREO_COMPRESSION_PRUNE_KEEP_TOKENS = "40000"
+ANUREO_COMPRESSION_PRUNE_MINIMUM = "20000"
+ANUREO_COMPRESSION_KEEP_RECENT = "20"
 
 # Optional: named providers (use [default].provider to select one).
 # Per-provider tool_choice sets OPENAI_TOOL_CHOICE (auto, none, required); same as [env].

@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-const SKILLS_SUBDIR: &str = ".loom/skills";
+const SKILLS_SUBDIR: &str = ".anureo/skills";
 const SKILL_MD: &str = "SKILL.md";
 const DESCRIPTION_MD: &str = "DESCRIPTION.md";
 const SKILL_EXTENSIONS: &[&str] = &["md", "txt", "markdown"];
@@ -50,7 +50,7 @@ pub enum SkillSource {
     User,
     Agent,
     Data,
-    /// Skill bundled inside a Loom crate (e.g. via `include_str!`). Added by
+    /// Skill bundled inside a anureo crate (e.g. via `include_str!`). Added by
     /// [`SkillRegistry::add_builtin`] after filesystem discovery completes.
     /// Lower priority than filesystem-discovered entries with the same name.
     Builtin,
@@ -113,13 +113,13 @@ impl SkillRegistry {
         }
 
         // 3. User skills
-        let user_dir = env_config::home::loom_home().join("skills");
+        let user_dir = env_config::home::anureo_home().join("skills");
         if user_dir.is_dir() {
             skills.extend(scan_skills_dir(&user_dir, SkillSource::User));
         }
 
         // 4. Data skills (recursive)
-        let data_dir = env_config::home::loom_home().join("data").join("skills");
+        let data_dir = env_config::home::anureo_home().join("data").join("skills");
         if data_dir.is_dir() {
             skills.extend(scan_skills_dir_recursive(&data_dir, SkillSource::Data));
         }
@@ -151,7 +151,7 @@ impl SkillRegistry {
         Ok(())
     }
 
-    /// Register a builtin skill bundled inside a Loom crate.
+    /// Register a builtin skill bundled inside a anureo crate.
     ///
     /// If a skill with the same name already exists (from any filesystem
     /// source), the call is a no-op — user/project skills take precedence

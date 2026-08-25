@@ -9,11 +9,11 @@ use async_trait::async_trait;
 
 use crate::agent::react::{ActNode, ObserveNode, ThinkNode};
 use crate::state::ReActState;
-use loom_graph_core::GraphError;
-use loom_graph_core::Node;
-use loom_graph_core::{Next, RunContext};
-use loom_llm::message::Message;
-use loom_llm::LlmProvider;
+use anureo_graph_core::GraphError;
+use anureo_graph_core::Node;
+use anureo_graph_core::{Next, RunContext};
+use anureo_llm::message::Message;
+use anureo_llm::LlmProvider;
 use stream_event::{StreamEvent, StreamMode};
 use tool_core::ToolRegistryLocked;
 

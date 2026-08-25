@@ -18,7 +18,7 @@ pub fn default_model() -> String {
     }
 
     // 2. Config.toml providers
-    if let Ok(full) = crate::xdg_toml::load_full_config("loom") {
+    if let Ok(full) = crate::xdg_toml::load_full_config("anureo") {
         // 2a. Default provider's model
         if let Some(ref pname) = full.default_provider {
             if let Some(p) = full.providers.iter().find(|p| p.name == *pname) {
@@ -53,7 +53,7 @@ pub fn default_model() -> String {
 ///
 /// Priority: `[default].provider` → first provider with "coding-plan" → first provider.
 pub fn default_provider_name() -> Option<String> {
-    let full = crate::xdg_toml::load_full_config("loom").ok()?;
+    let full = crate::xdg_toml::load_full_config("anureo").ok()?;
 
     if let Some(ref pname) = full.default_provider {
         return Some(pname.clone());

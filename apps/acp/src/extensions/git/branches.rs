@@ -27,7 +27,7 @@ pub async fn handle_branches(
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let branches = loom_git::facade::branches(&repo_dir, remote)
+    let branches = anureo_git::facade::branches(&repo_dir, remote)
         .await
         .map_err(ext_err_from_git)?;
 

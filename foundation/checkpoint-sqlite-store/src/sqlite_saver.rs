@@ -1,6 +1,6 @@
 //! SQLite-backed checkpointer (SqliteSaver). Persistent across process restarts.
 //!
-//! Aligns with SQLite checkpoint pattern (cf. loom-checkpoint-sqlite).
+//! Aligns with SQLite checkpoint pattern (cf. anureo-checkpoint-sqlite).
 
 use std::path::Path;
 use std::sync::Arc;

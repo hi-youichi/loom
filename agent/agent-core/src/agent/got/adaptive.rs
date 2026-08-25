@@ -6,9 +6,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use loom_graph_core::GraphError;
-use loom_llm::message::Message;
-use loom_llm::LlmClient;
+use anureo_graph_core::GraphError;
+use anureo_llm::message::Message;
+use anureo_llm::LlmClient;
 
 use super::dag::{append_subgraph, AppendSubgraphError};
 use super::prompt::AGOT_EXPAND_SYSTEM;
@@ -392,7 +392,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn expand_node_via_llm_parses_and_prefixes() {
-        use loom_llm::client::MockLlm;
+        use anureo_llm::client::MockLlm;
         let json = r#"{"nodes":[{"id":"step1","description":"First step"},{"id":"step2","description":"Second step"}],"edges":[["analyze","step1"],["step1","step2"]]}"#;
         let mock = MockLlm::with_no_tool_calls(json);
         let llm = Arc::new(mock);

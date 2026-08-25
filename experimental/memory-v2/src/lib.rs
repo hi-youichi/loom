@@ -220,7 +220,7 @@ impl MemoryStore {
     }
 
     pub fn default_path() -> PathBuf {
-        env_config::home::loom_home().join("data").join("memory")
+        env_config::home::anureo_home().join("data").join("memory")
     }
 
     pub fn base_dir(&self) -> PathBuf {

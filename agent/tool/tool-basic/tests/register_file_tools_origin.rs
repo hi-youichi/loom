@@ -33,7 +33,7 @@ fn read_usage_created_by(usage_path: &std::path::Path, name: &str) -> Option<Str
 
 // `SkillUsageStore::new(base_dir)` writes to `<base_dir>/.usage.json` (hidden file).
 fn usage_path_for(wf: &std::path::Path) -> std::path::PathBuf {
-    wf.join(".loom").join("skills").join(".usage.json")
+    wf.join(".anureo").join("skills").join(".usage.json")
 }
 
 fn create_test_skill() -> String {

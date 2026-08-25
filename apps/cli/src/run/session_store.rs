@@ -27,7 +27,7 @@ impl FileSessionStore {
     }
 
     pub fn default_path() -> PathBuf {
-        config::home::loom_home().join("data").join("sessions")
+        config::home::anureo_home().join("data").join("sessions")
     }
 
     pub fn save(&self, session: &StoredSession) -> Result<(), String> {

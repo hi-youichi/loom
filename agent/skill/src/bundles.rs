@@ -1,6 +1,6 @@
 //! Skill bundles — load multiple skills at once via YAML definitions.
 //!
-//! Bundles are stored in `~/.loom/skill-bundles/*.yaml`.
+//! Bundles are stored in `~/.anureo/skill-bundles/*.yaml`.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

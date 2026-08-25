@@ -1,24 +1,24 @@
 /**
  * e2e/tests/web/errors.spec.ts
  *
- * OpenChamber Web Error State Tests
+ * anureo Web Error State Tests
  *
  * 使用 fixtures:
  * - app: 提供 baseURL fixture
  * - auth: 提供 Bearer Token 注入（已认证状态）
- * - mock-loom: 拦截 /api/models 返回空列表（模拟模型不可用）
+ * - mock-anureo: 拦截 /api/models 返回空列表（模拟模型不可用）
  *
- * 参考 docs/references/openchamber-text-acceptance-test-cases.md §15 ERR-003
+ * 参考 docs/references/anureo-text-acceptance-test-cases.md §15 ERR-003
  */
 
 import { test as base, expect } from "@playwright/test";
 
-// 使用 mock-loom 的 page 拦截 + auth 的 loginWithPassword
-import { mockLoom } from "../../fixtures/mock-loom";
+// 使用 mock-anureo 的 page 拦截 + auth 的 loginWithPassword
+import { mockanureo } from "../../fixtures/mock-anureo";
 import { auth } from "../../fixtures/auth";
 
 const test = base.extend({
-  ...mockLoom,
+  ...mockanureo,
   ...auth,
   baseURL: async ({}, use) => {
     await use(process.env.E2E_BASE_URL ?? "http://localhost:3000");
@@ -29,7 +29,7 @@ const test = base.extend({
  * ERR-003 — 模型不可用时友好报错
  *
  * 目标：验证 Provider 未连接或 Key 失效时发送消息有友好提示
- * 前置条件：mock-loom 返回空 models 列表（模拟无可用模型）
+ * 前置条件：mock-anureo 返回空 models 列表（模拟无可用模型）
  * 步骤：1. 新建会话 2. 发送消息
  * 预期结果：显示友好错误提示（如 "请先连接 Provider"）而非原始 API 错误
  * 观察点/失败信号：无提示、原始 JSON 错误泄露、白屏

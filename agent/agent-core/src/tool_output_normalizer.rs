@@ -8,8 +8,8 @@ use chrono::Utc;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-// Re-export types now defined in loom-llm
-pub use loom_llm::tool::{ToolOutputHint, ToolOutputStrategy};
+// Re-export types now defined in anureo-llm
+pub use anureo_llm::tool::{ToolOutputHint, ToolOutputStrategy};
 
 /// Configuration for tool output normalization.
 #[derive(Debug, Clone)]

@@ -1,6 +1,6 @@
 //! Progress reporting for long-running extension operations.
 //!
-//! Sends `loomdesk_progress` session/update notifications per §3.
+//! Sends `anureo_progress` session/update notifications per §3.
 
 use serde::Serialize;
 use serde_json::Value;

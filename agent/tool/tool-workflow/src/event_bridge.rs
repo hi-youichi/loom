@@ -1,10 +1,10 @@
-use agent::agent::AgentEvent as LoomAgentEvent;
+use agent::agent::AgentEvent as AnureoAgentEvent;
 use luft_core::contract::event::{AgentEvent as LuftAgentEvent, ProgressDelta};
 
-pub fn map_loom_event_to_delta(ev: &LoomAgentEvent) -> Option<ProgressDelta> {
+pub fn map_anureo_event_to_delta(ev: &AnureoAgentEvent) -> Option<ProgressDelta> {
     match ev {
-        LoomAgentEvent::TextChunk(text) => Some(ProgressDelta::Message { text: text.clone() }),
-        LoomAgentEvent::ToolCallStart { name, arguments } => {
+        AnureoAgentEvent::TextChunk(text) => Some(ProgressDelta::Message { text: text.clone() }),
+        AnureoAgentEvent::ToolCallStart { name, arguments } => {
             let summary = if arguments.len() > 200 {
                 format!("{}({}...)", name, &arguments[..200])
             } else {
@@ -15,7 +15,7 @@ pub fn map_loom_event_to_delta(ev: &LoomAgentEvent) -> Option<ProgressDelta> {
                 summary,
             })
         }
-        LoomAgentEvent::ToolEnd { name, is_error, .. } => Some(ProgressDelta::ToolCall {
+        AnureoAgentEvent::ToolEnd { name, is_error, .. } => Some(ProgressDelta::ToolCall {
             name: name.clone(),
             summary: if *is_error {
                 "error".to_string()
@@ -23,9 +23,9 @@ pub fn map_loom_event_to_delta(ev: &LoomAgentEvent) -> Option<ProgressDelta> {
                 "done".to_string()
             },
         }),
-        LoomAgentEvent::ReasoningChunk(_) => None,
-        LoomAgentEvent::ToolOutput { .. } => None,
-        LoomAgentEvent::Usage { .. } => None,
+        AnureoAgentEvent::ReasoningChunk(_) => None,
+        AnureoAgentEvent::ToolOutput { .. } => None,
+        AnureoAgentEvent::Usage { .. } => None,
     }
 }
 

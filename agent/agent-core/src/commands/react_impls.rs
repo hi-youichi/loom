@@ -1,7 +1,7 @@
 //! ReActState implementations of command traits.
 
 use crate::state::ReActState;
-use loom_llm::message::Message;
+use anureo_llm::message::Message;
 
 use crate::commands::command_traits::{CompactState, ResetState, SummarizeState};
 

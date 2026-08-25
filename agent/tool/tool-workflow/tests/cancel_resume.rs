@@ -40,11 +40,11 @@ async fn cancel_tool_registers_and_cancels_through_registry() {
     let runtime = Arc::new(WorkflowRuntime::new(cfg));
 
     // Register a synthetic run (simulates what start_workflow does).
-    runtime.register_run("loom-instance_42".to_string());
+    runtime.register_run("anureo-instance_42".to_string());
 
     let cancel = WorkflowCancelTool::new(runtime.clone());
     let resp = cancel
-        .call(json!({"instance": "loom-instance_42"}), None)
+        .call(json!({"instance": "anureo-instance_42"}), None)
         .await
         .unwrap();
     let text = match resp {
@@ -53,11 +53,11 @@ async fn cancel_tool_registers_and_cancels_through_registry() {
     };
     let payload: serde_json::Value = serde_json::from_str(&text).unwrap();
     assert_eq!(payload["result"], "cancelling");
-    assert_eq!(payload["instance_dir"], "loom-instance_42");
+    assert_eq!(payload["instance_dir"], "anureo-instance_42");
 
     // Same instance id is still cancellable (idempotent registry hit).
     let resp2 = cancel
-        .call(json!({"instance": "loom-instance_42"}), None)
+        .call(json!({"instance": "anureo-instance_42"}), None)
         .await
         .unwrap();
     let text2 = match resp2 {

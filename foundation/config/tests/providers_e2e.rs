@@ -2,7 +2,7 @@
 //!
 //! Each test:
 //!  1. Writes a real config.toml to a tempdir
-//!  2. Runs load_and_apply_with_report with the loom home override pointed at that dir
+//!  2. Runs load_and_apply_with_report with the anureo home override pointed at that dir
 //!  3. Asserts the correct env vars are set and the report is accurate
 //!
 //! Tests are serialised through LOCK because they mutate process-level env vars.
@@ -47,11 +47,11 @@ impl Drop for EnvGuard {
     }
 }
 
-struct LoomHomeGuard {
+struct AnureoHomeGuard {
     prev: Option<std::path::PathBuf>,
 }
 
-impl LoomHomeGuard {
+impl AnureoHomeGuard {
     fn set(path: &std::path::Path) -> Self {
         let prev = config::home::override_path();
         config::home::set_override(Some(path.to_path_buf()));
@@ -59,7 +59,7 @@ impl LoomHomeGuard {
     }
 }
 
-impl Drop for LoomHomeGuard {
+impl Drop for AnureoHomeGuard {
     fn drop(&mut self) {
         config::home::set_override(self.prev.clone());
     }
@@ -91,11 +91,11 @@ model = "gpt-4o-mini"
 "#,
     );
 
-    let _home = LoomHomeGuard::set(dir.path());
+    let _home = AnureoHomeGuard::set(dir.path());
     let env = EnvGuard::new(&["OPENAI_API_KEY", "OPENAI_BASE_URL", "MODEL", "LLM_PROVIDER"]);
     env.clear();
 
-    let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+    let report = load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
 
     assert_eq!(std::env::var("OPENAI_API_KEY").unwrap(), "sk-e2e-test");
     assert_eq!(
@@ -136,7 +136,7 @@ temperature = 0.35
 "#,
     );
 
-    let _home = LoomHomeGuard::set(dir.path());
+    let _home = AnureoHomeGuard::set(dir.path());
     let env = EnvGuard::new(&[
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
@@ -146,7 +146,7 @@ temperature = 0.35
     ]);
     env.clear();
 
-    let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+    let report = load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
 
     assert_eq!(std::env::var("OPENAI_TEMPERATURE").unwrap(), "0.35");
     let te = report
@@ -178,11 +178,11 @@ type = "bigmodel"
 "#,
     );
 
-    let _home = LoomHomeGuard::set(dir.path());
+    let _home = AnureoHomeGuard::set(dir.path());
     let env = EnvGuard::new(&["OPENAI_API_KEY", "OPENAI_BASE_URL", "MODEL", "LLM_PROVIDER"]);
     env.clear();
 
-    let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+    let report = load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
 
     assert_eq!(std::env::var("OPENAI_API_KEY").unwrap(), "bm-key-e2e");
     assert!(
@@ -198,11 +198,11 @@ type = "bigmodel"
 #[ignore]
 fn e2e_dotenv_overrides_provider() {
     let _lock = LOCK.lock().unwrap();
-    let loom_home = tempfile::tempdir().unwrap();
+    let anureo_home = tempfile::tempdir().unwrap();
     let proj_dir = tempfile::tempdir().unwrap();
 
     write_config(
-        loom_home.path(),
+        anureo_home.path(),
         r#"
 [default]
 provider = "base"
@@ -215,11 +215,11 @@ model = "model-from-provider"
     );
     std::fs::write(proj_dir.path().join(".env"), "MODEL=model-from-dotenv\n").unwrap();
 
-    let _home = LoomHomeGuard::set(loom_home.path());
+    let _home = AnureoHomeGuard::set(anureo_home.path());
     let env = EnvGuard::new(&["OPENAI_API_KEY", "MODEL"]);
     env.clear();
 
-    load_and_apply_with_report("loom", Some(proj_dir.path())).unwrap();
+    load_and_apply_with_report("anureo", Some(proj_dir.path())).unwrap();
 
     // dotenv wins for MODEL, provider still sets OPENAI_API_KEY
     assert_eq!(std::env::var("MODEL").unwrap(), "model-from-dotenv");
@@ -231,11 +231,11 @@ model = "model-from-provider"
 #[ignore]
 fn e2e_process_env_wins_over_provider_and_dotenv() {
     let _lock = LOCK.lock().unwrap();
-    let loom_home = tempfile::tempdir().unwrap();
+    let anureo_home = tempfile::tempdir().unwrap();
     let proj_dir = tempfile::tempdir().unwrap();
 
     write_config(
-        loom_home.path(),
+        anureo_home.path(),
         r#"
 [default]
 provider = "base"
@@ -248,12 +248,12 @@ model = "from-provider-model"
     );
     std::fs::write(proj_dir.path().join(".env"), "MODEL=from-dotenv\n").unwrap();
 
-    let _home = LoomHomeGuard::set(loom_home.path());
+    let _home = AnureoHomeGuard::set(anureo_home.path());
     let env = EnvGuard::new(&["OPENAI_API_KEY", "MODEL"]);
     env.clear();
     std::env::set_var("MODEL", "from-process-env");
 
-    load_and_apply_with_report("loom", Some(proj_dir.path())).unwrap();
+    load_and_apply_with_report("anureo", Some(proj_dir.path())).unwrap();
 
     assert_eq!(std::env::var("MODEL").unwrap(), "from-process-env");
     // provider sets api_key (process env didn't have it)
@@ -282,11 +282,11 @@ model = "from-provider"
 "#,
     );
 
-    let _home = LoomHomeGuard::set(dir.path());
+    let _home = AnureoHomeGuard::set(dir.path());
     let env = EnvGuard::new(&["MODEL", "SOME_OTHER_KEY"]);
     env.clear();
 
-    load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+    load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
 
     // provider wins over [env] for MODEL
     assert_eq!(std::env::var("MODEL").unwrap(), "from-provider");
@@ -312,11 +312,11 @@ model = "only-model"
 "#,
     );
 
-    let _home = LoomHomeGuard::set(dir.path());
+    let _home = AnureoHomeGuard::set(dir.path());
     let env = EnvGuard::new(&["MODEL", "OPENAI_API_KEY", "OPENAI_BASE_URL", "LLM_PROVIDER"]);
     env.clear();
 
-    load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+    load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
 
     assert_eq!(std::env::var("MODEL").unwrap(), "only-model");
     assert!(std::env::var("OPENAI_API_KEY").is_err());
@@ -343,23 +343,23 @@ model = "glm-5"
 "#,
     );
 
-    let _home = LoomHomeGuard::set(dir.path());
+    let _home = AnureoHomeGuard::set(dir.path());
     let env = EnvGuard::new(&[
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
         "MODEL",
         "LLM_PROVIDER",
-        "LOOM_MODELS_DEV_API_JSON",
+        "ANUREO_MODELS_DEV_API_JSON",
     ]);
     env.clear();
     std::env::set_var(
-        "LOOM_MODELS_DEV_API_JSON",
+        "ANUREO_MODELS_DEV_API_JSON",
         r#"{
   "zhipuai-coding-plan": { "api": "https://open.bigmodel.cn/api/paas/v4" }
 }"#,
     );
 
-    load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+    load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
 
     assert_eq!(std::env::var("OPENAI_API_KEY").unwrap(), "provider-key");
     assert_eq!(std::env::var("MODEL").unwrap(), "glm-5");
@@ -387,11 +387,11 @@ model = "other-model"
 "#,
     );
 
-    let _home = LoomHomeGuard::set(dir.path());
+    let _home = AnureoHomeGuard::set(dir.path());
     let env = EnvGuard::new(&["MODEL", "OPENAI_API_KEY"]);
     env.clear();
 
-    let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+    let report = load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
 
     assert!(std::env::var("MODEL").is_err());
     assert!(report.active_provider.is_none());
@@ -412,11 +412,11 @@ OPENAI_API_KEY = "from-env-key"
 "#,
     );
 
-    let _home = LoomHomeGuard::set(dir.path());
+    let _home = AnureoHomeGuard::set(dir.path());
     let env = EnvGuard::new(&["MODEL", "OPENAI_API_KEY"]);
     env.clear();
 
-    let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+    let report = load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
 
     assert_eq!(std::env::var("MODEL").unwrap(), "from-env-section");
     assert_eq!(std::env::var("OPENAI_API_KEY").unwrap(), "from-env-key");
@@ -445,11 +445,11 @@ model = "gpt-4o"
 "#,
     );
 
-    let _home = LoomHomeGuard::set(dir.path());
+    let _home = AnureoHomeGuard::set(dir.path());
     let env = EnvGuard::new(&["MODEL"]);
     env.clear();
 
-    let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+    let report = load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
 
     assert_eq!(std::env::var("MODEL").unwrap(), "gpt-4o");
     assert!(report.active_provider.is_some());
@@ -470,11 +470,11 @@ model = "gpt-4o"
 "#,
     );
 
-    let _home = LoomHomeGuard::set(dir.path());
+    let _home = AnureoHomeGuard::set(dir.path());
     let env = EnvGuard::new(&["MODEL"]);
     env.clear();
 
-    let report = load_and_apply_with_report("loom", None::<&std::path::Path>).unwrap();
+    let report = load_and_apply_with_report("anureo", None::<&std::path::Path>).unwrap();
 
     assert!(std::env::var("MODEL").is_err());
     assert!(report.active_provider.is_none());

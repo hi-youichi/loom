@@ -1,0 +1,11 @@
+[package]
+name = "anureo-util"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+description = "Pure utilities and algorithms shared across anureo crates"
+
+[dependencies]
+regex = "1"

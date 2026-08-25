@@ -1,6 +1,6 @@
 //! Bundled sync — manifest-driven synchronization of built-in skills.
 //!
-//! Built-in skills are shipped with Loom and synced to the user's skill directory.
+//! Built-in skills are shipped with anureo and synced to the user's skill directory.
 //! A manifest tracks origin hashes so user modifications are preserved.
 
 use serde::{Deserialize, Serialize};
@@ -256,7 +256,7 @@ pub fn sync_skills(bundled_dir: &Path, user_skills_dir: &Path) -> SyncResult {
             // re-installed. We only create + write if there is no manifest
             // entry (truly fresh sync) OR if the entry exists but the dir
             // was removed by some external process and the user later
-            // asked for a re-sync. Hermes honours a `LOOM_SKILL_FORCE`
+            // asked for a re-sync. Hermes honours a `ANUREO_SKILL_FORCE`
             // flag here; we keep that behaviour and rely on the manifest
             // entry to detect "user previously removed".
             // DELETED-BY-USER detection (`skills_sync.py:204-225`): the
@@ -269,7 +269,7 @@ pub fn sync_skills(bundled_dir: &Path, user_skills_dir: &Path) -> SyncResult {
             // dir is now gone" check.
             let user_deleted = manifest.entries.contains_key(name)
                 && !dest_dir.is_dir()
-                && std::env::var("LOOM_SKILL_FORCE").is_err();
+                && std::env::var("ANUREO_SKILL_FORCE").is_err();
             if user_deleted {
                 result.skipped.push(format!("{} (deleted by user)", name));
                 continue;

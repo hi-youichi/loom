@@ -1,8 +1,8 @@
-//! `_loomdesk.dev/session/*` — global session listing + archival.
+//! `_anureo.dev/session/*` — global session listing + archival.
 //!
-//! Replaces the legacy Express→loom `/api/experimental/session`
+//! Replaces the legacy Express→anureo `/api/experimental/session`
 //! passthrough: the sidebar pulls active and archived sessions from the
-//! Loom-owned `acp_sessions` table via canonical `list` (with a compatibility
+//! anureo-owned `acp_sessions` table via canonical `list` (with a compatibility
 //! `list-global` projection), and archive/unarchive mutations are persisted
 //! server-side and broadcast as `session.updated` global events so every
 //! connected client stays in sync.
@@ -21,7 +21,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::agent::LoomAcpAgent;
+use crate::agent::AnureoAcpAgent;
 use crate::extensions::{ExtensionContext, ExtensionError, ExtensionHandler};
 use crate::global_events::GlobalEventBus;
 #[cfg(test)]
@@ -36,7 +36,7 @@ const MAX_PAGE_LIMIT: usize = 1000;
 /// Handler for the `session` domain. The agent reference is late-bound
 /// (registry registration happens before agent construction).
 pub struct SessionListHandler {
-    agent: RwLock<Option<Weak<LoomAcpAgent>>>,
+    agent: RwLock<Option<Weak<AnureoAcpAgent>>>,
     global_bus: Option<Arc<GlobalEventBus>>,
     snapshots: Arc<Mutex<HashMap<String, Snapshot>>>,
     cursor_secret: [u8; 32],
@@ -83,7 +83,7 @@ impl SessionListHandler {
     }
 
     /// Number of legacy `list-global` calls handled by this runtime.
-    /// Canonical `_loomdesk.dev/session/list` calls are intentionally not
+    /// Canonical `_anureo.dev/session/list` calls are intentionally not
     /// included, so release telemetry can measure alias usage directly.
     pub fn legacy_alias_call_count(&self) -> u64 {
         self.legacy_alias_calls.load(Ordering::Relaxed)
@@ -103,11 +103,11 @@ impl SessionListHandler {
         self
     }
 
-    pub fn bind(&self, agent: &Arc<LoomAcpAgent>) {
+    pub fn bind(&self, agent: &Arc<AnureoAcpAgent>) {
         *self.agent.write().expect("session-list bind poisoned") = Some(Arc::downgrade(agent));
     }
 
-    fn agent(&self) -> Result<Arc<LoomAcpAgent>, ExtensionError> {
+    fn agent(&self) -> Result<Arc<AnureoAcpAgent>, ExtensionError> {
         self.agent
             .read()
             .expect("session-list agent poisoned")
@@ -438,7 +438,7 @@ impl SessionListHandler {
             .ok_or_else(|| ExtensionError::not_found("session not found"))?;
         let affected_sessions = delete_response_json
             .get("_meta")
-            .and_then(|meta| meta.get("loomdesk.dev"))
+            .and_then(|meta| meta.get("anureo.dev"))
             .and_then(|meta| meta.get("affectedSessions"))
             .cloned()
             .unwrap_or_else(|| json!([]));
@@ -455,7 +455,7 @@ impl SessionListHandler {
                 );
                 if let Some(ancestors) = delete_response_json
                     .get("_meta")
-                    .and_then(|meta| meta.get("loomdesk.dev"))
+                    .and_then(|meta| meta.get("anureo.dev"))
                     .and_then(|meta| meta.get("affectedSessions"))
                     .and_then(Value::as_array)
                 {
@@ -643,7 +643,7 @@ fn to_index_item(record: &SessionIndexRecord) -> Value {
     })
 }
 
-/// loom-shaped session info for `session.updated` global events; the FE
+/// anureo-shaped session info for `session.updated` global events; the FE
 /// event reducer requires `id` plus `time` (with `time.archived` for
 /// archival transitions).
 #[cfg(test)]
@@ -673,7 +673,7 @@ fn to_event_info(metadata: &SessionMetadata) -> Value {
 }
 
 /// Canonical global event projection. It retains the legacy `id`/`time`
-/// fields required by Loom Desk while carrying the complete SessionIndex
+/// fields required by anureo Desk while carrying the complete SessionIndex
 /// fields used for freshness, hierarchy, and metadata reconciliation.
 pub(crate) fn to_event_info_from_index(record: &SessionIndexRecord) -> Value {
     let cwd = record.cwd.to_string_lossy();
@@ -855,12 +855,12 @@ mod tests {
     use agent_client_protocol::schema::v1::NewSessionRequest;
     use std::sync::Arc;
 
-    use crate::agent::LoomAcpAgent;
+    use crate::agent::AnureoAcpAgent;
     use crate::client_capabilities::ClientCapabilitiesInfo;
     use crate::session_repository::SessionMetadata;
 
     #[test]
-    fn event_info_maps_loom_shape() {
+    fn event_info_maps_anureo_shape() {
         let metadata = SessionMetadata {
             session_id: "s-1".into(),
             thread_id: "t-1".into(),
@@ -1024,12 +1024,12 @@ mod tests {
     async fn legacy_list_global_returns_legacy_projection_from_shared_store() {
         let temp = tempfile::tempdir().unwrap();
         let agent =
-            Arc::new(LoomAcpAgent::new_with_db_path(temp.path().join("memory.db")).expect("agent"));
+            Arc::new(AnureoAcpAgent::new_with_db_path(temp.path().join("memory.db")).expect("agent"));
         let response = agent
             .new_session(
                 NewSessionRequest::new(temp.path()).meta(
                     json!({
-                        "loomdesk.dev": {
+                        "anureo.dev": {
                             "title": "Legacy visible",
                             "metadata": { "source": "shared-index" }
                         }
@@ -1078,13 +1078,13 @@ mod tests {
     async fn legacy_alias_paginates_with_canonical_snapshot_cursor() {
         let temp = tempfile::tempdir().unwrap();
         let agent =
-            Arc::new(LoomAcpAgent::new_with_db_path(temp.path().join("memory.db")).expect("agent"));
+            Arc::new(AnureoAcpAgent::new_with_db_path(temp.path().join("memory.db")).expect("agent"));
         for title in ["First", "Second"] {
             agent
                 .new_session(
                     NewSessionRequest::new(temp.path()).meta(
                         json!({
-                            "loomdesk.dev": {
+                            "anureo.dev": {
                                 "title": title,
                                 "metadata": { "source": title }
                             }
@@ -1149,7 +1149,7 @@ mod tests {
     async fn archive_handler_returns_canonical_target_and_changed_ancestor() {
         let temp = tempfile::tempdir().unwrap();
         let agent =
-            Arc::new(LoomAcpAgent::new_with_db_path(temp.path().join("memory.db")).expect("agent"));
+            Arc::new(AnureoAcpAgent::new_with_db_path(temp.path().join("memory.db")).expect("agent"));
         let root = agent
             .new_session(NewSessionRequest::new(temp.path()))
             .await
@@ -1160,7 +1160,7 @@ mod tests {
             .new_session(
                 NewSessionRequest::new(temp.path()).meta(
                     json!({
-                        "loomdesk.dev": {
+                        "anureo.dev": {
                             "parentSessionId": root,
                             "title": "Child",
                             "metadata": { "kind": "child" }
@@ -1176,19 +1176,19 @@ mod tests {
         let child = child_response.session_id.to_string();
         let child_json = serde_json::to_value(&child_response).expect("child response json");
         assert_eq!(
-            child_json["_meta"]["loomdesk.dev"]["affectedSessions"][0]["sessionId"],
+            child_json["_meta"]["anureo.dev"]["affectedSessions"][0]["sessionId"],
             root
         );
         assert_eq!(
-            child_json["_meta"]["loomdesk.dev"]["affectedSessions"][0]["indexVersion"],
-            child_json["_meta"]["loomdesk.dev"]["indexVersion"]
+            child_json["_meta"]["anureo.dev"]["affectedSessions"][0]["indexVersion"],
+            child_json["_meta"]["anureo.dev"]["indexVersion"]
         );
         assert_eq!(
-            child_json["_meta"]["loomdesk.dev"]["session"]["title"],
+            child_json["_meta"]["anureo.dev"]["session"]["title"],
             "Child"
         );
         assert_eq!(
-            child_json["_meta"]["loomdesk.dev"]["session"]["metadata"]["kind"],
+            child_json["_meta"]["anureo.dev"]["session"]["metadata"]["kind"],
             "child"
         );
 
@@ -1210,7 +1210,7 @@ mod tests {
             .await
             .expect("archive response");
         assert_eq!(response["session"]["sessionId"], child);
-        assert_eq!(response["session"]["archivedAt"].is_string(), true);
+        assert!(response["session"]["archivedAt"].is_string());
         assert_eq!(response["affectedSessions"][0]["sessionId"], root);
         assert_eq!(
             response["affectedSessions"][0]["indexVersion"],
@@ -1222,7 +1222,7 @@ mod tests {
     async fn update_handler_is_target_only_and_explicitly_has_no_ancestor_effects() {
         let temp = tempfile::tempdir().unwrap();
         let agent =
-            Arc::new(LoomAcpAgent::new_with_db_path(temp.path().join("memory.db")).expect("agent"));
+            Arc::new(AnureoAcpAgent::new_with_db_path(temp.path().join("memory.db")).expect("agent"));
         let root = agent
             .new_session(NewSessionRequest::new(temp.path()))
             .await
@@ -1233,7 +1233,7 @@ mod tests {
             .new_session(
                 NewSessionRequest::new(temp.path()).meta(
                     json!({
-                        "loomdesk.dev": {
+                        "anureo.dev": {
                             "parentSessionId": root,
                             "title": "Child",
                             "metadata": { "kind": "child" }
@@ -1293,7 +1293,7 @@ mod tests {
     async fn delete_response_contains_changed_ancestor_projection() {
         let temp = tempfile::tempdir().unwrap();
         let agent =
-            Arc::new(LoomAcpAgent::new_with_db_path(temp.path().join("memory.db")).expect("agent"));
+            Arc::new(AnureoAcpAgent::new_with_db_path(temp.path().join("memory.db")).expect("agent"));
         let root = agent
             .new_session(NewSessionRequest::new(temp.path()))
             .await
@@ -1304,7 +1304,7 @@ mod tests {
             .new_session(
                 NewSessionRequest::new(temp.path()).meta(
                     json!({
-                        "loomdesk.dev": { "parentSessionId": root, "title": "Child" }
+                        "anureo.dev": { "parentSessionId": root, "title": "Child" }
                     })
                     .as_object()
                     .cloned()
@@ -1340,7 +1340,7 @@ mod tests {
     async fn list_snapshot_pages_have_stable_version_without_duplicates() {
         let temp = tempfile::tempdir().unwrap();
         let agent =
-            Arc::new(LoomAcpAgent::new_with_db_path(temp.path().join("memory.db")).expect("agent"));
+            Arc::new(AnureoAcpAgent::new_with_db_path(temp.path().join("memory.db")).expect("agent"));
         for _ in 0..5 {
             agent
                 .new_session(NewSessionRequest::new(temp.path()))

@@ -1,7 +1,7 @@
 //! Telegram Bot Configuration Module
 //!
-//! Integrates with loom's config system to load bot configuration from:
-//! - `{loom_home}/telegram-bot.toml` (primary)
+//! Integrates with anureo's config system to load bot configuration from:
+//! - `{anureo_home}/telegram-bot.toml` (primary)
 //! - Supports environment variable interpolation: `${TOKEN}`
 
 mod error;

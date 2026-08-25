@@ -468,7 +468,7 @@ impl ExtensionHandler for TtsHandler {
             }
             "status" => Ok(serde_json::json!({
                 "available": true,
-                "provider": "loom-tts",
+                "provider": "anureo-tts",
                 "voices": ["default"],
                 "formats": ["mp3", "wav", "ogg"],
             })),
@@ -490,7 +490,7 @@ impl ExtensionHandler for TtsHandler {
                 Ok(serde_json::json!({
                     "spoken": true,
                     "available": true,
-                    "provider": "loom-tts",
+                    "provider": "anureo-tts",
                 }))
             }
             _ => Err(ExtensionError::method_not_found()),

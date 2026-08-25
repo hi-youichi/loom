@@ -4,10 +4,10 @@ use tempfile::TempDir;
 pub fn setup_test_home() -> TempDir {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
 
-    let loom_dir = temp_dir.path().join(".loom");
-    fs::create_dir_all(&loom_dir).expect("Failed to create .loom dir");
+    let anureo_dir = temp_dir.path().join(".anureo");
+    fs::create_dir_all(&anureo_dir).expect("Failed to create .anureo dir");
 
-    let agents_dir = loom_dir.join("agents");
+    let agents_dir = anureo_dir.join("agents");
     fs::create_dir_all(&agents_dir).expect("Failed to create agents dir");
 
     config::home::set_override(Some(temp_dir.path().to_path_buf()));
@@ -22,27 +22,27 @@ pub fn cleanup_test_home(_temp_dir: &TempDir) {
 
 pub struct TestEnvironment {
     pub temp_dir: TempDir,
-    pub loom_home: PathBuf,
+    pub anureo_home: PathBuf,
 }
 
 impl TestEnvironment {
     #[allow(dead_code)]
     pub fn new() -> Self {
         let temp_dir = setup_test_home();
-        let loom_home = temp_dir.path().to_path_buf();
+        let anureo_home = temp_dir.path().to_path_buf();
 
         Self {
             temp_dir,
-            loom_home,
+            anureo_home,
         }
     }
     #[allow(dead_code)]
     pub fn agents_dir(&self) -> PathBuf {
-        self.loom_home.join(".loom/agents")
+        self.anureo_home.join(".anureo/agents")
     }
     #[allow(dead_code)]
     pub fn last_model_path(&self) -> PathBuf {
-        self.loom_home.join("last-model")
+        self.anureo_home.join("last-model")
     }
 }
 

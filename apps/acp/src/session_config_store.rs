@@ -1,7 +1,7 @@
 //! Persistent storage for session configuration (model, mode).
 //!
 //! Stores session config in a separate SQLite table alongside the checkpoint database.
-//! This allows session configuration to survive Loom process restarts.
+//! This allows session configuration to survive anureo process restarts.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

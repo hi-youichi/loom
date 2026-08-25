@@ -1,4 +1,4 @@
-//! Load `[env]` table and `[[providers]]` from `~/.loom/config.toml`.
+//! Load `[env]` table and `[[providers]]` from `~/.anureo/config.toml`.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -7,7 +7,7 @@ use crate::LoadError;
 
 /// Returns path to `config.toml` if it exists. Public for config load report.
 pub fn config_path(_app_name: &str) -> Result<Option<PathBuf>, LoadError> {
-    let path = crate::home::loom_home().join("config.toml");
+    let path = crate::home::anureo_home().join("config.toml");
     if path.exists() {
         Ok(Some(path))
     } else {
@@ -154,7 +154,7 @@ pub struct LogsModuleConfig {
     /// Custom log directory for this module (overrides global `dir`).
     #[serde(default)]
     pub path: Option<PathBuf>,
-    /// Log level filter (tracing `EnvFilter` syntax, e.g. `"info"`, `"debug"`, `"loom=debug"`).
+    /// Log level filter (tracing `EnvFilter` syntax, e.g. `"info"`, `"debug"`, `"anureo=debug"`).
     ///
     /// Priority: `--log-level` > `RUST_LOG` (shell) > this > verbosity flags (`-v`…) > `off`.
     #[serde(default)]
@@ -184,17 +184,17 @@ impl LogsModuleConfig {
 /// ```toml
 /// [logging]
 /// level = "info"
-/// path = "~/.loom/loom.log"
+/// path = "~/.anureo/anureo.log"
 /// rotate = "daily"
 /// ```
 #[derive(serde::Deserialize, Clone, Debug, Default)]
 pub struct LoggingSection {
-    /// Log level filter (tracing `EnvFilter` syntax, e.g. `"info"`, `"debug"`, `"loom=debug"`).
+    /// Log level filter (tracing `EnvFilter` syntax, e.g. `"info"`, `"debug"`, `"anureo=debug"`).
     ///
     /// Priority: `--log-level` > `RUST_LOG` (shell) > this > verbosity flags (`-v`…) > `off`.
     #[serde(default)]
     pub level: Option<String>,
-    /// Log file path. Default: `~/.loom/loom.log`.
+    /// Log file path. Default: `~/.anureo/anureo.log`.
     #[serde(default)]
     pub path: Option<PathBuf>,
     /// Rotation strategy: `"none"` (default), `"daily"`, `"hourly"`.
@@ -231,7 +231,7 @@ impl LlmSection {
     }
 }
 
-/// Defaults applied to `loom session list` when the user does not provide the
+/// Defaults applied to `anureo session list` when the user does not provide the
 /// corresponding CLI flag. Loaded from the `[session]` table in `config.toml`.
 ///
 /// Example:
@@ -282,7 +282,7 @@ pub struct FullConfig {
     pub providers: Vec<ProviderDef>,
     pub llm: LlmSection,
     pub logging: LoggingSection,
-    /// `[session]` section with defaults for `loom session list`.
+    /// `[session]` section with defaults for `anureo session list`.
     /// `None` fields mean "no override", falling back to CLI hardcoded defaults.
     pub session: SessionSection,
 }
@@ -324,11 +324,11 @@ pub fn load_full_config(app_name: &str) -> Result<FullConfig, LoadError> {
 mod tests {
     use super::*;
 
-    struct LoomHomeGuard {
+    struct AnureoHomeGuard {
         prev: Option<std::path::PathBuf>,
     }
 
-    impl LoomHomeGuard {
+    impl AnureoHomeGuard {
         fn set(value: &std::path::Path) -> Self {
             let prev = crate::home::override_path();
             crate::home::set_override(Some(value.to_path_buf()));
@@ -336,7 +336,7 @@ mod tests {
         }
     }
 
-    impl Drop for LoomHomeGuard {
+    impl Drop for AnureoHomeGuard {
         fn drop(&mut self) {
             if let Some(p) = self.prev.as_ref() {
                 crate::home::set_override(Some(p.to_path_buf()));
@@ -349,8 +349,8 @@ mod tests {
     #[test]
     fn missing_config_returns_empty_map() {
         let dir = tempfile::tempdir().unwrap();
-        let _guard = LoomHomeGuard::set(dir.path());
-        let map = load_env_map("loom").unwrap();
+        let _guard = AnureoHomeGuard::set(dir.path());
+        let map = load_env_map("anureo").unwrap();
         assert!(map.is_empty());
     }
 
@@ -368,8 +368,8 @@ BAR = "baz"
         )
         .unwrap();
 
-        let _guard = LoomHomeGuard::set(dir.path());
-        let result = load_env_map("loom");
+        let _guard = AnureoHomeGuard::set(dir.path());
+        let result = load_env_map("anureo");
 
         let map = result.unwrap();
         assert_eq!(map.get("FOO"), Some(&"from_toml".to_string()));
@@ -381,8 +381,8 @@ BAR = "baz"
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("config.toml"), "[env]\n").unwrap();
 
-        let _guard = LoomHomeGuard::set(dir.path());
-        let result = load_env_map("loom");
+        let _guard = AnureoHomeGuard::set(dir.path());
+        let result = load_env_map("anureo");
 
         let map = result.unwrap();
         assert!(map.is_empty());
@@ -393,8 +393,8 @@ BAR = "baz"
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("config.toml"), "not valid toml [[[\n").unwrap();
 
-        let _guard = LoomHomeGuard::set(dir.path());
-        let result = load_env_map("loom");
+        let _guard = AnureoHomeGuard::set(dir.path());
+        let result = load_env_map("anureo");
 
         assert!(matches!(result, Err(crate::LoadError::XdgParse(_))));
     }
@@ -408,8 +408,8 @@ BAR = "baz"
         )
         .unwrap();
 
-        let _guard = LoomHomeGuard::set(dir.path());
-        let result = load_env_map("loom");
+        let _guard = AnureoHomeGuard::set(dir.path());
+        let result = load_env_map("anureo");
 
         let map = result.unwrap();
         assert!(map.is_empty());
@@ -485,8 +485,8 @@ temperature = 0.5
 "#,
         )
         .unwrap();
-        let _guard = LoomHomeGuard::set(dir.path());
-        let full = load_full_config("loom").unwrap();
+        let _guard = AnureoHomeGuard::set(dir.path());
+        let full = load_full_config("anureo").unwrap();
         assert_eq!(full.providers[0].temperature, Some(0.5));
     }
 
@@ -512,8 +512,8 @@ output_limit = 131072
 "#,
         )
         .unwrap();
-        let _guard = LoomHomeGuard::set(dir.path());
-        let full = load_full_config("loom").unwrap();
+        let _guard = AnureoHomeGuard::set(dir.path());
+        let full = load_full_config("anureo").unwrap();
         assert_eq!(full.providers.len(), 1);
         assert_eq!(full.providers[0].models.len(), 2);
         assert_eq!(full.providers[0].models[0].id, "glm-5.2");
@@ -536,8 +536,8 @@ default_format = "%h  %r  %t  (%c)"
 "#,
         )
         .unwrap();
-        let _guard = LoomHomeGuard::set(dir.path());
-        let full = load_full_config("loom").unwrap();
+        let _guard = AnureoHomeGuard::set(dir.path());
+        let full = load_full_config("anureo").unwrap();
         assert_eq!(full.session.default_limit, Some(200));
         assert_eq!(
             full.session.default_format.as_deref(),
@@ -551,8 +551,8 @@ default_format = "%h  %r  %t  (%c)"
         let dir = tempfile::tempdir().unwrap();
         // No [session] section — should fall back to empty SessionSection.
         std::fs::write(dir.path().join("config.toml"), "[env]\nFOO = \"x\"\n").unwrap();
-        let _guard = LoomHomeGuard::set(dir.path());
-        let full = load_full_config("loom").unwrap();
+        let _guard = AnureoHomeGuard::set(dir.path());
+        let full = load_full_config("anureo").unwrap();
         assert_eq!(full.session.default_limit, None);
         assert_eq!(full.session.default_format, None);
     }

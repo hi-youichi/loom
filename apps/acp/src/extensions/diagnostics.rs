@@ -399,8 +399,8 @@ impl DiagnosticsHandler {
         static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
         let start = START.get_or_init(std::time::Instant::now);
         Ok(serde_json::json!({
-            "loomdeskVersion": env!("CARGO_PKG_VERSION"),
-            "runtime": "loom",
+            "AnureoVersion": env!("CARGO_PKG_VERSION"),
+            "runtime": "anureo",
             "pid": std::process::id(),
             "startedAt": std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

@@ -2,10 +2,10 @@
 //!
 //! Replaces the Express SSE global-event streams (`/api/global/event`,
 //! `/api/notifications/stream`) with ACP JSON-RPC notifications
-//! (`_loomdesk.dev/global/update`) pushed over each subscribed connection.
+//! (`_anureo.dev/global/update`) pushed over each subscribed connection.
 //!
 //! Topics are coarse-grained change signals (`session`, `settings`, `git`,
-//! `notification`); payloads are loom-shaped events
+//! `notification`); payloads are anureo-shaped events
 //! (`{ type, properties }`) so the frontend event pipeline can reuse its
 //! existing reducers unchanged.
 
@@ -21,7 +21,7 @@ use crate::connection::ConnectionOutbound;
 use crate::connection_registry::ConnectionRegistry;
 
 /// JSON-RPC notification method used for all global events.
-pub const GLOBAL_UPDATE_METHOD: &str = "_loomdesk.dev/global/update";
+pub const GLOBAL_UPDATE_METHOD: &str = "_anureo.dev/global/update";
 
 /// Known topics. Subscriptions may also use `"*"` for everything.
 pub const TOPICS: &[&str] = &[
@@ -60,7 +60,7 @@ impl GlobalEventBus {
         *self.connections.lock().expect("global bus poisoned") = Some(registry);
     }
 
-    /// Publish an loom-shaped event (`{ type, properties }`) to every
+    /// Publish an anureo-shaped event (`{ type, properties }`) to every
     /// active subscription of `topic`.
     ///
     /// Fire-and-forget: slow consumers drop frames (events are change

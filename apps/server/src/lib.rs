@@ -1,4 +1,4 @@
-//! loom-server library surface — ACP-only server.
+//! anureo-server library surface — ACP-only server.
 
 pub mod acp_hub;
 pub mod auth;

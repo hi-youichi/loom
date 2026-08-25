@@ -1,4 +1,4 @@
-//! LSP (Language Server Protocol) integration for Loom.
+//! LSP (Language Server Protocol) integration for anureo.
 //!
 //! This module provides LSP-based code intelligence capabilities including:
 //! - Code completion
@@ -44,7 +44,7 @@ pub mod performance;
 pub mod sync;
 pub mod types;
 pub mod workspace;
-// mod examples; // Disabled: examples.rs uses `loom::` which is not available within the loom crate
+// mod examples; // Disabled: examples.rs uses `anureo::` which is not available within the anureo crate
 
 #[cfg(test)]
 mod tests;

@@ -15,7 +15,7 @@
 //! # Example
 //!
 //! ```rust
-//! use loom_llm::support::uuid6::uuid6;
+//! use anureo_llm::support::uuid6::uuid6;
 //!
 //! let id = uuid6();
 //! println!("Checkpoint ID: {}", id);
@@ -139,7 +139,7 @@ impl std::fmt::Display for Uuid6 {
 /// # Example
 ///
 /// ```rust
-/// use loom_llm::support::uuid6::uuid6;
+/// use anureo_llm::support::uuid6::uuid6;
 ///
 /// let id1 = uuid6();
 /// let id2 = uuid6();

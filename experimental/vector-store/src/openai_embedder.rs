@@ -24,7 +24,7 @@ use checkpoint::StoreError;
 /// # Examples
 ///
 /// ```ignore
-/// use loom::memory::OpenAIEmbedder;
+/// use anureo::memory::OpenAIEmbedder;
 ///
 /// let embedder = OpenAIEmbedder::new("text-embedding-3-small");
 /// let vectors = embedder.embed(&["Hello, world!"]).await?;
@@ -83,7 +83,7 @@ impl OpenAIEmbedder {
     ///
     /// ```ignore
     /// use async_openai::config::OpenAIConfig;
-    /// use loom::memory::OpenAIEmbedder;
+    /// use anureo::memory::OpenAIEmbedder;
     ///
     /// let config = OpenAIConfig::new().with_api_key("sk-...");
     /// let embedder = OpenAIEmbedder::with_config(config, "text-embedding-3-small");

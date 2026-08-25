@@ -9,7 +9,7 @@ use tokio::sync::{mpsc, oneshot};
 /// protocol — `request()` is not yet wired into the event bridge but will be
 /// once command-execution interception is implemented.
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)] // reserved: Codex approval protocol (see docs/dev/loom-codex-daemon.md)
+#[allow(dead_code)] // reserved: Codex approval protocol (see docs/dev/anureo-codex-daemon.md)
 pub enum ApprovalResult {
     Approved,
     Denied,

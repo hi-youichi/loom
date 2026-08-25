@@ -6,7 +6,7 @@ self.addEventListener("unhandledrejection", (event) => {
   event.preventDefault();
 });
 
-const NATIVE_HOST_NAME = "com.loom.browser";
+const NATIVE_HOST_NAME = "com.anureo.browser";
 
 // --- State ---
 let nativePort = null;

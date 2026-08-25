@@ -30,7 +30,7 @@ page.on("console", (m) => {
 
 await page.goto("http://localhost:5180/", { waitUntil: "domcontentloaded" });
 await page.evaluate(() => {
-  const dir = "C:/Users/heycj/dev/loom";
+  const dir = "C:/Users/heycj/dev/anureo";
   localStorage.setItem("lastDirectory", dir);
   localStorage.setItem("directory-store", JSON.stringify({
     state: { currentDirectory: dir, directoryHistory: [dir], historyIndex: 0, homeDirectory: dir, hasPersistedDirectory: true, isHomeReady: true, isSwitchingDirectory: false },
@@ -47,7 +47,7 @@ const clicked = await page.evaluate(() => {
 });
 console.log(`[${now()}s] session-ish elements: ${clicked}`);
 try {
-  await page.getByText(/loom|main|dev|test|fix/i).first().click({ timeout: 4000 });
+  await page.getByText(/anureo|main|dev|test|fix/i).first().click({ timeout: 4000 });
   console.log(`[${now()}s] clicked session-ish text`);
 } catch (e) { console.log(`[${now()}s] click failed: ${String(e).slice(0, 120)}`); }
 await page.waitForTimeout(4000);

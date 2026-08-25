@@ -1767,7 +1767,7 @@ mod tests {
         registry.register("pairing", Arc::new(PairingHandler::new()));
         let ctx = make_ctx("conn-1", "user");
         let result = registry
-            .dispatch("_loomdesk.dev/pairing/create", json!({}), &ctx)
+            .dispatch("_anureo.dev/pairing/create", json!({}), &ctx)
             .await
             .unwrap();
         assert!(result["secret"].is_string());
@@ -1780,13 +1780,13 @@ mod tests {
         registry.register("pairing", Arc::new(PairingHandler::new()));
         let ctx = make_ctx("conn-1", "user");
         let created = registry
-            .dispatch("_loomdesk.dev/pairing/create", json!({}), &ctx)
+            .dispatch("_anureo.dev/pairing/create", json!({}), &ctx)
             .await
             .unwrap();
         let secret = created["secret"].as_str().unwrap().to_string();
         let result = registry
             .dispatch(
-                "_loomdesk.dev/pairing/redeem",
+                "_anureo.dev/pairing/redeem",
                 json!({
                     "secret": secret,
                     "clientInfo": default_client_info()
@@ -1804,7 +1804,7 @@ mod tests {
         registry.register("pairing", Arc::new(PairingHandler::new()));
         let ctx = make_ctx("conn-1", "user");
         let result = registry
-            .dispatch("_loomdesk.dev/pairing/pending_list", json!({}), &ctx)
+            .dispatch("_anureo.dev/pairing/pending_list", json!({}), &ctx)
             .await
             .unwrap();
         assert!(result["items"].is_array());
@@ -1816,13 +1816,13 @@ mod tests {
         registry.register("pairing", Arc::new(PairingHandler::new()));
         let ctx = make_ctx("conn-1", "user");
         let created = registry
-            .dispatch("_loomdesk.dev/pairing/create", json!({}), &ctx)
+            .dispatch("_anureo.dev/pairing/create", json!({}), &ctx)
             .await
             .unwrap();
         let pid = created["pairingId"].as_str().unwrap().to_string();
         let result = registry
             .dispatch(
-                "_loomdesk.dev/pairing/cancel",
+                "_anureo.dev/pairing/cancel",
                 json!({"pairingId": pid}),
                 &ctx,
             )
@@ -1837,7 +1837,7 @@ mod tests {
         registry.register("pairing", Arc::new(PairingHandler::new()));
         let ctx = make_ctx("conn-1", "user");
         let result = registry
-            .dispatch("_loomdesk.dev/pairing/transports", json!({}), &ctx)
+            .dispatch("_anureo.dev/pairing/transports", json!({}), &ctx)
             .await
             .unwrap();
         assert!(result["transports"].is_array());
@@ -1849,7 +1849,7 @@ mod tests {
         registry.register("pairing", Arc::new(PairingHandler::new()));
         let ctx = make_ctx("conn-1", "user");
         let err = registry
-            .dispatch("_loomdesk.dev/pairing/unknown", json!({}), &ctx)
+            .dispatch("_anureo.dev/pairing/unknown", json!({}), &ctx)
             .await
             .unwrap_err();
         assert_eq!(err.code, -32601);

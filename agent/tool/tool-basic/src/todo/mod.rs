@@ -1,8 +1,8 @@
 //! Todo tools: todo_write, todo_read.
 //!
 //! Persist todo list as JSON:
-//! - With thread_id: `~/.loom/thread/{thread_id}/todo.json`
-//! - Without thread_id: `~/.loom/todo.json` (global fallback)
+//! - With thread_id: `~/.anureo/thread/{thread_id}/todo.json`
+//! - Without thread_id: `~/.anureo/todo.json` (global fallback)
 
 mod todo_read;
 mod todo_write;
@@ -13,12 +13,12 @@ pub use todo_write::{TodoWriteTool, TOOL_TODO_WRITE};
 const TODOS_FILENAME: &str = "todo.json";
 
 /// Returns the path to the todo list file.
-/// - With thread_id: `~/.loom/thread/{thread_id}/todo.json`
-/// - Without thread_id: `~/.loom/todo.json` (global fallback)
+/// - With thread_id: `~/.anureo/thread/{thread_id}/todo.json`
+/// - Without thread_id: `~/.anureo/todo.json` (global fallback)
 pub fn todo_file_path(
     thread_id: Option<&str>,
 ) -> Result<std::path::PathBuf, tool_core::ToolSourceError> {
-    let base = config::home::loom_home();
+    let base = config::home::anureo_home();
     match thread_id {
         Some(tid) => Ok(base.join("thread").join(tid).join(TODOS_FILENAME)),
         None => Ok(base.join(TODOS_FILENAME)),
@@ -43,7 +43,7 @@ mod tests {
 
     /// Given a --home override, todo_file_path returns <home>/todo.json.
     #[test]
-    fn todo_file_path_uses_loom_home() {
+    fn todo_file_path_uses_anureo_home() {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = super::XDG_TEST_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
@@ -53,7 +53,7 @@ mod tests {
         config::home::set_override(None);
     }
 
-    /// Given the loom home override and thread_id, todo_file_path returns loom_home/thread/{thread_id}/todo.json.
+    /// Given the anureo home override and thread_id, todo_file_path returns anureo_home/thread/{thread_id}/todo.json.
     #[test]
     fn todo_file_path_with_thread_id() {
         let _lock = crate::env_test_lock().lock().unwrap();

@@ -1,25 +1,25 @@
 /**
  * e2e/tests/web/multi-wt-goal.spec.ts
  *
- * OpenChamber Web Multi-run + Worktree + Goals Tests
+ * anureo Web Multi-run + Worktree + Goals Tests
  * 覆盖：MR-001~004, WT-001~004, GOAL-001~005（共 13 用例）
  *
  * 使用 fixtures:
  * - app: 提供 baseURL
- * - mock-loom: 拦截 HTTP API
+ * - mock-anureo: 拦截 HTTP API
  * - temp-git-repo: 创建临时 git 仓库
  *
- * 参考 docs/references/openchamber-text-acceptance-test-cases.md §10, §11, §12
+ * 参考 docs/references/anureo-text-acceptance-test-cases.md §10, §11, §12
  */
 
 import { test as base, expect } from "@playwright/test";
 import { app } from "../../fixtures/app";
-import { mockLoom } from "../../fixtures/mock-loom";
+import { mockanureo } from "../../fixtures/mock-anureo";
 import { tempGitRepo } from "../../fixtures/temp-git-repo";
 
 const test = base.extend({
   ...app,
-  ...mockLoom,
+  ...mockanureo,
   ...tempGitRepo,
 });
 

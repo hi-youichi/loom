@@ -1,7 +1,7 @@
 //! `skill` crate — skill discovery, storage, and usage tracking.
 //!
-//! This crate provides the core skill functionality for Loom, independent of
-//! the main loom runtime. It includes:
+//! This crate provides the core skill functionality for anureo, independent of
+//! the main anureo runtime. It includes:
 //!
 //! - **Discovery**: Scanning and parsing skill files from various locations
 //! - **Storage**: CRUD operations for skill persistence

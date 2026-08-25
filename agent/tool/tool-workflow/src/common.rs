@@ -103,7 +103,7 @@ mod tests {
         let raw = json!({
             "schema_version": 1,
             "instance_id": "run-1",
-            "instance_dir": "loom-instance_1",
+            "instance_dir": "anureo-instance_1",
             "workflow": {"kind": "file", "name": "wf", "path": "/abs/path/wf.lua"},
             "agents": [
                 {"agent_id": "a", "output_ref": "agent-outputs/a.txt", "output_size": 4096}

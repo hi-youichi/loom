@@ -1,13 +1,13 @@
 //! Message and state display formatting for stderr output.
 //!
-//! Provides truncation and formatting utilities for [`Message`](loom::Message)
+//! Provides truncation and formatting utilities for [`Message`](anureo::Message)
 //! and agent state types (ReActState, TotState, DupState, GotState) when streaming
 //! to the CLI.
 
 use agent::state::ReActState;
 use agent::state::ToolResult;
 use agent::{DupState, GotState, TotState};
-use loom_llm::{message::Message, ToolCall};
+use anureo_llm::{message::Message, ToolCall};
 use std::collections::HashMap;
 
 /// Indent for nested state fields (one level).
@@ -187,7 +187,7 @@ mod tests {
     use super::*;
     use agent::state::ToolResult;
     use agent::{TaskGraph, TaskNode, TaskNodeState, TaskStatus};
-    use loom_llm::ToolCall;
+    use anureo_llm::ToolCall;
     use std::collections::HashMap;
 
     #[test]

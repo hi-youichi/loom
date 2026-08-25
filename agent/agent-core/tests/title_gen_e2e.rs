@@ -1,12 +1,12 @@
 //! Temporary e2e test: real LLM title generation.
-//! Loads providers from `~/.loom/config.toml` and tries each one until one succeeds.
+//! Loads providers from `~/.anureo/config.toml` and tries each one until one succeeds.
 
 use std::sync::Arc;
 
 use env_config::{default_model, xdg_toml};
-use loom_llm::factory::create_llm_provider;
-use loom_llm::message::Message;
-use loom_llm::LlmProvider;
+use anureo_llm::factory::create_llm_provider;
+use anureo_llm::message::Message;
+use anureo_llm::LlmProvider;
 
 fn sample_conversation() -> Vec<Message> {
     vec![
@@ -23,7 +23,7 @@ fn sample_conversation() -> Vec<Message> {
 
 #[tokio::test]
 async fn e2e_generate_title_real_llm() {
-    let full = xdg_toml::load_full_config("loom").expect("load ~/.loom/config.toml");
+    let full = xdg_toml::load_full_config("anureo").expect("load ~/.anureo/config.toml");
     let conv = sample_conversation();
     let msgs = agent::agent::react::title_generator::build_title_messages(&conv);
     let fallback_model = default_model();
@@ -41,7 +41,7 @@ async fn e2e_generate_title_real_llm() {
             continue;
         };
 
-        let mut entry = loom_llm::ModelEntry::new(&p.name, &model).with_api_key(api_key);
+        let mut entry = anureo_llm::ModelEntry::new(&p.name, &model).with_api_key(api_key);
         entry = entry
             .with_base_url(&base_url)
             .with_provider_type(p.provider_type.as_deref().unwrap_or("openai_compat"));

@@ -1,8 +1,8 @@
-//! Todo-write tool: write todo list to thread data (~/.loom/thread/{thread_id}/todo.json).
+//! Todo-write tool: write todo list to thread data (~/.anureo/thread/{thread_id}/todo.json).
 //!
 //! Accepts a full list of todos (id, content, status, priority); writes JSON.
 //! Uses thread_id from ToolCallContext.config.thread_id for isolation.
-//! Effective definition for LLM comes from `loom/tools/todo_write.yaml` via [`YamlSpecToolSource`](tool_core::YamlSpecToolSource) override.
+//! Effective definition for LLM comes from `anureo/tools/todo_write.yaml` via [`YamlSpecToolSource`](tool_core::YamlSpecToolSource) override.
 
 use std::sync::Arc;
 
@@ -19,8 +19,8 @@ pub use tool_core::tool_name::TOOL_TODO_WRITE;
 
 /// Tool that writes the todo list to thread context.
 ///
-/// Path is `~/.loom/thread/{thread_id}/todo.json` when thread_id is provided;
-/// falls back to `~/.loom/todo.json` for backward compatibility.
+/// Path is `~/.anureo/thread/{thread_id}/todo.json` when thread_id is provided;
+/// falls back to `~/.anureo/todo.json` for backward compatibility.
 /// Creates parent dirs if needed.
 pub struct TodoWriteTool {
     /// Kept for registration compatibility with file tool source; path uses XDG, not this.
@@ -85,7 +85,7 @@ impl Tool for TodoWriteTool {
         TOOL_TODO_WRITE
     }
 
-    /// Minimal spec; overridden by `loom/tools/todo_write.yaml` in YamlSpecToolSource.
+    /// Minimal spec; overridden by `anureo/tools/todo_write.yaml` in YamlSpecToolSource.
     fn spec(&self) -> tool_core::ToolSpec {
         tool_core::ToolSpec {
             name: TOOL_TODO_WRITE.to_string(),

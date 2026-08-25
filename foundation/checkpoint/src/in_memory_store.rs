@@ -67,7 +67,7 @@ fn map_key(namespace: &Namespace, key: &str) -> String {
 /// ## Example
 ///
 /// ```rust,ignore
-/// use loom::memory::{InMemoryStore, Store};
+/// use anureo::memory::{InMemoryStore, Store};
 ///
 /// let store = InMemoryStore::new();
 /// store.put(&vec!["user".into()], "key1", &json!({"data": 1})).await?;

@@ -1,11 +1,11 @@
-//! Todo-read tool: read todo list from thread data (e.g. ~/.loom/thread/{thread_id}/todo.json).
+//! Todo-read tool: read todo list from thread data (e.g. ~/.anureo/thread/{thread_id}/todo.json).
 //!
 //! Returns JSON array; returns empty array if file is missing or invalid.
 //! Uses [`cross_xdg`] for path. Interacts with [`Tool`](tool_core::Tool).
-//! Effective definition for LLM comes from `loom/tools/todo_read.yaml` via [`YamlSpecToolSource`](tool_core::YamlSpecToolSource) override.
+//! Effective definition for LLM comes from `anureo/tools/todo_read.yaml` via [`YamlSpecToolSource`](tool_core::YamlSpecToolSource) override.
 //!
 //! When thread_id is provided via context.config.thread_id, uses thread-specific path.
-//! Otherwise falls back to global ~/.loom/todo.json for backward compatibility.
+//! Otherwise falls back to global ~/.anureo/todo.json for backward compatibility.
 
 use std::sync::Arc;
 
@@ -42,7 +42,7 @@ impl Tool for TodoReadTool {
         TOOL_TODO_READ
     }
 
-    /// Minimal spec; overridden by `loom/tools/todo_read.yaml` in YamlSpecToolSource.
+    /// Minimal spec; overridden by `anureo/tools/todo_read.yaml` in YamlSpecToolSource.
     fn spec(&self) -> tool_core::ToolSpec {
         tool_core::ToolSpec {
             name: TOOL_TODO_READ.to_string(),

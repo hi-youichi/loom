@@ -288,7 +288,7 @@ impl ExtensionHandler for PreviewHandler {
                 "port": port,
                 "url": url,
                 "proxyBasePath": "/api/preview-proxy/127.0.0.1",
-                "proxyMethod": "_loomdesk.dev/preview/proxy",
+                "proxyMethod": "_anureo.dev/preview/proxy",
                 "previewToken": preview_token,
                 "expiresAt": now + ttl_ms,
                 "ttlMs": ttl_ms,

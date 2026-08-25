@@ -879,8 +879,8 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 // ============================================================================
 // Fixtures — used only by tests below. Reads real artefacts under
-// LOOM_TEST_INSTANCES_DIR/loom-instance_1783783769 (and friends) when the env var
-// is set, otherwise falls back to <repo-root>/.loom/instances/.../ .  When the
+// ANUREO_TEST_INSTANCES_DIR/anureo-instance_1783783769 (and friends) when the env var
+// is set, otherwise falls back to <repo-root>/.anureo/instances/.../ .  When the
 // file is absent in both places, the test reports a no-op skip (not a fail).
 // ============================================================================
 
@@ -889,11 +889,11 @@ mod fixtures {
     use std::path::{Path, PathBuf};
 
     /// Resolve the instance fixtures dir using, in order:
-    ///   1. `LOOM_TEST_INSTANCES_DIR` env var (absolute path or relative-to-CWD)
-    ///   2. `<CARGO_MANIFEST_DIR>/../../../.loom/instances/` (the conventional
+    ///   1. `ANUREO_TEST_INSTANCES_DIR` env var (absolute path or relative-to-CWD)
+    ///   2. `<CARGO_MANIFEST_DIR>/../../../.anureo/instances/` (the conventional
     ///      repo-root location)
     pub fn instances_dir() -> Option<PathBuf> {
-        if let Some(env_val) = std::env::var_os("LOOM_TEST_INSTANCES_DIR") {
+        if let Some(env_val) = std::env::var_os("ANUREO_TEST_INSTANCES_DIR") {
             let p = PathBuf::from(env_val);
             if p.is_dir() {
                 return Some(p);
@@ -907,7 +907,7 @@ mod fixtures {
             .join("..")
             .join("..")
             .join("..")
-            .join(".loom")
+            .join(".anureo")
             .join("instances");
         if candidate.is_dir() {
             Some(candidate)
@@ -964,7 +964,7 @@ mod tests {
         WorkflowRef {
             kind: "file",
             name: Some("hello-agents".to_string()),
-            path: Some(".loom/workflows/hello-agents.lua".to_string()),
+            path: Some(".anureo/workflows/hello-agents.lua".to_string()),
         }
     }
 
@@ -1036,13 +1036,13 @@ mod tests {
             &events,
             None,
             &file_ref(),
-            "loom-instance_1783783769".to_string(),
+            "anureo-instance_1783783769".to_string(),
             &checkpoint_bytes,
         );
 
         assert_eq!(meta.schema_version, 1);
         assert_eq!(meta.instance_id, "run-1");
-        assert_eq!(meta.instance_dir, "loom-instance_1783783769");
+        assert_eq!(meta.instance_dir, "anureo-instance_1783783769");
         assert_eq!(meta.workflow.kind, "file");
         assert_eq!(meta.workflow.name.as_deref(), Some("hello-agents"));
         assert_eq!(meta.status, "completed");
@@ -1085,7 +1085,7 @@ mod tests {
             &events,
             None,
             &inline_ref(),
-            "loom-instance_x".into(),
+            "anureo-instance_x".into(),
             b"{}",
         );
         assert_eq!(meta.status, "cancelled");
@@ -1252,7 +1252,7 @@ end
         InstanceMeta {
             schema_version: 1,
             instance_id: "run-1".into(),
-            instance_dir: "loom-instance_x".into(),
+            instance_dir: "anureo-instance_x".into(),
             workflow: file_ref(),
             status: "completed".into(),
             created_at: 100,
@@ -1365,7 +1365,7 @@ end
 
     // ============================================================
     // Fixture-backed tests — skip cleanly when artefacts are absent.
-    // Activate by exporting LOOM_TEST_INSTANCES_DIR=<path-to-.loom/instances>.
+    // Activate by exporting ANUREO_TEST_INSTANCES_DIR=<path-to-.anureo/instances>.
     // ============================================================
 
     fn fixture_dir() -> Option<std::path::PathBuf> {
@@ -1392,7 +1392,7 @@ end
     fn skip_if_missing(name: &str) -> bool {
         match fixture_dir() {
             None => {
-                eprintln!("skip: no fixture dir (set LOOM_TEST_INSTANCES_DIR)");
+                eprintln!("skip: no fixture dir (set ANUREO_TEST_INSTANCES_DIR)");
                 true
             }
             Some(d) if !d.join(name).is_dir() => {
@@ -1405,16 +1405,16 @@ end
 
     #[test]
     fn build_meta_multi_agent_success() {
-        if skip_if_missing("loom-instance_1783786025") {
+        if skip_if_missing("anureo-instance_1783786025") {
             return;
         }
-        let (ckpt, bytes, events, src) = load_run("loom-instance_1783786025").unwrap();
+        let (ckpt, bytes, events, src) = load_run("anureo-instance_1783786025").unwrap();
         let meta = build_instance_meta(
             &ckpt,
             &events,
             src.as_deref(),
             &file_ref(),
-            "loom-instance_1783786025".into(),
+            "anureo-instance_1783786025".into(),
             &bytes,
         );
         assert_eq!(meta.status, "completed");
@@ -1447,16 +1447,16 @@ end
 
     #[test]
     fn build_meta_failed_run() {
-        if skip_if_missing("loom-instance_1783784203") {
+        if skip_if_missing("anureo-instance_1783784203") {
             return;
         }
-        let (ckpt, bytes, events, _src) = load_run("loom-instance_1783784203").unwrap();
+        let (ckpt, bytes, events, _src) = load_run("anureo-instance_1783784203").unwrap();
         let meta = build_instance_meta(
             &ckpt,
             &events,
             None,
             &file_ref(),
-            "loom-instance_1783784203".into(),
+            "anureo-instance_1783784203".into(),
             &bytes,
         );
         assert_eq!(meta.status, "failed");
@@ -1473,15 +1473,15 @@ end
 
     #[test]
     fn checkpoint_hash_matches_known_value() {
-        if skip_if_missing("loom-instance_1783783769") {
+        if skip_if_missing("anureo-instance_1783783769") {
             return;
         }
         let instances = fixture_dir().unwrap();
         let ckpt_path = instances
-            .join("loom-instance_1783783769")
+            .join("anureo-instance_1783783769")
             .join("checkpoint.json");
         let bytes = fixtures::load_bytes(
-            &instances.join("loom-instance_1783783769"),
+            &instances.join("anureo-instance_1783783769"),
             "checkpoint.json",
         )
         .unwrap();
@@ -1503,7 +1503,7 @@ end
             &events,
             None,
             &file_ref(),
-            "loom-instance_1783783769".into(),
+            "anureo-instance_1783783769".into(),
             &bytes,
         );
         assert_eq!(meta.checkpoint_hash, expected);

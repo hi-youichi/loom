@@ -2,7 +2,7 @@
 name = "skill"
 version.workspace = true
 edition.workspace = true
-description = "Skill discovery, storage, and usage tracking for Loom"
+description = "Skill discovery, storage, and usage tracking for anureo"
 license.workspace = true
 
 [dependencies]

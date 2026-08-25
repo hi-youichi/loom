@@ -3,7 +3,7 @@
 //! Production-grade Telegram bot framework built on [teloxide] with:
 //!
 //! - **Multi-bot support** — run several bots from a single process via long polling
-//! - **Streaming agent** — real-time Think / Act streaming powered by Loom
+//! - **Streaming agent** — real-time Think / Act streaming powered by anureo
 //! - **Slash commands** — extensible `CommandDispatcher` for `/model`, `/reset`, `/help`
 //! - **Media downloads** — photos, videos, documents with metadata
 //! - **Model selection** — SQLite-backed model catalog with fuzzy search
@@ -11,7 +11,7 @@
 //!
 //! # Configuration
 //!
-//! Uses loom's config system: `~/.loom/telegram-bot.toml`
+//! Uses anureo's config system: `~/.anureo/telegram-bot.toml`
 //!
 //! ```toml
 //! [settings]
@@ -71,7 +71,7 @@ pub mod prelude {
 /// Test doubles for integration tests and harnesses. Not used by the production binary.
 pub mod mock;
 
-pub use agent::LoomAgentRunner;
+pub use agent::AnureoAgentRunner;
 pub use bot::{run_bots, run_with_config, BotManager};
 pub use config::{
     load_config, load_from_path, AgentConfig, BotConfig, ConfigError, Settings, StreamingConfig,
@@ -90,5 +90,5 @@ pub use router::default_handler;
 pub use router::handle_message_with_deps;
 pub use sender::TeloxideSender;
 pub use session::SqliteSessionManager;
-pub use streaming::{run_loom_agent_streaming, stream_message_handler_simple, StreamCommand};
+pub use streaming::{run_anureo_agent_streaming, stream_message_handler_simple, StreamCommand};
 pub use traits::{AgentRunContext, AgentRunner, FileDownloader, MessageSender, SessionManager};

@@ -1,4 +1,4 @@
-//! Vector search Store implementations for Loom.
+//! Vector search Store implementations for anureo.
 //!
 //! Provides embedders and vector-backed [`Store`] implementations for semantic
 //! search over long-term memory.

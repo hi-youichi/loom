@@ -1,7 +1,7 @@
 param(
   [Parameter(Mandatory = $true)]
-  [string]$NewLoomBinary,
-  [string]$OldLoomBinary,
+  [string]$NewanureoBinary,
+  [string]$OldanureoBinary,
   [string]$OutputDir = (Join-Path (Get-Location) "session-list-compat-results"),
   [string]$TestName = "e2e_session_list"
 )
@@ -25,35 +25,35 @@ function Get-BinaryIdentity([string]$Path) {
   }
 }
 
-$newBinary = Resolve-ExistingFile $NewLoomBinary "New Loom binary"
-$oldBinary = if ($OldLoomBinary) {
-  Resolve-ExistingFile $OldLoomBinary "Old Loom binary"
+$newBinary = Resolve-ExistingFile $NewanureoBinary "New anureo binary"
+$oldBinary = if ($OldanureoBinary) {
+  Resolve-ExistingFile $OldanureoBinary "Old anureo binary"
 } else { $null }
 
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 $resolvedOutput = (Resolve-Path -LiteralPath $OutputDir).Path
-$runs = @(@{ name = "new-loom"; binary = $newBinary })
-if ($oldBinary) { $runs += @{ name = "old-loom"; binary = $oldBinary } }
+$runs = @(@{ name = "new-anureo"; binary = $newBinary })
+if ($oldBinary) { $runs += @{ name = "old-anureo"; binary = $oldBinary } }
 
-$previousBinary = $env:LOOM_ACP_BINARY
-$previousLegacyExpectation = $env:LOOM_SESSION_LIST_EXPECT_LEGACY
+$previousBinary = $env:ANUREO_ACP_BINARY
+$previousLegacyExpectation = $env:ANUREO_SESSION_LIST_EXPECT_LEGACY
 $results = [System.Collections.Generic.List[object]]::new()
 $seenBinaryHashes = [System.Collections.Generic.HashSet[string]]::new()
 try {
   foreach ($run in $runs) {
     $logPath = Join-Path $resolvedOutput "$($run.name).log"
     $started = [DateTime]::UtcNow
-    $env:LOOM_ACP_BINARY = $run.binary
-    if ($run.name -eq "old-loom") {
-      $env:LOOM_SESSION_LIST_EXPECT_LEGACY = "1"
+    $env:ANUREO_ACP_BINARY = $run.binary
+    if ($run.name -eq "old-anureo") {
+      $env:ANUREO_SESSION_LIST_EXPECT_LEGACY = "1"
     } else {
-      Remove-Item Env:LOOM_SESSION_LIST_EXPECT_LEGACY -ErrorAction SilentlyContinue
+      Remove-Item Env:ANUREO_SESSION_LIST_EXPECT_LEGACY -ErrorAction SilentlyContinue
     }
     Write-Host "[compat] $($run.name): $($run.binary)"
     Write-Host "[compat] output: $logPath"
 
     $captured = @(
-      & cargo test -p loom-acp --test $TestName -- --nocapture 2>&1 |
+      & cargo test -p anureo-acp --test $TestName -- --nocapture 2>&1 |
         Tee-Object -FilePath $logPath
     )
     $exitCode = $LASTEXITCODE
@@ -65,7 +65,7 @@ try {
     [void]$seenBinaryHashes.Add($identity.sha256)
     $results.Add([ordered]@{
         name = $run.name
-        expectedMode = if ($run.name -eq "old-loom") { "legacy" } else { "canonical" }
+        expectedMode = if ($run.name -eq "old-anureo") { "legacy" } else { "canonical" }
         binary = $run.binary
         binarySha256 = $identity.sha256
         binarySizeBytes = $identity.sizeBytes
@@ -90,14 +90,14 @@ try {
 }
 finally {
   if ($null -eq $previousBinary) {
-    Remove-Item Env:LOOM_ACP_BINARY -ErrorAction SilentlyContinue
+    Remove-Item Env:ANUREO_ACP_BINARY -ErrorAction SilentlyContinue
   } else {
-    $env:LOOM_ACP_BINARY = $previousBinary
+    $env:ANUREO_ACP_BINARY = $previousBinary
   }
   if ($null -eq $previousLegacyExpectation) {
-    Remove-Item Env:LOOM_SESSION_LIST_EXPECT_LEGACY -ErrorAction SilentlyContinue
+    Remove-Item Env:ANUREO_SESSION_LIST_EXPECT_LEGACY -ErrorAction SilentlyContinue
   } else {
-    $env:LOOM_SESSION_LIST_EXPECT_LEGACY = $previousLegacyExpectation
+    $env:ANUREO_SESSION_LIST_EXPECT_LEGACY = $previousLegacyExpectation
   }
   $manifest = Join-Path $resolvedOutput "manifest.json"
   $results | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding utf8

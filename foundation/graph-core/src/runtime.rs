@@ -23,7 +23,7 @@ use stream_event::StreamEvent;
 /// # Example
 ///
 /// ```rust,ignore
-/// use loom_graph_core::Runtime;
+/// use anureo_graph_core::Runtime;
 /// use checkpoint::{RunnableConfig, InMemoryStore};
 /// use std::sync::Arc;
 ///

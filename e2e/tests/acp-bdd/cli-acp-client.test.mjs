@@ -11,21 +11,21 @@ const repoRoot = path.resolve(import.meta.dirname, "../../..");
 const cargoTargetDir = process.env.CARGO_TARGET_DIR
   ? path.resolve(process.env.CARGO_TARGET_DIR)
   : path.join(repoRoot, "target");
-const loomBinary = process.env.LOOM_BIN ?? path.join(
+const anureoBinary = process.env.ANUREO_BIN ?? path.join(
   cargoTargetDir,
   "debug",
-  process.platform === "win32" ? "loom.exe" : "loom",
+  process.platform === "win32" ? "anureo.exe" : "anureo",
 );
 const timeoutMs = 15_000;
 
 function waitForServerLine(stream) {
   return new Promise((resolve, reject) => {
     let buffer = "";
-    const timer = setTimeout(() => reject(new Error("timed out waiting for loom server")), timeoutMs);
+    const timer = setTimeout(() => reject(new Error("timed out waiting for anureo server")), timeoutMs);
     stream.setEncoding("utf8");
     stream.on("data", (chunk) => {
       buffer += chunk;
-      const line = buffer.split(/\r?\n/).find((item) => item.includes("loom server listening on http://"));
+      const line = buffer.split(/\r?\n/).find((item) => item.includes("anureo server listening on http://"));
       if (!line) return;
       clearTimeout(timer);
       const match = line.match(/http:\/\/(127\.0\.0\.1:\d+)/);
@@ -37,7 +37,7 @@ function waitForServerLine(stream) {
 }
 
 async function startServer(env, home) {
-  const child = spawn(loomBinary, ["server", "--host", "127.0.0.1", "--port", "0", "--home", home], {
+  const child = spawn(anureoBinary, ["server", "--host", "127.0.0.1", "--port", "0", "--home", home], {
     cwd: repoRoot,
     env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -53,7 +53,7 @@ async function stop(child) {
 }
 
 async function runCli(args, env) {
-  const child = spawn(loomBinary, args, {
+  const child = spawn(anureoBinary, args, {
     cwd: repoRoot,
     env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -73,7 +73,7 @@ async function runCli(args, env) {
 }
 
 async function withServer(run) {
-  const home = await mkdtemp(path.join(tmpdir(), "loom-cli-acp-bdd-"));
+  const home = await mkdtemp(path.join(tmpdir(), "anureo-cli-acp-bdd-"));
   const env = { ...process.env };
   const server = await startServer(env, home);
   try {
@@ -84,7 +84,7 @@ async function withServer(run) {
   }
 }
 
-test("BDD: Given a server, When I run loom --acp, Then the CLI client creates a session", async () => {
+test("BDD: Given a server, When I run anureo --acp, Then the CLI client creates a session", async () => {
   await withServer(async (wsUrl, env, home) => {
     const result = await runCli(["--home", home, "--acp", "--json", "--acp-url", wsUrl], env);
     assert.equal(result.code, 0, result.stderr);
@@ -94,7 +94,7 @@ test("BDD: Given a server, When I run loom --acp, Then the CLI client creates a 
   });
 });
 
-test("BDD: Given a session id, When I run loom --acp, Then the CLI client resumes the session", async () => {
+test("BDD: Given a session id, When I run anureo --acp, Then the CLI client resumes the session", async () => {
   await withServer(async (wsUrl, env, home) => {
     const first = await runCli(["--home", home, "--acp", "--json", "--acp-url", wsUrl], env);
     assert.equal(first.code, 0, first.stderr);
@@ -113,7 +113,7 @@ test("BDD: Given a session id, When I run loom --acp, Then the CLI client resume
   });
 });
 
-test("BDD: Given --json, When I run loom --acp, Then every output line is JSON", async () => {
+test("BDD: Given --json, When I run anureo --acp, Then every output line is JSON", async () => {
   await withServer(async (wsUrl, env, home) => {
     const result = await runCli(["--home", home, "--acp", "--json", "--acp-url", wsUrl], env);
     assert.equal(result.code, 0, result.stderr);
@@ -123,9 +123,9 @@ test("BDD: Given --json, When I run loom --acp, Then every output line is JSON",
   });
 });
 
-test("BDD: Given a deterministic ACP server, When I run loom --acp with a prompt, Then the CLI client streams and completes", async () => {
+test("BDD: Given a deterministic ACP server, When I run anureo --acp with a prompt, Then the CLI client streams and completes", async () => {
   const fake = await startFakeAcpServer();
-  const home = await mkdtemp(path.join(tmpdir(), "loom-cli-acp-prompt-"));
+  const home = await mkdtemp(path.join(tmpdir(), "anureo-cli-acp-prompt-"));
   try {
     const result = await runCli([
       "--home", home, "--acp", "--json", "--acp-url", fake.url, "hello",

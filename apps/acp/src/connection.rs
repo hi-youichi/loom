@@ -26,7 +26,7 @@ pub enum ConnectionOutbound {
         /// Acknowledged after `send_notification` accepted the value.
         enqueued: Option<oneshot::Sender<()>>,
     },
-    /// Cross-connection global event (`_loomdesk.dev/global/update`).
+    /// Cross-connection global event (`_anureo.dev/global/update`).
     GlobalNotification { method: String, params: Value },
     /// Agent-originated extension notification sent to this connection's client.
     ExtensionNotification { method: String, params: Value },
@@ -51,7 +51,7 @@ pub struct AcpConnection {
     sdk_client: Arc<RwLock<Option<ConnectionTo<Client>>>>,
     capabilities: RwLock<Option<ClientCapabilitiesInfo>>,
     /// Most recent session this connection created or loaded; extension
-    /// authorization (e.g. `_loomdesk.dev/project/create`) requires a
+    /// authorization (e.g. `_anureo.dev/project/create`) requires a
     /// session-scoped principal even for connection-level calls.
     last_session_id: RwLock<Option<String>>,
     pub outbound_tx: mpsc::Sender<ConnectionOutbound>,

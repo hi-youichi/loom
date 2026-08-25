@@ -6,7 +6,7 @@ use std::sync::Arc;
 pub type SharedState = Arc<AppState>;
 
 /// All mutable state lives behind locks. The ACP runtime manages its own
-/// session/persistence via `loom_acp`; this struct only holds the hub.
+/// session/persistence via `anureo_acp`; this struct only holds the hub.
 pub struct AppState {
     /// Durable ACP sessions and notification routing for `/acp` reconnects.
     pub acp_hub: Arc<crate::acp_hub::AcpHub>,

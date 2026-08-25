@@ -1,4 +1,4 @@
-//! Tool Core: Tool trait, ToolRegistry, and core types for Loom agents.
+//! Tool Core: Tool trait, ToolRegistry, and core types for anureo agents.
 
 pub mod active_operation;
 mod context;
@@ -17,5 +17,5 @@ pub use registry::{ArcTool, ToolRegistry, ToolRegistryLocked};
 pub use tool::{BuiltinSkill, EmbeddedRef, Tool};
 pub use yaml_specs::{load_tool_specs, YamlSpecError};
 
-pub use loom_llm::message::ToolCallContent;
-pub use loom_llm::tool::{ToolOutputHint, ToolOutputStrategy, ToolSourceError, ToolSpec};
+pub use anureo_llm::message::ToolCallContent;
+pub use anureo_llm::tool::{ToolOutputHint, ToolOutputStrategy, ToolSourceError, ToolSpec};

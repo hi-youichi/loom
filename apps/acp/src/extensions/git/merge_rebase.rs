@@ -31,12 +31,12 @@ pub async fn handle_merge(params: Value, ctx: &ExtensionContext) -> Result<Value
         .unwrap_or(false);
 
     let squash = strategy == "squash";
-    let opts = loom_git::types::MergeOptions {
+    let opts = anureo_git::types::MergeOptions {
         squash,
         no_ff: no_fast_forward || squash,
         message: None,
     };
-    let result = loom_git::facade::merge(&repo_dir(ctx), &branch, opts)
+    let result = anureo_git::facade::merge(&repo_dir(ctx), &branch, opts)
         .await
         .map_err(ext_err_from_git)?;
 
@@ -56,17 +56,17 @@ pub async fn handle_merge_abort(
     ctx: &ExtensionContext,
 ) -> Result<Value, ExtensionError> {
     require_git_scope(ctx, "git:history")?;
-    let in_progress = loom_git::facade::in_progress(&repo_dir(ctx))
+    let in_progress = anureo_git::facade::in_progress(&repo_dir(ctx))
         .await
         .unwrap_or(None);
     let merging = in_progress
         .as_ref()
-        .map(|ip| matches!(ip.operation, loom_git::types::GitOperation::Merge))
+        .map(|ip| matches!(ip.operation, anureo_git::types::GitOperation::Merge))
         .unwrap_or(false);
     if !merging {
         return Err(ExtensionError::invalid_params("no merge in progress"));
     }
-    loom_git::facade::merge_abort(&repo_dir(ctx))
+    anureo_git::facade::merge_abort(&repo_dir(ctx))
         .await
         .map_err(ext_err_from_git)?;
     Ok(serde_json::json!({"aborted": true}))
@@ -79,12 +79,12 @@ pub async fn handle_merge_continue(
     require_git_scope(ctx, "git:history")?;
     let message: Option<String> = optional_param_str(&params, "message");
 
-    let in_progress = loom_git::facade::in_progress(&repo_dir(ctx))
+    let in_progress = anureo_git::facade::in_progress(&repo_dir(ctx))
         .await
         .unwrap_or(None);
     let merging = in_progress
         .as_ref()
-        .map(|ip| matches!(ip.operation, loom_git::types::GitOperation::Merge))
+        .map(|ip| matches!(ip.operation, anureo_git::types::GitOperation::Merge))
         .unwrap_or(false);
     if !merging {
         return Err(ExtensionError::invalid_params("no merge in progress"));
@@ -92,7 +92,7 @@ pub async fn handle_merge_continue(
 
     // bug#2 fix: the explicit message is passed through to the commit that
     // concludes the merge (the old `merge --continue -m` dropped it).
-    let result = loom_git::facade::merge_continue(&repo_dir(ctx), message.as_deref())
+    let result = anureo_git::facade::merge_continue(&repo_dir(ctx), message.as_deref())
         .await
         .map_err(ext_err_from_git)?;
     if result.conflicted {
@@ -115,7 +115,7 @@ pub async fn handle_rebase(params: Value, ctx: &ExtensionContext) -> Result<Valu
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let result = loom_git::facade::rebase(&repo_dir(ctx), &branch)
+    let result = anureo_git::facade::rebase(&repo_dir(ctx), &branch)
         .await
         .map_err(ext_err_from_git)?;
     if result.conflicted {
@@ -133,17 +133,17 @@ pub async fn handle_rebase_abort(
     ctx: &ExtensionContext,
 ) -> Result<Value, ExtensionError> {
     require_git_scope(ctx, "git:history")?;
-    let in_progress = loom_git::facade::in_progress(&repo_dir(ctx))
+    let in_progress = anureo_git::facade::in_progress(&repo_dir(ctx))
         .await
         .unwrap_or(None);
     let rebasing = in_progress
         .as_ref()
-        .map(|ip| matches!(ip.operation, loom_git::types::GitOperation::Rebase))
+        .map(|ip| matches!(ip.operation, anureo_git::types::GitOperation::Rebase))
         .unwrap_or(false);
     if !rebasing {
         return Err(ExtensionError::invalid_params("no rebase in progress"));
     }
-    loom_git::facade::rebase_abort(&repo_dir(ctx))
+    anureo_git::facade::rebase_abort(&repo_dir(ctx))
         .await
         .map_err(ext_err_from_git)?;
     Ok(serde_json::json!({"aborted": true}))
@@ -159,30 +159,30 @@ pub async fn handle_rebase_continue(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let in_progress = loom_git::facade::in_progress(&repo_dir(ctx))
+    let in_progress = anureo_git::facade::in_progress(&repo_dir(ctx))
         .await
         .unwrap_or(None);
     let rebasing = in_progress
         .as_ref()
-        .map(|ip| matches!(ip.operation, loom_git::types::GitOperation::Rebase))
+        .map(|ip| matches!(ip.operation, anureo_git::types::GitOperation::Rebase))
         .unwrap_or(false);
     if !rebasing {
         return Err(ExtensionError::invalid_params("no rebase in progress"));
     }
 
     let result = if skip {
-        loom_git::facade::rebase_skip(&repo_dir(ctx))
+        anureo_git::facade::rebase_skip(&repo_dir(ctx))
             .await
             .map_err(ext_err_from_git)?
     } else {
-        loom_git::facade::rebase_continue(&repo_dir(ctx), None)
+        anureo_git::facade::rebase_continue(&repo_dir(ctx), None)
             .await
             .map_err(ext_err_from_git)?
     };
     if result.conflicted {
         return Err(conflict_payload(result.conflicts));
     }
-    let remaining = loom_git::facade::in_progress(&repo_dir(ctx))
+    let remaining = anureo_git::facade::in_progress(&repo_dir(ctx))
         .await
         .ok()
         .flatten()
@@ -223,7 +223,7 @@ pub async fn handle_cherry_pick(
     require_git_scope(ctx, "git:history")?;
     let commit_sha: String = require_param(&params, "commitSha")?;
 
-    let result = loom_git::facade::cherry_pick(&repo_dir(ctx), &commit_sha, false)
+    let result = anureo_git::facade::cherry_pick(&repo_dir(ctx), &commit_sha, false)
         .await
         .map_err(ext_err_from_git)?;
     if result.conflicted {
@@ -243,7 +243,7 @@ pub async fn handle_revert_commit(
     require_git_scope(ctx, "git:history")?;
     let commit_sha: String = require_param(&params, "commitSha")?;
 
-    let result = loom_git::facade::revert_commit(&repo_dir(ctx), &commit_sha)
+    let result = anureo_git::facade::revert_commit(&repo_dir(ctx), &commit_sha)
         .await
         .map_err(ext_err_from_git)?;
     if result.conflicted {
@@ -275,7 +275,7 @@ pub async fn handle_reset_to_commit(
         require_git_scope(ctx, "git:destructive")?;
     }
     require_git_scope(ctx, "git:history")?;
-    loom_git::facade::reset_to_commit(&repo_dir(ctx), &commit_sha, &mode)
+    anureo_git::facade::reset_to_commit(&repo_dir(ctx), &commit_sha, &mode)
         .await
         .map_err(ext_err_from_git)?;
     Ok(serde_json::json!({
@@ -286,7 +286,7 @@ pub async fn handle_reset_to_commit(
 }
 
 async fn get_conflict_files(ctx: &ExtensionContext) -> Vec<String> {
-    loom_git::facade::in_progress(&repo_dir(ctx))
+    anureo_git::facade::in_progress(&repo_dir(ctx))
         .await
         .ok()
         .flatten()

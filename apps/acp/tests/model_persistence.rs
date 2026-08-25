@@ -14,10 +14,10 @@ async fn test_model_persistence_across_restarts() {
 
     // 2. 模拟用户选择模型
     let selected_model = "gpt-4-high";
-    write_last_model_file(&test_env.loom_home, selected_model);
+    write_last_model_file(&test_env.anureo_home, selected_model);
 
     // 3. 验证模型被正确保存
-    let saved_model = read_last_model_file(&test_env.loom_home);
+    let saved_model = read_last_model_file(&test_env.anureo_home);
     assert_eq!(
         saved_model, selected_model,
         "Model should be saved correctly"
@@ -35,7 +35,7 @@ async fn test_model_persistence_across_restarts() {
         .expect("Should be able to copy last-model file");
 
     // 6. 验证重启后模型选择保持不变
-    let restored_model = read_last_model_file(&test_env_restarted.loom_home);
+    let restored_model = read_last_model_file(&test_env_restarted.anureo_home);
     assert_eq!(
         restored_model, selected_model,
         "Model should persist across restarts"
@@ -62,9 +62,9 @@ async fn test_model_persistence_file_format() {
     let test_models = vec!["gpt-4-high", "gpt-3.5-medium", "gpt-3.5-low"];
 
     for model in test_models {
-        write_last_model_file(&test_env.loom_home, model);
+        write_last_model_file(&test_env.anureo_home, model);
 
-        let read_model = read_last_model_file(&test_env.loom_home);
+        let read_model = read_last_model_file(&test_env.anureo_home);
         assert_eq!(
             read_model, model,
             "Model {} should be read back correctly",
@@ -92,16 +92,16 @@ async fn test_model_persistence_overwrites() {
 
     // 1. 首先选择一个模型
     let first_model = "gpt-3.5-low";
-    write_last_model_file(&test_env.loom_home, first_model);
+    write_last_model_file(&test_env.anureo_home, first_model);
 
-    let first_read = read_last_model_file(&test_env.loom_home);
+    let first_read = read_last_model_file(&test_env.anureo_home);
     assert_eq!(first_read, first_model, "First model should be saved");
 
     // 2. 然后选择不同的模型
     let second_model = "gpt-4-high";
-    write_last_model_file(&test_env.loom_home, second_model);
+    write_last_model_file(&test_env.anureo_home, second_model);
 
-    let second_read = read_last_model_file(&test_env.loom_home);
+    let second_read = read_last_model_file(&test_env.anureo_home);
     assert_eq!(
         second_read, second_model,
         "Second model should overwrite first"
@@ -134,9 +134,9 @@ async fn test_model_persistence_with_different_tiers() {
     ];
 
     for (model, expected_tier) in test_cases {
-        write_last_model_file(&test_env.loom_home, model);
+        write_last_model_file(&test_env.anureo_home, model);
 
-        let read_model = read_last_model_file(&test_env.loom_home);
+        let read_model = read_last_model_file(&test_env.anureo_home);
         assert_eq!(read_model, model);
 
         let tier = mock_server.get_tier_from_model(&read_model);

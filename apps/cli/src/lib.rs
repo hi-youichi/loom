@@ -1,6 +1,6 @@
-//! Loom CLI library: CLI parsing and run orchestration for the Loom agents.
+//! anureo CLI library: CLI parsing and run orchestration for the anureo agents.
 //!
-//! Used by the `loom` binary. Builds a [`ReactRunner`](loom::ReactRunner) from
+//! Used by the `anureo` binary. Builds a [`ReactRunner`](anureo::ReactRunner) from
 //! config (env, working folder, etc.) and runs or streams the graph.
 
 pub mod args;

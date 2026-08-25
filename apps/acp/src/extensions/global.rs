@@ -1,5 +1,5 @@
 //! `global` extension domain — subscribe/unsubscribe/status for the
-//! cross-connection event bus (`_loomdesk.dev/global/*`).
+//! cross-connection event bus (`_anureo.dev/global/*`).
 
 use async_trait::async_trait;
 use serde_json::{json, Value};

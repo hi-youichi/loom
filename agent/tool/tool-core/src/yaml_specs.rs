@@ -2,8 +2,8 @@ use thiserror::Error;
 
 use crate::ToolSpec;
 
-// TODO: Restore tool YAML files after migration from loom crate
-// These files need to be moved from the deleted loom/tools/ directory
+// TODO: Restore tool YAML files after migration from anureo crate
+// These files need to be moved from the deleted anureo/tools/ directory
 const TOOL_YAML_FILES: &[&str] = &[];
 
 #[derive(Debug, Error)]

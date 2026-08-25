@@ -33,6 +33,6 @@ impl ThreadLog {
 fn thread_log_dir() -> PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("loom-codex")
+        .join("anureo-codex")
         .join("threads")
 }

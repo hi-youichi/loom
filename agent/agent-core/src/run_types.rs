@@ -2,7 +2,7 @@
 //!
 //! These types are shared across all agent patterns and consumers.
 
-// Re-export cancellation types from loom
+// Re-export cancellation types from anureo
 pub use tool_core::active_operation::{
     ActiveOperation, ActiveOperationCanceller, ActiveOperationKind, RunCancellation,
 };
@@ -35,7 +35,7 @@ pub enum RunCompletion {
 /// Options for running the Helve agent.
 #[derive(Clone)]
 pub struct RunOptions {
-    pub message: loom_llm::message::UserContent,
+    pub message: anureo_llm::message::UserContent,
     pub working_folder: Option<std::path::PathBuf>,
     pub session_id: Option<String>,
     pub agent: Option<String>,
@@ -64,7 +64,7 @@ pub struct RunOptions {
     pub worktree: bool,
     /// When true, task management tools are registered. Only in goal mode.
     pub goal_mode: bool,
-    /// MCP servers from ACP session/new request, converted to Loom's internal type.
+    /// MCP servers from ACP session/new request, converted to anureo's internal type.
     /// Merged into build config alongside mcp.json servers.
     pub acp_mcp_servers: Option<Vec<env_config::McpServerDef>>,
     /// Reasoning effort override.

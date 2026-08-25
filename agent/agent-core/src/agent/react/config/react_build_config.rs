@@ -183,13 +183,13 @@ impl Default for ReactBuildConfig {
 impl ReactBuildConfig {
     pub fn from_env() -> Self {
         Self {
-            db_path: std::env::var("LOOM_DB_PATH").ok(),
-            thread_id: std::env::var("LOOM_THREAD_ID").ok(),
+            db_path: std::env::var("ANUREO_DB_PATH").ok(),
+            thread_id: std::env::var("ANUREO_THREAD_ID").ok(),
             trace_thread_id: None,
-            user_id: std::env::var("LOOM_USER_ID").ok(),
+            user_id: std::env::var("ANUREO_USER_ID").ok(),
             system_prompt: std::env::var("SYSTEM_PROMPT").ok(),
             exa_api_key: std::env::var("EXA_API_KEY").ok(),
-            exa_codesearch_enabled: std::env::var("LOOM_EXA_CODESEARCH")
+            exa_codesearch_enabled: std::env::var("ANUREO_EXA_CODESEARCH")
                 .ok()
                 .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
                 .unwrap_or(false),
@@ -216,13 +216,13 @@ impl ReactBuildConfig {
             model: None,
             model_tier: None,
             parent_model_hint: None,
-            aux_model: std::env::var("LOOM_AUX_MODEL").ok(),
+            aux_model: std::env::var("ANUREO_AUX_MODEL").ok(),
             llm_provider: None,
             llm_provider_name: None,
-            curator_provider: std::env::var("LOOM_CURATOR_PROVIDER").ok(),
-            curator_model: std::env::var("LOOM_CURATOR_MODEL").ok(),
-            curator_api_key: std::env::var("LOOM_CURATOR_API_KEY").ok(),
-            curator_base_url: std::env::var("LOOM_CURATOR_BASE_URL").ok(),
+            curator_provider: std::env::var("ANUREO_CURATOR_PROVIDER").ok(),
+            curator_model: std::env::var("ANUREO_CURATOR_MODEL").ok(),
+            curator_api_key: std::env::var("ANUREO_CURATOR_API_KEY").ok(),
+            curator_base_url: std::env::var("ANUREO_CURATOR_BASE_URL").ok(),
             embedding_api_key: std::env::var("EMBEDDING_API_KEY").ok(),
             embedding_base_url: std::env::var("EMBEDDING_BASE_URL").ok(),
             embedding_model: std::env::var("EMBEDDING_MODEL").ok(),
@@ -231,11 +231,11 @@ impl ReactBuildConfig {
             compaction_config: None,
             tot_config: TotRunnerConfig::default(),
             got_config: GotRunnerConfig {
-                adaptive: std::env::var("LOOM_GOT_ADAPTIVE")
+                adaptive: std::env::var("ANUREO_GOT_ADAPTIVE")
                     .ok()
                     .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
                     .unwrap_or(false),
-                agot_llm_complexity: std::env::var("LOOM_GOT_AGOT_LLM_COMPLEXITY")
+                agot_llm_complexity: std::env::var("ANUREO_GOT_AGOT_LLM_COMPLEXITY")
                     .ok()
                     .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
                     .unwrap_or(false),
@@ -246,10 +246,10 @@ impl ReactBuildConfig {
             max_sub_agent_depth: std::env::var("MAX_SUB_AGENT_DEPTH")
                 .ok()
                 .and_then(|s| s.parse().ok()),
-            curator_max_iterations: std::env::var("LOOM_CURATOR_MAX_ITERATIONS")
+            curator_max_iterations: std::env::var("ANUREO_CURATOR_MAX_ITERATIONS")
                 .ok()
                 .and_then(|s| s.parse().ok()),
-            dry_run: std::env::var("LOOM_DRY_RUN")
+            dry_run: std::env::var("ANUREO_DRY_RUN")
                 .ok()
                 .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
                 .unwrap_or(false),
@@ -262,11 +262,11 @@ impl ReactBuildConfig {
             is_background_review: false,
             memory_enabled: true,
             user_profile_enabled: true,
-            memory_nudge_interval: std::env::var("LOOM_MEMORY_NUDGE_INTERVAL")
+            memory_nudge_interval: std::env::var("ANUREO_MEMORY_NUDGE_INTERVAL")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(10),
-            skill_nudge_interval: std::env::var("LOOM_SKILL_NUDGE_INTERVAL")
+            skill_nudge_interval: std::env::var("ANUREO_SKILL_NUDGE_INTERVAL")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(10),
@@ -278,7 +278,7 @@ impl ReactBuildConfig {
             env_context: None,
             reasoning_effort: None,
             resume_mode: false,
-            llm_tool_enabled: std::env::var("LOOM_LLM_TOOL_ENABLED")
+            llm_tool_enabled: std::env::var("ANUREO_LLM_TOOL_ENABLED")
                 .ok()
                 .map(|s| matches!(s.trim().to_lowercase().as_str(), "1" | "true" | "yes"))
                 .unwrap_or(false),
@@ -448,11 +448,11 @@ mod tests {
 
     #[test]
     fn aux_model_reads_from_env() {
-        with_env("LOOM_AUX_MODEL", Some("cheap-model-v1"), || {
+        with_env("ANUREO_AUX_MODEL", Some("cheap-model-v1"), || {
             let config = ReactBuildConfig::from_env();
             assert_eq!(config.aux_model.as_deref(), Some("cheap-model-v1"));
         });
-        with_env("LOOM_AUX_MODEL", None, || {
+        with_env("ANUREO_AUX_MODEL", None, || {
             let config = ReactBuildConfig::from_env();
             assert!(config.aux_model.is_none());
         });
@@ -466,8 +466,8 @@ mod tests {
 
     #[test]
     fn nudge_intervals_default_to_10() {
-        with_env("LOOM_MEMORY_NUDGE_INTERVAL", None, || {
-            with_env("LOOM_SKILL_NUDGE_INTERVAL", None, || {
+        with_env("ANUREO_MEMORY_NUDGE_INTERVAL", None, || {
+            with_env("ANUREO_SKILL_NUDGE_INTERVAL", None, || {
                 let config = ReactBuildConfig::from_env();
                 assert_eq!(config.memory_nudge_interval, 10);
                 assert_eq!(config.skill_nudge_interval, 10);
@@ -477,8 +477,8 @@ mod tests {
 
     #[test]
     fn nudge_intervals_read_from_env() {
-        with_env("LOOM_MEMORY_NUDGE_INTERVAL", Some("5"), || {
-            with_env("LOOM_SKILL_NUDGE_INTERVAL", Some("20"), || {
+        with_env("ANUREO_MEMORY_NUDGE_INTERVAL", Some("5"), || {
+            with_env("ANUREO_SKILL_NUDGE_INTERVAL", Some("20"), || {
                 let config = ReactBuildConfig::from_env();
                 assert_eq!(config.memory_nudge_interval, 5);
                 assert_eq!(config.skill_nudge_interval, 20);
@@ -488,8 +488,8 @@ mod tests {
 
     #[test]
     fn nudge_intervals_fallback_on_invalid_env() {
-        with_env("LOOM_MEMORY_NUDGE_INTERVAL", Some("not-a-number"), || {
-            with_env("LOOM_SKILL_NUDGE_INTERVAL", Some(""), || {
+        with_env("ANUREO_MEMORY_NUDGE_INTERVAL", Some("not-a-number"), || {
+            with_env("ANUREO_SKILL_NUDGE_INTERVAL", Some(""), || {
                 let config = ReactBuildConfig::from_env();
                 assert_eq!(config.memory_nudge_interval, 10);
                 assert_eq!(config.skill_nudge_interval, 10);

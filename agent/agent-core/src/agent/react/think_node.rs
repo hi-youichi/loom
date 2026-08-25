@@ -10,8 +10,8 @@ use tracing::{debug, trace};
 
 use crate::state::{ModelConfig, ReActState};
 use env_config::load_provider_configs_from_xdg;
-use loom_graph_core::{run_cancellable, Next, Node, RunContext};
-use loom_llm::{
+use anureo_graph_core::{run_cancellable, Next, Node, RunContext};
+use anureo_llm::{
     GraphError, LlmClient, LlmProvider, LlmResponse, LlmUsage, Message, MessageChunk, StreamSink,
     ToolCall, ToolCallChunk,
 };
@@ -39,7 +39,7 @@ impl BlockTrackerSink {
 
     fn finish(&self, node_id: &str) {
         let metadata = StreamMetadata {
-            loom_node: node_id.to_string(),
+            anureo_node: node_id.to_string(),
             namespace: None,
         };
         if let Ok(mut tracker) = self.tracker.lock() {
@@ -53,7 +53,7 @@ impl BlockTrackerSink {
 impl StreamSink for BlockTrackerSink {
     fn try_send_message(&self, chunk: MessageChunk, node_id: &str) -> Option<Instant> {
         let metadata = StreamMetadata {
-            loom_node: node_id.to_string(),
+            anureo_node: node_id.to_string(),
             namespace: None,
         };
         if let Ok(mut tracker) = self.tracker.lock() {

@@ -1,0 +1,12 @@
+[package]
+name = "anureo-home"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Process-global anureo home directory resolution (CLI `--home` override, default ~/.anureo)"
+
+[dependencies]
+
+[dev-dependencies]
+tempfile = "3"

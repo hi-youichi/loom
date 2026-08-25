@@ -93,9 +93,9 @@ If you notice two existing skills that overlap, note it in your \
 reply - the background curator handles consolidation at scale.\n\
 \n\
 Protected skills (DO NOT edit these):\n\
-  • Bundled skills (shipped with Hermes, e.g. 'loom-development').\n\
-  • Hub-installed skills (installed via 'loom skills install').\n\
-Pinned skills (marked via 'loom curator pin') CAN be improved - \
+  • Bundled skills (shipped with Hermes, e.g. 'anureo-development').\n\
+  • Hub-installed skills (installed via 'anureo skills install').\n\
+Pinned skills (marked via 'anureo curator pin') CAN be improved - \
 pin only blocks deletion/archive/consolidation by the curator, not \
 content updates. Patch them when a pitfall or missing step turns up, \
 same as any other agent-created skill.\n\
@@ -190,9 +190,9 @@ If you notice overlapping existing skills, mention it - the \
 background curator handles consolidation.\n\
 \n\
 Protected skills (DO NOT edit these):\n\
-  • Bundled skills (shipped with Hermes, e.g. 'loom-development').\n\
-  • Hub-installed skills (installed via 'loom skills install').\n\
-Pinned skills (marked via 'loom curator pin') CAN be improved - \
+  • Bundled skills (shipped with Hermes, e.g. 'anureo-development').\n\
+  • Hub-installed skills (installed via 'anureo skills install').\n\
+Pinned skills (marked via 'anureo curator pin') CAN be improved - \
 pin only blocks deletion/archive/consolidation by the curator, not \
 content updates. Patch them when a pitfall or missing step turns up, \
 same as any other agent-created skill.\n\
@@ -230,7 +230,7 @@ and stop - but don't reach for that conclusion as a default.";
 /// Replaces the default ReAct system prompt when the curator runs in agent
 /// mode. Concisely establishes the curator role and instructs the LLM to use
 /// only skill tools for consolidation.
-pub const CURATOR_SYSTEM_PROMPT: &str = "You are Loom's background skill CURATOR. Follow the instructions precisely. Use skill_list, skill_view, and skill_manage tools to inspect and consolidate skills. Other tools are not available.";
+pub const CURATOR_SYSTEM_PROMPT: &str = "You are anureo's background skill CURATOR. Follow the instructions precisely. Use skill_list, skill_view, and skill_manage tools to inspect and consolidate skills. Other tools are not available.";
 
 /// Curator LLM review prompt for skill consolidation.
 ///
@@ -242,7 +242,7 @@ pub const CURATOR_SYSTEM_PROMPT: &str = "You are Loom's background skill CURATOR
 ///   D. Package integrity directive
 ///   E. absorbed_into declaration requirement
 ///   F. Iteration driving force
-///   G. Tool parameter documentation (Loom tool names)
+///   G. Tool parameter documentation (anureo tool names)
 ///
 /// Used by the curator's LLM pass to analyze skills and decide:
 /// - Which skills should be consolidated into umbrella skills
@@ -253,7 +253,7 @@ pub const CURATOR_SYSTEM_PROMPT: &str = "You are Loom's background skill CURATOR
 /// when `dry_run` is true, this banner is prepended to the prompt so the
 /// LLM is told up-front that every mutating tool call (`skill_manage
 /// action=write_file` and any terminal mutation) MUST be reported as
-/// "would do X" rather than executed. This is what lets `loom curator run
+/// "would do X" rather than executed. This is what lets `anureo curator run
 /// --dry-run` return an LLM plan without committing changes.
 pub const CURATOR_DRY_RUN_BANNER: &str = r#"
 ────────────────────────────────────────────────────────────
@@ -269,7 +269,7 @@ the user verbatim.
 ────────────────────────────────────────────────────────────
 "#;
 
-pub const CURATOR_REVIEW_PROMPT: &str = r#"You are running as Loom's background skill CURATOR. This is an
+pub const CURATOR_REVIEW_PROMPT: &str = r#"You are running as anureo's background skill CURATOR. This is an
 UMBRELLA-BUILDING consolidation pass, not a passive audit and not a
 duplicate-finder.
 
@@ -520,7 +520,7 @@ mod tests {
     }
 
     #[test]
-    fn test_curator_prompt_uses_loom_tool_names() {
+    fn test_curator_prompt_uses_anureo_tool_names() {
         // The prompt must reference the actual registered tool name
         // "skill_manage" with action= parameters, NOT non-existent tools
         // like skill_update, skill_create, skill_delete as separate tools.

@@ -1,10 +1,10 @@
-//! Logging initialization for the loom HTTP server.
+//! Logging initialization for the anureo HTTP server.
 //!
 //! Log config resolution priority:
 //! 1. CLI `--log-file` argument
 //! 2. `LOGS_SERVER` environment variable
 //! 3. config.toml `[logging].path`
-//! 4. `~/.loom/loom-server.log`
+//! 4. `~/.anureo/anureo-server.log`
 //!
 //! Log level resolution priority:
 //! 1. `--log-level` / `RUST_LOG` (passed in via [`LogConfig::level`])
@@ -50,7 +50,7 @@ impl FromStr for LogFormat {
 /// Log configuration sourced from CLI global args.
 #[derive(Debug, Clone, Default)]
 pub struct LogConfig {
-    /// Log level filter (e.g. "info", "debug", "loom=debug").
+    /// Log level filter (e.g. "info", "debug", "anureo=debug").
     pub level: String,
     /// Optional log file path (overrides env / config defaults).
     pub file: Option<PathBuf>,
@@ -71,7 +71,7 @@ pub struct LogGuard {
 /// 1. CLI `file` argument
 /// 2. `LOGS_SERVER` environment variable
 /// 3. config.toml `[logging].path`
-/// 4. `~/.loom/loom-server.log`
+/// 4. `~/.anureo/anureo-server.log`
 fn resolve_server_log_path(
     cli_file: Option<&Path>,
     logging_config: Option<&LoggingSection>,
@@ -93,8 +93,8 @@ fn resolve_server_log_path(
         }
     }
 
-    // 4. Default: ~/.loom/loom-server.log
-    config::home::loom_home().join("loom-server.log")
+    // 4. Default: ~/.anureo/anureo-server.log
+    config::home::anureo_home().join("anureo-server.log")
 }
 
 /// Resolve the effective log level, falling back to config.toml then `off`.
@@ -126,7 +126,7 @@ fn resolve_rotate(cli_rotate: LogRotate, logging_config: Option<&LoggingSection>
 /// to open the log file, logs an error to stderr and returns a guard backed by a
 /// null sink so the server can still start.
 pub fn init_logging(config: &LogConfig) -> LogGuard {
-    let logging_config = config::load_full_config("loom").ok().map(|c| c.logging);
+    let logging_config = config::load_full_config("anureo").ok().map(|c| c.logging);
 
     let log_path = resolve_server_log_path(config.file.as_deref(), logging_config.as_ref());
 
@@ -139,7 +139,7 @@ pub fn init_logging(config: &LogConfig) -> LogGuard {
     let rotate = resolve_rotate(config.rotate, logging_config.as_ref());
     let filter = tracing_init::build_env_filter(&level, &["hyper_util=off"]);
 
-    match tracing_init::file_non_blocking_writer(&log_path, rotate, "loom-server") {
+    match tracing_init::file_non_blocking_writer(&log_path, rotate, "anureo-server") {
         Ok((writer, guard)) => {
             let layer = tracing_subscriber::fmt::layer()
                 .with_ansi(false)
@@ -160,14 +160,14 @@ pub fn init_logging(config: &LogConfig) -> LogGuard {
                 }
             }
 
-            tracing::info!(log_file = %log_path.display(), level = %level, "loom-server logging initialized");
+            tracing::info!(log_file = %log_path.display(), level = %level, "anureo-server logging initialized");
             LogGuard {
                 _guard: Some(guard),
             }
         }
         Err(error) => {
             eprintln!(
-                "loom-server: failed to open log file {}: {error}",
+                "anureo-server: failed to open log file {}: {error}",
                 log_path.display()
             );
             init_sink_logging(filter)

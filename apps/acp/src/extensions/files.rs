@@ -1360,7 +1360,7 @@ impl FilesHandler {
 
         Ok(serde_json::json!({
             "path": p.path,
-            "downloadUrl": format!("blob:loomdesk/download/{download_id}"),
+            "downloadUrl": format!("blob:anureo/download/{download_id}"),
             "mimeType": mime,
             "size": metadata.len(),
             "expiresAt": expires.to_rfc3339()

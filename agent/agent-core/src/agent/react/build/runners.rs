@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use crate::compress::CompactionConfig;
-use loom_graph_core::GraphError;
-use loom_llm::client::FixedLlmProvider;
-use loom_llm::{LlmClient, LlmProvider};
+use anureo_graph_core::GraphError;
+use anureo_llm::client::FixedLlmProvider;
+use anureo_llm::{LlmClient, LlmProvider};
 use model_spec_core::resolver::{ConfigModelEntry, ConfigProviderEntry};
 use tool_core::active_operation::RunCancellation;
 
@@ -31,10 +31,10 @@ pub async fn build_react_run_context(
     let tool_source = build_tool_source(config, &store).await?;
     tracing::debug!("build_react_run_context: tool_source ready");
 
-    let audit_log: Option<Arc<dyn loom_llm::support::audit::LlmAuditLog>> =
-        loom_llm::support::audit::LlmAuditConfig::from_env()
+    let audit_log: Option<Arc<dyn anureo_llm::support::audit::LlmAuditLog>> =
+        anureo_llm::support::audit::LlmAuditConfig::from_env()
             .build()
-            .map(|log| Arc::new(log) as Arc<dyn loom_llm::support::audit::LlmAuditLog>);
+            .map(|log| Arc::new(log) as Arc<dyn anureo_llm::support::audit::LlmAuditLog>);
 
     Ok(ReactRunContext {
         checkpointer,
@@ -71,7 +71,7 @@ async fn resolve_compaction_config(config: &ReactBuildConfig) -> CompactionConfi
 }
 
 fn load_config_providers() -> Vec<ConfigProviderEntry> {
-    let full = env_config::load_full_config("loom").ok();
+    let full = env_config::load_full_config("anureo").ok();
     full.map(|f| {
         f.providers
             .into_iter()
@@ -99,16 +99,16 @@ pub struct BoxedLlmClient(pub Box<dyn LlmClient>);
 impl LlmClient for BoxedLlmClient {
     async fn invoke(
         &self,
-        messages: &[loom_llm::message::Message],
-    ) -> Result<loom_llm::LlmResponse, loom_llm::LlmError> {
+        messages: &[anureo_llm::message::Message],
+    ) -> Result<anureo_llm::LlmResponse, anureo_llm::LlmError> {
         self.0.invoke(messages).await
     }
     async fn invoke_stream(
         &self,
-        messages: &[loom_llm::message::Message],
-        sink: Option<&dyn loom_llm::traits::StreamSink>,
+        messages: &[anureo_llm::message::Message],
+        sink: Option<&dyn anureo_llm::traits::StreamSink>,
         node_id: &str,
-    ) -> Result<loom_llm::LlmResponse, loom_llm::LlmError> {
+    ) -> Result<anureo_llm::LlmResponse, anureo_llm::LlmError> {
         self.0.invoke_stream(messages, sink, node_id).await
     }
 }
@@ -145,7 +145,7 @@ pub async fn build_react_runner(
         .trace_thread_id
         .as_ref()
         .or(config.thread_id.as_ref())
-        .map(|tid| loom_llm::LlmHeaders::default().with_thread_id(tid));
+        .map(|tid| anureo_llm::LlmHeaders::default().with_thread_id(tid));
     let runner = ReactRunner::new(
         provider,
         ctx.tool_source,
@@ -171,7 +171,7 @@ pub async fn build_react_runner_with_openai(
     model: impl Into<String>,
     verbose: bool,
 ) -> Result<ReactRunner, BuildRunnerError> {
-    use loom_llm::ChatOpenAI;
+    use anureo_llm::ChatOpenAI;
     let client = ChatOpenAI::with_config(openai_config, model);
     build_react_runner(
         config,
@@ -190,7 +190,7 @@ pub async fn build_react_runner_with_openai(
 mod tests {
     use super::*;
     use crate::ReactBuildConfig;
-    use loom_llm::client::MockLlm;
+    use anureo_llm::client::MockLlm;
 
     fn base_config() -> ReactBuildConfig {
         let mut cfg = ReactBuildConfig::from_env();

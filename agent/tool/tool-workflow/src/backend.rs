@@ -10,28 +10,28 @@ use luft_core::contract::event::AgentEvent as LuftAgentEvent;
 use luft_core::contract::ids::TokenUsage;
 use serde_json::Value;
 
-use agent::agent::{Agent, AgentConfig, AgentEvent as LoomAgentEvent};
+use agent::agent::{Agent, AgentConfig, AgentEvent as AnureoAgentEvent};
 use tool_core::Tool;
 
-use crate::event_bridge::map_loom_event_to_delta;
+use crate::event_bridge::map_anureo_event_to_delta;
 use crate::workflow_validate_schema::WorkflowValidateSchemaTool;
 
 const POST_SUBMISSION_GRACE: Duration = Duration::from_secs(10);
 
-pub struct LoomAgentBackend {
+pub struct AnureoAgentBackend {
     config_template: AgentConfig,
 }
 
-impl LoomAgentBackend {
+impl AnureoAgentBackend {
     pub fn new(config_template: AgentConfig) -> Self {
         Self { config_template }
     }
 }
 
 #[async_trait]
-impl AgentBackend for LoomAgentBackend {
+impl AgentBackend for AnureoAgentBackend {
     fn id(&self) -> &'static str {
-        "loom"
+        "anureo"
     }
 
     fn capabilities(&self) -> AgentCapabilities {
@@ -159,8 +159,8 @@ impl AgentBackend for LoomAgentBackend {
         let callback = {
             let tokens = tokens.clone();
             let event_sender = event_sender.clone();
-            move |ev: LoomAgentEvent| match &ev {
-                LoomAgentEvent::Usage {
+            move |ev: AnureoAgentEvent| match &ev {
+                AnureoAgentEvent::Usage {
                     input,
                     output,
                     cache_read,
@@ -174,7 +174,7 @@ impl AgentBackend for LoomAgentBackend {
                     }
                 }
                 _ => {
-                    if let Some(delta) = map_loom_event_to_delta(&ev) {
+                    if let Some(delta) = map_anureo_event_to_delta(&ev) {
                         let _ = event_sender.send(LuftAgentEvent::AgentProgress {
                             run_id,
                             agent_id,
@@ -353,12 +353,12 @@ fn finalize_output(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent::agent::{AgentError, AgentResult as LoomAgentResult};
+    use agent::agent::{AgentError, AgentResult as AnureoAgentResult};
     use serde_json::json;
 
     #[test]
     fn finalize_ok_with_slot_prefers_slot() {
-        let result = LoomAgentResult {
+        let result = AnureoAgentResult {
             reply: "agent reply text".into(),
             reasoning: None,
         };
@@ -370,7 +370,7 @@ mod tests {
 
     #[test]
     fn finalize_ok_without_slot_uses_fallback_envelope() {
-        let result = LoomAgentResult {
+        let result = AnureoAgentResult {
             reply: "plain text reply".into(),
             reasoning: None,
         };

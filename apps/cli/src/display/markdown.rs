@@ -461,8 +461,8 @@ mod tests {
 
     #[test]
     fn render_link() {
-        let result = render_markdown("[Loom](https://example.com)");
-        assert!(result.contains("Loom"));
+        let result = render_markdown("[anureo](https://example.com)");
+        assert!(result.contains("anureo"));
         assert!(result.contains("example.com"));
     }
 

@@ -1,20 +1,20 @@
 [package]
-name = "loom-codex"
+name = "anureo-codex"
 version.workspace = true
 edition = "2021"
-description = "Loom codex app-server compatible daemon"
+description = "anureo codex app-server compatible daemon"
 license.workspace = true
 authors.workspace = true
 
 [[bin]]
-name = "loom-codex"
+name = "anureo-codex"
 path = "src/main.rs"
 
 [dependencies]
 agent = { path = "../../agent/agent-core" }
 tool-core = { path = "../../agent/tool/tool-core" }
 tool-workflow = { path = "../../agent/tool/tool-workflow" }
-loom-llm = { path = "../../foundation/llm" }
+anureo-llm = { path = "../../foundation/llm" }
 config = { path = "../../foundation/config" }
 stream-event = { path = "../../foundation/stream-event" }
 

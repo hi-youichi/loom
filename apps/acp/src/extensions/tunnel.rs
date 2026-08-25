@@ -450,11 +450,11 @@ fn create(
         cancelable: true,
     };
     publisher.publish(
-        "_loomdesk.dev/tunnel/progress",
+        "_anureo.dev/tunnel/progress",
         serde_json::to_value(progress).map_err(|e| internal(e.to_string()))?,
     );
     publisher.publish(
-        "_loomdesk.dev/tunnel/changed",
+        "_anureo.dev/tunnel/changed",
         serde_json::to_value(TunnelChangedParams {
             change: TunnelChange::Created,
             id: id.clone(),
@@ -489,7 +489,7 @@ fn delete(
             .expect("tunnel credential mutex poisoned")
             .remove(&id);
         publisher.publish(
-            "_loomdesk.dev/tunnel/changed",
+            "_anureo.dev/tunnel/changed",
             serde_json::to_value(TunnelChangedParams {
                 change: TunnelChange::Deleted,
                 id: id.clone(),

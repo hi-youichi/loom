@@ -9,8 +9,8 @@
 
 use std::sync::Arc;
 
-use loom_llm::message::Message;
-use loom_llm::LlmProvider;
+use anureo_llm::message::Message;
+use anureo_llm::LlmProvider;
 use tracing::warn;
 
 /// Max characters for stored session summary.

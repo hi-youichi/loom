@@ -52,12 +52,12 @@ pub struct SettingsSaveResponse {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct RestartLoomRequest {
+pub struct RestartAnureoRequest {
     pub confirm_token: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct RestartLoomResponse {
+pub struct RestartAnureoResponse {
     pub restarted: bool,
     pub message: String,
 }
@@ -163,7 +163,7 @@ impl SqliteSettingsStore {
             connection: Mutex::new(Connection::open(path).map_err(|e| e.to_string())?),
         };
         store.connection.lock().map_err(|_| "settings store lock poisoned")?.execute_batch(
-            "CREATE TABLE IF NOT EXISTS loom_settings (scope TEXT PRIMARY KEY, document TEXT NOT NULL, version INTEGER NOT NULL, synced_at TEXT NOT NULL)"
+            "CREATE TABLE IF NOT EXISTS anureo_settings (scope TEXT PRIMARY KEY, document TEXT NOT NULL, version INTEGER NOT NULL, synced_at TEXT NOT NULL)"
         ).map_err(|e| e.to_string())?;
         Ok(store)
     }
@@ -180,7 +180,7 @@ impl SettingsStore for SqliteSettingsStore {
             .lock()
             .map_err(|_| SettingsStoreError::Persistence("settings store lock poisoned".into()))?;
         let mut statement = connection
-            .prepare("SELECT document, version, synced_at FROM loom_settings WHERE scope = ?1")
+            .prepare("SELECT document, version, synced_at FROM anureo_settings WHERE scope = ?1")
             .map_err(|e| SettingsStoreError::Persistence(e.to_string()))?;
         let mut rows = statement
             .query([Self::key(scope)])
@@ -230,7 +230,7 @@ impl SettingsStore for SqliteSettingsStore {
         let key = Self::key(scope);
         let current = transaction
             .query_row(
-                "SELECT version FROM loom_settings WHERE scope = ?1",
+                "SELECT version FROM anureo_settings WHERE scope = ?1",
                 [key.clone()],
                 |row| row.get::<_, i64>(0),
             )
@@ -242,7 +242,7 @@ impl SettingsStore for SqliteSettingsStore {
         }
         let document = serde_json::to_string(&state.settings)
             .map_err(|e| SettingsStoreError::Serialization(e.to_string()))?;
-        transaction.execute("INSERT INTO loom_settings(scope, document, version, synced_at) VALUES(?1, ?2, ?3, ?4) ON CONFLICT(scope) DO UPDATE SET document=excluded.document, version=excluded.version, synced_at=excluded.synced_at", params![key, document, state.version as i64, state.synced_at.to_rfc3339()]).map_err(|e| SettingsStoreError::Persistence(e.to_string()))?;
+        transaction.execute("INSERT INTO anureo_settings(scope, document, version, synced_at) VALUES(?1, ?2, ?3, ?4) ON CONFLICT(scope) DO UPDATE SET document=excluded.document, version=excluded.version, synced_at=excluded.synced_at", params![key, document, state.version as i64, state.synced_at.to_rfc3339()]).map_err(|e| SettingsStoreError::Persistence(e.to_string()))?;
         transaction
             .commit()
             .map_err(|e| SettingsStoreError::Persistence(e.to_string()))
@@ -458,8 +458,8 @@ fn path(path: &str) -> Result<Vec<String>, ExtensionError> {
     Ok(segments)
 }
 
-/// `~/.config/loomdesk/AGENTS.md` — the global behavior prompt (renamed from
-/// the legacy loom path; Express reads the same file).
+/// `~/.config/anureo/AGENTS.md` — the global behavior prompt (renamed from
+/// the legacy anureo path; Express reads the same file).
 const MAX_AGENTS_MD_BYTES: usize = 1024 * 1024;
 
 fn agents_md_path() -> std::path::PathBuf {
@@ -468,7 +468,7 @@ fn agents_md_path() -> std::path::PathBuf {
         .unwrap_or_else(|_| ".".into());
     std::path::PathBuf::from(home)
         .join(".config")
-        .join("loomdesk")
+        .join("anureo")
         .join("AGENTS.md")
 }
 
@@ -563,7 +563,7 @@ impl ExtensionHandler for SettingsHandler {
         let capability = match method {
             "load" => "load",
             "save" => "save",
-            "restart_loom" => "restart_loom",
+            "restart_anureo" => "restart_anureo",
             "read_agents_md" => "load",
             "write_agents_md" => "save",
             "reload_config" => "save",
@@ -671,14 +671,14 @@ impl ExtensionHandler for SettingsHandler {
                 })
                 .map_err(|error| Self::internal(error.to_string()))
             }
-            "restart_loom" => {
-                let request: RestartLoomRequest = Self::parse(params)?;
+            "restart_anureo" => {
+                let request: RestartAnureoRequest = Self::parse(params)?;
                 if request.confirm_token.trim().is_empty() {
                     return Err(ExtensionError::invalid_params(
                         "confirmToken must not be empty",
                     ));
                 }
-                if !self.authorizer.authorized("restart_loom", ctx) {
+                if !self.authorizer.authorized("restart_anureo", ctx) {
                     return Err(Self::forbidden("restart permission required"));
                 }
                 self.scheduler
@@ -687,9 +687,9 @@ impl ExtensionHandler for SettingsHandler {
                         RestartScheduleError::RateLimited => Self::rate_limited(),
                         RestartScheduleError::Scheduling(message) => Self::internal(message),
                     })?;
-                serde_json::to_value(RestartLoomResponse {
+                serde_json::to_value(RestartAnureoResponse {
                     restarted: true,
-                    message: "Loom server is restarting. Please reconnect.".into(),
+                    message: "anureo server is restarting. Please reconnect.".into(),
                 })
                 .map_err(|error| Self::internal(error.to_string()))
             }
@@ -750,7 +750,7 @@ impl ExtensionHandler for SettingsHandler {
         serde_json::json!({
             "load": true,
             "save": true,
-            "restart_loom": true,
+            "restart_anureo": true,
             "read_agents_md": true,
             "write_agents_md": true,
             "reload_config": true,

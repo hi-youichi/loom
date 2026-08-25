@@ -11,9 +11,9 @@ use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
 use checkpoint::{CheckpointError, Checkpointer, RunnableConfig};
-use loom_graph_core::CompiledStateGraph;
-use loom_graph_core::GraphError;
-use loom_llm::message::UserContent;
+use anureo_graph_core::CompiledStateGraph;
+use anureo_graph_core::GraphError;
+use anureo_llm::message::UserContent;
 use stream_event::{StreamEvent, StreamMode};
 
 /// Loads state from checkpointer **without** appending a user message.

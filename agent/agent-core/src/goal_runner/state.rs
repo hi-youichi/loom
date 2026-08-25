@@ -1,16 +1,16 @@
-use loom_llm::LlmUsage;
+use anureo_llm::LlmUsage;
 
-/// Exit code (EX_TEMPFAIL = 75 from sysexits.h) emitted by `loom` when the
+/// Exit code (EX_TEMPFAIL = 75 from sysexits.h) emitted by `anureo` when the
 /// LLM provider returns a transient rate-limit / billing error AND the
 /// caller is a Kanban orchestrator that knows how to back off and retry
 /// the task instead of marking it failed.
 ///
-/// Gated on `LOOM_KANBAN_TASK` so the default `loom` CLI still exits 1
+/// Gated on `ANUREO_KANBAN_TASK` so the default `anureo` CLI still exits 1
 /// for any error — only Kanban-style supervisors (which poll the
 /// process exit code) opt in to the recoverable signal.
 ///
 /// Hermes parity (`hermes/cli.py`): the Kanban supervisor already
-/// interprets 75 as "re-enqueue, don't fail"; Loom gains the same
+/// interprets 75 as "re-enqueue, don't fail"; anureo gains the same
 /// signal here without changing the protocol.
 pub const KANBAN_RATE_LIMIT_EXIT_CODE: i32 = 75;
 
@@ -201,7 +201,7 @@ impl Default for GoalMeta {
     fn default() -> Self {
         Self {
             iteration: 0,
-            tool: "loom".to_string(),
+            tool: "anureo".to_string(),
             time_used_seconds: 0,
             token_budget: None,
             tokens_used: 0,
@@ -465,7 +465,7 @@ mod tests {
         let default_meta = GoalMeta::default();
 
         assert_eq!(default_meta.iteration, 0);
-        assert_eq!(default_meta.tool, "loom");
+        assert_eq!(default_meta.tool, "anureo");
         assert_eq!(default_meta.time_used_seconds, 0);
         assert!(default_meta.token_budget.is_none());
         assert_eq!(default_meta.tokens_used, 0);

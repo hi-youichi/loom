@@ -5,9 +5,9 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use loom_git::cli::{run_process_sync, CliBackend};
-use loom_git::types::GitFileStatus;
-use loom_git::GitBackend;
+use anureo_git::cli::{run_process_sync, CliBackend};
+use anureo_git::types::GitFileStatus;
+use anureo_git::GitBackend;
 
 pub struct FixtureRepo {
     pub dir: PathBuf,
@@ -28,7 +28,7 @@ fn git(dir: &Path, args: &[&str]) -> String {
 impl FixtureRepo {
     pub fn new(tag: &str) -> Self {
         let dir = std::env::temp_dir().join(format!(
-            "loom-git-parity-{tag}-{}",
+            "anureo-git-parity-{tag}-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -125,7 +125,7 @@ fn cli_log_and_branches() {
     let log = rt
         .block_on(backend.log(
             repo.path(),
-            &loom_git::backend::LogQuery {
+            &anureo_git::backend::LogQuery {
                 limit: 10,
                 skip: 0,
                 branch: None,
@@ -172,7 +172,7 @@ fn cli_not_a_repo_yields_not_found() {
         return;
     }
     let dir = std::env::temp_dir().join(format!(
-        "loom-git-parity-notrepo-{}",
+        "anureo-git-parity-notrepo-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -185,7 +185,7 @@ fn cli_not_a_repo_yields_not_found() {
         .block_on(backend.status(&dir));
     match result {
         Err(e) => {
-            assert!(matches!(e.kind(), loom_git::GitErrorKind::NotFound));
+            assert!(matches!(e.kind(), anureo_git::GitErrorKind::NotFound));
         }
         Ok(_) => panic!("expected NotFound"),
     }
@@ -200,21 +200,21 @@ fn cli_sync_helpers() {
     let repo = FixtureRepo::new("synchelp");
     repo.commit_file("a.txt", "x\n", "c");
 
-    let ok = loom_git::cli::run_process_sync(repo.path(), &["rev-parse", "--short", "HEAD"])
+    let ok = anureo_git::cli::run_process_sync(repo.path(), &["rev-parse", "--short", "HEAD"])
         .expect("spawn");
     assert!(ok.status.success());
-    let bad = loom_git::cli::run_process_sync(repo.path(), &["log", "--definitely-not-a-flag"])
+    let bad = anureo_git::cli::run_process_sync(repo.path(), &["log", "--definitely-not-a-flag"])
         .expect("spawn");
     assert!(
         !bad.status.success(),
         "non-zero exit must surface as Ok(Output)"
     );
 
-    let out = loom_git::cli::run_string_sync(repo.path(), &["rev-parse", "--short", "HEAD"])
+    let out = anureo_git::cli::run_string_sync(repo.path(), &["rev-parse", "--short", "HEAD"])
         .expect("run_string_sync");
     assert!(!out.is_empty());
 
-    let root = loom_git::cli::resolve_repo_root(repo.path()).expect("repo root");
+    let root = anureo_git::cli::resolve_repo_root(repo.path()).expect("repo root");
     assert!(
         root.ends_with(repo.dir.file_name().unwrap()),
         "resolve_repo_root must return the worktree root, got {} for {}",
@@ -224,7 +224,7 @@ fn cli_sync_helpers() {
 
     let r = tokio::runtime::Runtime::new().unwrap();
     let o = r
-        .block_on(loom_git::cli::run_process(
+        .block_on(anureo_git::cli::run_process(
             Some(repo.path()),
             &["rev-parse", "--short", "HEAD"],
         ))
@@ -232,7 +232,7 @@ fn cli_sync_helpers() {
     assert!(o.status.success());
 
     // error classification on the sync string path
-    let err = loom_git::cli::run_string_sync(
+    let err = anureo_git::cli::run_string_sync(
         &repo.dir.join("missing-dir"),
         &["rev-parse", "--short", "HEAD"],
     );

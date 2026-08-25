@@ -4,10 +4,10 @@
 
 use std::path::{Path, PathBuf};
 
-use loom_git::backend::{GitBackend, LogQuery};
-use loom_git::cli::CliBackend;
-use loom_git::git2_backend::Git2Backend;
-use loom_git::types::{CommitRequest, MergeOptions, StashPushOptions};
+use anureo_git::backend::{GitBackend, LogQuery};
+use anureo_git::cli::CliBackend;
+use anureo_git::git2_backend::Git2Backend;
+use anureo_git::types::{CommitRequest, MergeOptions, StashPushOptions};
 
 use crate::common::FixtureRepo;
 
@@ -67,7 +67,7 @@ fn parity_stash_include_untracked_delegates() {
     let repo = FixtureRepo::new("stashu");
     repo.commit_file("a.txt", "1\n", "first");
     std::fs::write(repo.dir.join("new.txt"), "untracked\n").unwrap();
-    let out = loom_git::facade::stash_push(
+    let out = anureo_git::facade::stash_push(
         repo.path(),
         StashPushOptions {
             message: None,
@@ -77,7 +77,7 @@ fn parity_stash_include_untracked_delegates() {
     );
     assert!(r.block_on(out).expect("delegated stash push"));
     assert!(!repo.dir.join("new.txt").exists(), "untracked stashed");
-    r.block_on(loom_git::facade::stash_pop(repo.path(), 0))
+    r.block_on(anureo_git::facade::stash_pop(repo.path(), 0))
         .expect("pop");
     assert!(repo.dir.join("new.txt").exists());
 }
@@ -449,7 +449,7 @@ fn hooks_pre_commit_blocks_and_commit_msg_rewrites() {
             },
         ))
         .expect_err("pre-commit hook must block");
-    assert!(matches!(err.kind(), loom_git::GitErrorKind::Conflict));
+    assert!(matches!(err.kind(), anureo_git::GitErrorKind::Conflict));
 
     // passing pre-commit + commit-msg that rewrites the message
     std::fs::write(hooks.join("pre-commit"), "#!/bin/sh\nexit 0\n").unwrap();

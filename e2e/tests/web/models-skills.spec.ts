@@ -1,23 +1,23 @@
 /**
  * e2e/tests/web/models-skills.spec.ts
  *
- * OpenChamber Web Models + Skills + MCP Tests
+ * anureo Web Models + Skills + MCP Tests
  * 覆盖：MOD-001~003, MOD-005, SKL-001~004, MCP-001~003（共 11 用例）
  *
  * 使用 fixtures:
  * - app: 提供 baseURL
- * - mock-loom: 拦截 HTTP API
+ * - mock-anureo: 拦截 HTTP API
  *
- * 参考 docs/references/openchamber-text-acceptance-test-cases.md §4, §8, §9
+ * 参考 docs/references/anureo-text-acceptance-test-cases.md §4, §8, §9
  */
 
 import { test as base, expect } from "@playwright/test";
 import { app } from "../../fixtures/app";
-import { mockLoom } from "../../fixtures/mock-loom";
+import { mockanureo } from "../../fixtures/mock-anureo";
 
 const test = base.extend({
   ...app,
-  ...mockLoom,
+  ...mockanureo,
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

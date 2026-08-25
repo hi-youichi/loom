@@ -2,13 +2,13 @@
 name = "checkpoint-sqlite-store"
 version.workspace = true
 edition.workspace = true
-description = "SQLite-backed Checkpointer and Store implementations for Loom"
+description = "SQLite-backed Checkpointer and Store implementations for anureo"
 license.workspace = true
 authors.workspace = true
 
 [dependencies]
 checkpoint = { path = "../checkpoint" }
-loom-llm = { path = "../llm" }
+anureo-llm = { path = "../llm" }
 env_config = { path = "../config", package = "config" }
 rusqlite = { version = "0.31", features = ["bundled"] }
 async-trait = { workspace = true }

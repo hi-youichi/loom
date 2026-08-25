@@ -494,7 +494,7 @@ pub(crate) fn determine_verdict(findings: &[GuardFinding], trust: TrustLevel) ->
         }
         // AgentCreated: same as Trusted — critical/high → Warning.
         // NOTE: the reference implementation allows high for agent-created (caution -> allow),
-        // but Loom is intentionally stricter here.
+        // but anureo is intentionally stricter here.
         TrustLevel::AgentCreated => {
             if has_critical || has_high {
                 Verdict::Warning

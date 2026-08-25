@@ -1,23 +1,23 @@
 /**
  * e2e/tests/web/files.spec.ts
  *
- * OpenChamber Web Files Tests
+ * anureo Web Files Tests
  *
  * 使用 fixtures:
  * - app: 提供 baseURL fixture
  * - auth: 提供 authenticatedPage（已认证的浏览器上下文）
  *
- * 参考 docs/references/openchamber-text-acceptance-test-cases.md §5
+ * 参考 docs/references/anureo-text-acceptance-test-cases.md §5
  */
 
 import { test as base, expect } from "@playwright/test";
 import { app } from "../../fixtures/app";
-import { mockLoom } from "../../fixtures/mock-loom";
+import { mockanureo } from "../../fixtures/mock-anureo";
 
-// 合并 fixtures：mockLoom 的 page 必须不被覆盖
+// 合并 fixtures：mockanureo 的 page 必须不被覆盖
 const test = base.extend({
   ...app,
-  ...mockLoom,
+  ...mockanureo,
 });
 
 /**

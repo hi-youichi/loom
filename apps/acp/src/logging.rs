@@ -43,7 +43,7 @@ impl FromStr for LogFormat {
 /// Log configuration from CLI args.
 #[derive(Debug, Clone)]
 pub struct LogConfig {
-    /// Log level filter (e.g., "info", "debug", "loom=debug")
+    /// Log level filter (e.g., "info", "debug", "anureo=debug")
     pub level: String,
     /// Optional log file path (supports {working_folder} variable)
     pub file: Option<PathBuf>,
@@ -59,7 +59,7 @@ pub struct LogConfig {
 /// 1. CLI `file` argument
 /// 2. `LOGS_ACP` environment variable
 /// 3. `config.toml` [logging].path
-/// 4. `~/.loom/loom.log`
+/// 4. `~/.anureo/anureo.log`
 pub fn resolve_acp_log_path(
     cli_file: Option<&Path>,
     logging_config: Option<&LoggingSection>,
@@ -81,7 +81,7 @@ pub fn resolve_acp_log_path(
         }
     }
 
-    // 4. Default: ~/.loom/loom.log
+    // 4. Default: ~/.anureo/anureo.log
     Some(config::home::default_log_file())
 }
 
@@ -101,7 +101,7 @@ pub fn init_logging(working_folder: Option<&Path>) {
     };
 
     // Load logging config from config.toml
-    let logging_config = config::load_full_config("loom").ok().map(|c| c.logging);
+    let logging_config = config::load_full_config("anureo").ok().map(|c| c.logging);
     let log_file = resolve_acp_log_path(config.file.as_deref(), logging_config.as_ref());
 
     let Some(log_file) = log_file else {
@@ -125,7 +125,7 @@ pub fn init_logging(working_folder: Option<&Path>) {
 
     let filter = tracing_init::build_env_filter(&config.level, &[]);
 
-    let guard = match tracing_init::file_non_blocking_writer(&log_path, rotate, "loom-acp") {
+    let guard = match tracing_init::file_non_blocking_writer(&log_path, rotate, "anureo-acp") {
         Ok((writer, guard)) => {
             match config.format {
                 LogFormat::Text => {
@@ -152,7 +152,7 @@ pub fn init_logging(working_folder: Option<&Path>) {
             Some(guard)
         }
         Err(e) => {
-            eprintln!("loom-acp: {}", e);
+            eprintln!("anureo-acp: {}", e);
             None
         }
     };

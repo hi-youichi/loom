@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Shared model/provider spec types, parsers, and resolvers for Loom"
+description = "Shared model/provider spec types, parsers, and resolvers for anureo"
 
 [lib]
 path = "src/lib.rs"
@@ -12,7 +12,7 @@ path = "src/lib.rs"
 [features]
 default = ["tier"]
 resolver = [
-    "dep:loom-http-retry",
+    "dep:anureo-http-retry",
     "dep:reqwest",
     "dep:tokio",
     "dep:async-trait",
@@ -26,12 +26,12 @@ tier = [
 ]
 
 [dependencies]
-loom-home = { path = "../loom-home" }
+anureo-home = { path = "../anureo-home" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # resolver feature dependencies (all optional)
-loom-http-retry = { path = "../loom-http-retry", optional = true }
+anureo-http-retry = { path = "../anureo-http-retry", optional = true }
 reqwest = { version = "0.12", features = ["json"], optional = true }
 tokio = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }

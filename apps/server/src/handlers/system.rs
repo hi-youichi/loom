@@ -15,8 +15,8 @@ pub async fn get_system_info() -> Json<Value> {
         .unwrap_or(0)
         .saturating_sub(start.elapsed().as_millis() as u64);
     Json(json!({
-        "loomdeskVersion": env!("CARGO_PKG_VERSION"),
-        "runtime": "loom",
+        "AnureoVersion": env!("CARGO_PKG_VERSION"),
+        "runtime": "anureo",
         "pid": std::process::id(),
         "startedAt": started_ms,
         "os": std::env::consts::OS,
@@ -67,7 +67,7 @@ pub async fn get_probe_url(Query(query): Query<ProbeUrlQuery>) -> impl IntoRespo
     };
     match client
         .request(reqwest::Method::HEAD, parsed)
-        .header("User-Agent", "loom-probe")
+        .header("User-Agent", "anureo-probe")
         .send()
         .await
     {
@@ -80,5 +80,5 @@ pub async fn get_probe_url(Query(query): Query<ProbeUrlQuery>) -> impl IntoRespo
 }
 
 pub async fn post_shutdown() -> Json<Value> {
-    Json(json!({ "ok": true, "message": "loom server shutting down" }))
+    Json(json!({ "ok": true, "message": "anureo server shutting down" }))
 }

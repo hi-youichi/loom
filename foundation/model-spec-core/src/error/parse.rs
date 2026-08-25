@@ -5,7 +5,7 @@ use super::{ProviderError, RetryPolicy};
 ///
 /// 设计约束：trait 放 `model-spec-core`（仅 serde，无 HTTP 类型依赖），
 /// 因此 header 以 `(String, String)` 扁平化传入，status 用 `u16`。
-/// 运行时实现（`OpenAiCompatParser` 及各 provider 覆写）位于 `loom-llm`。
+/// 运行时实现（`OpenAiCompatParser` 及各 provider 覆写）位于 `anureo-llm`。
 pub trait ProviderErrorParser: Send + Sync {
     /// 解析 HTTP 响应（状态码 + header + body）为结构化错误。
     ///

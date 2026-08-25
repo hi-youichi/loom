@@ -2,7 +2,7 @@ use agent_client_protocol::schema::v1::{PlanEntry, PlanEntryPriority, PlanEntryS
 
 use agent::run::TypedAnyStreamEvent;
 use agent::state::ReActState;
-use loom_acp::stream_bridge::{loom_event_to_updates, StreamUpdate};
+use anureo_acp::stream_bridge::{anureo_event_to_updates, StreamUpdate};
 use stream_event::StreamEvent;
 
 fn make_tool_end(name: &str, result: &str) -> StreamEvent<ReActState> {
@@ -42,7 +42,7 @@ fn todo_result_quoted_json() -> String {
 #[test]
 fn plan_emitted_on_todo_write_tool_end() {
     let ev = make_tool_end("todo_write", todo_result_json());
-    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
+    let updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     assert_eq!(plans.len(), 1);
     assert_eq!(plans[0].len(), 3);
@@ -51,7 +51,7 @@ fn plan_emitted_on_todo_write_tool_end() {
 #[test]
 fn plan_all_entries_pending_on_create() {
     let ev = make_tool_end("todo_write", todo_result_json());
-    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
+    let updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     let entries = plans[0];
     assert!(entries.iter().all(|e| e.status == PlanEntryStatus::Pending));
@@ -60,7 +60,7 @@ fn plan_all_entries_pending_on_create() {
 #[test]
 fn plan_entries_have_correct_content() {
     let ev = make_tool_end("todo_write", todo_result_json());
-    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
+    let updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     let entries = plans[0];
     assert_eq!(entries[0].content, "Analyze the codebase");
@@ -71,7 +71,7 @@ fn plan_entries_have_correct_content() {
 #[test]
 fn plan_entries_have_correct_priority() {
     let ev = make_tool_end("todo_write", todo_result_json());
-    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
+    let updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     let entries = plans[0];
     assert_eq!(entries[0].priority, PlanEntryPriority::High);
@@ -88,7 +88,7 @@ fn plan_status_updates_on_todo_change() {
   { "id": "3", "content": "Add tests", "status": "pending", "priority": "medium" }
 ]"#;
     let ev = make_tool_end("todo_write", updated);
-    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
+    let updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     let entries = plans[0];
     assert_eq!(entries[0].status, PlanEntryStatus::Completed);
@@ -104,7 +104,7 @@ fn plan_completed_and_cancelled_map_to_completed() {
   { "id": "2", "content": "Task B", "status": "cancelled", "priority": "low" }
 ]"#;
     let ev = make_tool_end("todo_write", result);
-    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
+    let updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     let entries = plans[0];
     assert_eq!(entries[0].status, PlanEntryStatus::Completed);
@@ -121,7 +121,7 @@ fn plan_full_replacement() {
   { "id": "4", "content": "D", "status": "pending", "priority": "low" }
 ]"#;
     let ev = make_tool_end("todo_write", updated);
-    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
+    let updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     assert_eq!(plans[0].len(), 4);
 }
@@ -129,7 +129,7 @@ fn plan_full_replacement() {
 #[test]
 fn plan_not_emitted_for_other_tools() {
     let ev = make_tool_end("read_file", "file contents here");
-    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
+    let updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     assert!(plans.is_empty());
 }
@@ -137,7 +137,7 @@ fn plan_not_emitted_for_other_tools() {
 #[test]
 fn plan_emitted_alongside_tool_update() {
     let ev = make_tool_end("todo_write", todo_result_json());
-    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
+    let updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let has_tool_update = updates
         .iter()
         .any(|u| matches!(u, StreamUpdate::ToolCallUpdated { .. }));
@@ -157,7 +157,7 @@ fn plan_not_emitted_on_error() {
         is_error: true,
         raw_result: None,
     };
-    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
+    let updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     assert!(plans.is_empty());
 }
@@ -165,7 +165,7 @@ fn plan_not_emitted_on_error() {
 #[test]
 fn plan_not_emitted_on_malformed_result() {
     let ev = make_tool_end("todo_write", "not valid json");
-    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
+    let updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     assert!(plans.is_empty());
 }
@@ -173,7 +173,7 @@ fn plan_not_emitted_on_malformed_result() {
 #[test]
 fn plan_not_emitted_on_empty_todos() {
     let ev = make_tool_end("todo_write", "0 todos\n[]");
-    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
+    let updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     assert!(plans.is_empty());
 }
@@ -182,7 +182,7 @@ fn plan_not_emitted_on_empty_todos() {
 fn plan_works_with_quoted_json_result() {
     let quoted = todo_result_quoted_json();
     let ev = make_tool_end("todo_write", &quoted);
-    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
+    let updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     assert_eq!(plans.len(), 1);
     assert_eq!(plans[0].len(), 3);
@@ -203,7 +203,7 @@ fn make_sub_agent_tool_end(result: &str) -> StreamEvent<ReActState> {
 fn sub_agent_any_stream_event_produces_plan_update() {
     let ev = make_sub_agent_tool_end(todo_result_json());
     let wrapped = TypedAnyStreamEvent::React(ev);
-    let updates = loom_event_to_updates(&wrapped);
+    let updates = anureo_event_to_updates(&wrapped);
     let plans = find_plan_updates(&updates);
     assert_eq!(
         plans.len(),
@@ -216,7 +216,7 @@ fn sub_agent_any_stream_event_produces_plan_update() {
 #[test]
 fn sub_agent_plan_entries_have_correct_priority_and_status() {
     let ev = make_sub_agent_tool_end(todo_result_json());
-    let updates = loom_event_to_updates(&TypedAnyStreamEvent::React(ev));
+    let updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(ev));
     let plans = find_plan_updates(&updates);
     let entries = &plans[0];
     assert_eq!(entries[0].priority, PlanEntryPriority::High);
@@ -230,7 +230,7 @@ fn sub_agent_plan_entries_have_correct_priority_and_status() {
 #[test]
 fn sub_agent_plan_deduplicates_with_parent_plan() {
     let sub_ev = make_sub_agent_tool_end(todo_result_json());
-    let sub_updates = loom_event_to_updates(&TypedAnyStreamEvent::React(sub_ev));
+    let sub_updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(sub_ev));
     assert_eq!(find_plan_updates(&sub_updates).len(), 1);
 
     let parent_result = r#"1 todos
@@ -238,7 +238,7 @@ fn sub_agent_plan_deduplicates_with_parent_plan() {
   { "id": "1", "content": "Parent task", "status": "pending", "priority": "high" }
 ]"#;
     let parent_ev = make_tool_end("todo_write", parent_result);
-    let parent_updates = loom_event_to_updates(&TypedAnyStreamEvent::React(parent_ev));
+    let parent_updates = anureo_event_to_updates(&TypedAnyStreamEvent::React(parent_ev));
     assert_eq!(find_plan_updates(&parent_updates).len(), 1);
     assert_eq!(
         find_plan_updates(&parent_updates)[0][0].content,
@@ -249,7 +249,7 @@ fn sub_agent_plan_deduplicates_with_parent_plan() {
 mod session_notifier_tests {
     use agent::run::TypedAnyStreamEvent;
     use agent::state::ReActState;
-    use loom_acp::stream_bridge::SessionNotifier;
+    use anureo_acp::stream_bridge::SessionNotifier;
     use serde_json::Value;
     use stream_event::StreamEvent;
 

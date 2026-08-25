@@ -1,8 +1,8 @@
 [package]
-name = "loom-llm"
+name = "anureo-llm"
 version.workspace = true
 edition.workspace = true
-description = "LLM client abstractions for Loom agents"
+description = "LLM client abstractions for anureo agents"
 license.workspace = true
 authors.workspace = true
 
@@ -30,7 +30,7 @@ tracing = "0.1"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
 # HTTP retry utilities (re-exported via support::http_retry)
-loom-http-retry = { path = "../loom-http-retry" }
+anureo-http-retry = { path = "../anureo-http-retry" }
 
 # OpenAI client (for ChatOpenAI)
 async-openai = { version = "0.32", features = ["chat-completion", "model"] }
@@ -44,7 +44,7 @@ chrono = { version = "0.4", features = ["serde"] }
 env_config = { path = "../config", package = "config" }
 
 # Graph error types (GraphError, Interrupt)
-loom-graph-core = { path = "../graph-core" }
+anureo-graph-core = { path = "../graph-core" }
 
 # Streaming types (MessageChunk, StreamSink)
 stream-event = { path = "../../foundation/stream-event" }

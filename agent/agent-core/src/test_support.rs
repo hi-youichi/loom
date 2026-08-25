@@ -1,7 +1,7 @@
 //! 测试共享工具：环境变量操作的进程级互斥锁。
 //!
 //! Rust 测试默认并行执行；多个测试文件同时 `std::env::set_var`/`remove_var`
-//! 操作同一组环境变量会互相覆盖导致 flaky（如 `LOOM_MEMORY_NUDGE_INTERVAL`）。
+//! 操作同一组环境变量会互相覆盖导致 flaky（如 `ANUREO_MEMORY_NUDGE_INTERVAL`）。
 //! 所有 env 相关测试共享此锁，串行化环境变量读写。
 #![allow(clippy::missing_const_for_thread_local)] // 已用 const 块初始化，clippy 1.96 误报
 

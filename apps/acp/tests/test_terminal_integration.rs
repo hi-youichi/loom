@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use loom_acp::terminal::{TerminalError, TerminalManager, TerminalStatus};
+    use anureo_acp::terminal::{TerminalError, TerminalManager, TerminalStatus};
 
     fn echo_cmd(msg: &str) -> (String, Vec<String>) {
         if cfg!(windows) {

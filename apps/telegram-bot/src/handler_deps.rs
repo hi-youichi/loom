@@ -8,7 +8,7 @@ use std::sync::Arc;
 use teloxide::Bot;
 use tokio::sync::Mutex;
 
-use crate::agent::LoomAgentRunner;
+use crate::agent::AnureoAgentRunner;
 use crate::config::Settings;
 use crate::download::TeloxideDownloader;
 use crate::error::BotError;
@@ -91,7 +91,7 @@ impl HandlerDeps {
 
         Ok(Self {
             sender: Arc::new(TeloxideSender::new(bot.clone())),
-            agent: Arc::new(LoomAgentRunner::new(bot.clone(), Arc::clone(&settings))),
+            agent: Arc::new(AnureoAgentRunner::new(bot.clone(), Arc::clone(&settings))),
             session: Arc::new(SqliteSessionManager::new()?),
             downloader: Arc::new(TeloxideDownloader::new(bot, download_dir)),
             model_selection,
@@ -130,7 +130,7 @@ impl HandlerDeps {
 
 fn build_model_catalog() -> Arc<dyn ModelCatalog> {
     let configured_model = config::default_model();
-    let full_config = config::load_full_config("loom").ok();
+    let full_config = config::load_full_config("anureo").ok();
     let configured_provider = full_config
         .as_ref()
         .and_then(|cfg| cfg.default_provider.clone())

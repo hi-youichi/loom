@@ -707,7 +707,7 @@ mod tests {
     /// Regression test for thread_id inheritance from a parent span's fields.
     ///
     /// Mirrors the production pattern used in `cli/src/run/agent.rs::run_agent_wrapper`
-    /// and `loom-acp/src/agent.rs::prompt`, where the root span carries the business
+    /// and `anureo-acp/src/agent.rs::prompt`, where the root span carries the business
     /// `thread_id` (e.g. `session-1717...`) so every nested event inherits it via
     /// the parent-scope fallback in `extract_app_thread_id`. Without this, events
     /// that don't explicitly inject `thread_id` would fall back to `ThreadId(N)`.

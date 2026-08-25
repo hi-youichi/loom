@@ -124,7 +124,7 @@ mod tests {
 
     fn unique_tmp(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "loom-archive-test-{}-{}",
+            "anureo-archive-test-{}-{}",
             name,
             uuid::Uuid::new_v4()
         ));

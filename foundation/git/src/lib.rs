@@ -1,12 +1,12 @@
 #![cfg_attr(coverage, feature(coverage_attribute))]
-//! `loom-git`: typed git facade for Loom.
+//! `anureo-git`: typed git facade for anureo.
 //!
 //! Layering (see docs/design/git2-migration.md §4):
 //! - `types`    — typed structs matching the extension JSON contract byte-for-byte
 //! - `error`    — `GitError` with kind classification
 //! - `backend`  — `GitBackend` trait; default bodies return `Unsupported`
 //! - `cli`      — `CliBackend` over the git binary (parity baseline + fallback)
-//! - `facade`   — backend selection (`LOOM_GIT_BACKEND`) + method-level delegation
+//! - `facade`   — backend selection (`ANUREO_GIT_BACKEND`) + method-level delegation
 
 pub mod backend;
 pub mod cli;

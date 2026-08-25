@@ -143,7 +143,7 @@ pub struct FileLlmAuditLog {
 impl FileLlmAuditLog {
     /// Create a new file audit log.
     ///
-    /// - `base_path`: log directory, e.g. `~/.loom/logs/llm/`
+    /// - `base_path`: log directory, e.g. `~/.anureo/logs/llm/`
     ///
     /// Each audit entry is written as a single JSON file at
     /// `{base_path}/{thread_id}/{trace_id}.json`.
@@ -232,10 +232,10 @@ impl LlmAuditConfig {
     /// Priority:
     /// 1. `LLM_AUDIT_ENABLED` / `LLM_AUDIT_PATH` environment variables (backward compatibility)
     /// 2. config.toml [logging.llm] settings
-    /// 3. Default: `~/.loom/logs/llm`, enabled=false
+    /// 3. Default: `~/.anureo/logs/llm`, enabled=false
     pub fn from_env() -> Self {
         // Load config.toml settings: prefer [llm.audit], fall back to [logging.llm]
-        let full_config = env_config::load_full_config("loom").ok();
+        let full_config = env_config::load_full_config("anureo").ok();
         let llm_audit_config = full_config.as_ref().and_then(|c| {
             // [llm.audit] section takes priority
             let audit = &c.llm.audit;
@@ -262,7 +262,7 @@ impl LlmAuditConfig {
                     })
             });
 
-        // Resolve path: env var > [llm.audit] > [logging.llm] > default ~/.loom/logs/llm
+        // Resolve path: env var > [llm.audit] > [logging.llm] > default ~/.anureo/logs/llm
         let path = std::env::var("LLM_AUDIT_PATH")
             .ok()
             .map(|p| expand_tilde(PathBuf::from(&p).as_path()))
@@ -617,12 +617,12 @@ mod tests {
 
     #[test]
     fn test_expand_tilde_with_home() {
-        let expanded = expand_tilde(PathBuf::from("~/.loom/logs/llm").as_path());
+        let expanded = expand_tilde(PathBuf::from("~/.anureo/logs/llm").as_path());
         let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
             .or_else(|_| std::env::var("HOMEPATH"))
             .expect("HOME, USERPROFILE, or HOMEPATH must be set");
-        assert_eq!(expanded, PathBuf::from(home).join(".loom/logs/llm"));
+        assert_eq!(expanded, PathBuf::from(home).join(".anureo/logs/llm"));
     }
 
     #[test]

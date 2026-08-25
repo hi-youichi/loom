@@ -39,7 +39,7 @@ pub struct ResolvedModelConfig {
 
 /// Options for running an agent.
 pub struct RunOptions {
-    pub message: loom_llm::message::UserContent,
+    pub message: anureo_llm::message::UserContent,
     pub working_folder: Option<PathBuf>,
     pub session_id: Option<String>,
     pub cancellation: Option<RunCancellation>,
@@ -66,7 +66,7 @@ pub struct RunOptions {
     pub bash_executor: Option<Arc<dyn tool_basic::bash::CommandExecutor>>,
     pub extra_tools: Option<Arc<Vec<Arc<dyn tool_core::Tool>>>>,
     /// Provider for default extra tools (e.g. the workflow tool) that ship
-    /// with Loom. See [`ExtraToolsProvider`] for the design rationale. CLI
+    /// with anureo. See [`ExtraToolsProvider`] for the design rationale. CLI
     /// entry points set this once; `build_react_config` consumes it.
     pub default_extra_tools_provider: Option<ExtraToolsProvider>,
     pub acp_session_id: Option<String>,

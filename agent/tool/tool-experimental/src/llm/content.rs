@@ -5,18 +5,18 @@
 //!
 //! Standard OpenAI types (`text`, `image_url`, `input_audio`) use OpenAI's
 //! nested structure (`{ "type": "image_url", "image_url": { "url": ... } }`)
-//! and are parsed manually. Loom extension types (`*_path`, `*_base64`,
+//! and are parsed manually. anureo extension types (`*_path`, `*_base64`,
 //! `*_url` for non-image media) use a flat structure and follow the agent
 //! convenience pattern.
 
 use std::path::{Path, PathBuf};
 
 use base64::Engine;
-use loom_llm::ToolSourceError;
+use anureo_llm::ToolSourceError;
 use serde_json::Value;
 use tool_basic::file::resolve_path_under;
 
-use loom_llm::message::ContentPart;
+use anureo_llm::message::ContentPart;
 
 // ---------------------------------------------------------------------------
 // Media type helpers
@@ -191,7 +191,7 @@ pub(crate) fn resolve_content_part(
             })
         }
 
-        // ── Loom extensions: video/pdf flat types pass through ──
+        // ── anureo extensions: video/pdf flat types pass through ──
         "video_url" | "pdf_url" => from_value(v),
         "video_base64" | "pdf_base64" => from_value(v),
 
@@ -256,13 +256,13 @@ fn from_value(v: &Value) -> Result<ContentPart, ToolSourceError> {
 // content[] → Message
 // ---------------------------------------------------------------------------
 
-/// Convert a single agent-supplied message JSON to a [`loom_llm::Message`].
+/// Convert a single agent-supplied message JSON to a [`anureo_llm::Message`].
 pub(crate) fn parse_message(
     v: &Value,
     working_folder: Option<&Path>,
     max_file_size: usize,
-) -> Result<loom_llm::Message, ToolSourceError> {
-    use loom_llm::message::{AssistantPayload, Message, UserContent};
+) -> Result<anureo_llm::Message, ToolSourceError> {
+    use anureo_llm::message::{AssistantPayload, Message, UserContent};
 
     let role = v
         .get("role")
@@ -453,7 +453,7 @@ mod tests {
         let v = serde_json::json!({"role": "user", "content": "hi"});
         let m = parse_message(&v, None, 1024).unwrap();
         match m {
-            loom_llm::Message::User(loom_llm::UserContent::Text(s)) => assert_eq!(s, "hi"),
+            anureo_llm::Message::User(anureo_llm::UserContent::Text(s)) => assert_eq!(s, "hi"),
             _ => panic!("expected User Text"),
         }
     }
@@ -469,7 +469,7 @@ mod tests {
         });
         let m = parse_message(&v, None, 1024).unwrap();
         match m {
-            loom_llm::Message::User(loom_llm::UserContent::Multimodal(parts)) => {
+            anureo_llm::Message::User(anureo_llm::UserContent::Multimodal(parts)) => {
                 assert_eq!(parts.len(), 2);
             }
             _ => panic!("expected User Multimodal"),
@@ -481,7 +481,7 @@ mod tests {
         let v = serde_json::json!({"role": "system", "content": "you are helpful"});
         let m = parse_message(&v, None, 1024).unwrap();
         match m {
-            loom_llm::Message::System(s) => assert_eq!(s, "you are helpful"),
+            anureo_llm::Message::System(s) => assert_eq!(s, "you are helpful"),
             _ => panic!("expected System"),
         }
     }

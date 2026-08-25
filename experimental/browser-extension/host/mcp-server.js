@@ -21,7 +21,7 @@ import { z } from "zod";
 const DEFAULT_PORT = 18765;
 
 function getPort() {
-  const configPath = path.join(os.homedir(), ".config", "loom-browser", "config.json");
+  const configPath = path.join(os.homedir(), ".config", "anureo-browser", "config.json");
   try {
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     return config.port || DEFAULT_PORT;
@@ -87,7 +87,7 @@ function sendToExtension(tool, args) {
 
 // --- Pidfile management ---
 
-const pidfilePath = path.join(os.tmpdir(), `loom-browser-mcp-${TCP_PORT}.pid`);
+const pidfilePath = path.join(os.tmpdir(), `anureo-browser-mcp-${TCP_PORT}.pid`);
 
 function writePidfile() {
   try { fs.writeFileSync(pidfilePath, String(process.pid)); } catch {}
@@ -441,7 +441,7 @@ async function callTool(toolName, args) {
 // --- MCP Server with all 18 tools ---
 
 const server = new McpServer({
-  name: "loom-browser",
+  name: "anureo-browser",
   version: "1.0.0",
 });
 

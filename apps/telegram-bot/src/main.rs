@@ -8,13 +8,13 @@ const TELEGRAM_BOT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser, Debug)]
 #[command(name = "telegram-bot")]
-#[command(about = "Telegram Bot for Loom", long_about = None)]
+#[command(about = "Telegram Bot for anureo", long_about = None)]
 struct Args {
     /// Show version information
     #[arg(short = 'V', long = "version", action = clap::ArgAction::SetTrue)]
     version: bool,
 
-    /// Loom home directory for config, state, and data (default: ~/.loom).
+    /// anureo home directory for config, state, and data (default: ~/.anureo).
     #[arg(long, global = true, value_name = "DIR")]
     home: Option<std::path::PathBuf>,
 }
@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     // NOTE: eprintln! used here because tracing is initialized after config loads.
-    match config::load_and_apply_with_report("loom", None::<&std::path::Path>) {
+    match config::load_and_apply_with_report("anureo", None::<&std::path::Path>) {
         Ok(report) => {
             if let Some(p) = &report.dotenv_path {
                 eprintln!("config: .env path={}", p.display());
@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
         Err(e) => {
             eprintln!(
-                "config: loom global config not found (non-fatal, continuing): {}",
+                "config: anureo global config not found (non-fatal, continuing): {}",
                 e
             );
         }
@@ -58,10 +58,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Err(e) => {
             eprintln!("Error loading config: {}", e);
             eprintln!("\nPlease ensure you have a configuration file at:");
-            eprintln!("  - ~/.loom/telegram-bot.toml (recommended)");
+            eprintln!("  - ~/.anureo/telegram-bot.toml (recommended)");
             eprintln!("  - ./telegram-bot.toml (current directory)");
             eprintln!("\nYou can copy the example config:");
-            eprintln!("  cp telegram-bot/telegram-bot.example.toml ~/.loom/telegram-bot.toml");
+            eprintln!("  cp telegram-bot/telegram-bot.example.toml ~/.anureo/telegram-bot.toml");
             std::process::exit(1);
         }
     };

@@ -173,9 +173,9 @@ struct WorktreeBranchEntry {
 // ── Git CLI helpers ────────────────────────────────────────────────────
 
 async fn run_git(ctx: &ExtensionContext, args: &[&str]) -> Result<String, ExtensionError> {
-    let result = loom_git::facade::run_raw(ctx.working_directory.as_deref(), args).await;
+    let result = anureo_git::facade::run_raw(ctx.working_directory.as_deref(), args).await;
     match result {
-        Err(e) if matches!(e.kind(), loom_git::GitErrorKind::NotFound) => {
+        Err(e) if matches!(e.kind(), anureo_git::GitErrorKind::NotFound) => {
             Err(ExtensionError::not_found(e.message().to_string()))
         }
         Err(e) => Err(ExtensionError {
@@ -311,7 +311,7 @@ fn parse_worktree_porcelain(output: &str) -> Vec<RawWorktreeEntry> {
 }
 
 async fn check_worktree_dirty(path: &Path) -> bool {
-    match loom_git::facade::run_raw(Some(path), &["status", "--porcelain"]).await {
+    match anureo_git::facade::run_raw(Some(path), &["status", "--porcelain"]).await {
         Ok(output) => !output.trim().is_empty(),
         Err(_) => false,
     }
@@ -327,7 +327,7 @@ async fn fetch_all_worktrees(ctx: &ExtensionContext) -> Result<Vec<WorktreeInfo>
         let is_dirty = check_worktree_dirty(&path_buf).await;
 
         let attention_reason = {
-            let status_file = path_buf.join(".loomdesk").join("bootstrap-status.json");
+            let status_file = path_buf.join(".anureo").join("bootstrap-status.json");
             if status_file.exists() {
                 if let Ok(content) = std::fs::read_to_string(&status_file) {
                     if let Ok(status) = serde_json::from_str::<BootstrapStatusFile>(&content) {
@@ -408,14 +408,14 @@ fn compute_worktree_target_path(main_root: &Path, branch: &str) -> PathBuf {
     main_root.join(".worktrees").join(sanitized)
 }
 
-fn loomdesk_dir(main_root: &Path) -> PathBuf {
-    main_root.join(".loomdesk")
+fn anureo_dir(main_root: &Path) -> PathBuf {
+    main_root.join(".anureo")
 }
 
 // ── Bootstrap config ───────────────────────────────────────────────────
 
 fn read_bootstrap_config(main_root: &Path) -> Result<BootstrapConfig, ExtensionError> {
-    let config_path = main_root.join(".loomdesk").join("bootstrap.json");
+    let config_path = main_root.join(".anureo").join("bootstrap.json");
     if !config_path.exists() {
         return Ok(BootstrapConfig { steps: vec![] });
     }
@@ -437,7 +437,7 @@ fn read_bootstrap_config(main_root: &Path) -> Result<BootstrapConfig, ExtensionE
 
 fn read_bootstrap_status(worktree_path: &Path) -> Option<BootstrapStatusFile> {
     let status_file = worktree_path
-        .join(".loomdesk")
+        .join(".anureo")
         .join("bootstrap-status.json");
     let content = std::fs::read_to_string(&status_file).ok()?;
     serde_json::from_str(&content).ok()
@@ -447,7 +447,7 @@ fn write_bootstrap_status(
     worktree_path: &Path,
     status: &BootstrapStatusFile,
 ) -> Result<(), ExtensionError> {
-    let dir = worktree_path.join(".loomdesk");
+    let dir = worktree_path.join(".anureo");
     std::fs::create_dir_all(&dir).ok();
     let status_file = dir.join("bootstrap-status.json");
     let content = serde_json::to_string_pretty(status).map_err(|e| ExtensionError {
@@ -560,7 +560,7 @@ fn save_idempotency(
     branch: &str,
     base_ref: &Option<String>,
 ) {
-    let idem_dir = loomdesk_dir(main_root).join("idempotency");
+    let idem_dir = anureo_dir(main_root).join("idempotency");
     std::fs::create_dir_all(&idem_dir).ok();
     let entry = IdempotencyEntry {
         result,
@@ -580,7 +580,7 @@ fn check_idempotency_match(
     branch: &str,
     base_ref: &Option<String>,
 ) -> Result<Option<Value>, ExtensionError> {
-    let idem_dir = loomdesk_dir(main_root).join("idempotency");
+    let idem_dir = anureo_dir(main_root).join("idempotency");
     let file_path = idem_dir.join(format!("{key}.json"));
     let content = match std::fs::read_to_string(&file_path) {
         Ok(c) => c,
@@ -606,7 +606,7 @@ fn check_idempotency_match(
 // ── Worktree branch registry ───────────────────────────────────────────
 
 fn read_branch_registry(main_root: &Path) -> WorktreeBranchRegistry {
-    let registry_path = loomdesk_dir(main_root).join("worktree-branches.json");
+    let registry_path = anureo_dir(main_root).join("worktree-branches.json");
     match std::fs::read_to_string(&registry_path) {
         Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
         Err(_) => WorktreeBranchRegistry::default(),
@@ -614,7 +614,7 @@ fn read_branch_registry(main_root: &Path) -> WorktreeBranchRegistry {
 }
 
 fn write_branch_registry(main_root: &Path, registry: &WorktreeBranchRegistry) {
-    let dir = loomdesk_dir(main_root);
+    let dir = anureo_dir(main_root);
     std::fs::create_dir_all(&dir).ok();
     if let Ok(content) = serde_json::to_string_pretty(registry) {
         let registry_path = dir.join("worktree-branches.json");

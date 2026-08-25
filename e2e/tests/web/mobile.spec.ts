@@ -1,21 +1,21 @@
 /**
  * e2e/tests/web/mobile.spec.ts
  *
- * OpenChamber Web Mobile Tests
+ * anureo Web Mobile Tests
  *
  * 注意：此文件由 playwright.config.ts 中的 Mobile Chrome project 运行
  * （Pixel 7 设备，viewport: 412x915）
  *
- * 参考 docs/references/openchamber-text-acceptance-test-cases.md §16
+ * 参考 docs/references/anureo-text-acceptance-test-cases.md §16
  */
 
 import { test as base, expect } from "@playwright/test";
 
-// 使用 mock-loom 的 page 拦截（mockLoom 的 page fixture 不能被覆盖）
-import { mockLoom } from "../../fixtures/mock-loom";
+// 使用 mock-anureo 的 page 拦截（mockanureo 的 page fixture 不能被覆盖）
+import { mockanureo } from "../../fixtures/mock-anureo";
 
 const test = base.extend({
-  ...mockLoom,
+  ...mockanureo,
   baseURL: async ({}, use) => {
     await use(process.env.E2E_BASE_URL ?? "http://localhost:3000");
   },
@@ -26,7 +26,7 @@ const test = base.extend({
  *
  * 目标：验证窄屏下左右侧栏变为抽屉可滑出
  * 前置条件：手机浏览器或 DevTools 模拟移动端（Pixel 7, 412x915）
- * 步骤：1. 打开 OpenChamber（手机宽度）2. 观察布局 3. 点击切换按钮滑出左侧栏 4. 滑出右侧栏
+ * 步骤：1. 打开 anureo（手机宽度）2. 观察布局 3. 点击切换按钮滑出左侧栏 4. 滑出右侧栏
  * 预期结果：三栏变为单栏 + 抽屉；侧栏可滑出/滑入
  * 观察点/失败信号：布局溢出、抽屉不可滑出、三栏挤在一起
  */

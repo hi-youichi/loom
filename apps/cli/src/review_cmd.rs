@@ -3,7 +3,7 @@ use crate::review_history::{ReviewHistory, ReviewRecord};
 use crate::review_skill_cmd::build_review_react_config;
 use crate::session::SessionManager;
 use chrono::{Duration, Utc};
-use loom_curator::{run_review, ReviewConfig as BgReviewConfig, ReviewOutcome, TokenUsageSummary};
+use anureo_curator::{run_review, ReviewConfig as BgReviewConfig, ReviewOutcome, TokenUsageSummary};
 use std::time::Instant;
 
 pub(crate) async fn handle_review_command(
@@ -33,8 +33,8 @@ async fn do_review_single(
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
-    let loom_home = config::home::loom_home();
-    let history = ReviewHistory::new(&loom_home);
+    let anureo_home = config::home::anureo_home();
+    let history = ReviewHistory::new(&anureo_home);
 
     let mgr = SessionManager::with_default_path();
     let text = mgr
@@ -170,8 +170,8 @@ async fn do_review_batch(
     args: &ReviewArgs,
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let loom_home = config::home::loom_home();
-    let history = ReviewHistory::new(&loom_home);
+    let anureo_home = config::home::anureo_home();
+    let history = ReviewHistory::new(&anureo_home);
     let mgr = SessionManager::with_default_path();
 
     let sessions = if let Some(q) = query {
@@ -289,8 +289,8 @@ fn show_history(
     limit: usize,
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let loom_home = config::home::loom_home();
-    let history = ReviewHistory::new(&loom_home);
+    let anureo_home = config::home::anureo_home();
+    let history = ReviewHistory::new(&anureo_home);
     let records = history.list(limit)?;
 
     let filtered: Vec<_> = if let Some(t) = trigger {
@@ -326,8 +326,8 @@ fn show_history(
 }
 
 fn show_review(session_id: &str, json: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let loom_home = config::home::loom_home();
-    let history = ReviewHistory::new(&loom_home);
+    let anureo_home = config::home::anureo_home();
+    let history = ReviewHistory::new(&anureo_home);
     match history.find_by_session(session_id)? {
         Some(record) => {
             if json {
@@ -365,8 +365,8 @@ fn show_review(session_id: &str, json: bool) -> Result<(), Box<dyn std::error::E
 }
 
 fn show_pending(limit: usize, json: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let loom_home = config::home::loom_home();
-    let history = ReviewHistory::new(&loom_home);
+    let anureo_home = config::home::anureo_home();
+    let history = ReviewHistory::new(&anureo_home);
     let mgr = SessionManager::with_default_path();
 
     let reviewed = history.reviewed_session_ids()?;
@@ -484,7 +484,7 @@ fn format_duration_ms(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_curator::TokenUsageSummary;
+    use anureo_curator::TokenUsageSummary;
 
     #[test]
     fn format_token_summary_omits_cache_split_when_zero() {

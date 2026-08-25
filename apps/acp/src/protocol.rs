@@ -1,42 +1,42 @@
-//! # ACP protocol and Loom mapping summary
+//! # ACP protocol and anureo mapping summary
 //!
 //! This section condenses [Agent Client Protocol](https://agentclientprotocol.com) request/response,
-//! behavior, and phasing relevant to the Loom implementation into rustdoc.
+//! behavior, and phasing relevant to the anureo implementation into rustdoc.
 //!
 //! ## Transport (stdio)
 //!
 //! - Only **stdio** is implemented: newline-delimited JSON-RPC 2.0, one complete JSON per line (Request/Response/Notification).
-//! - Flow: Client -> stdin -> loom acp; loom acp -> stdout -> Client. **stderr is for logs only**; no JSON-RPC on stderr.
+//! - Flow: Client -> stdin -> anureo acp; anureo acp -> stdout -> Client. **stderr is for logs only**; no JSON-RPC on stderr.
 //! - Use `agent_client_protocol::AgentSideConnection::new(agent, stdin, stdout, spawn)` to drive the I/O loop.
-//! - **Entrypoint**: Runs via `loom acp` subcommand on the same binary as the CLI.
+//! - **Entrypoint**: Runs via `anureo acp` subcommand on the same binary as the CLI.
 //!
 //! ## initialize (capability negotiation)
 //!
 //! - **When**: Once, after connection and before any other method.
 //! - **InitializeRequest**: `protocol_version` (required), `client_capabilities` (optional), `implementation` (optional).
-//! - **InitializeResponse**: `protocol_version` (negotiated), `agent_capabilities`/`agent_info`, `auth_methods` (Loom uses `[]`).
-//! - **Loom**: Return version, implementation "loom" + crate version; promptCapabilities at least text + resource_link baseline; loadSession, mcpCapabilities as actually supported.
+//! - **InitializeResponse**: `protocol_version` (negotiated), `agent_capabilities`/`agent_info`, `auth_methods` (anureo uses `[]`).
+//! - **anureo**: Return version, implementation "anureo" + crate version; promptCapabilities at least text + resource_link baseline; loadSession, mcpCapabilities as actually supported.
 //!
 //! ## authenticate
 //!
-//! - Client only calls when Agent returns `auth_required`. Loom does not declare auth_methods, so it is never called; implement as immediate success.
+//! - Client only calls when Agent returns `auth_required`. anureo does not declare auth_methods, so it is never called; implement as immediate success.
 //!
 //! ## session/new (new session)
 //!
 //! - **NewSessionRequest**: `working_directory` (optional, absolute path), `mcp_servers` (required).
 //! - **NewSessionResponse**: `session_id` (required, Agent-generated).
-//! - **Loom**: Generate unique session_id; session_id <-> thread_id 1:1 (can be equal); working_directory -> `RunOptions::working_folder`; iterate mcp_servers to start MCP and register tools.
-//! - **MCP**: McpServerStdio (command, args, env) starts subprocess stdio; McpServerHttp/Sse connect as Loom supports. Disconnect that session's MCP when the session is "closed" or process exits; tools are per-session (one MCP set per session), not shared across sessions.
+//! - **anureo**: Generate unique session_id; session_id <-> thread_id 1:1 (can be equal); working_directory -> `RunOptions::working_folder`; iterate mcp_servers to start MCP and register tools.
+//! - **MCP**: McpServerStdio (command, args, env) starts subprocess stdio; McpServerHttp/Sse connect as anureo supports. Disconnect that session's MCP when the session is "closed" or process exits; tools are per-session (one MCP set per session), not shared across sessions.
 //!
 //! ## session/prompt (handle user input)
 //!
 //! - **PromptRequest**: `session_id`, `content_blocks` (required).
 //! - **PromptResponse**: `stop_reason` (Finished | MaxTokens | MaxTurns | Refused | **Cancelled**).
-//! - **Loom flow**: Look up session -> content_blocks -> message -> RunOptions -> `run_agent_with_options`; send session/update during stream; request_permission when needed; finally return stop_reason based on cancellation.
+//! - **anureo flow**: Look up session -> content_blocks -> message -> RunOptions -> `run_agent_with_options`; send session/update during stream; request_permission when needed; finally return stop_reason based on cancellation.
 //!
 //! ## ContentBlock and user message (content module)
 //!
-//! | Variant        | Description     | Loom support           |
+//! | Variant        | Description     | anureo support           |
 //! |-----------------|-----------------|------------------------|
 //! | **Text**        | Plain/Markdown  | Required; concatenate in order |
 //! | **ResourceLink**| Resource URI   | Required; e.g. "Reference: …" |
@@ -51,7 +51,7 @@
 //! - **Method**: Notification (Agent -> Client, no response).
 //! - **SessionNotification**: `session_id`, `session_update` (SessionUpdate union).
 //! - **SessionUpdate variants**: user_message_chunk, **agent_message_chunk**, **agent_thought_chunk**, **tool_call**, **tool_call_update**, plan, available_commands_update, current_mode_update, config_option_update, **session_info_update**.
-//! - Loom sources: think output -> agent_message_chunk/agent_thought_chunk; Act decides to call tool -> tool_call (Pending); during/after execution -> tool_call_update (Running/Success/Failure).
+//! - anureo sources: think output -> agent_message_chunk/agent_thought_chunk; Act decides to call tool -> tool_call (Pending); during/after execution -> tool_call_update (Running/Success/Failure).
 //! - **Background review completion**: When `spawn_inprocess_review` finishes (post-prompt or `/review-skill`), two `session/update` notifications are emitted:
 //!   1. `agent_message_chunk` — human-readable summary ("Background review saved 2 memories + 1 skill (1.2s)." or "... skipped (...)"). Uses a random UUID `message_id`; per ACP spec the client renders a new `messageId` as a distinct assistant message.
 //!   2. `session_info_update` with `_meta.review = { status, reviewed_at, memory_count, skill_count, skip_reason?, duration_ms }` — fills the schema field declared in `session/list` above, enabling IDE session-list badges.
@@ -66,17 +66,17 @@
 //!
 //! ## session/request_permission (tool execution permission)
 //!
-//! - **Direction**: Agent calls Client (Loom asks IDE for user approval).
+//! - **Direction**: Agent calls Client (anureo asks IDE for user approval).
 //! - **RequestPermissionRequest**: session_id, tool_call_update, permission_options (AllowOnce/AllowAlways/DenyOnce/DenyAlways, etc.).
 //! - **RequestPermissionResponse**: outcome is SelectedPermissionOutcome (with permission_option_id) or **Cancelled** (user cancelled or Client sent session/cancel).
-//! - Loom: Checks tool against permission policy; await request_permission before executing tool; execute or write denial and return Cancelled based on result.
+//! - anureo: Checks tool against permission policy; await request_permission before executing tool; execute or write denial and return Cancelled based on result.
 //!
 //! ## session/cancel (cancellation)
 //!
 //! - **CancelNotification**: session_id (required).
 //! - Agent should stop LLM, abort tools, return PromptResponse(StopReason::Cancelled) as soon as possible.
-//! - Loom: SessionStore keeps per-session cancel flag; set_cancelled on cancel; poll is_cancelled in prompt path; if there is a pending request_permission, Client responds with Cancelled.
-//! - **Fallback**: If Loom has no interruptible run_agent API yet, check cancel flag on next poll or node entry and return Cancelled, or add an extension point.
+//! - anureo: SessionStore keeps per-session cancel flag; set_cancelled on cancel; poll is_cancelled in prompt path; if there is a pending request_permission, Client responds with Cancelled.
+//! - **Fallback**: If anureo has no interruptible run_agent API yet, check cancel flag on next poll or node entry and return Cancelled, or add an extension point.
 //!
 //! ## session/load
 //!
@@ -92,8 +92,8 @@
 //!   cwd, projected to standard ACP fields (`sessionId`, `cwd`, `title`,
 //!   `updatedAt`).
 //! - The compatibility implementation intentionally returns one complete page
-//!   with `nextCursor = null`; private Loom Desk pagination is provided by
-//!   `_loomdesk.dev/session/list` and its immutable snapshot cursor.
+//!   with `nextCursor = null`; private anureo Desk pagination is provided by
+//!   `_anureo.dev/session/list` and its immutable snapshot cursor.
 //!
 //! ## Session mode and session config
 //!
@@ -111,7 +111,7 @@
 //!
 //! ## Client capabilities (fs, terminal)
 //!
-//! - fs/read_text_file, fs/write_text_file, terminal/* (create, output, kill, release, wait_for_exit) are Agent->Client requests; only available when Client declares them in initialize. May request_permission first then call or fall back to Loom local execution. **When calling**, Loom side must hold AgentSideConnection (implementing ACP Client trait) and await its `read_text_file` / `write_text_file` / `create_terminal` etc.
+//! - fs/read_text_file, fs/write_text_file, terminal/* (create, output, kill, release, wait_for_exit) are Agent->Client requests; only available when Client declares them in initialize. May request_permission first then call or fall back to anureo local execution. **When calling**, anureo side must hold AgentSideConnection (implementing ACP Client trait) and await its `read_text_file` / `write_text_file` / `create_terminal` etc.
 //!
 //! ## Errors and JSON-RPC error codes
 //!

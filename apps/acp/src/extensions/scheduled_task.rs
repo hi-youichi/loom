@@ -8,7 +8,7 @@ use super::auth;
 use super::pagination::{PaginatedResult, PaginationParams};
 use super::{ExtensionContext, ExtensionError, ExtensionHandler};
 
-use config::home::loom_home;
+use config::home::anureo_home;
 
 const DEFAULT_LIMIT: usize = 50;
 const MAX_LIMIT: usize = 200;
@@ -102,9 +102,9 @@ pub struct TaskChangedNotification {
 
 fn store_path(ctx: &ExtensionContext) -> PathBuf {
     if let Some(wd) = &ctx.working_directory {
-        wd.join(".loom").join("scheduled-tasks.json")
+        wd.join(".anureo").join("scheduled-tasks.json")
     } else {
-        loom_home().join("scheduled-tasks.json")
+        anureo_home().join("scheduled-tasks.json")
     }
 }
 

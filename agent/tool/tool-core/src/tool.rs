@@ -13,7 +13,7 @@ pub type EmbeddedRef = (String, String);
 /// A skill bundled inside a Tool crate, embedded in the binary via `include_str!`.
 ///
 /// Tools that have detailed usage guidance beyond what fits in `ToolSpec.description`
-/// can return one of these from [`Tool::builtin_skill`]. The Loom skill registry
+/// can return one of these from [`Tool::builtin_skill`]. The anureo skill registry
 /// injects them on startup; the agent loads them on demand via the `skill` tool.
 #[derive(Debug, Clone)]
 pub struct BuiltinSkill {
@@ -49,7 +49,7 @@ pub trait Tool: Send + Sync {
 
     /// Optional: a reference skill bundled with this tool.
     ///
-    /// Return `Some(_)` to make the skill discoverable by the Loom agent.
+    /// Return `Some(_)` to make the skill discoverable by the anureo agent.
     /// The skill's content is embedded in the binary — no filesystem
     /// dependency at runtime.
     fn builtin_skill(&self) -> Option<BuiltinSkill> {

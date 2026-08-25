@@ -1,4 +1,4 @@
-//! Pregel-style BSP graph runtime for Loom.
+//! Pregel-style BSP graph runtime for anureo.
 //!
 //! This crate provides the low-level Pregel graph execution engine:
 //! channels, task scheduling, checkpointing integration, subgraph support,

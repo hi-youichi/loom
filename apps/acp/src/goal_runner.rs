@@ -1,11 +1,11 @@
-//! ACP-internal goal runner: wraps `loom::goal_runner::GoalRunner` for use inside ACP prompt().
+//! ACP-internal goal runner: wraps `anureo::goal_runner::GoalRunner` for use inside ACP prompt().
 //!
 //! When the user types `/goal <description>` in the IDE, the ACP prompt handler
-//! delegates to [`run_goal`] which creates a `GoalRunner` with a `LoomTool` that
+//! delegates to [`run_goal`] which creates a `GoalRunner` with a `AnureoTool` that
 //! bridges events back to the IDE via `session/update` notifications.
 //!
-//! **TODO**: GoalRunner/LoomTool/generate_mcp_config were moved to loom-agent.
-//! This module needs to be updated to use the loom-agent equivalents.
+//! **TODO**: GoalRunner/AnureoTool/generate_mcp_config were moved to anureo-agent.
+//! This module needs to be updated to use the anureo-agent equivalents.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -33,7 +33,7 @@ pub enum GoalRunError {
 
 /// Runs a goal loop inside the ACP process.
 ///
-/// **TODO**: GoalRunner has been moved to loom-agent crate.
+/// **TODO**: GoalRunner has been moved to anureo-agent crate.
 /// This function currently returns an error indicating the feature is unavailable.
 pub async fn run_goal(
     _objective: String,
@@ -43,7 +43,7 @@ pub async fn run_goal(
     _run_cancellation: Option<RunCancellation>,
 ) -> Result<GoalResult, GoalRunError> {
     Err(GoalRunError::Unavailable(
-        "GoalRunner has been moved to loom-agent crate and is not yet bridged".to_string(),
+        "GoalRunner has been moved to anureo-agent crate and is not yet bridged".to_string(),
     ))
 }
 

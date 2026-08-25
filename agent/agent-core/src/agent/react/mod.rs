@@ -1,10 +1,10 @@
 //! ReAct: graph nodes (Think, Act, Observe), runner, config-driven builder.
 //!
-//! This module packages Loom's default ReAct loop as a small graph:
+//! This module packages anureo's default ReAct loop as a small graph:
 //!
 //! 1. [`ThinkNode`] asks the model for the next action.
 //! 2. [`tools_condition`] decides whether the turn should end or route to tools.
-//! 3. [`ActNode`] executes tool calls through a [`loom::ToolSource`].
+//! 3. [`ActNode`] executes tool calls through a [`anureo::ToolSource`].
 //! 4. [`ObserveNode`] converts tool results back into messages so the next think
 //!    step can continue.
 //!
@@ -98,16 +98,16 @@ pub fn tools_condition(state: &ReActState) -> ToolsConditionResult {
 /// questions) is **disabled**: it conflicts with `tool_choice: required` and with tasks that need
 /// real workspace listing without hallucination.
 ///
-/// **Restore:** copy `system_prompt` from `loom/prompts/experimental/react.yaml` into
-/// `loom/prompts/react.yaml`, or set env `REACT_SYSTEM_PROMPT`. Role / AGENTS.md / Helve sections
+/// **Restore:** copy `system_prompt` from `anureo/prompts/experimental/react.yaml` into
+/// `anureo/prompts/react.yaml`, or set env `REACT_SYSTEM_PROMPT`. Role / AGENTS.md / Helve sections
 /// still apply on top of this empty base.
 pub const REACT_SYSTEM_PROMPT: &str = "";
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_llm::message::Message;
-    use loom_llm::ToolCall;
+    use anureo_llm::message::Message;
+    use anureo_llm::ToolCall;
 
     #[test]
     fn tools_condition_returns_end_when_no_tool_calls() {

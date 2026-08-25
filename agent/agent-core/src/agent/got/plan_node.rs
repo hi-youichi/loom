@@ -5,11 +5,11 @@
 
 use async_trait::async_trait;
 
-use loom_graph_core::GraphError;
-use loom_graph_core::Node;
-use loom_graph_core::{Next, RunContext};
-use loom_llm::message::Message;
-use loom_llm::LlmClient;
+use anureo_graph_core::GraphError;
+use anureo_graph_core::Node;
+use anureo_graph_core::{Next, RunContext};
+use anureo_llm::message::Message;
+use anureo_llm::LlmClient;
 use stream_event::{StreamEvent, StreamMode};
 
 use super::prompt::GOT_PLAN_SYSTEM;
@@ -93,7 +93,7 @@ impl Node<GotState> for PlanGraphNode {
     }
 
     async fn run(&self, state: GotState) -> Result<(GotState, Next), GraphError> {
-        let ctx = loom_graph_core::RunContext::new(checkpoint::RunnableConfig::default());
+        let ctx = anureo_graph_core::RunContext::new(checkpoint::RunnableConfig::default());
         self.run_with_context(state, &ctx).await
     }
 
@@ -145,7 +145,7 @@ impl Node<GotState> for PlanGraphNode {
 mod tests {
     use super::*;
     use checkpoint::RunnableConfig;
-    use loom_llm::client::MockLlm;
+    use anureo_llm::client::MockLlm;
     use tokio::sync::mpsc;
 
     #[test]

@@ -38,10 +38,10 @@ pub(crate) struct ShellEnv {
 }
 
 pub(crate) fn print_config_report(verbose: u8) {
-    if verbose < 3 || std::env::var("LOOM_TEST_MODE").is_ok() {
+    if verbose < 3 || std::env::var("ANUREO_TEST_MODE").is_ok() {
         return;
     }
-    if let Ok(report) = config::load_and_apply_with_report("loom", None::<&std::path::Path>) {
+    if let Ok(report) = config::load_and_apply_with_report("anureo", None::<&std::path::Path>) {
         if let Some(p) = &report.dotenv_path {
             let full = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
             eprintln!("config: .env path={}", full.display());
@@ -65,10 +65,10 @@ pub(crate) fn print_config_report(verbose: u8) {
 /// 1. CLI args (`--log-file`, `--log-level`, etc.)
 /// 2. Shell environment variables (`LOG_FILE`, `RUST_LOG`) — captured before config.toml loaded
 /// 3. config.toml `[logging]` section
-/// 4. `~/.loom/loom.log` (default), level from `-v`/`-vv`/`-vvv` (default: `off`)
+/// 4. `~/.anureo/anureo.log` (default), level from `-v`/`-vv`/`-vvv` (default: `off`)
 pub(crate) fn init_logging(args: &Args, shell_env: ShellEnv) -> logging::LogGuard {
     // Load logging config from config.toml
-    let logging_config = config::load_full_config("loom").ok().map(|c| c.logging);
+    let logging_config = config::load_full_config("anureo").ok().map(|c| c.logging);
 
     // Log level: --log-level > RUST_LOG (shell) > [logging].level > verbosity-based > off
     let log_level = args

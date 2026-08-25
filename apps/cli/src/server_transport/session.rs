@@ -1,4 +1,4 @@
-//! Session CRUD and run-control calls for loom-server.
+//! Session CRUD and run-control calls for anureo-server.
 //!
 //! Wraps the HTTP session endpoints:
 //!
@@ -17,7 +17,7 @@ use serde_json::Value;
 use super::error::{TransportError, TransportResult};
 use super::HttpTransport;
 
-/// The session metadata shape returned by loom-server.
+/// The session metadata shape returned by anureo-server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {

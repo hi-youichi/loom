@@ -52,7 +52,7 @@ impl DupState {
 mod tests {
     use super::*;
     use crate::state::ReActState;
-    use loom_llm::message::Message;
+    use anureo_llm::message::Message;
 
     #[test]
     fn last_assistant_reply_delegates_to_core() {
@@ -64,7 +64,7 @@ mod tests {
         state
             .core
             .messages
-            .push(Message::Assistant(loom_llm::message::AssistantPayload {
+            .push(Message::Assistant(anureo_llm::message::AssistantPayload {
                 content: "hello".to_string(),
                 tool_calls: vec![],
                 reasoning_content: None,

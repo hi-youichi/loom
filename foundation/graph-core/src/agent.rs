@@ -44,7 +44,7 @@ pub trait Agent: Send + Sync {
 
 /// Wrapper that adapts an [`Agent`] into a [`Node<S>`] for use in `StateGraph::add_node`.
 ///
-/// Since `Node` is defined in the external `loom_graph_core` crate, we cannot provide
+/// Since `Node` is defined in the external `anureo_graph_core` crate, we cannot provide
 /// a blanket `impl<A: Agent> Node<A::State> for A`. Instead, wrap the agent:
 ///
 /// ```rust,ignore

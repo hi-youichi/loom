@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::args::GoalArgs;
-use crate::goal_runner::{resume, write_mcp_config, GoalRunner, LoomTool, ShellTool};
+use crate::goal_runner::{resume, write_mcp_config, GoalRunner, AnureoTool, ShellTool};
 use agent::goal_runner::GoalOutcome;
 use task_core::TaskDb;
 use tokio_util::sync::CancellationToken;
@@ -10,7 +10,7 @@ use tool_core::active_operation::RunCancellation;
 pub(crate) async fn handle_goal_command(ga: &GoalArgs) -> Result<(), Box<dyn std::error::Error>> {
     if ga.verbose {
         let _ = tracing_subscriber::fmt()
-            .with_env_filter("loom=info")
+            .with_env_filter("anureo=info")
             .with_writer(std::io::stderr)
             .try_init();
     }
@@ -43,7 +43,7 @@ pub(crate) async fn handle_goal_command(ga: &GoalArgs) -> Result<(), Box<dyn std
     let description = match &ga.description {
         Some(d) => d.clone(),
         None => {
-            eprintln!("loom goal: provide a goal description or use --resume <ID>");
+            eprintln!("anureo goal: provide a goal description or use --resume <ID>");
             std::process::exit(1);
         }
     };
@@ -63,18 +63,18 @@ pub(crate) async fn handle_goal_command(ga: &GoalArgs) -> Result<(), Box<dyn std
     let session_id = format!("goal-{}", &task_id_short);
 
     let tool: Box<dyn crate::goal_runner::CodingTool> = match ga.tool.as_str() {
-        "loom" => {
+        "anureo" => {
             let mcp_config_path = write_mcp_config(&db_path, &working_dir)?;
-            let mut loom_tool =
-                LoomTool::new(session_id.clone(), working_dir.clone(), mcp_config_path)
+            let mut anureo_tool =
+                AnureoTool::new(session_id.clone(), working_dir.clone(), mcp_config_path)
                     .with_cancellation(run_cancellation.clone());
             if let Some(ref model) = ga.model {
-                loom_tool = loom_tool.with_model(model.clone());
+                anureo_tool = anureo_tool.with_model(model.clone());
             }
             if let Some(ref effort) = ga.effort {
-                loom_tool = loom_tool.with_effort(effort.clone());
+                anureo_tool = anureo_tool.with_effort(effort.clone());
             }
-            Box::new(loom_tool)
+            Box::new(anureo_tool)
         }
         name => {
             let args = crate::goal_runner::shell_tool_args(name);

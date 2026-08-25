@@ -15,7 +15,7 @@ pub enum DisconnectPolicy {
 
 impl DisconnectPolicy {
     pub fn from_env() -> Self {
-        match std::env::var("LOOM_ACP_DISCONNECT_POLICY")
+        match std::env::var("ANUREO_ACP_DISCONNECT_POLICY")
             .unwrap_or_default()
             .to_lowercase()
             .as_str()
@@ -84,13 +84,13 @@ impl Default for AcpHubConfig {
 }
 
 pub struct AcpConnectionLease {
-    pub runtime: Arc<loom_acp::runtime::AcpRuntime>,
-    pub connection: Arc<loom_acp::connection::AcpConnection>,
-    pub outbound_rx: tokio::sync::mpsc::Receiver<loom_acp::connection::ConnectionOutbound>,
+    pub runtime: Arc<anureo_acp::runtime::AcpRuntime>,
+    pub connection: Arc<anureo_acp::connection::AcpConnection>,
+    pub outbound_rx: tokio::sync::mpsc::Receiver<anureo_acp::connection::ConnectionOutbound>,
 }
 
 pub struct AcpHub {
-    runtime: Mutex<Option<Arc<loom_acp::runtime::AcpRuntime>>>,
+    runtime: Mutex<Option<Arc<anureo_acp::runtime::AcpRuntime>>>,
     config: AcpHubConfig,
     stats: Mutex<AcpHubStats>,
 }
@@ -110,7 +110,7 @@ impl AcpHub {
         }
     }
 
-    pub fn with_runtime(config: AcpHubConfig, runtime: Arc<loom_acp::runtime::AcpRuntime>) -> Self {
+    pub fn with_runtime(config: AcpHubConfig, runtime: Arc<anureo_acp::runtime::AcpRuntime>) -> Self {
         Self {
             runtime: Mutex::new(Some(runtime)),
             config,
@@ -118,10 +118,10 @@ impl AcpHub {
         }
     }
 
-    async fn shared_runtime(&self) -> Result<Arc<loom_acp::runtime::AcpRuntime>, String> {
+    async fn shared_runtime(&self) -> Result<Arc<anureo_acp::runtime::AcpRuntime>, String> {
         let mut runtime = self.runtime.lock().await;
         if runtime.is_none() {
-            *runtime = Some(loom_acp::runtime::AcpRuntime::new().map_err(|e| e.to_string())?);
+            *runtime = Some(anureo_acp::runtime::AcpRuntime::new().map_err(|e| e.to_string())?);
         }
         Ok(runtime.as_ref().expect("runtime initialized").clone())
     }

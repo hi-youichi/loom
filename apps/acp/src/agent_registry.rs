@@ -1,7 +1,7 @@
-//! Agent registry: maps loom agent profiles to ACP session modes.
+//! Agent registry: maps anureo agent profiles to ACP session modes.
 //!
-//! Delegates all agent discovery and loading to loom core library.
-//! Each ACP Session Mode maps 1:1 to a Loom Agent Profile.
+//! Delegates all agent discovery and loading to anureo core library.
+//! Each ACP Session Mode maps 1:1 to a anureo Agent Profile.
 
 use agent::profile::{list_available_profiles, resolve_profile, AgentProfile, ProfileSummary};
 use agent_client_protocol::schema::v1::{SessionMode, SessionModeId, SessionModeState};

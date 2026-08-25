@@ -628,11 +628,11 @@ fn resolve_tool(
     cancel: &CancellationToken,
 ) -> Result<Box<dyn CodingTool>, GoalError> {
     match tool_name {
-        "loom" => {
+        "anureo" => {
             let mcp_config_path = write_mcp_config(db_path, working_dir)?;
             let session_id = format!("goal-{}", &id[..id.floor_char_boundary(8)]);
             let mut tool =
-                super::tool::LoomTool::new(session_id, working_dir.to_path_buf(), mcp_config_path);
+                super::tool::AnureoTool::new(session_id, working_dir.to_path_buf(), mcp_config_path);
             if let Some(ref rc) = run_cancellation {
                 tool = tool.with_cancellation(rc.clone());
             }
@@ -660,7 +660,7 @@ pub fn write_mcp_config(
     working_dir: &std::path::Path,
 ) -> Result<std::path::PathBuf, GoalError> {
     let config_content = super::tool::generate_mcp_config("task", db_path);
-    let config_path = working_dir.join(".loom").join("goal-mcp.json");
+    let config_path = working_dir.join(".anureo").join("goal-mcp.json");
     std::fs::create_dir_all(config_path.parent().unwrap())?;
     std::fs::write(&config_path, config_content)?;
     Ok(config_path)

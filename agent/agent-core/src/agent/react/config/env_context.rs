@@ -341,7 +341,7 @@ impl RuntimeInfo {
                 .map(|c| c.contains("docker") || c.contains("kubepods"))
                 .unwrap_or(false);
         Self {
-            agent_name: "Loom".to_string(),
+            agent_name: "anureo".to_string(),
             is_container,
             chat_id: None,
         }
@@ -350,7 +350,7 @@ impl RuntimeInfo {
     #[cfg(not(unix))]
     pub fn detect() -> Self {
         Self {
-            agent_name: "Loom".to_string(),
+            agent_name: "anureo".to_string(),
             is_container: false,
             chat_id: None,
         }
@@ -417,7 +417,7 @@ mod tests {
     #[test]
     fn runtime_info_detect() {
         let rt = RuntimeInfo::detect();
-        assert_eq!(rt.agent_name, "Loom");
+        assert_eq!(rt.agent_name, "anureo");
     }
 
     #[test]
@@ -434,7 +434,7 @@ mod tests {
 
     #[test]
     fn project_info_detect_rust() {
-        let dir = std::env::temp_dir().join("loom_test_project_rust");
+        let dir = std::env::temp_dir().join("anureo_test_project_rust");
         let _ = fs::create_dir_all(&dir);
         for i in 0..3 {
             fs::write(dir.join(format!("main_{i}.rs")), "").unwrap();
@@ -446,7 +446,7 @@ mod tests {
 
     #[test]
     fn project_info_below_threshold_not_reported() {
-        let dir = std::env::temp_dir().join("loom_test_project_small");
+        let dir = std::env::temp_dir().join("anureo_test_project_small");
         let _ = fs::create_dir_all(&dir);
         fs::write(dir.join("single.py"), "").unwrap();
         let proj = ProjectInfo::detect(&dir);
@@ -456,7 +456,7 @@ mod tests {
 
     #[test]
     fn project_info_skip_dirs_ignored() {
-        let dir = std::env::temp_dir().join("loom_test_project_skip");
+        let dir = std::env::temp_dir().join("anureo_test_project_skip");
         let node_modules = dir.join("node_modules");
         let _ = fs::create_dir_all(&node_modules);
         for i in 0..5 {
@@ -506,7 +506,7 @@ mod tests {
                 has_git: true,
             }),
             runtime: Some(RuntimeInfo {
-                agent_name: "Loom".to_string(),
+                agent_name: "anureo".to_string(),
                 is_container: false,
                 chat_id: None,
             }),
@@ -518,7 +518,7 @@ mod tests {
         assert!(s.contains("- Shell: zsh (/bin/zsh)"));
         assert!(s.contains("- Project languages: rust, typescript"));
         assert!(s.contains("- Git: yes"));
-        assert!(s.contains("- Agent: Loom"));
+        assert!(s.contains("- Agent: anureo"));
         assert!(!s.contains("Container:"));
     }
 

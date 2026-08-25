@@ -7,7 +7,7 @@
 #[path = "e2e/common/mod.rs"]
 mod common;
 
-use common::{with_loom_home, AcpTestHarness, TestEnv};
+use common::{with_anureo_home, AcpTestHarness, TestEnv};
 use serde_json::json;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -15,7 +15,7 @@ use serde_json::json;
 async fn session_list_contracts_work_without_model_resolution() {
     let env = TestEnv::setup();
 
-    with_loom_home(&env, async {
+    with_anureo_home(&env, async {
         // No prompt is sent, so a deliberately unreachable endpoint keeps
         // this test independent of both model discovery and a mock-server
         // background task.
@@ -31,10 +31,10 @@ async fn session_list_contracts_work_without_model_resolution() {
             )
             .await;
         assert!(init["agentCapabilities"]["sessionCapabilities"]["list"].is_object());
-        if std::env::var("LOOM_SESSION_LIST_EXPECT_LEGACY").as_deref() != Ok("1") {
-            let methods = init["agentCapabilities"]["_meta"]["loomdesk.dev"]["session"]["methods"]
+        if std::env::var("ANUREO_SESSION_LIST_EXPECT_LEGACY").as_deref() != Ok("1") {
+            let methods = init["agentCapabilities"]["_meta"]["anureo.dev"]["session"]["methods"]
                 .as_array()
-                .expect("new Loom must advertise session extension methods");
+                .expect("new anureo must advertise session extension methods");
             assert!(methods.iter().any(|method| method == "list"));
             assert!(methods.iter().any(|method| method == "list-global"));
         }
@@ -45,7 +45,7 @@ async fn session_list_contracts_work_without_model_resolution() {
                 json!({
                     "cwd": env.cwd.to_string_lossy(),
                     "mcpServers": [],
-                    "_meta": {"loomdesk.dev": {"title": "Root", "metadata": {"kind": "root"}}}
+                    "_meta": {"anureo.dev": {"title": "Root", "metadata": {"kind": "root"}}}
                 }),
             )
             .await;
@@ -59,7 +59,7 @@ async fn session_list_contracts_work_without_model_resolution() {
                 json!({
                     "cwd": env.cwd.to_string_lossy(),
                     "mcpServers": [],
-                    "_meta": {"loomdesk.dev": {
+                    "_meta": {"anureo.dev": {
                         "parentSessionId": root_id,
                         "title": "Child",
                         "metadata": {"kind": "child"}
@@ -73,13 +73,13 @@ async fn session_list_contracts_work_without_model_resolution() {
             .to_owned();
         let _ = h.drain_notifications().await;
 
-        // A compatibility run against an older Loom intentionally exercises
+        // A compatibility run against an older anureo intentionally exercises
         // only the legacy projection. The new canonical assertions below
         // must not turn a valid old-peer fallback into a false failure.
-        if std::env::var("LOOM_SESSION_LIST_EXPECT_LEGACY").as_deref() == Ok("1") {
+        if std::env::var("ANUREO_SESSION_LIST_EXPECT_LEGACY").as_deref() == Ok("1") {
             let legacy = h
                 .request(
-                    "_loomdesk.dev/session/list-global",
+                    "_anureo.dev/session/list-global",
                     json!({
                         "archived": false,
                         "directory": env.cwd.to_string_lossy(),
@@ -106,13 +106,13 @@ async fn session_list_contracts_work_without_model_resolution() {
                 .any(|item| item["sessionId"] == root_id));
             assert!(standard["nextCursor"].is_null());
             let status = h.shutdown().await;
-            assert!(status.success(), "loom-acp exited non-zero: {status:?}");
+            assert!(status.success(), "anureo-acp exited non-zero: {status:?}");
             return;
         }
 
         let first = h
             .request(
-                "_loomdesk.dev/session/list",
+                "_anureo.dev/session/list",
                 json!({"archived": "all", "directory": env.cwd.to_string_lossy(), "limit": 1}),
             )
             .await;
@@ -127,7 +127,7 @@ async fn session_list_contracts_work_without_model_resolution() {
 
         let second = h
             .request(
-                "_loomdesk.dev/session/list",
+                "_anureo.dev/session/list",
                 json!({"cursor": cursor, "limit": 1}),
             )
             .await;
@@ -143,7 +143,7 @@ async fn session_list_contracts_work_without_model_resolution() {
 
         let legacy = h
             .request(
-                "_loomdesk.dev/session/list-global",
+                "_anureo.dev/session/list-global",
                 json!({"archived": false, "directory": env.cwd.to_string_lossy(), "limit": 10}),
             )
             .await;
@@ -157,7 +157,7 @@ async fn session_list_contracts_work_without_model_resolution() {
             .all(|item| item.get("indexVersion").is_none()));
 
         let metrics = h
-            .request("_loomdesk.dev/session-metrics/status", json!({}))
+            .request("_anureo.dev/session-metrics/status", json!({}))
             .await;
         assert!(metrics["legacyListGlobalCalls"]
             .as_u64()
@@ -177,7 +177,7 @@ async fn session_list_contracts_work_without_model_resolution() {
 
         let archived = h
             .request(
-                "_loomdesk.dev/session/archive",
+                "_anureo.dev/session/archive",
                 json!({"sessionId": child_id, "archived": true}),
             )
             .await;
@@ -186,7 +186,7 @@ async fn session_list_contracts_work_without_model_resolution() {
 
         let archived_list = h
             .request(
-                "_loomdesk.dev/session/list",
+                "_anureo.dev/session/list",
                 json!({
                     "archived": "archived",
                     "directory": env.cwd.to_string_lossy(),
@@ -202,7 +202,7 @@ async fn session_list_contracts_work_without_model_resolution() {
 
         let deleted = h
             .request(
-                "_loomdesk.dev/session/delete",
+                "_anureo.dev/session/delete",
                 json!({"sessionId": child_id}),
             )
             .await;
@@ -211,7 +211,7 @@ async fn session_list_contracts_work_without_model_resolution() {
 
         let after_delete = h
             .request(
-                "_loomdesk.dev/session/list",
+                "_anureo.dev/session/list",
                 json!({
                     "archived": "all",
                     "directory": env.cwd.to_string_lossy(),
@@ -226,7 +226,7 @@ async fn session_list_contracts_work_without_model_resolution() {
             .any(|item| item["sessionId"] == child_id));
 
         let status = h.shutdown().await;
-        assert!(status.success(), "loom-acp exited non-zero: {status:?}");
+        assert!(status.success(), "anureo-acp exited non-zero: {status:?}");
     })
     .await;
 }

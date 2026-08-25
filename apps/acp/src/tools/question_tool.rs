@@ -1,4 +1,4 @@
-//! Structured user-question tool exposed to Loom agents over ACP.
+//! Structured user-question tool exposed to anureo agents over ACP.
 
 use async_trait::async_trait;
 use serde::Deserialize;

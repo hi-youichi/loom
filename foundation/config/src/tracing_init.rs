@@ -1,4 +1,4 @@
-//! Tracing file logging helpers shared by CLI and `loom-acp`.
+//! Tracing file logging helpers shared by CLI and `anureo-acp`.
 //!
 //! Requires crate feature `tracing-init`. Callers own subscriber `init()` and guard lifetime.
 

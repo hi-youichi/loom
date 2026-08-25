@@ -12,7 +12,7 @@ use super::{Channel, ChannelError};
 /// # Example
 ///
 /// ```rust
-/// use loom_graph_core::channels::{Channel, LastValue};
+/// use anureo_graph_core::channels::{Channel, LastValue};
 ///
 /// let mut channel = LastValue::new();
 /// channel.write(1);
@@ -22,7 +22,7 @@ use super::{Channel, ChannelError};
 /// assert_eq!(channel.read(), Some(3));
 /// ```
 ///
-/// Note: This example requires `use loom_graph_core::channels::Channel;` to be in scope.
+/// Note: This example requires `use anureo_graph_core::channels::Channel;` to be in scope.
 #[derive(Debug, Clone)]
 pub struct LastValue<T> {
     value: Option<T>,

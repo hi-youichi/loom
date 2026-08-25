@@ -33,7 +33,7 @@ type Result<T> = std::result::Result<T, GitWorktreeError>;
 
 /// Run a git command in the given directory, returning stdout.
 pub(crate) fn run_git(workdir: &Path, args: &[&str]) -> Result<std::process::Output> {
-    let output = loom_git::cli::run_process_sync(workdir, args).map_err(|e| {
+    let output = anureo_git::cli::run_process_sync(workdir, args).map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             GitWorktreeError::GitNotFound
         } else {

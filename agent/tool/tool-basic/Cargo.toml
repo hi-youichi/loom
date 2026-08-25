@@ -2,7 +2,7 @@
 name = "tool-basic"
 version.workspace = true
 edition.workspace = true
-description = "Basic tool implementations for Loom agents"
+description = "Basic tool implementations for anureo agents"
 license.workspace = true
 authors.workspace = true
 
@@ -17,8 +17,8 @@ serde_json = "1.0"
 futures-util = "0.3"
 
 tool-core = { path = "../tool-core" }
-loom-llm = { path = "../../../foundation/llm" }
-loom-util = { path = "../../../foundation/loom-util" }
+anureo-llm = { path = "../../../foundation/llm" }
+anureo-util = { path = "../../../foundation/anureo-util" }
 skill = { path = "../../skill" }
 config = { path = "../../../foundation/config" }
 

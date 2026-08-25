@@ -1,6 +1,6 @@
 //! Tier resolution: trait, strategies, and intelligent resolution.
 //!
-//! Merged from `loom-tier/src/resolve.rs` and `loom-tier/src/resolver.rs`.
+//! Merged from `anureo-tier/src/resolve.rs` and `anureo-tier/src/resolver.rs`.
 
 use async_trait::async_trait;
 
@@ -43,7 +43,7 @@ impl ResolvedTierModel {
 /// Resolves a model tier to a concrete model.
 ///
 /// Takes raw parameters instead of `ReactBuildConfig` to avoid a dependency on
-/// `loom-react-config`. Callers extract the provider hint and load providers
+/// `anureo-react-config`. Callers extract the provider hint and load providers
 /// before calling this trait.
 #[async_trait]
 pub trait TierResolver: Send + Sync {

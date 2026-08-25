@@ -1,15 +1,15 @@
 //! Models subcommand: list available models from model spec metadata.
 //!
-//! Reads configured providers from `~/.loom/config.toml`, resolves models from
+//! Reads configured providers from `~/.anureo/config.toml`, resolves models from
 //! model spec, and displays available models. Supports filtering by provider name.
 //!
-//! **Interaction**: Called from the `loom` binary when the user runs `loom models list`
-//! or `loom models show <PROVIDER>`.
+//! **Interaction**: Called from the `anureo` binary when the user runs `anureo models list`
+//! or `anureo models show <PROVIDER>`.
 
 use agent::run::RunError;
 use config::{load_full_config, ProviderDef};
-use loom_llm::ModelInfo;
-use loom_llm::ProviderConfig;
+use anureo_llm::ModelInfo;
+use anureo_llm::ProviderConfig;
 use model_spec_core::ModelRegistry;
 use std::collections::HashMap;
 
@@ -43,11 +43,11 @@ const MAX_MODELS_DISPLAY: usize = 30;
 
 /// List models from all configured providers.
 pub async fn list_all_models(json: bool) -> Result<(), RunError> {
-    let config = load_full_config("loom")
+    let config = load_full_config("anureo")
         .map_err(|e| RunError::ConfigError(format!("Failed to load config: {}", e)))?;
 
     if config.providers.is_empty() {
-        eprintln!("No providers configured in ~/.loom/config.toml");
+        eprintln!("No providers configured in ~/.anureo/config.toml");
         eprintln!("Add a [[providers]] section to your config file.");
         return Ok(());
     }
@@ -65,7 +65,7 @@ pub async fn list_all_models(json: bool) -> Result<(), RunError> {
 
 /// List models from a specific provider.
 pub async fn list_provider_models(provider_name: &str, json: bool) -> Result<(), RunError> {
-    let config = load_full_config("loom")
+    let config = load_full_config("anureo")
         .map_err(|e| RunError::ConfigError(format!("Failed to load config: {}", e)))?;
 
     let provider = config

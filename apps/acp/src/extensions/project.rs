@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use config::home::loom_home;
+use config::home::anureo_home;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -18,7 +18,7 @@ const MAX_LIMIT: usize = 200;
 const MAX_ICON_BYTES: usize = 256 * 1024;
 const MAX_PROJECT_ID_LEN: usize = 128;
 const REDACTED: &str = "****";
-pub const PROJECT_CHANGED_METHOD: &str = "_loomdesk.dev/project/changed";
+pub const PROJECT_CHANGED_METHOD: &str = "_anureo.dev/project/changed";
 
 pub type ProjectId = String;
 pub type ProjectTimestamp = DateTime<Utc>;
@@ -295,7 +295,7 @@ impl Default for ProjectStoreFile {
     }
 }
 
-/// File-backed project registry persisted to `loom_home()/projects.json`.
+/// File-backed project registry persisted to `anureo_home()/projects.json`.
 /// Mutations rewrite the whole file atomically (tmp + rename).
 pub struct FileProjectStore {
     path: PathBuf,
@@ -311,8 +311,8 @@ impl FileProjectStore {
         }
     }
 
-    pub fn at_loom_home() -> Self {
-        Self::open(loom_home().join("projects.json"))
+    pub fn at_anureo_home() -> Self {
+        Self::open(anureo_home().join("projects.json"))
     }
 
     fn load(path: &Path) -> ProjectStoreFile {
@@ -477,11 +477,11 @@ impl ProjectHandler {
         }
     }
 
-    /// Handler backed by `loom_home()/projects.json` with default authorization
+    /// Handler backed by `anureo_home()/projects.json` with default authorization
     /// and a no-op notifier (hub wiring is tracked as backlog).
     pub fn persistent() -> Self {
         Self::with_dependencies(
-            Arc::new(FileProjectStore::at_loom_home()),
+            Arc::new(FileProjectStore::at_anureo_home()),
             Arc::new(DefaultAuthorizer),
             Arc::new(DefaultNotifier),
         )

@@ -1,4 +1,4 @@
-.loom
+.anureo
 .luft
 .maestro
 internal
@@ -40,7 +40,7 @@ target
 *.db-wal
 *.sqlite
 *.sqlite3
-loom/data/
+anureo/data/
 
 # IDE / editor
 .idea
@@ -57,7 +57,7 @@ Thumbs.db
 out.json
 
 # Test output files
-loom_test_*.txt
+anureo_test_*.txt
 test_output_*.txt
 
 # Debug and test
@@ -76,8 +76,8 @@ test-results/
 
 # Reference repos
 typescript-sdk
-.loom/worktrees/
+.anureo/worktrees/
 
-.loom-home/
+.anureo-home/
 scripts/web-audit/node_modules/
 scripts/web-audit/report.json

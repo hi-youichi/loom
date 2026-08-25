@@ -1,7 +1,7 @@
 //! Agent Profile: load and resolve YAML profile (role, model, MCP, etc.).
 //!
-//! Phase 3: extends + merge; project + user ~/.loom/agents; .md and front matter.
-//! Built-in agent "dev" is loaded from crate `loom-react-config/agents/dev/` at compile time.
+//! Phase 3: extends + merge; project + user ~/.anureo/agents; .md and front matter.
+//! Built-in agent "dev" is loaded from crate `anureo-react-config/agents/dev/` at compile time.
 
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -87,7 +87,7 @@ pub struct SkillsConfig {
     pub guard_agent_created: Option<bool>,
 }
 
-/// Built-in dev agent: instructions embedded at compile time (loom-react-config/agents/dev/).
+/// Built-in dev agent: instructions embedded at compile time (anureo-react-config/agents/dev/).
 const DEV_AGENT_INSTRUCTIONS: &str = include_str!("../agents/dev/instructions.md");
 const DEV_AGENT_CONFIG_YAML: &str = include_str!("../agents/dev/config.yaml");
 
@@ -384,9 +384,9 @@ pub fn load_agent_profile(path: &Path) -> Result<AgentProfile, ProfileError> {
     Ok(profile)
 }
 
-/// Resolve named profile path: project .loom/agents first, then ~/.loom/agents. Supports .yaml, .yml, .md.
+/// Resolve named profile path: project .anureo/agents first, then ~/.anureo/agents. Supports .yaml, .yml, .md.
 pub fn resolve_named_profile(name: &str) -> Option<PathBuf> {
-    let project_agents = PathBuf::from(".loom/agents");
+    let project_agents = PathBuf::from(".anureo/agents");
     let tries = [
         project_agents.join(name).join("config.yaml"),
         project_agents.join(name).join("config.yml"),
@@ -400,7 +400,7 @@ pub fn resolve_named_profile(name: &str) -> Option<PathBuf> {
             return Some(p.clone());
         }
     }
-    let user_agents = env_config::home::loom_home().join("agents");
+    let user_agents = env_config::home::anureo_home().join("agents");
     let user_tries = [
         user_agents.join(name).join("config.yaml"),
         user_agents.join(name).join("config.yml"),
@@ -420,7 +420,7 @@ pub fn resolve_named_profile(name: &str) -> Option<PathBuf> {
 /// Classify a profile path as Project or User based on its location.
 fn classify_profile_path(path: &Path) -> ProfileSource {
     let abs = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let user_agents = env_config::home::loom_home().join("agents");
+    let user_agents = env_config::home::anureo_home().join("agents");
     if let Ok(user_abs) = user_agents.canonicalize() {
         if abs.starts_with(&user_abs) {
             return ProfileSource::User;
@@ -475,13 +475,13 @@ const BUILTIN_AGENT_NAMES: &[&str] = &[
 ];
 
 /// Resolve an agent profile by name at runtime. Tries built-in agents first,
-/// then project-level `.loom/agents/<name>/`, then user-level `~/.loom/agents/<name>/`.
+/// then project-level `.anureo/agents/<name>/`, then user-level `~/.anureo/agents/<name>/`.
 ///
 /// This is the primary API for `AgentTool` to load a sub-agent profile
 /// without depending on `RunOptions`.
 pub fn resolve_profile(name: &str) -> Result<AgentProfile, ProfileError> {
     if let Some(mut profile) = load_builtin_profile(name) {
-        let project_dir = PathBuf::from(".loom/agents").join(name);
+        let project_dir = PathBuf::from(".anureo/agents").join(name);
         if project_dir.is_dir() {
             profile.source_dir = Some(project_dir);
         }
@@ -496,7 +496,7 @@ pub fn resolve_profile(name: &str) -> Result<AgentProfile, ProfileError> {
 /// Tries built-in first, then resolves by name.
 pub fn load_profile_by_name(name: &str) -> Option<(AgentProfile, ProfileSource)> {
     if let Some(mut profile) = load_builtin_profile(name) {
-        let project_dir = PathBuf::from(".loom/agents").join(name);
+        let project_dir = PathBuf::from(".anureo/agents").join(name);
         if project_dir.is_dir() {
             profile.source_dir = Some(project_dir);
         }
@@ -522,9 +522,9 @@ pub fn list_available_profiles() -> Vec<ProfileSummary> {
     }
 
     let scan_dirs: Vec<(PathBuf, ProfileSource)> = vec![
-        (PathBuf::from(".loom/agents"), ProfileSource::Project),
+        (PathBuf::from(".anureo/agents"), ProfileSource::Project),
         (
-            env_config::home::loom_home().join("agents"),
+            env_config::home::anureo_home().join("agents"),
             ProfileSource::User,
         ),
     ];
@@ -1254,7 +1254,7 @@ tools:
         let profile = load_builtin_profile("agent-builder").unwrap();
         assert_eq!(profile.name, "agent-builder");
         let content = profile.role.as_ref().unwrap().content.as_ref().unwrap();
-        assert!(content.contains("Loom Agent Builder"));
+        assert!(content.contains("anureo Agent Builder"));
         assert!(content.contains("Follow the AgentProfile schema"));
     }
 
@@ -1270,7 +1270,7 @@ tools:
         let dir = tempfile::tempdir().unwrap();
         let prev_dir = std::env::current_dir().ok();
         let _ = std::env::set_current_dir(dir.path());
-        let prev_loom = env_config::home::override_path();
+        let prev_anureo = env_config::home::override_path();
         env_config::home::set_override(Some(dir.path().to_path_buf()));
 
         let result = load_profile_by_name("nonexistent-agent-xyz");
@@ -1278,7 +1278,7 @@ tools:
         if let Some(d) = prev_dir {
             let _ = std::env::set_current_dir(d);
         }
-        env_config::home::set_override(prev_loom);
+        env_config::home::set_override(prev_anureo);
 
         assert!(result.is_none());
     }

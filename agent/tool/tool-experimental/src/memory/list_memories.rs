@@ -16,7 +16,7 @@ pub use tool_core::tool_name::TOOL_LIST_MEMORIES;
 /// # Examples
 ///
 /// ```no_run
-/// use loom_tools::tools::{ListMemoriesTool, RememberTool, Tool};
+/// use anureo_tools::tools::{ListMemoriesTool, RememberTool, Tool};
 /// use checkpoint::{InMemoryStore, Namespace};
 /// use std::sync::Arc;
 /// use serde_json::json;
@@ -59,7 +59,7 @@ impl ListMemoriesTool {
     /// # Examples
     ///
     /// ```
-    /// use loom_tools::tools::ListMemoriesTool;
+    /// use anureo_tools::tools::ListMemoriesTool;
     /// use checkpoint::{InMemoryStore, Namespace};
     /// use std::sync::Arc;
     ///

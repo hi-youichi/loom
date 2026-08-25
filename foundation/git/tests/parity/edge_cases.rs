@@ -1,9 +1,9 @@
 //! Edge cases that stress error/detached/unborn branches and the force-push
 //! and pull.rebase paths on both backends.
 
-use loom_git::cli::CliBackend;
-use loom_git::git2_backend::Git2Backend;
-use loom_git::GitBackend;
+use anureo_git::cli::CliBackend;
+use anureo_git::git2_backend::Git2Backend;
+use anureo_git::GitBackend;
 
 fn rt() -> tokio::runtime::Runtime {
     tokio::runtime::Runtime::new().unwrap()
@@ -25,7 +25,7 @@ fn empty_repo_log_is_not_found() {
         let err = r
             .block_on(b.log(
                 repo.path(),
-                &loom_git::backend::LogQuery {
+                &anureo_git::backend::LogQuery {
                     limit: 10,
                     skip: 0,
                     branch: None,
@@ -34,7 +34,7 @@ fn empty_repo_log_is_not_found() {
             ))
             .unwrap_err();
         assert!(
-            matches!(err.kind(), loom_git::GitErrorKind::NotFound),
+            matches!(err.kind(), anureo_git::GitErrorKind::NotFound),
             "({name}) empty repo log must be NotFound, got {err:?}"
         );
     }
@@ -101,7 +101,7 @@ fn push_non_fast_forward_rejected_then_forced() {
             .block_on(b.push(repo.path(), "origin", "main", false, false))
             .unwrap_err();
         assert!(
-            !matches!(rejected.kind(), loom_git::GitErrorKind::NotFound),
+            !matches!(rejected.kind(), anureo_git::GitErrorKind::NotFound),
             "({name}) non-ff push must fail, got {rejected:?}"
         );
 
@@ -157,7 +157,7 @@ fn pull_respects_rebase_config() {
         let log = r
             .block_on(b.log(
                 repo.path(),
-                &loom_git::backend::LogQuery {
+                &anureo_git::backend::LogQuery {
                     limit: 5,
                     skip: 0,
                     branch: None,

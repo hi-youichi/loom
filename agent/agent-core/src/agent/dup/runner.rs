@@ -10,10 +10,10 @@ use crate::agent::react::{build_react_initial_state, REACT_SYSTEM_PROMPT};
 
 use crate::runner_common::{self, load_from_checkpoint_or_build};
 use checkpoint::{CheckpointError, Checkpointer, RunnableConfig, Store};
-use loom_graph_core::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
-use loom_graph_core::{StateGraph, END, START};
-use loom_llm::message::{Message, UserContent};
-use loom_llm::LlmClient;
+use anureo_graph_core::{CompilationError, CompiledStateGraph, LoggingNodeMiddleware};
+use anureo_graph_core::{StateGraph, END, START};
+use anureo_llm::message::{Message, UserContent};
+use anureo_llm::LlmClient;
 use stream_event::StreamEvent;
 use tool_core::ToolRegistryLocked;
 
@@ -87,16 +87,16 @@ struct SharedLlm(Arc<dyn LlmClient>);
 impl LlmClient for SharedLlm {
     async fn invoke(
         &self,
-        messages: &[loom_llm::message::Message],
-    ) -> Result<loom_llm::LlmResponse, loom_llm::LlmError> {
+        messages: &[anureo_llm::message::Message],
+    ) -> Result<anureo_llm::LlmResponse, anureo_llm::LlmError> {
         self.0.invoke(messages).await
     }
     async fn invoke_stream(
         &self,
-        messages: &[loom_llm::message::Message],
-        sink: Option<&dyn loom_llm::traits::StreamSink>,
+        messages: &[anureo_llm::message::Message],
+        sink: Option<&dyn anureo_llm::traits::StreamSink>,
         node_id: &str,
-    ) -> Result<loom_llm::LlmResponse, loom_llm::LlmError> {
+    ) -> Result<anureo_llm::LlmResponse, anureo_llm::LlmError> {
         self.0.invoke_stream(messages, sink, node_id).await
     }
 }
@@ -128,8 +128,8 @@ impl DupRunner {
         verbose: bool,
     ) -> Result<Self, CompilationError> {
         let understand = UnderstandNode::new(Box::new(SharedLlm(Arc::clone(&llm))));
-        let plan_provider: Arc<dyn loom_llm::LlmProvider> =
-            Arc::new(loom_llm::client::FixedLlmProvider {
+        let plan_provider: Arc<dyn anureo_llm::LlmProvider> =
+            Arc::new(anureo_llm::client::FixedLlmProvider {
                 client: Arc::clone(&llm),
                 model_id: "dup".to_string(),
             });
@@ -244,7 +244,7 @@ impl DupRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use loom_llm::client::MockLlm;
+    use anureo_llm::client::MockLlm;
     use std::sync::{Arc, Mutex};
     use stream_event::StreamEvent;
 
@@ -273,7 +273,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn build_dup_initial_state_builds_without_checkpoint() {
         let state = build_dup_initial_state(
-            &loom_llm::message::UserContent::text("hello dup".to_string()),
+            &anureo_llm::message::UserContent::text("hello dup".to_string()),
             None,
             None,
             None,

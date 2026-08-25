@@ -42,7 +42,7 @@ pub fn default_db_path() -> PathBuf {
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
-    home.join(".loom").join("agent-stats.db")
+    home.join(".anureo").join("agent-stats.db")
 }
 
 pub fn open_default_collector() -> Arc<dyn StatsCollector> {

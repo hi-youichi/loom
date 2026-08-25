@@ -154,7 +154,7 @@ pub type ReviewCallbackFn = Arc<dyn Fn(&str) + Send + Sync>;
 fn parse_action(name: &str, result: &str) -> Option<ReviewActionSummary> {
     // Alignment with Hermes `summarize_background_review_actions` (background_review.py:237-297):
     // Hermes parses tool message content as JSON and checks `data["success"]`.
-    // Loom mirrors this but works at the event level (tool name + result string)
+    // anureo mirrors this but works at the event level (tool name + result string)
     // rather than the message-snapshot level.
     let kind = match name {
         "memory" => "memory",

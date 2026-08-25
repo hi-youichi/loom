@@ -38,7 +38,7 @@ pub async fn handle_stash_list(
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let items = loom_git::facade::stash_list(&repo_dir)
+    let items = anureo_git::facade::stash_list(&repo_dir)
         .await
         .map_err(ext_err_from_git)?;
 
@@ -78,19 +78,19 @@ pub async fn handle_stash_create(
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    if !loom_git::facade::is_dirty(&repo_dir).await.unwrap_or(false) {
+    if !anureo_git::facade::is_dirty(&repo_dir).await.unwrap_or(false) {
         return Err(ExtensionError::invalid_params("no local changes to save"));
     }
 
-    let opts = loom_git::types::StashPushOptions {
+    let opts = anureo_git::types::StashPushOptions {
         message: message.clone(),
         include_untracked,
         keep_index,
     };
-    loom_git::facade::stash_push(&repo_dir, opts)
+    anureo_git::facade::stash_push(&repo_dir, opts)
         .await
         .map_err(ext_err_from_git)?;
-    let list = loom_git::facade::stash_list(&repo_dir)
+    let list = anureo_git::facade::stash_list(&repo_dir)
         .await
         .map_err(ext_err_from_git)?;
     let (index, msg_out) = list
@@ -115,13 +115,13 @@ pub async fn handle_stash_pop(
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    match loom_git::facade::stash_pop(&repo_dir, index as usize).await {
+    match anureo_git::facade::stash_pop(&repo_dir, index as usize).await {
         Ok(_) => Ok(serde_json::json!({"index": index, "popped": true})),
         Err(e) => match e.kind() {
-            loom_git::GitErrorKind::Conflict => Err(ExtensionError::invalid_params(
+            anureo_git::GitErrorKind::Conflict => Err(ExtensionError::invalid_params(
                 "stash pop resulted in merge conflict",
             )),
-            loom_git::GitErrorKind::NotFound => Err(ExtensionError::not_found(format!(
+            anureo_git::GitErrorKind::NotFound => Err(ExtensionError::not_found(format!(
                 "stash entry {index} not found"
             ))),
             _ => Err(ext_err_from_git(e)),
@@ -139,13 +139,13 @@ pub async fn handle_stash_apply(
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    match loom_git::facade::stash_apply(&repo_dir, index as usize).await {
+    match anureo_git::facade::stash_apply(&repo_dir, index as usize).await {
         Ok(_) => Ok(serde_json::json!({"index": index, "applied": true})),
         Err(e) => match e.kind() {
-            loom_git::GitErrorKind::Conflict => Err(ExtensionError::invalid_params(
+            anureo_git::GitErrorKind::Conflict => Err(ExtensionError::invalid_params(
                 "stash apply resulted in merge conflict",
             )),
-            loom_git::GitErrorKind::NotFound => Err(ExtensionError::not_found(format!(
+            anureo_git::GitErrorKind::NotFound => Err(ExtensionError::not_found(format!(
                 "stash entry {index} not found"
             ))),
             _ => Err(ext_err_from_git(e)),
@@ -163,7 +163,7 @@ pub async fn handle_stash_drop(
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    loom_git::facade::stash_drop(&repo_dir, index as usize)
+    anureo_git::facade::stash_drop(&repo_dir, index as usize)
         .await
         .map_err(ext_err_from_git)?;
     Ok(serde_json::json!({"index": index, "dropped": true}))
@@ -178,7 +178,7 @@ pub async fn handle_stash_count(
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let result = loom_git::facade::stash_count(&repo_dir)
+    let result = anureo_git::facade::stash_count(&repo_dir)
         .await
         .map_err(ext_err_from_git)?;
 

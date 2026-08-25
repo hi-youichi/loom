@@ -111,7 +111,7 @@ impl Tool for SkillListTool {
         let skills_dir = self
             .ctx
             .skills_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from(".loom/skills"));
+            .unwrap_or_else(|| std::path::PathBuf::from(".anureo/skills"));
         if !skills_dir.is_dir() {
             return Ok(ToolCallContent::text(
                 json!({

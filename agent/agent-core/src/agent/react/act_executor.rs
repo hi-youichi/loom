@@ -13,9 +13,9 @@ use tracing::{debug, trace, warn};
 use crate::state::{ReActState, ToolResult};
 use crate::tool_output_normalizer::{normalize_tool_output, NormalizationConfig, ToolOutputHint};
 use checkpoint::uuid6;
-use loom_graph_core::GraphError;
-use loom_graph_core::{run_cancellable, RunContext};
-use loom_llm::ToolCall;
+use anureo_graph_core::GraphError;
+use anureo_graph_core::{run_cancellable, RunContext};
+use anureo_llm::ToolCall;
 use stream_event::{StreamEvent, StreamMode};
 use tool_core::active_operation::RunCancellation;
 use tool_core::{ToolCallContent, ToolCallContext, ToolRegistryLocked, ToolSourceError};
@@ -36,7 +36,7 @@ pub(crate) struct ToolCallExecutor {
     tools: Arc<ToolRegistryLocked>,
 
     // ── derived from RunContext (was ActExecCtx) ──
-    messages: Vec<loom_llm::Message>,
+    messages: Vec<anureo_llm::Message>,
     thread_id: Option<String>,
     user_id: Option<String>,
     depth: u32,
@@ -66,7 +66,7 @@ impl ToolCallExecutor {
     /// Construct from a `RunContext`, loading tool hints from the registry.
     pub async fn new(
         tools: Arc<ToolRegistryLocked>,
-        messages: Vec<loom_llm::Message>,
+        messages: Vec<anureo_llm::Message>,
         run_ctx: &RunContext<ReActState>,
         run_cancellation: Option<RunCancellation>,
         any_stream_event_sender: Option<Arc<dyn Fn(crate::run::TypedAnyStreamEvent) + Send + Sync>>,

@@ -550,7 +550,7 @@ fn validate_variables_match(body: &str, variables: &[String]) -> Result<(), Exte
 }
 
 fn emit(state: &mut SnippetState, change: SnippetChange, id: String) {
-    state.notifications.push(serde_json::json!({"jsonrpc":"2.0","method":"_loomdesk.dev/snippet/changed","params": SnippetChangedParams { change, id }}));
+    state.notifications.push(serde_json::json!({"jsonrpc":"2.0","method":"_anureo.dev/snippet/changed","params": SnippetChangedParams { change, id }}));
 }
 
 fn snippet_not_found(id: &str) -> ExtensionError {

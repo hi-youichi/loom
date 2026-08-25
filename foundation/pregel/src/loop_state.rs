@@ -19,8 +19,8 @@ use crate::node::PregelGraph;
 use crate::types::{
     ChannelName, ChannelValue, InterruptRecord, LoopStatus, PendingWrite, ReservedWrite,
 };
-use loom_graph_core::GraphError;
-use loom_graph_core::Interrupt;
+use anureo_graph_core::GraphError;
+use anureo_graph_core::Interrupt;
 use tokio_util::sync::CancellationToken;
 
 /// Loop-level interrupt configuration and pending resume data.

@@ -79,7 +79,7 @@ pub fn format_size(bytes: usize) -> String {
 
 pub fn shell_output_dir(base_dir: &Path) -> PathBuf {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    base_dir.join(".loom").join("shell").join(today)
+    base_dir.join(".anureo").join("shell").join(today)
 }
 
 pub fn create_output_file(path: &Path) -> std::io::Result<std::fs::File> {

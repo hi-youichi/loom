@@ -217,7 +217,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ".git",
         "thirdparty",
         "node_modules",
-        ".loom",
+        ".anureo",
         "coverage",
         "logs",
         ".cargo",

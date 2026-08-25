@@ -19,7 +19,7 @@ pub fn load_profile_from_options(opts: &RunOptions) -> Option<(AgentProfile, Pro
 mod tests {
     use super::*;
     use checkpoint_sqlite_store::env_test_lock;
-    use loom_llm::message::UserContent;
+    use anureo_llm::message::UserContent;
 
     #[test]
     fn builtin_dev_agent_loaded_with_embedded_instructions() {
@@ -113,7 +113,7 @@ mod tests {
         assert_eq!(source, ProfileSource::BuiltIn);
         let role = profile.role.as_ref().unwrap();
         let content = role.content.as_ref().unwrap();
-        assert!(content.contains("Loom Agent Builder"));
+        assert!(content.contains("anureo Agent Builder"));
         assert!(content.contains("Follow the AgentProfile schema"));
     }
 
@@ -123,7 +123,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let prev_dir = std::env::current_dir().ok();
         let _ = std::env::set_current_dir(dir.path());
-        let prev_loom = env_config::home::override_path();
+        let prev_anureo = env_config::home::override_path();
         env_config::home::set_override(Some(dir.path().to_path_buf()));
 
         let opts = RunOptions {
@@ -166,7 +166,7 @@ mod tests {
         if let Some(d) = prev_dir {
             let _ = std::env::set_current_dir(d);
         }
-        env_config::home::set_override(prev_loom);
+        env_config::home::set_override(prev_anureo);
 
         assert!(result.is_none());
     }
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn load_profile_from_options_unknown_agent() {
         let _lock = env_test_lock().lock().unwrap();
-        let prev_loom = env_config::home::override_path();
+        let prev_anureo = env_config::home::override_path();
         let dir = tempfile::tempdir().unwrap();
         env_config::home::set_override(Some(dir.path().to_path_buf()));
 
@@ -214,15 +214,15 @@ mod tests {
             tier: None,
         };
         let result = load_profile_from_options(&opts);
-        env_config::home::set_override(prev_loom);
+        env_config::home::set_override(prev_anureo);
         assert!(result.is_none());
     }
 
     #[test]
     fn resolve_named_profile_user_level() {
         let _lock = env_test_lock().lock().unwrap();
-        let loom_home = tempfile::tempdir().unwrap();
-        let agents_dir = loom_home.path().join("agents");
+        let anureo_home = tempfile::tempdir().unwrap();
+        let agents_dir = anureo_home.path().join("agents");
         let agent_dir = agents_dir.join("custom-agent");
         std::fs::create_dir_all(&agent_dir).unwrap();
         std::fs::write(
@@ -231,8 +231,8 @@ mod tests {
         )
         .unwrap();
 
-        let prev_loom = env_config::home::override_path();
-        env_config::home::set_override(Some(loom_home.path().to_path_buf()));
+        let prev_anureo = env_config::home::override_path();
+        env_config::home::set_override(Some(anureo_home.path().to_path_buf()));
 
         let prev_dir = std::env::current_dir().ok();
         let empty = tempfile::tempdir().unwrap();
@@ -243,7 +243,7 @@ mod tests {
         if let Some(d) = prev_dir {
             let _ = std::env::set_current_dir(d);
         }
-        env_config::home::set_override(prev_loom);
+        env_config::home::set_override(prev_anureo);
 
         assert!(result.is_some());
     }

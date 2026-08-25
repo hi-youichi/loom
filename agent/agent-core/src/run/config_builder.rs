@@ -1,6 +1,6 @@
 //! Run orchestration for agent patterns (ReAct, ToT, GoT, DUP).
 //!
-//! This module retains orchestration functions that depend on loom internals.
+//! This module retains orchestration functions that depend on anureo internals.
 //! All types live in their own crates — consumers should import directly:
 //! - Profile types → `crate::profile::*`
 //! - `load_agents_md` → `crate::load_agents_md`
@@ -26,9 +26,9 @@ use crate::load_agents_md;
 use super::profile_helper::load_profile_from_options;
 use crate::profile::AgentProfile;
 
-/// Reads memory prompt from {loom_home}/data/memory/.
+/// Reads memory prompt from {anureo_home}/data/memory/.
 pub fn load_memory_prompt() -> Option<String> {
-    let memory_dir = env_config::home::loom_home().join("data").join("memory");
+    let memory_dir = env_config::home::anureo_home().join("data").join("memory");
     let store = memory_v2::MemoryStore::new(&memory_dir);
     store.capture_snapshot().ok().filter(|s| !s.is_empty())
 }
@@ -212,12 +212,12 @@ pub fn build_react_config(
     base.working_folder = Some(working_folder.clone());
     base.thread_id = effective_opts.thread_id.clone().or(base.thread_id.clone());
 
-    // MCP config: CLI > profile > LOOM_MCP_CONFIG_PATH > discover
+    // MCP config: CLI > profile > ANUREO_MCP_CONFIG_PATH > discover
     // NOTE: must load BEFORE the default-extra-tools provider below, so that
     // the workflow (Luft) tool's config_template captures `base.mcp_servers`
     // and inner spawned agents inherit MCP servers (e.g. chrome-devtools-mcp).
     let override_path = effective_opts.mcp_config_path.clone().or_else(|| {
-        std::env::var("LOOM_MCP_CONFIG_PATH")
+        std::env::var("ANUREO_MCP_CONFIG_PATH")
             .ok()
             .map(PathBuf::from)
     });
@@ -466,7 +466,7 @@ pub async fn resolve_model_config(model_str: Option<&str>) -> ResolvedModelConfi
             actual_model_id = %actual_model_id,
             "Model not in registry, loading provider config"
         );
-        let provider_cfg = env_config::load_full_config("loom")
+        let provider_cfg = env_config::load_full_config("anureo")
             .ok()
             .and_then(|c| c.providers.into_iter().find(|p| p.name == provider_name));
         if let Some(p) = provider_cfg {
@@ -567,7 +567,7 @@ fn apply_model_provider_resolution(opts: &mut RunOptions) {
         .clone()
         .or(resolved_provider.clone())
         .or_else(|| {
-            env_config::load_full_config("loom")
+            env_config::load_full_config("anureo")
                 .ok()
                 .and_then(|c| c.default_provider)
         });
@@ -591,7 +591,7 @@ fn apply_model_provider_resolution(opts: &mut RunOptions) {
 fn resolve_provider_fields_into_opts(provider_name: Option<&str>, opts: &mut RunOptions) {
     let Some(name) = provider_name else { return };
 
-    let full_config = match env_config::load_full_config("loom") {
+    let full_config = match env_config::load_full_config("anureo") {
         Ok(c) => c,
         Err(_) => return,
     };

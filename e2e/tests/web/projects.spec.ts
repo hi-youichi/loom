@@ -1,25 +1,25 @@
 /**
  * e2e/tests/web/projects.spec.ts
  *
- * OpenChamber Web Projects Tests
+ * anureo Web Projects Tests
  * 覆盖：PRJ-001~005（共 5 用例）
  *
  * 使用 fixtures:
  * - app: 提供 baseURL
- * - mock-loom: 拦截 HTTP API
+ * - mock-anureo: 拦截 HTTP API
  * - temp-project: 创建临时项目目录
  *
- * 参考 docs/references/openchamber-text-acceptance-test-cases.md §2
+ * 参考 docs/references/anureo-text-acceptance-test-cases.md §2
  */
 
 import { test as base, expect } from "@playwright/test";
 import { app } from "../../fixtures/app";
-import { mockLoom } from "../../fixtures/mock-loom";
+import { mockanureo } from "../../fixtures/mock-anureo";
 import { tempProject } from "../../fixtures/temp-project";
 
 const test = base.extend({
   ...app,
-  ...mockLoom,
+  ...mockanureo,
   ...tempProject,
 });
 

@@ -14,7 +14,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio_util::sync::CancellationToken;
 use tool_core::{ToolCallContent, ToolCallContext, ToolSourceError};
 
-use crate::backend::LoomAgentBackend;
+use crate::backend::AnureoAgentBackend;
 use crate::common::{
     read_json_value, sanitize_instance_for_public, truncate_for_preview, validate_instance_dir_name,
 };
@@ -136,7 +136,7 @@ pub(crate) async fn start_workflow(
     }
 
     let config = runtime.config_template.clone();
-    let backend = LoomAgentBackend::new(config);
+    let backend = AnureoAgentBackend::new(config);
 
     tracing::debug!(
         target: "workflow::service",
@@ -883,7 +883,7 @@ mod tests {
             "total_tokens": 9,
             "agent_count": 2,
         });
-        let e = build_entry_from_instance_json(&inst, "loom-instance_r2");
+        let e = build_entry_from_instance_json(&inst, "anureo-instance_r2");
         assert_eq!(e["workflow"]["kind"], "inline");
         assert_eq!(e["workflow"]["name"], "demo");
         assert_eq!(e["agent_count"], 2);
@@ -892,7 +892,7 @@ mod tests {
     #[test]
     fn collect_instances_under_finds_instance_json() {
         let tmp = tempfile::tempdir().unwrap();
-        let root: PathBuf = tmp.path().join(".loom").join("instances");
+        let root: PathBuf = tmp.path().join(".anureo").join("instances");
         let dir = root.join("done");
         std::fs::create_dir_all(&dir).unwrap();
         let inst = json!({"instance_id": "rd", "status": "completed", "instance_dir": "done"});
@@ -921,10 +921,10 @@ mod tests {
     #[test]
     fn status_returns_sanitized_view_when_instance_json_present() {
         let tmp = tempfile::tempdir().unwrap();
-        let instance_dir = "loom-instance_x";
+        let instance_dir = "anureo-instance_x";
         let dir_path = tmp
             .path()
-            .join(".loom")
+            .join(".anureo")
             .join("instances")
             .join(instance_dir);
         std::fs::create_dir_all(&dir_path).unwrap();
@@ -963,10 +963,10 @@ mod tests {
     #[test]
     fn status_returns_running_when_only_dir_exists() {
         let tmp = tempfile::tempdir().unwrap();
-        let instance_dir = "loom-instance_running";
+        let instance_dir = "anureo-instance_running";
         let dir_path = tmp
             .path()
-            .join(".loom")
+            .join(".anureo")
             .join("instances")
             .join(instance_dir);
         std::fs::create_dir_all(&dir_path).unwrap();
@@ -1025,10 +1025,10 @@ mod tests {
     #[test]
     fn source_returns_short_workflow_preview_untruncated() {
         let tmp = tempfile::tempdir().unwrap();
-        let instance_dir = "loom-instance_short";
+        let instance_dir = "anureo-instance_short";
         let dir = tmp
             .path()
-            .join(".loom")
+            .join(".anureo")
             .join("instances")
             .join(instance_dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -1048,10 +1048,10 @@ mod tests {
     #[test]
     fn source_truncates_long_workflow_to_preview_limit() {
         let tmp = tempfile::tempdir().unwrap();
-        let instance_dir = "loom-instance_long";
+        let instance_dir = "anureo-instance_long";
         let dir = tmp
             .path()
-            .join(".loom")
+            .join(".anureo")
             .join("instances")
             .join(instance_dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -1074,10 +1074,10 @@ mod tests {
     #[test]
     fn source_errors_when_missing_workflow_lua() {
         let tmp = tempfile::tempdir().unwrap();
-        let instance_dir = "loom-instance_empty";
+        let instance_dir = "anureo-instance_empty";
         let dir = tmp
             .path()
-            .join(".loom")
+            .join(".anureo")
             .join("instances")
             .join(instance_dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -1102,7 +1102,7 @@ mod tests {
     #[test]
     fn files_lists_lua_definitions() {
         let tmp = tempfile::tempdir().unwrap();
-        let wf_dir = tmp.path().join(".loom").join("workflows");
+        let wf_dir = tmp.path().join(".anureo").join("workflows");
         std::fs::create_dir_all(&wf_dir).unwrap();
         std::fs::write(wf_dir.join("alpha.lua"), "-- alpha\nfunction main() end\n").unwrap();
         std::fs::write(
@@ -1143,7 +1143,7 @@ mod tests {
     #[test]
     fn files_excludes_non_lua_files() {
         let tmp = tempfile::tempdir().unwrap();
-        let wf_dir = tmp.path().join(".loom").join("workflows");
+        let wf_dir = tmp.path().join(".anureo").join("workflows");
         std::fs::create_dir_all(&wf_dir).unwrap();
         std::fs::write(wf_dir.join("readme.md"), "# docs").unwrap();
         std::fs::write(wf_dir.join("greet.lua"), "-- greet\nfunction main() end").unwrap();

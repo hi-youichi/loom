@@ -1,8 +1,8 @@
 use checkpoint::CheckpointError;
-use loom_graph_core::CompilationError;
-use loom_graph_core::GraphError;
+use anureo_graph_core::CompilationError;
+use anureo_graph_core::GraphError;
 
-use loom_llm::error::LlmError;
+use anureo_llm::error::LlmError;
 use model_spec_core::error::ProviderError;
 
 #[derive(Debug, thiserror::Error)]

@@ -360,7 +360,7 @@ impl ModelRegistry {
         Ok(providers)
     }
 
-    /// Merge YAML plugin providers from ~/.loom/providers/*.yaml into the map.
+    /// Merge YAML plugin providers from ~/.anureo/providers/*.yaml into the map.
     /// Higher-priority (already in map) entries are NOT overwritten by plugins.
     fn merge_yaml_plugins(providers: &mut HashMap<String, SpecProvider>) {
         let plugins_dir = default_providers_dir();

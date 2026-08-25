@@ -1,4 +1,4 @@
-//! `AcpTestHarness` — spawn the real `loom-acp` binary and own its stdio.
+//! `AcpTestHarness` — spawn the real `anureo-acp` binary and own its stdio.
 //!
 //! Plan 026 §2.1. The harness owns:
 //! - The child process + its stdin/stdout/stderr pipes.
@@ -44,11 +44,11 @@ pub struct AcpTestHarness {
 }
 
 impl AcpTestHarness {
-    /// Spawn the loom-acp binary with `--home` pointed at `env`'s temp home.
+    /// Spawn the anureo-acp binary with `--home` pointed at `env`'s temp home.
     pub async fn spawn(env: &TestEnv, llm_url: &str) -> Self {
-        let log_path = env.loom_home().join("loom-acp.log");
-        let pid_path = env.loom_home().join("acp").join("loom-acp.pid");
-        // `loom acp` is a stdio-to-WebSocket bridge.  Always use an isolated
+        let log_path = env.anureo_home().join("anureo-acp.log");
+        let pid_path = env.anureo_home().join("acp").join("anureo-acp.pid");
+        // `anureo acp` is a stdio-to-WebSocket bridge.  Always use an isolated
         // ephemeral port so e2e tests cannot silently attach to a developer's
         // already-running server on the default 3030 endpoint.
         let port = TcpListener::bind(("127.0.0.1", 0))
@@ -61,11 +61,11 @@ impl AcpTestHarness {
         cmd.env("OPENAI_BASE_URL", format!("{llm_url}/v1"))
             .env("OPENAI_API_KEY", "test-key")
             .env("OPENAI_MODEL", "openai/gpt-4o")
-            .env("LOOM_ACP_BRIDGE_EXIT_SHUTDOWN", "1")
+            .env("ANUREO_ACP_BRIDGE_EXIT_SHUTDOWN", "1")
             .arg("acp")
             .arg(format!("ws://127.0.0.1:{port}/acp"))
             .arg("--home")
-            .arg(env.loom_home())
+            .arg(env.anureo_home())
             .arg("--log-file")
             .arg(&log_path)
             .arg("--log-level")
@@ -77,7 +77,7 @@ impl AcpTestHarness {
 
         let mut child = cmd
             .spawn()
-            .expect("failed to spawn loom-acp binary; check binary_path()");
+            .expect("failed to spawn anureo-acp binary; check binary_path()");
 
         let stdin = child.stdin.take().expect("child stdin");
         let stdout = child.stdout.take().expect("child stdout");
@@ -87,7 +87,7 @@ impl AcpTestHarness {
         tokio::spawn(async move {
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                eprintln!("[loom-acp stderr] {line}");
+                eprintln!("[anureo-acp stderr] {line}");
             }
         });
 
@@ -338,7 +338,7 @@ impl AcpTestHarness {
             } else {
                 lines
             };
-            eprintln!("=== loom-acp log tail (last {} lines) ===", tail.len());
+            eprintln!("=== anureo-acp log tail (last {} lines) ===", tail.len());
             for line in tail {
                 eprintln!("  {line}");
             }
@@ -363,7 +363,7 @@ impl AcpTestHarness {
             Ok(Err(e)) => panic!("wait child failed: {e}"),
             Err(_) => {
                 let _ = self.child.start_kill();
-                panic!("loom-acp did not exit within {GRACEFUL_EXIT_TIMEOUT:?}");
+                panic!("anureo-acp did not exit within {GRACEFUL_EXIT_TIMEOUT:?}");
             }
         }
     }

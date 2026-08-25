@@ -14,7 +14,7 @@ mod tool_status;
 mod workflow_resolver;
 mod workflow_validate_schema;
 
-pub use backend::LoomAgentBackend;
+pub use backend::AnureoAgentBackend;
 pub use instance::{
     build_instance_meta, write_instance_artifacts, AgentSummary, EventStats, InstanceMeta,
     PhaseSpan, ReportRef, WorkflowRef,
@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_paths_match_loom_layout() {
+    fn runtime_paths_match_anureo_layout() {
         let tmp = tempfile::tempdir().unwrap();
         let cfg = AgentConfig {
             working_folder: Some(tmp.path().to_path_buf()),
@@ -148,19 +148,19 @@ mod tests {
         let rt = Arc::new(crate::runtime::WorkflowRuntime::new(cfg));
         assert_eq!(
             rt.instances_root(),
-            tmp.path().join(".loom").join("instances")
+            tmp.path().join(".anureo").join("instances")
         );
         assert_eq!(rt.runs_root(), tmp.path().join(".luft").join("runs"));
         assert_eq!(
             rt.workflows_dir(),
-            tmp.path().join(".loom").join("workflows")
+            tmp.path().join(".anureo").join("workflows")
         );
         assert_eq!(
-            rt.loom_instance_dir("loom-instance_abc"),
+            rt.anureo_instance_dir("anureo-instance_abc"),
             tmp.path()
-                .join(".loom")
+                .join(".anureo")
                 .join("instances")
-                .join("loom-instance_abc")
+                .join("anureo-instance_abc")
         );
     }
 }

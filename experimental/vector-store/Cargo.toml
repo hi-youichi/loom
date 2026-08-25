@@ -2,7 +2,7 @@
 name = "vector-store"
 version.workspace = true
 edition.workspace = true
-description = "Vector search Store implementations for Loom (in-memory, sqlite-vec, LanceDB)"
+description = "Vector search Store implementations for anureo (in-memory, sqlite-vec, LanceDB)"
 license.workspace = true
 authors.workspace = true
 

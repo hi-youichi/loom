@@ -1,13 +1,13 @@
-//! Map Loom stream events to ACP SessionUpdate-equivalent structures
+//! Map anureo stream events to ACP SessionUpdate-equivalent structures
 //!
 //! [`agent::run::run_agent_with_options`]'s `on_event` callback receives [`agent::TypedAnyStreamEvent`].
-//! This module provides [`loom_event_to_updates`] to turn a single Loom event into zero or more [`StreamUpdate`],
+//! This module provides [`anureo_event_to_updates`] to turn a single anureo event into zero or more [`StreamUpdate`],
 //! which the upper layer sends as **session/update notifications** (no response) via the `agent_client_protocol` connection.
 //! Protocol details are in [`crate::protocol`].
 //!
-//! ## SessionUpdate variants and Loom sources
+//! ## SessionUpdate variants and anureo sources
 //!
-//! | Variant | Meaning | Loom source |
+//! | Variant | Meaning | anureo source |
 //! |---------|---------|-------------|
 //! | **user_message_chunk** | Chunk of user message | History replay only (`Message::User`). |
 //! | **agent_message_chunk** | Chunk of agent reply (streamed text) | Any node's non-Thinking text output. |
@@ -40,8 +40,8 @@ use agent_client_protocol::schema::v1::{
     ToolCallContent, ToolCallId, ToolCallLocation, ToolCallStatus, ToolCallUpdate,
     ToolCallUpdateFields, ToolKind, UsageUpdate,
 };
-use loom_llm::message::Message;
-use loom_util::text::truncate::truncate_tail;
+use anureo_llm::message::Message;
+use anureo_util::text::truncate::truncate_tail;
 use serde_json::Value;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -53,12 +53,12 @@ use uuid::Uuid;
 /// ingress loop uses it to suppress `session.updated` global broadcasts while
 /// replaying history: a `session/load` is a read, not a mutation, so it must
 /// not fan out one cross-connection `session.updated` per replayed message.
-pub const REPLAY_BEGIN_MARKER_PREFIX: &str = "__loom_replay_begin__";
+pub const REPLAY_BEGIN_MARKER_PREFIX: &str = "__anureo_replay_begin__";
 /// Ingress marker sent after a `send_history` replay batch.
-pub const REPLAY_END_MARKER_PREFIX: &str = "__loom_replay_end__";
+pub const REPLAY_END_MARKER_PREFIX: &str = "__anureo_replay_end__";
 
 /// JSON-RPC method of the batched history-replay notification.
-pub const HISTORY_BATCH_METHOD: &str = "_loomdesk.dev/session-history/batch";
+pub const HISTORY_BATCH_METHOD: &str = "_anureo.dev/session-history/batch";
 
 /// Element type flowing through the session-update channel from
 /// `SessionNotifier` to the `AcpRuntime` ingress loop.
@@ -90,9 +90,9 @@ pub enum SessionUpdateEnvelope {
 
 /// Whether `send_history` packs the replay into a single batch notification
 /// (default) or falls back to per-update `session/update` notifications
-/// (`LOOM_ACP_LOAD_HISTORY_BATCH=0`).
+/// (`ANUREO_ACP_LOAD_HISTORY_BATCH=0`).
 pub fn history_batch_enabled() -> bool {
-    std::env::var("LOOM_ACP_LOAD_HISTORY_BATCH")
+    std::env::var("ANUREO_ACP_LOAD_HISTORY_BATCH")
         .map(|value| value.trim() != "0")
         .unwrap_or(true)
 }
@@ -202,14 +202,14 @@ pub enum StreamUpdate {
     },
 }
 
-/// Convert one Loom stream event into zero or more [`StreamUpdate`]s.
+/// Convert one anureo stream event into zero or more [`StreamUpdate`]s.
 ///
 /// If the event does not need to be pushed to the Client (e.g. some Checkpoint, Usage), returns an empty vec.
 /// Within a single prompt turn, `tool_call_id` generation and consistency are the caller's responsibility (e.g. by call_id or incrementing id).
 ///
 /// # Arguments
 ///
-/// - `ev`: Loom's type-erased stream event (one of React/Dup/Tot/GoT).
+/// - `ev`: anureo's type-erased stream event (one of React/Dup/Tot/GoT).
 ///
 /// # Returns
 ///
@@ -218,12 +218,12 @@ pub enum StreamUpdate {
 /// # Example (in on_event callback)
 ///
 /// ```ignore
-/// let updates = loom_acp::loom_event_to_updates(ev);
+/// let updates = anureo_acp::anureo_event_to_updates(ev);
 /// for u in updates {
 ///     connection.send_session_update(session_id, u).await?;
 /// }
 /// ```
-pub fn loom_event_to_updates(ev: &TypedAnyStreamEvent) -> Vec<StreamUpdate> {
+pub fn anureo_event_to_updates(ev: &TypedAnyStreamEvent) -> Vec<StreamUpdate> {
     match ev {
         TypedAnyStreamEvent::React(e) => {
             let mut updates = stream_event_to_updates_inner(e);
@@ -409,7 +409,7 @@ where
 
 /// Convert this crate's [`StreamUpdate`] into ACP's [`SessionNotification`] for sending via the connection.
 ///
-/// Returns `None` for `ToolCallUpdated` with empty `tool_call_id` (Loom ToolOutput may lack call_id).
+/// Returns `None` for `ToolCallUpdated` with empty `tool_call_id` (anureo ToolOutput may lack call_id).
 pub fn stream_update_to_session_notification(
     session_id: &SessionId,
     u: &StreamUpdate,
@@ -656,7 +656,7 @@ impl SessionNotifier {
     }
 
     pub async fn send_event(&self, event: &TypedAnyStreamEvent) {
-        let mut updates = loom_event_to_updates(event);
+        let mut updates = anureo_event_to_updates(event);
 
         // 处理高频更新
         if let Some(size) = self.context_window_size {
@@ -716,7 +716,7 @@ impl SessionNotifier {
     }
 
     pub fn try_send_event(&self, event: &TypedAnyStreamEvent) {
-        let mut updates = loom_event_to_updates(event);
+        let mut updates = anureo_event_to_updates(event);
         if let Some(size) = self.context_window_size {
             if let Some(used) = extract_usage_tokens(event) {
                 let meta = self.snapshot_token_usage_meta();
@@ -818,7 +818,7 @@ impl SessionNotifier {
 
     /// Convert one persisted LLM message into the ordered ACP session
     /// updates used for history replay (both the `session/load` tail replay
-    /// and the `_loomdesk.dev/session-history/page` extension response).
+    /// and the `_anureo.dev/session-history/page` extension response).
     ///
     /// Returns `None` for System messages and empty assistant turns — they
     /// carry nothing user-visible for a replaying client.
@@ -937,11 +937,11 @@ impl SessionNotifier {
         // helpers; this site takes `&[Message]` directly and was
         // skipped, leaving a forked-review leak able to reach
         // user-visible ACP notifications. The walker is
-        // `loom_llm::message::strip_background_review_in_messages`
+        // `anureo_llm::message::strip_background_review_in_messages`
         // and is ContentKind-aware (User::Text / Multimodal parts /
         // Assistant payload + tool_calls args / Tool content / System).
         let mut owned: Vec<Message> = messages.to_vec();
-        loom_llm::message::strip_background_review_in_messages(&mut owned);
+        anureo_llm::message::strip_background_review_in_messages(&mut owned);
         let messages: &[Message] = &owned;
 
         let mut replay_updates: Vec<SessionUpdate> = Vec::new();
@@ -979,7 +979,7 @@ impl SessionNotifier {
         }
 
         if !recovery_replay && history_batch_enabled() {
-            // One envelope → one `_loomdesk.dev/session-history/batch`
+            // One envelope → one `_anureo.dev/session-history/batch`
             // JSON-RPC notification on the wire. The client applies the
             // whole tail in a single commit instead of N frames.
             let update_count = replay_updates.len();
@@ -1242,7 +1242,7 @@ impl SessionNotifier {
     }
 }
 
-/// Extract prompt-token count from a Loom stream event if it is a Usage event.
+/// Extract prompt-token count from a anureo stream event if it is a Usage event.
 fn extract_usage_tokens(ev: &TypedAnyStreamEvent) -> Option<u64> {
     let usage = match ev {
         TypedAnyStreamEvent::React(e) => extract_usage_inner(e),
@@ -1253,7 +1253,7 @@ fn extract_usage_tokens(ev: &TypedAnyStreamEvent) -> Option<u64> {
     usage.map(|p| p as u64)
 }
 
-/// Extract token usage delta from a Loom stream event for high-frequency tracking.
+/// Extract token usage delta from a anureo stream event for high-frequency tracking.
 fn extract_usage_delta(ev: &TypedAnyStreamEvent) -> Option<u64> {
     match ev {
         TypedAnyStreamEvent::React(e) => extract_usage_delta_inner(e),

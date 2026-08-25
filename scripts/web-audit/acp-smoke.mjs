@@ -1,5 +1,5 @@
-// Smoke test: extension dispatch over the Loom ACP WebSocket.
-const url = process.env.LOOM_ACP_URL ?? "ws://127.0.0.1:3031/acp"
+// Smoke test: extension dispatch over the anureo ACP WebSocket.
+const url = process.env.ANUREO_ACP_URL ?? "ws://127.0.0.1:3031/acp"
 const ws = new WebSocket(url)
 let nextId = 1
 const pending = new Map()
@@ -31,13 +31,13 @@ ws.addEventListener("open", async () => {
     })
     console.log("initialize:", JSON.stringify(init?.agentInfo ?? "?"))
 
-    const home = await request("_loomdesk.dev/files/home", {})
+    const home = await request("_anureo.dev/files/home", {})
     console.log("files/home:", JSON.stringify(home))
 
     const sessions = await request("session/list", {})
     console.log("session/list:", JSON.stringify(sessions)?.slice(0, 300))
 
-    const commands = await request("_loomdesk.dev/command/list", {})
+    const commands = await request("_anureo.dev/command/list", {})
     console.log("command/list:", JSON.stringify(commands)?.slice(0, 200))
 
     ws.close()

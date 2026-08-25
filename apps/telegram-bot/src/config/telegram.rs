@@ -1,9 +1,9 @@
 //! Telegram Bot Configuration
 //!
-//! Loads from `~/.loom/telegram-bot.toml` with environment variable interpolation.
-//! Integrates with loom's config system for future agent support.
+//! Loads from `~/.anureo/telegram-bot.toml` with environment variable interpolation.
+//! Integrates with anureo's config system for future agent support.
 
-use config::home::loom_home;
+use config::home::anureo_home;
 use std::path::{Path, PathBuf};
 
 use crate::config::error::ConfigError;
@@ -22,7 +22,7 @@ impl TelegramBotConfig {
         if dir.is_absolute() {
             dir.clone()
         } else {
-            loom_home().join(dir)
+            anureo_home().join(dir)
         }
     }
 }

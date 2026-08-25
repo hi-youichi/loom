@@ -6,11 +6,11 @@
 use crate::commands::command::{Command, CommandResult};
 use crate::compress::compaction::{build_summary_prompt, compact, prune};
 use crate::compress::config::CompactionConfig;
-use loom_graph_core::GraphError;
-use loom_llm::message::{Message, UserContent};
-use loom_llm::LlmClient;
+use anureo_graph_core::GraphError;
+use anureo_llm::message::{Message, UserContent};
+use anureo_llm::LlmClient;
 
-// Re-exported from loom-stream / tool-core / agent-core
+// Re-exported from anureo-stream / tool-core / agent-core
 pub use crate::commands::command_traits::{CompactState, ResetState, SummarizeState};
 
 pub fn execute(cmd: Command, state: &mut dyn ResetState) -> CommandResult {

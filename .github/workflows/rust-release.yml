@@ -39,8 +39,8 @@ jobs:
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           mkdir -p dist
-          tar -czvf "dist/loom-${VERSION}-${{ matrix.target }}.tar.gz" \
-            -C "target/${{ matrix.target }}/release" loom
+          tar -czvf "dist/anureo-${VERSION}-${{ matrix.target }}.tar.gz" \
+            -C "target/${{ matrix.target }}/release" anureo
 
       - name: Package Windows binary
         if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'windows-latest'
@@ -48,8 +48,8 @@ jobs:
         run: |
           $version = "${{ github.ref_name }}".TrimStart('v')
           New-Item -ItemType Directory -Path dist -Force | Out-Null
-          Compress-Archive -Path "target/${{ matrix.target }}/release/loom.exe" `
-            -DestinationPath "dist/loom-$version-${{ matrix.target }}.zip"
+          Compress-Archive -Path "target/${{ matrix.target }}/release/anureo.exe" `
+            -DestinationPath "dist/anureo-$version-${{ matrix.target }}.zip"
 
       - name: Upload release artifact
         if: startsWith(github.ref, 'refs/tags/')
@@ -98,10 +98,10 @@ jobs:
           set -eu
           VERSION="${GITHUB_REF#refs/tags/v}"
           expected=(
-            "loom-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-            "loom-${VERSION}-x86_64-apple-darwin.tar.gz"
-            "loom-${VERSION}-aarch64-apple-darwin.tar.gz"
-            "loom-${VERSION}-x86_64-pc-windows-msvc.zip"
+            "anureo-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+            "anureo-${VERSION}-x86_64-apple-darwin.tar.gz"
+            "anureo-${VERSION}-aarch64-apple-darwin.tar.gz"
+            "anureo-${VERSION}-x86_64-pc-windows-msvc.zip"
           )
           for asset in "${expected[@]}"; do
             test -f "dist/$asset" || {
@@ -153,27 +153,27 @@ jobs:
         if: matrix.os != 'windows-latest'
         shell: bash
         env:
-          LOOM_VERSION: ${{ github.ref_name }}
-          LOOM_INSTALL_DIR: ${{ runner.temp }}/loom-bin
+          ANUREO_VERSION: ${{ github.ref_name }}
+          ANUREO_INSTALL_DIR: ${{ runner.temp }}/anureo-bin
         run: |
-          sh scripts/install.sh --version "$LOOM_VERSION" --install-dir "$LOOM_INSTALL_DIR"
-          "$LOOM_INSTALL_DIR/loom" --help
+          sh scripts/install.sh --version "$ANUREO_VERSION" --install-dir "$ANUREO_INSTALL_DIR"
+          "$ANUREO_INSTALL_DIR/anureo" --help
 
       - name: Verify macOS Intel installer under Rosetta
         if: matrix.os == 'macos-14'
         shell: bash
         env:
-          LOOM_VERSION: ${{ github.ref_name }}
+          ANUREO_VERSION: ${{ github.ref_name }}
         run: |
-          install_dir="$RUNNER_TEMP/loom-bin-intel"
-          arch -x86_64 env LOOM_VERSION="$LOOM_VERSION" LOOM_INSTALL_DIR="$install_dir" \
-            sh scripts/install.sh --version "$LOOM_VERSION" --install-dir "$install_dir"
-          arch -x86_64 "$install_dir/loom" --help
+          install_dir="$RUNNER_TEMP/anureo-bin-intel"
+          arch -x86_64 env ANUREO_VERSION="$ANUREO_VERSION" ANUREO_INSTALL_DIR="$install_dir" \
+            sh scripts/install.sh --version "$ANUREO_VERSION" --install-dir "$install_dir"
+          arch -x86_64 "$install_dir/anureo" --help
 
       - name: Verify Windows installer
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          $installDir = Join-Path $env:RUNNER_TEMP 'loom-bin'
+          $installDir = Join-Path $env:RUNNER_TEMP 'anureo-bin'
           & .\scripts\install.ps1 -Version "${{ github.ref_name }}" -InstallDir $installDir
-          & (Join-Path $installDir 'loom.exe') --help
+          & (Join-Path $installDir 'anureo.exe') --help

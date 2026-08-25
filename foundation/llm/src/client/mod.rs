@@ -1,4 +1,4 @@
-//! Client implementations for loom-llm.
+//! Client implementations for anureo-llm.
 
 mod fixed_provider;
 mod mock;

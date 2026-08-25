@@ -27,7 +27,7 @@ config = { path = "../../foundation/config", features = ["tracing-init"] }
 agent = { path = "../../agent/agent-core" }
 checkpoint-sqlite-store = { path = "../../foundation/checkpoint-sqlite-store" }
 tool-core = { path = "../../agent/tool/tool-core" }
-loom-llm = { path = "../../foundation/llm" }
+anureo-llm = { path = "../../foundation/llm" }
 tool-workflow = { path = "../../agent/tool/tool-workflow" }
 tool-extensions = { path = "../../agent/tool/tool-extensions" }
 axum = "0.7"

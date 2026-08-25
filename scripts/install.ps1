@@ -1,28 +1,28 @@
 param(
     [switch]$Help,
-    [string]$Version = $env:LOOM_VERSION,
-    [string]$InstallDir = $env:LOOM_INSTALL_DIR,
-    [string]$Repository = $env:LOOM_REPO
+    [string]$Version = $env:ANUREO_VERSION,
+    [string]$InstallDir = $env:ANUREO_INSTALL_DIR,
+    [string]$Repository = $env:ANUREO_REPO
 )
 
 $ErrorActionPreference = 'Stop'
 
 if ($Help) {
     @'
-Install Loom from GitHub Releases.
+Install anureo from GitHub Releases.
 
 Environment variables:
-  LOOM_VERSION       Release tag without the leading v (default: latest)
-  LOOM_INSTALL_DIR   Installation directory (default: %LOCALAPPDATA%\loom\bin)
-  LOOM_REPO          GitHub repository (default: hi-youichi/loom)
+  ANUREO_VERSION       Release tag without the leading v (default: latest)
+  ANUREO_INSTALL_DIR   Installation directory (default: %LOCALAPPDATA%\anureo\bin)
+  ANUREO_REPO          GitHub repository (default: hi-youichi/anureo)
 '@
     exit 0
 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) { $Version = 'latest' }
-if ([string]::IsNullOrWhiteSpace($Repository)) { $Repository = 'hi-youichi/loom' }
+if ([string]::IsNullOrWhiteSpace($Repository)) { $Repository = 'hi-youichi/anureo' }
 if ([string]::IsNullOrWhiteSpace($InstallDir)) {
-    $InstallDir = Join-Path $env:LOCALAPPDATA 'loom\bin'
+    $InstallDir = Join-Path $env:LOCALAPPDATA 'anureo\bin'
 }
 
 $target = 'x86_64-pc-windows-msvc'
@@ -35,31 +35,31 @@ if ($Version -eq 'latest') {
     $tag = "v$Version"
 }
 
-$archive = "loom-$Version-$target.zip"
+$archive = "anureo-$Version-$target.zip"
 $url = "https://github.com/$Repository/releases/download/$tag/$archive"
-$tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("loom-install-" + [guid]::NewGuid())
+$tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("anureo-install-" + [guid]::NewGuid())
 $archivePath = Join-Path $tempDir $archive
 
 try {
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-    Write-Host "Downloading Loom $Version for $target..."
+    Write-Host "Downloading anureo $Version for $target..."
     Invoke-WebRequest -Uri $url -OutFile $archivePath -UseBasicParsing
     Expand-Archive -Path $archivePath -DestinationPath $tempDir -Force
 
-    $binary = Join-Path $tempDir 'loom.exe'
+    $binary = Join-Path $tempDir 'anureo.exe'
     if (-not (Test-Path -LiteralPath $binary)) {
-        throw "release archive does not contain loom.exe"
+        throw "release archive does not contain anureo.exe"
     }
 
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-    Copy-Item -LiteralPath $binary -Destination (Join-Path $InstallDir 'loom.exe') -Force
-    Write-Host "Loom installed to $(Join-Path $InstallDir 'loom.exe')"
+    Copy-Item -LiteralPath $binary -Destination (Join-Path $InstallDir 'anureo.exe') -Force
+    Write-Host "anureo installed to $(Join-Path $InstallDir 'anureo.exe')"
 
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     $pathEntries = @($userPath -split ';' | Where-Object { $_ })
     if ($pathEntries -notcontains $InstallDir) {
         [Environment]::SetEnvironmentVariable('Path', (($pathEntries + $InstallDir) -join ';'), 'User')
-        Write-Host "Added $InstallDir to the user PATH. Open a new terminal to use loom."
+        Write-Host "Added $InstallDir to the user PATH. Open a new terminal to use anureo."
     }
 } finally {
     if (Test-Path -LiteralPath $tempDir) {

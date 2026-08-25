@@ -1,6 +1,6 @@
-// Re-export ToolCall from loom-llm for classification functions
+// Re-export ToolCall from anureo-llm for classification functions
 // that need structured args (HashMap) instead of JSON string.
-pub use loom_llm::tool::ToolCall as CuratorToolCall;
+pub use anureo_llm::tool::ToolCall as CuratorToolCall;
 
 use super::prompts::CURATOR_REVIEW_PROMPT;
 use super::skill_registry::{
@@ -583,7 +583,7 @@ impl Curator {
     ///
     /// Unlike `run(dry_run)`, this honours an explicit `days` threshold passed
     /// by the CLI rather than using `config.archive_days`. The legacy
-    /// `loom curator prune --days N` path was a no-op for `days` — it just
+    /// `anureo curator prune --days N` path was a no-op for `days` — it just
     /// called `curator.run(dry_run)` and printed the value. This method
     /// threads `days` through by overriding `stale_days_auto`,
     /// `stale_days_manual`, and `archive_days` for the duration of the call.
@@ -676,10 +676,10 @@ impl Curator {
         }
         // Priority #20 (Hermes `tools/skill_usage.py`): record the
         // pruned skill in `.curator_suppressed` so the next
-        // `sync_skills` / `loom update` pass does not re-seed it from
+        // `sync_skills` / `anureo update` pass does not re-seed it from
         // the bundled manifest. The list is consulted by
         // `agent/skill/src/sync.rs` before applying any bundled write
-        // unless the user explicitly sets `LOOM_SKILL_FORCE=1`.
+        // unless the user explicitly sets `ANUREO_SKILL_FORCE=1`.
         self.skills.usage_store().add_suppressed_name(name);
         info!("Archived skill '{}' to {}", name, dst.display());
         Ok(src)
@@ -1716,7 +1716,7 @@ fn extract_absorbed_into_declarations(
     let mut declarations = std::collections::HashMap::new();
 
     for call in tool_calls {
-        // Loom exposes a single `skill_manage` tool; `absorbed_into` is only
+        // anureo exposes a single `skill_manage` tool; `absorbed_into` is only
         // meaningful on `action=delete`. Accept both the canonical tool name
         // (`skill_manage`) and the prompt-facing alias (`skill_delete`) so the
         // extraction survives regardless of how the tool-call is serialised.

@@ -1,4 +1,4 @@
-//! Clap definitions for the `loom` binary.
+//! Clap definitions for the `anureo` binary.
 
 use std::path::PathBuf;
 
@@ -6,12 +6,12 @@ use clap::{Parser, Subcommand};
 
 use crate::session::SessionArgs;
 
-/// Config directory: ~/.loom (or --home DIR). config.toml [env] is applied as env vars; project .env overrides.
-pub(crate) const CONFIG_DIR_HELP: &str = "\nConfiguration:\n  Config directory: ~/.loom (override with --home DIR).\n  File: config.toml with [env] table; values are applied as environment variables.\n  Project .env in working directory overrides config.toml.\n\nSession:\n  Use --session-id (-s) to resume a previous session. The session ID is printed at end of run.\n  Use 'loom session list' to browse all sessions, and 'loom session cat <ID>' to view content.";
+/// Config directory: ~/.anureo (or --home DIR). config.toml [env] is applied as env vars; project .env overrides.
+pub(crate) const CONFIG_DIR_HELP: &str = "\nConfiguration:\n  Config directory: ~/.anureo (override with --home DIR).\n  File: config.toml with [env] table; values are applied as environment variables.\n  Project .env in working directory overrides config.toml.\n\nSession:\n  Use --session-id (-s) to resume a previous session. The session ID is printed at end of run.\n  Use 'anureo session list' to browse all sessions, and 'anureo session cat <ID>' to view content.";
 
 #[derive(Parser, Debug, Default)]
-#[command(name = "loom")]
-#[command(about = "Loom — agentic AI assistant for development", after_help = CONFIG_DIR_HELP)]
+#[command(name = "anureo")]
+#[command(about = "anureo — agentic AI assistant for development", after_help = CONFIG_DIR_HELP)]
 pub(crate) struct Args {
     #[command(subcommand)]
     pub(crate) cmd: Option<Command>,
@@ -28,8 +28,8 @@ pub(crate) struct Args {
     #[arg(short, long, value_name = "DIR")]
     pub(crate) working_folder: Option<PathBuf>,
 
-    /// Loom home directory for config, state, and data (default: ~/.loom).
-    /// Replaces the old LOOM_HOME environment variable.
+    /// anureo home directory for config, state, and data (default: ~/.anureo).
+    /// Replaces the old ANUREO_HOME environment variable.
     #[arg(long, global = true, value_name = "DIR")]
     pub(crate) home: Option<PathBuf>,
 
@@ -57,7 +57,7 @@ pub(crate) struct Args {
     #[arg(long, value_name = "PROVIDER")]
     pub(crate) provider: Option<String>,
 
-    /// Named agent profile (e.g. coding). Loaded from .loom/agents/<NAME> or ~/.loom/agents/<NAME>.
+    /// Named agent profile (e.g. coding). Loaded from .anureo/agents/<NAME> or ~/.anureo/agents/<NAME>.
     #[arg(short('P'), long, value_name = "NAME")]
     pub(crate) agent: Option<String>,
 
@@ -76,12 +76,12 @@ pub(crate) struct Args {
     pub(crate) interactive: bool,
 
     /// Use ACP as a client over WebSocket instead of running the agent locally.
-    /// This is the CLI-facing ACP client; `loom acp` remains the IDE stdio bridge.
+    /// This is the CLI-facing ACP client; `anureo acp` remains the IDE stdio bridge.
     #[arg(long)]
     pub(crate) acp: bool,
 
     /// ACP WebSocket endpoint used by `--acp`.
-    #[arg(long, env = "LOOM_ACP_URL", default_value = "ws://127.0.0.1:3030/acp")]
+    #[arg(long, env = "ANUREO_ACP_URL", default_value = "ws://127.0.0.1:3030/acp")]
     pub(crate) acp_url: String,
 
     /// Output all data as JSON (stream events + reply for agent run; JSON array for tool list; JSON for tool show)
@@ -100,7 +100,7 @@ pub(crate) struct Args {
     #[arg(long)]
     pub(crate) timestamp: bool,
 
-    /// Path to MCP config JSON (overrides LOOM_MCP_CONFIG_PATH and default .loom/mcp.json discovery)
+    /// Path to MCP config JSON (overrides ANUREO_MCP_CONFIG_PATH and default .anureo/mcp.json discovery)
     #[arg(long, value_name = "PATH")]
     pub(crate) mcp_config: Option<PathBuf>,
 
@@ -129,7 +129,7 @@ pub(crate) struct Args {
     #[arg(long, global = true, value_name = "LEVEL")]
     pub(crate) log_level: Option<String>,
 
-    /// Log file path. Default: `~/.loom/loom.log`.
+    /// Log file path. Default: `~/.anureo/anureo.log`.
     #[arg(long, global = true, value_name = "PATH")]
     pub(crate) log_file: Option<PathBuf>,
 
@@ -186,8 +186,8 @@ pub(crate) enum Command {
     /// Run as ACP (Agent Client Protocol) server for IDE integration
     Acp(AcpArgs),
 
-    /// Run the Loom HTTP and ACP WebSocket server
-    Server(loom_server::runtime::ServerOptions),
+    /// Run the anureo HTTP and ACP WebSocket server
+    Server(anureo_server::runtime::ServerOptions),
 }
 
 #[derive(clap::Args, Debug, Clone)]
@@ -538,7 +538,7 @@ pub(crate) struct GoalArgs {
     pub(crate) description: Option<String>,
 
     /// External coding tool to use: codex, claude, cursor, or a custom command
-    #[arg(short, long, value_name = "TOOL", default_value = "loom")]
+    #[arg(short, long, value_name = "TOOL", default_value = "anureo")]
     pub(crate) tool: String,
 
     /// Resume a paused goal by task ID (prefix)
@@ -638,12 +638,12 @@ pub(crate) enum SkillsCommand {
     /// parity, `skills_sync.py`).
     Sync {
         /// Override the bundled-skills source directory (Hermes
-        /// `LOOM_BUNDLED_SKILLS_DIR`).
-        #[arg(long, env = "LOOM_BUNDLED_SKILLS_DIR", value_name = "DIR")]
+        /// `ANUREO_BUNDLED_SKILLS_DIR`).
+        #[arg(long, env = "ANUREO_BUNDLED_SKILLS_DIR", value_name = "DIR")]
         bundled_dir: Option<String>,
         /// Override the user-skills target directory (Hermes
-        /// `LOOM_USER_SKILLS_DIR`).
-        #[arg(long, env = "LOOM_USER_SKILLS_DIR", value_name = "DIR")]
+        /// `ANUREO_USER_SKILLS_DIR`).
+        #[arg(long, env = "ANUREO_USER_SKILLS_DIR", value_name = "DIR")]
         user_dir: Option<String>,
         /// Force reinstall even when the manifest says the user
         /// previously deleted the skill.
@@ -663,7 +663,7 @@ pub(crate) struct SkillUsageArgs {
 pub enum SkillUsageCommand {
     /// Scan skills directory and sync .usage.json
     Sync {
-        /// Skills root directory (default: ~/.loom/data/skills)
+        /// Skills root directory (default: ~/.anureo/data/skills)
         #[arg(long, value_name = "PATH")]
         path: Option<PathBuf>,
         /// Preview changes without writing files
@@ -686,7 +686,7 @@ pub enum SkillUsageCommand {
     },
     /// Repair a corrupted .usage.json
     Repair {
-        /// Skills root directory (default: ~/.loom/data/skills)
+        /// Skills root directory (default: ~/.anureo/data/skills)
         #[arg(long, value_name = "PATH")]
         path: Option<PathBuf>,
     },
@@ -878,7 +878,7 @@ pub(crate) struct AcpArgs {
           default_missing_value = "ws://127.0.0.1:3030/acp")]
     pub(crate) url: Option<String>,
 
-    /// PID file for an auto-spawned loom server.
+    /// PID file for an auto-spawned anureo server.
     #[arg(long, value_name = "PATH")]
     pub(crate) pid_file: Option<PathBuf>,
 }

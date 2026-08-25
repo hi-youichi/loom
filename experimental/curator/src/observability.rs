@@ -53,7 +53,7 @@ impl ObservabilityStore {
     }
 
     pub fn default_path() -> PathBuf {
-        env_config::home::loom_home()
+        env_config::home::anureo_home()
             .join("data")
             .join("observability")
     }

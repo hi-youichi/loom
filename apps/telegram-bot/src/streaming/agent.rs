@@ -1,6 +1,6 @@
 //! Agent execution with streaming support
 //!
-//! Provides functions for running Loom agent with real-time streaming.
+//! Provides functions for running anureo agent with real-time streaming.
 
 use crate::config::Settings;
 use crate::error::{BotError, Result};
@@ -11,12 +11,12 @@ use agent::run::{build_react_config, run_agent_from_config, RunCmd, RunParams};
 use agent::run::{RunCompletion, RunOptions};
 use tool_extensions::set_current_chat_id;
 
-use loom_llm::message::UserContent;
+use anureo_llm::message::UserContent;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
-pub async fn run_loom_agent_streaming(
+pub async fn run_anureo_agent_streaming(
     message: &str,
     chat_id: i64,
     sender: Arc<dyn MessageSender>,
@@ -24,7 +24,7 @@ pub async fn run_loom_agent_streaming(
     settings: &Settings,
     force_compact: bool,
 ) -> Result<String> {
-    tracing::info!("Running Loom agent (streaming) for chat {}", chat_id);
+    tracing::info!("Running anureo agent (streaming) for chat {}", chat_id);
 
     let thread_id = format!("telegram_{}", chat_id);
 

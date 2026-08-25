@@ -11,13 +11,13 @@ edition = "2021"
 [dependencies]
 
 
-loom-util = { path = "../../foundation/loom-util" }
+anureo-util = { path = "../../foundation/anureo-util" }
 
-loom-graph-core = { path = "../../foundation/graph-core" }
+anureo-graph-core = { path = "../../foundation/graph-core" }
 
-loom-pregel = { path = "../../foundation/pregel" }
+anureo-pregel = { path = "../../foundation/pregel" }
 
-loom-llm = { path = "../../foundation/llm" }
+anureo-llm = { path = "../../foundation/llm" }
 
 
 

@@ -1,4 +1,4 @@
-//! Durable ACP session metadata stored beside Loom checkpoints.
+//! Durable ACP session metadata stored beside anureo checkpoints.
 
 use std::{
     collections::HashMap,
@@ -81,7 +81,7 @@ pub struct SessionMetadata {
     pub archived_at: Option<String>,
 }
 
-/// Canonical session-index projection used by the Loom Desk extension.
+/// Canonical session-index projection used by the anureo Desk extension.
 /// `SessionMetadata` remains the compatibility projection for existing ACP
 /// callers; new list/event code must use this complete shape.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
@@ -1029,7 +1029,7 @@ impl SessionRepository {
         transaction.commit()
     }
 
-    /// Read arbitrary Loom Desk metadata owned by a session.
+    /// Read arbitrary anureo Desk metadata owned by a session.
     pub fn get_metadata_json(&self, session_id: &str) -> rusqlite::Result<Option<String>> {
         self.connection()?
             .query_row(
@@ -1040,7 +1040,7 @@ impl SessionRepository {
             .optional()
     }
 
-    /// Replace arbitrary Loom Desk metadata when the session belongs to the
+    /// Replace arbitrary anureo Desk metadata when the session belongs to the
     /// requested principal. The metadata is deliberately separate from ACP's
     /// protocol-owned session columns so extensions cannot corrupt lifecycle
     /// or routing state.
@@ -1175,7 +1175,7 @@ impl SessionRepository {
     }
 
     /// Set or clear the archival timestamp. Bumps `updated_at` (matching
-    /// loom semantics where archiving is a list-reordering mutation)
+    /// anureo semantics where archiving is a list-reordering mutation)
     /// and returns the stored metadata, or `None` when the session does not
     /// exist or belongs to another principal.
     fn set_archived_internal(
@@ -2193,7 +2193,7 @@ mod tests {
             "session index 10k full-read p95: {} ms",
             p95.as_secs_f64() * 1000.0
         );
-        if std::env::var_os("LOOM_ACP_STRICT_PERF").is_some() {
+        if std::env::var_os("ANUREO_ACP_STRICT_PERF").is_some() {
             assert!(
                 p95 <= std::time::Duration::from_millis(500),
                 "10k full-read p95 exceeded 500ms: {p95:?}"

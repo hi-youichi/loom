@@ -19,7 +19,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use loom_graph_core::channels::{StateUpdater, ReplaceUpdater};
+//! use anureo_graph_core::channels::{StateUpdater, ReplaceUpdater};
 //!
 //! // Custom state type
 //! #[derive(Clone, Debug)]

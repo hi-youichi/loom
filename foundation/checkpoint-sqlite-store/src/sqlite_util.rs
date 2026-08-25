@@ -83,10 +83,10 @@ where
     Err(rusqlite::Error::InvalidQuery)
 }
 
-/// Returns the default memory DB path (`~/.loom/memory.db`).
+/// Returns the default memory DB path (`~/.anureo/memory.db`).
 /// Creates the parent directory if missing. Falls back to `memory.db` (cwd-relative) if home is unavailable.
 pub fn default_memory_db_path() -> PathBuf {
-    let path = env_config::home::loom_home().join(MEMORY_DB_FILENAME);
+    let path = env_config::home::anureo_home().join(MEMORY_DB_FILENAME);
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
             tracing::warn!("Failed to create memory db directory: {}", e);
@@ -132,7 +132,7 @@ pub fn open_sqlite_with_wal(path: &Path) -> Result<rusqlite::Connection, String>
     // Hermes parity: try WAL first; if WAL fails (NFS, SMB, network
     // volume, EROFS on /tmp sandbox), fall back to DELETE and warn once.
     // The fallback is logged at warn-level so a real outage shows up in
-    // `loom-sqlite-store` logs but we never panic on a transient FS issue.
+    // `anureo-sqlite-store` logs but we never panic on a transient FS issue.
     let wal_ok = conn
         .query_row::<String, _, _>("PRAGMA journal_mode=WAL;", [], |row| row.get(0))
         .map(|mode| mode.eq_ignore_ascii_case("wal"))
@@ -140,8 +140,8 @@ pub fn open_sqlite_with_wal(path: &Path) -> Result<rusqlite::Connection, String>
 
     if !wal_ok {
         eprintln!(
-            "loom-sqlite-store: WAL mode unavailable at {} (falling back to DELETE journal mode; \
-             concurrent reads will serialize against writes — set LOOM_FORCE_DELETE=1 to silence)",
+            "anureo-sqlite-store: WAL mode unavailable at {} (falling back to DELETE journal mode; \
+             concurrent reads will serialize against writes — set ANUREO_FORCE_DELETE=1 to silence)",
             path.display()
         );
         let _ = conn.execute_batch("PRAGMA journal_mode=DELETE;");
@@ -174,12 +174,12 @@ pub fn open_sqlite_with_wal(path: &Path) -> Result<rusqlite::Connection, String>
 /// "database disk image is malformed" message instead of the bare
 /// `String` error our callers otherwise see.
 ///
-/// In Loom, `open_sqlite_with_wal` returns `Err(String)` to keep the
+/// In anureo, `open_sqlite_with_wal` returns `Err(String)` to keep the
 /// async surface simple — but that erases the cause chain. We capture
 /// the most-recent init failure in a `OnceLock<RwLock<Option<String>>>`
 /// so callers (CLI `session.rs`, ACP review-runner, curator) can ask
 /// `get_last_init_error()` and render a useful message like
-/// `"loom state db unavailable: database is locked at /home/u/.loom/memory.db"`.
+/// `"anureo state db unavailable: database is locked at /home/u/.anureo/memory.db"`.
 static LAST_INIT_ERROR: OnceLock<RwLock<Option<String>>> = OnceLock::new();
 
 fn init_error_slot() -> &'static RwLock<Option<String>> {
@@ -235,7 +235,7 @@ mod tests {
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
-    fn default_memory_db_path_uses_loom_home() {
+    fn default_memory_db_path_uses_anureo_home() {
         let _lock = crate::env_test_lock().lock().unwrap();
         let _g = ENV_LOCK.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();

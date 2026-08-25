@@ -5,11 +5,11 @@
 
 use async_trait::async_trait;
 
-use loom_graph_core::GraphError;
-use loom_graph_core::Node;
-use loom_graph_core::{Next, RunContext};
-use loom_llm::message::Message;
-use loom_llm::ToolCall;
+use anureo_graph_core::GraphError;
+use anureo_graph_core::Node;
+use anureo_graph_core::{Next, RunContext};
+use anureo_llm::message::Message;
+use anureo_llm::ToolCall;
 use stream_event::StreamEvent;
 
 use super::prompt::{TOT_EXPAND_SYSTEM_ADDON, TOT_RESEARCH_QUALITY_ADDON};
@@ -23,7 +23,7 @@ use super::state::{TotCandidate, TotState};
 /// and `StreamEvent::TotExpand`.
 pub struct ThinkExpandNode {
     /// LLM client used to generate candidate thoughts and tool_calls.
-    llm: Box<dyn loom_llm::LlmClient>,
+    llm: Box<dyn anureo_llm::LlmClient>,
     /// Number of candidates to request (2 or 3).
     candidates_per_step: usize,
     /// When true, append research-quality addon (multiple tool calls, step-by-step, cite sources).
@@ -32,7 +32,7 @@ pub struct ThinkExpandNode {
 
 impl ThinkExpandNode {
     /// Creates a ThinkExpand node with the given LLM client.
-    pub fn new(llm: Box<dyn loom_llm::LlmClient>) -> Self {
+    pub fn new(llm: Box<dyn anureo_llm::LlmClient>) -> Self {
         Self {
             llm,
             candidates_per_step: 3,
@@ -282,14 +282,14 @@ mod tests {
     use super::*;
     use crate::state::ReActState;
     use checkpoint::RunnableConfig;
-    use loom_graph_core::RunContext;
-    use loom_llm::client::MockLlm;
+    use anureo_graph_core::RunContext;
+    use anureo_llm::client::MockLlm;
     use tokio::sync::mpsc;
 
     fn make_state() -> TotState {
         TotState {
             core: ReActState {
-                messages: vec![loom_llm::message::Message::user(
+                messages: vec![anureo_llm::message::Message::user(
                     "Search best rust formatter",
                 )],
                 ..ReActState::default()

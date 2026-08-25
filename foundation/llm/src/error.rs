@@ -1,8 +1,8 @@
-//! Error types for loom-llm.
+//! Error types for anureo-llm.
 //!
 //! This module provides:
 //! - `LlmError`: LLM-specific error type (invoke failures, empty responses, cancellation)
-//! - Re-exports of `GraphError` and `Interrupt` from `loom-graph-core` for backward compatibility
+//! - Re-exports of `GraphError` and `Interrupt` from `anureo-graph-core` for backward compatibility
 //! - `From<LlmError> for GraphError` conversion for seamless `?` propagation
 //! - `ProviderError` structured error classification (types live in `model-spec-core::error`)
 
@@ -12,7 +12,7 @@ pub mod provider;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub use loom_graph_core::{GraphError, Interrupt};
+pub use anureo_graph_core::{GraphError, Interrupt};
 pub use model_spec_core::error::ProviderError;
 
 /// LLM client error type.
@@ -80,8 +80,8 @@ impl From<reqwest::Error> for LlmError {
 
 /// Deprecated alias for backward compatibility.
 ///
-/// Use `loom_graph_core::GraphError` or `loom_llm::LlmError` instead.
-#[deprecated(note = "split into loom_graph_core::GraphError and loom_llm::LlmError")]
+/// Use `anureo_graph_core::GraphError` or `anureo_llm::LlmError` instead.
+#[deprecated(note = "split into anureo_graph_core::GraphError and anureo_llm::LlmError")]
 pub type AgentError = GraphError;
 
 #[cfg(test)]

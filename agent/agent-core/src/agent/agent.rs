@@ -165,7 +165,7 @@ mod tests {
     use super::*;
     use crate::agent::react::build::build_react_runner;
     use crate::ReactBuildConfig;
-    use loom_llm::client::{FixedLlmProvider, MockLlm};
+    use anureo_llm::client::{FixedLlmProvider, MockLlm};
     use stream_event::{StreamMetadata, Usage};
 
     fn base_config() -> ReactBuildConfig {
@@ -177,7 +177,7 @@ mod tests {
 
     fn stream_metadata() -> StreamMetadata {
         StreamMetadata {
-            loom_node: String::new(),
+            anureo_node: String::new(),
             namespace: None,
         }
     }

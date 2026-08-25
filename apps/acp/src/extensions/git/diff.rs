@@ -15,7 +15,7 @@ pub async fn handle_diff(params: Value, ctx: &ExtensionContext) -> Result<Value,
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let summary = loom_git::facade::diff(&repo_dir, staged, path.as_deref(), unified)
+    let summary = anureo_git::facade::diff(&repo_dir, staged, path.as_deref(), unified)
         .await
         .map_err(ext_err_from_git)?;
     Ok(serde_json::to_value(summary).unwrap_or(Value::Null))
@@ -36,7 +36,7 @@ pub async fn handle_file_diff(
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let summary = loom_git::facade::diff(&repo_dir, staged, Some(&file_path), unified)
+    let summary = anureo_git::facade::diff(&repo_dir, staged, Some(&file_path), unified)
         .await
         .map_err(ext_err_from_git)?;
 

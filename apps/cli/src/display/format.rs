@@ -1,6 +1,6 @@
 use agent::state::{ReActState, ToolCall, ToolResult};
 use agent::{DupState, GotState, TotState};
-use loom_llm::message::Message;
+use anureo_llm::message::Message;
 
 const INDENT: &str = "  ";
 
@@ -228,5 +228,5 @@ mod tests {
         assert!(dup_rendered.contains("ReActState {"));
     }
 
-    // Note: format_got_state_display test moved to loom-agent crate (uses TaskGraph, TaskNodeState)
+    // Note: format_got_state_display test moved to anureo-agent crate (uses TaskGraph, TaskNodeState)
 }

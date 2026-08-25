@@ -1,4 +1,4 @@
-//! `loom skills inspect <name>` implementation.
+//! `anureo skills inspect <name>` implementation.
 //!
 //! Discovers skills using `agent::skill::discovery::SkillRegistry::discover`,
 //! provides a rich text summary and JSON dump of a single skill's metadata,
@@ -563,7 +563,7 @@ impl InspectOutput {
 }
 
 /// Lightweight skill usage record extracted from `SkillUsageStore`.
-/// Copied from loom_curator so we don't pull in that entire crate as a dep.
+/// Copied from anureo_curator so we don't pull in that entire crate as a dep.
 #[derive(Debug, Clone, serde::Deserialize)]
 struct SkillUsage {
     name: String,
@@ -731,7 +731,7 @@ pub fn run(
 
 /// Load skill usage from the filesystem store (best-effort).
 fn load_skill_usage(name: &str) -> Option<SkillUsage> {
-    let store_path = config::home::loom_home().join(".skills.usage.json");
+    let store_path = config::home::anureo_home().join(".skills.usage.json");
     let content = std::fs::read_to_string(&store_path).ok()?;
     let entries: Vec<SkillUsage> = serde_json::from_str(&content).ok()?;
     entries.into_iter().find(|u| u.name == name)
@@ -913,7 +913,7 @@ mod tests {
     #[test]
     fn read_file_disk_backed_prints_content() {
         let tmp = tempfile::tempdir().unwrap();
-        let skill_dir = tmp.path().join(".loom").join("skills").join("my-skill");
+        let skill_dir = tmp.path().join(".anureo").join("skills").join("my-skill");
         fs::create_dir_all(skill_dir.join("references")).unwrap();
         fs::write(
             skill_dir.join("SKILL.md"),
@@ -950,7 +950,7 @@ mod tests {
     #[test]
     fn read_file_disk_over_5mb_errors() {
         let tmp = tempfile::tempdir().unwrap();
-        let skill_dir = tmp.path().join(".loom").join("skills").join("big-skill");
+        let skill_dir = tmp.path().join(".anureo").join("skills").join("big-skill");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(
             skill_dir.join("SKILL.md"),
@@ -1210,7 +1210,7 @@ mod tests {
     #[test]
     fn build_inspect_registry_preserves_disk_overrides() {
         let tmp = tempfile::tempdir().unwrap();
-        let skill_dir = tmp.path().join(".loom").join("skills").join("workflow");
+        let skill_dir = tmp.path().join(".anureo").join("skills").join("workflow");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(
             skill_dir.join("SKILL.md"),
@@ -1392,7 +1392,7 @@ mod tests {
         );
     }
 
-    /// `loom skills inspect workflow --read-file references/examples.md`
+    /// `anureo skills inspect workflow --read-file references/examples.md`
     /// should print the embedded reference content for the builtin workflow.
     #[test]
     fn read_file_builtin_examples_md_works() {
@@ -1518,7 +1518,7 @@ mod tests {
     fn source_builtin_rejects_non_builtin() {
         // Create a project skill in a temp dir, then run with --source Builtin.
         let tmp = tempfile::tempdir().unwrap();
-        let skill_dir = tmp.path().join(".loom").join("skills").join("local-only");
+        let skill_dir = tmp.path().join(".anureo").join("skills").join("local-only");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(
             skill_dir.join("SKILL.md"),

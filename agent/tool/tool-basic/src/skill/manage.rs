@@ -101,7 +101,7 @@ fn validate_category(category: Option<&str>) -> Option<String> {
 /// `ToolSpec::description`.
 const DESCRIPTION: &str = "Manage skills (create, update, delete). \
 Skills are your procedural memory — reusable approaches for recurring task \
-types. New skills go to {loom_home}/skills/; existing skills can be \
+types. New skills go to {anureo_home}/skills/; existing skills can be \
 modified wherever they live.\n\
 \n\
 Actions: create (full SKILL.md + optional category), \
@@ -131,7 +131,7 @@ pitfalls section, verification steps. Use skill_view() to see format examples.\n
 \n\
 Pinned skills are protected from deletion only — \
 skill_manage(action='delete') will refuse with a message pointing the user \
-to `loom curator unpin <name>`. Patches and edits go through on pinned \
+to `anureo curator unpin <name>`. Patches and edits go through on pinned \
 skills so you can still improve them as pitfalls come up; pin only guards \
 against irrecoverable loss.";
 
@@ -453,7 +453,7 @@ impl SkillManagerTool {
         };
 
         // ── 2. Fuzzy find-and-replace ──
-        let new_content = match loom_util::text::fuzzy_replace::replace(
+        let new_content = match anureo_util::text::fuzzy_replace::replace(
             &original_raw,
             old_string,
             new_string,
@@ -622,7 +622,7 @@ impl SkillManagerTool {
         //
         // Plain user-initiated delete with no umbrella and no
         // BackgroundReview origin keeps the original `storage.delete`
-        // path (Loom's current behaviour, gap #8 says this is OK).
+        // path (anureo's current behaviour, gap #8 says this is OK).
         let should_archive = absorbed_into.is_some() || WriteOrigin::is_background_review();
         if should_archive {
             // `SkillStorageRegistry::base_dir()` is public on the storage

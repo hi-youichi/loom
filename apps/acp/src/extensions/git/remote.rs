@@ -11,7 +11,7 @@ pub async fn handle_remotes(
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let remotes = loom_git::facade::remotes(&repo_dir)
+    let remotes = anureo_git::facade::remotes(&repo_dir)
         .await
         .map_err(ext_err_from_git)?;
     Ok(serde_json::json!({"remotes": remotes}))
@@ -66,10 +66,10 @@ pub async fn handle_fetch(params: Value, ctx: &ExtensionContext) -> Result<Value
 
     // §6.2: git2 native fetch first; auth failures fall back to `git fetch`
     // (GCM/ssh-agent) with a fetch_via annotation.
-    let result = loom_git::facade::fetch(&repo, &remote_name, branch.as_deref(), prune)
+    let result = anureo_git::facade::fetch(&repo, &remote_name, branch.as_deref(), prune)
         .await
         .map_err(|e| match e.kind() {
-            loom_git::GitErrorKind::NotFound => ExtensionError::not_found(format!(
+            anureo_git::GitErrorKind::NotFound => ExtensionError::not_found(format!(
                 "remote '{remote_name}' not found or unreachable"
             )),
             _ => ext_err_from_git(e),
@@ -119,7 +119,7 @@ pub async fn handle_push(params: Value, ctx: &ExtensionContext) -> Result<Value,
     let branch_name = match &branch {
         Some(b) => b.clone(),
         None => {
-            let status = loom_git::facade::status(&repo)
+            let status = anureo_git::facade::status(&repo)
                 .await
                 .map_err(ext_err_from_git)?;
             status.branch
@@ -128,10 +128,10 @@ pub async fn handle_push(params: Value, ctx: &ExtensionContext) -> Result<Value,
 
     // §6.2: git2 credential callbacks first; auth failures fall back to
     // `git push` (GCM/ssh-agent) with a push_via annotation.
-    let result = loom_git::facade::push(&repo, &remote_name, &branch_name, force, set_upstream)
+    let result = anureo_git::facade::push(&repo, &remote_name, &branch_name, force, set_upstream)
         .await
         .map_err(|e| match e.kind() {
-            loom_git::GitErrorKind::Conflict if !force => ExtensionError::invalid_params(
+            anureo_git::GitErrorKind::Conflict if !force => ExtensionError::invalid_params(
                 "non-fast-forward push rejected; use force=true to override",
             ),
             _ => ext_err_from_git(e),
@@ -161,7 +161,7 @@ pub async fn handle_pull(params: Value, ctx: &ExtensionContext) -> Result<Value,
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
 
-    let pull_result = loom_git::facade::pull(
+    let pull_result = anureo_git::facade::pull(
         &repo,
         &remote_name,
         if branch_name.is_empty() {
@@ -174,7 +174,7 @@ pub async fn handle_pull(params: Value, ctx: &ExtensionContext) -> Result<Value,
     let result = match pull_result {
         Ok(r) => r,
         Err(e) => {
-            let conflicts = loom_git::facade::in_progress(&repo)
+            let conflicts = anureo_git::facade::in_progress(&repo)
                 .await
                 .ok()
                 .flatten()

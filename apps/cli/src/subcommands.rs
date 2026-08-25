@@ -55,7 +55,7 @@ pub(crate) async fn handle_session_command(
         SessionCommand::List(args) => {
             // Load config defaults (non-fatal: fall back to empty config on
             // parse errors so a malformed config.toml never blocks `session list`).
-            let cfg = config::xdg_toml::load_full_config("loom").unwrap_or_else(|e| {
+            let cfg = config::xdg_toml::load_full_config("anureo").unwrap_or_else(|e| {
                 eprintln!("warning: failed to load config.toml: {}", e);
                 config::FullConfig::default_session()
             });
@@ -126,8 +126,8 @@ pub(crate) async fn handle_session_command(
             // Build display config from effective args (P2: decoupled from ListArgs).
             // Enrich with review status map (non-fatal: empty map on error).
             let review_map = {
-                let loom_home = config::home::loom_home();
-                crate::review_history::ReviewHistory::new(&loom_home)
+                let anureo_home = config::home::anureo_home();
+                crate::review_history::ReviewHistory::new(&anureo_home)
                     .review_status_map()
                     .unwrap_or_default()
             };
@@ -403,7 +403,7 @@ pub(crate) fn handle_skills_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use cli::run::skill_registry::{Lifecycle, SkillContent, SkillRegistry, Source};
 
-    let registry = SkillRegistry::new(&loom_curator::skill_registry::default_path());
+    let registry = SkillRegistry::new(&anureo_curator::skill_registry::default_path());
 
     match &skills_args.command {
         SkillsCommand::List => {
@@ -484,15 +484,15 @@ pub(crate) fn handle_skills_command(
             user_dir,
             force,
         } => {
-            use loom_curator::sync_skills;
+            use anureo_curator::sync_skills;
             let bundled = bundled_dir
                 .as_deref()
                 .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| config::home::loom_home().join("bundled-skills"));
+                .unwrap_or_else(|| config::home::anureo_home().join("bundled-skills"));
             let user = user_dir
                 .as_deref()
                 .map(std::path::PathBuf::from)
-                .unwrap_or(loom_curator::skill_registry::default_path());
+                .unwrap_or(anureo_curator::skill_registry::default_path());
             let _ = force;
             let result = sync_skills(&bundled, &user);
             if json {
@@ -524,7 +524,7 @@ pub(crate) fn handle_skills_command(
             let skill = registry.load(name)?;
             let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
             let tmp_dir = std::env::temp_dir();
-            let tmp_path = tmp_dir.join(format!("loom-skill-{}.md", name));
+            let tmp_path = tmp_dir.join(format!("anureo-skill-{}.md", name));
             std::fs::write(&tmp_path, &skill.raw)?;
             let status = std::process::Command::new(&editor)
                 .arg(&tmp_path)
@@ -552,7 +552,7 @@ pub(crate) fn handle_skills_command(
 /// Returns `(base_url, api_key, model)` or `None` if no credentials found.
 fn resolve_curator_llm_credentials() -> Option<(String, String, String)> {
     // Try config.toml first
-    if let Ok(config) = config::xdg_toml::load_full_config("loom") {
+    if let Ok(config) = config::xdg_toml::load_full_config("anureo") {
         let provider = if let Some(ref name) = config.default_provider {
             config.providers.iter().find(|p| &p.name == name)
         } else {
@@ -564,7 +564,7 @@ fn resolve_curator_llm_credentials() -> Option<(String, String, String)> {
                 .base_url
                 .clone()
                 .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
-            let model = std::env::var("LOOM_MODEL")
+            let model = std::env::var("ANUREO_MODEL")
                 .or_else(|_| std::env::var("MODEL"))
                 .ok()
                 .or_else(|| provider.model.clone())
@@ -575,15 +575,15 @@ fn resolve_curator_llm_credentials() -> Option<(String, String, String)> {
 
     // Fallback: env vars
     let api_key = std::env::var("OPENAI_API_KEY")
-        .or_else(|_| std::env::var("LOOM_API_KEY"))
+        .or_else(|_| std::env::var("ANUREO_API_KEY"))
         .ok()?;
     if api_key.is_empty() {
         return None;
     }
     let base_url = std::env::var("OPENAI_BASE_URL")
-        .or_else(|_| std::env::var("LOOM_BASE_URL"))
+        .or_else(|_| std::env::var("ANUREO_BASE_URL"))
         .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
-    let model = std::env::var("LOOM_MODEL")
+    let model = std::env::var("ANUREO_MODEL")
         .or_else(|_| std::env::var("MODEL"))
         .unwrap_or_else(|_| "gpt-4o-mini".to_string());
     Some((base_url, api_key, model))
@@ -596,7 +596,7 @@ pub(crate) async fn handle_curator_command(
     use cli::run::curator::{Curator, CuratorConfig, CuratorReport, CuratorState};
     use cli::run::skill_registry::SkillRegistry;
 
-    let skills_path = loom_curator::skill_registry::default_path();
+    let skills_path = anureo_curator::skill_registry::default_path();
     let skills = SkillRegistry::new(&skills_path);
     let curator = Curator::new(skills, CuratorConfig::default());
 
@@ -681,7 +681,7 @@ pub(crate) async fn handle_curator_command(
                     // detached task and return immediately; otherwise we
                     // await the result synchronously as before. Detached
                     // task is best-effort — observe via curator logs.
-                    match loom_curator::run_curator_llm_if_needed(
+                    match anureo_curator::run_curator_llm_if_needed(
                         &skills_path,
                         &curator_config,
                         agent_config,
@@ -770,7 +770,7 @@ pub(crate) async fn handle_curator_command(
             let total = active + stale + archived + pinned;
 
             // Load usage for top-skills display
-            let usage_store = loom_curator::SkillUsageStore::new(curator.skills.base_dir());
+            let usage_store = anureo_curator::SkillUsageStore::new(curator.skills.base_dir());
             let usage_reports = usage_store.agent_created_report().unwrap_or_default();
             let mut top_skills: Vec<_> = usage_reports.iter().filter(|u| u.use_count > 0).collect();
             top_skills.sort_by_key(|a| std::cmp::Reverse(a.use_count));
@@ -1021,7 +1021,7 @@ pub(crate) async fn handle_curator_command(
 
             // Package integrity gate: warn but don't block manual archive
             let integrity =
-                loom_curator::curator::check_package_integrity(curator.skills.base_dir(), skill);
+                anureo_curator::curator::check_package_integrity(curator.skills.base_dir(), skill);
             if !integrity.is_safe {
                 eprintln!(
                     "⚠ Warning: '{}' has broken relative links: {}",
@@ -1037,9 +1037,9 @@ pub(crate) async fn handle_curator_command(
             println!("✓ Archived '{}' (Lifecycle → Archived)", skill);
         }
         CuratorCommand::Backup { description } => {
-            use loom_curator::CuratorBackup;
+            use anureo_curator::CuratorBackup;
 
-            let skills_dir = loom_curator::skill_registry::default_path();
+            let skills_dir = anureo_curator::skill_registry::default_path();
             let backup = CuratorBackup::new();
 
             let filename = backup
@@ -1064,15 +1064,15 @@ pub(crate) async fn handle_curator_command(
             yes,
             capture_pre,
         } => {
-            use loom_curator::CuratorBackup;
+            use anureo_curator::CuratorBackup;
 
-            let skills_dir = loom_curator::skill_registry::default_path();
+            let skills_dir = anureo_curator::skill_registry::default_path();
             let backup = CuratorBackup::new();
 
             // Resolve default snapshot target. If the user passed an
             // explicit snapshot name we use it verbatim (Hermes parity);
             // otherwise we fall back to `latest_snapshot()` so a bare
-            // `loom curator rollback` always rolls back to the most
+            // `anureo curator rollback` always rolls back to the most
             // recent capture. If no snapshots exist we surface a
             // clear error rather than attempting to extract from
             // `None` and producing a generic `SnapshotNotFound`.
@@ -1082,7 +1082,7 @@ pub(crate) async fn handle_curator_command(
                     .latest_snapshot()
                     .map_err(|e| format!("{:?}", e))?
                     .ok_or_else(|| {
-                        "no snapshots available; run `loom curator backup` first".to_string()
+                        "no snapshots available; run `anureo curator backup` first".to_string()
                     }),
             }?;
 
@@ -1130,7 +1130,7 @@ pub(crate) async fn handle_curator_command(
             println!("✓ Rolled back to snapshot '{}'", snapshot);
         }
         CuratorCommand::Snapshots => {
-            use loom_curator::CuratorBackup;
+            use anureo_curator::CuratorBackup;
 
             let backup = CuratorBackup::new();
             let snapshots = backup.list_snapshots().map_err(|e| format!("{:?}", e))?;
@@ -1138,7 +1138,7 @@ pub(crate) async fn handle_curator_command(
             if json {
                 println!("{}", serde_json::to_string_pretty(&snapshots)?);
             } else if snapshots.is_empty() {
-                println!("No snapshots found. Use 'loom curator backup' to create one.");
+                println!("No snapshots found. Use 'anureo curator backup' to create one.");
             } else {
                 println!("Curator Snapshots ({} total):", snapshots.len());
                 println!("{}", "═".repeat(60));
@@ -1160,14 +1160,14 @@ pub(crate) async fn handle_curator_command(
         CuratorCommand::ListArchived => {
             // Hermes `skill_usage.py:482-567` `list_archived_names`:
             // list agent-created skills that were soft-archived under
-            // `.archive/`. Restorable via `loom curator restore <name>`.
+            // `.archive/`. Restorable via `anureo curator restore <name>`.
             let archived = curator
                 .list_archived_skills()
                 .map_err(|e| format!("{:?}", e))?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&archived)?);
             } else if archived.is_empty() {
-                println!("No archived skills. Use `loom curator archive <name>` to archive one.");
+                println!("No archived skills. Use `anureo curator archive <name>` to archive one.");
             } else {
                 println!("Archived skills ({} total):", archived.len());
                 println!("{}", "=".repeat(60));
@@ -1195,7 +1195,7 @@ pub(crate) async fn handle_curator_command(
                 eprintln!("backfill-triggers: dry-run (model: {})", model);
             }
 
-            let outcome = loom_curator::run_backfill_triggers(
+            let outcome = anureo_curator::run_backfill_triggers(
                 &skills_path,
                 agent_config,
                 curator_args.dry_run,
@@ -1293,7 +1293,7 @@ pub(crate) fn handle_memory_command(
             let content = store.load(mf)?;
             let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
             let tmp_dir = std::env::temp_dir();
-            let tmp_path = tmp_dir.join(format!("loom-memory-{}.md", file));
+            let tmp_path = tmp_dir.join(format!("anureo-memory-{}.md", file));
             std::fs::write(&tmp_path, &content)?;
             let status = std::process::Command::new(&editor)
                 .arg(&tmp_path)

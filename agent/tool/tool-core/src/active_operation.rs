@@ -1,8 +1,8 @@
 //! Shared cancellation and operation tracking types.
 //!
-//! These types are used across multiple modules in loom and were originally
+//! These types are used across multiple modules in anureo and were originally
 //! defined in cli_run/agent.rs. They are now in a separate module to avoid
-//! circular dependencies when agent functionality moves to loom-agent.
+//! circular dependencies when agent functionality moves to anureo-agent.
 
 use std::fmt;
 use std::sync::Arc;

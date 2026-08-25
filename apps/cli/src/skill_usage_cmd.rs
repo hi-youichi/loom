@@ -1,4 +1,4 @@
-//! Handler for `loom skill-usage` CLI command.
+//! Handler for `anureo skill-usage` CLI command.
 //!
 //! Syncs, shows, and repairs `.usage.json` files in the skills directory.
 
@@ -8,8 +8,8 @@ use std::fs;
 use serde::{Deserialize, Serialize};
 
 use crate::args::{SkillUsageArgs, SkillUsageCommand};
-use loom_curator::skill_registry::SkillRegistry;
-use loom_curator::{SkillUsage, SkillUsageStore};
+use anureo_curator::skill_registry::SkillRegistry;
+use anureo_curator::{SkillUsage, SkillUsageStore};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncResult {
@@ -43,7 +43,7 @@ async fn sync(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let base_dir = path
         .clone()
-        .unwrap_or_else(loom_curator::skill_registry::default_path);
+        .unwrap_or_else(anureo_curator::skill_registry::default_path);
     let base_dir_str = base_dir.display().to_string();
 
     // Scan skills directory
@@ -121,7 +121,7 @@ async fn sync(
 }
 
 async fn show(name: &Option<String>, json: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let base_dir = loom_curator::skill_registry::default_path();
+    let base_dir = anureo_curator::skill_registry::default_path();
     let store = SkillUsageStore::new(&base_dir);
 
     let data = store.load().unwrap_or_default();
@@ -152,7 +152,7 @@ async fn show(name: &Option<String>, json: bool) -> Result<(), Box<dyn std::erro
 async fn repair(path: &Option<std::path::PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     let base_dir = path
         .clone()
-        .unwrap_or_else(loom_curator::skill_registry::default_path);
+        .unwrap_or_else(anureo_curator::skill_registry::default_path);
     let usage_path = base_dir.join(".usage.json");
 
     if !usage_path.exists() {

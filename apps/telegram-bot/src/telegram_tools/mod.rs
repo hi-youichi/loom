@@ -1,6 +1,6 @@
-//! Telegram API implementation for loom tools.
+//! Telegram API implementation for anureo tools.
 //!
-//! Implements the `TelegramApi` trait from loom and registers it globally.
+//! Implements the `TelegramApi` trait from anureo and registers it globally.
 
 use async_trait::async_trait;
 use teloxide::prelude::*;
@@ -83,7 +83,7 @@ impl TelegramApi for TeloxideTelegramApi {
     }
 }
 
-/// Initialize the Telegram API for loom tools.
+/// Initialize the Telegram API for anureo tools.
 pub fn init_telegram_api(bot: Bot) {
     let api = std::sync::Arc::new(TeloxideTelegramApi::new(bot));
     tool_extensions::set_telegram_api(api);

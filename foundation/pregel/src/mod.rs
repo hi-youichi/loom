@@ -1,6 +1,6 @@
 //! Pregel-style bulk-synchronous parallel runtime building blocks.
 //!
-//! This module exposes Loom's low-level graph runtime inspired by Google's Pregel
+//! This module exposes anureo's low-level graph runtime inspired by Google's Pregel
 //! and LangGraph's bulk-synchronous parallel (BSP) execution model. It provides
 //! fine-grained control over graph execution, state management, and checkpointing
 //! for building complex, stateful agent workflows.
@@ -148,7 +148,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use loom::pregel::{PregelGraph, PregelNode, PregelRuntime, ChannelSpec, LastValueChannel};
+//! use anureo::pregel::{PregelGraph, PregelNode, PregelRuntime, ChannelSpec, LastValueChannel};
 //!
 //! // Define channels
 //! let mut graph = PregelGraph::new("my_graph");
@@ -198,8 +198,8 @@
 //! - Direct access to the BSP execution model
 //! - Building new higher-level abstractions
 //!
-//! [`StateGraph`]: loom_graph_core::StateGraph
-//! [`Next`]: loom_graph_core::Next
+//! [`StateGraph`]: anureo_graph_core::StateGraph
+//! [`Next`]: anureo_graph_core::Next
 //! [`PregelRuntime::validate`]: PregelRuntime::validate
 //! [`PregelRuntime::invoke`]: PregelRuntime::invoke
 //! [`PregelRuntime::stream`]: PregelRuntime::stream

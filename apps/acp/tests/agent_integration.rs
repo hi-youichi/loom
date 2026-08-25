@@ -1,7 +1,7 @@
 use agent_client_protocol::schema::v1::{
     NewSessionRequest, NewSessionResponse, SetSessionConfigOptionRequest,
 };
-use loom_acp::{LoomAcpAgent, ModelOption, ModelProvider};
+use anureo_acp::{AnureoAcpAgent, ModelOption, ModelProvider};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -30,8 +30,8 @@ impl ModelProvider for MockModelProvider {
     }
 }
 
-fn create_test_agent() -> LoomAcpAgent {
-    LoomAcpAgent::new()
+fn create_test_agent() -> AnureoAcpAgent {
+    AnureoAcpAgent::new()
         .unwrap()
         .with_model_provider(Arc::new(MockModelProvider))
 }

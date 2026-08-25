@@ -15,7 +15,7 @@ use std::io::Write;
 /// the curator should skip during backup/snapshot/count. Mirrors the
 /// Python helper exactly — `True` if the path is a builtin marker
 /// (`.archive`, `_builtin`, `__pycache__`, dotfiles) or any hidden
-/// store under `.loom/`. Used by `experimental/curator/src/curator_backup.rs`
+/// store under `.anureo/`. Used by `experimental/curator/src/curator_backup.rs`
 /// so the snapshot's `skills_count` matches what Hermes would have
 /// emitted.
 pub fn is_excluded_skill_path(path: &std::path::Path) -> bool {
@@ -32,7 +32,7 @@ pub fn is_excluded_skill_path(path: &std::path::Path) -> bool {
             return true;
         }
     }
-    // Reject any path that lives inside the global `.loom/` data
+    // Reject any path that lives inside the global `.anureo/` data
     // store (those are internal markers, not bundled skills).
     for ancestor in path.ancestors() {
         if let Some(name) = ancestor.file_name().and_then(|n| n.to_str()) {
@@ -71,9 +71,9 @@ mod excluded_path_tests {
     }
 
     #[test]
-    fn rejects_paths_under_loom_data_dir() {
+    fn rejects_paths_under_anureo_data_dir() {
         assert!(is_excluded_skill_path(Path::new(
-            "/home/u/.loom/skills/.archive/x/SKILL.md"
+            "/home/u/.anureo/skills/.archive/x/SKILL.md"
         )));
     }
 
@@ -561,7 +561,7 @@ impl SkillStorageRegistry {
         } else {
             format!(
                 "
-Hint: skill '{}' not found in current profile.                  Did you mean a skill in one of these profiles? {}                  Use `loom --profile <name>` to switch.",
+Hint: skill '{}' not found in current profile.                  Did you mean a skill in one of these profiles? {}                  Use `anureo --profile <name>` to switch.",
                 name,
                 matches.join(", ")
             )

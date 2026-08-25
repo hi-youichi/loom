@@ -1,6 +1,6 @@
 //! Built-in command state traits.
 
-use loom_llm::message::Message;
+use anureo_llm::message::Message;
 
 pub trait ResetState {
     fn reset_context(&mut self);

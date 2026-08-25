@@ -26,7 +26,7 @@ pub use skill::storage::{
 /// function because `agent::skill::storage` deliberately does not
 /// depend on `env_config`.
 pub fn default_path() -> PathBuf {
-    env_config::home::loom_home().join("data").join("skills")
+    env_config::home::anureo_home().join("data").join("skills")
 }
 
 pub trait SkillRegistryExt {
@@ -35,7 +35,7 @@ pub trait SkillRegistryExt {
 
 impl SkillRegistryExt for SkillRegistry {
     fn default_path() -> PathBuf {
-        env_config::home::loom_home().join("data").join("skills")
+        env_config::home::anureo_home().join("data").join("skills")
     }
 }
 

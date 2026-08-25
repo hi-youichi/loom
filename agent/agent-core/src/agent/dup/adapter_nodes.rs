@@ -8,10 +8,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::agent::react::{ActNode, ObserveNode, ThinkNode};
-use loom_graph_core::GraphError;
-use loom_graph_core::Next;
-use loom_graph_core::Node;
-use loom_llm::LlmProvider;
+use anureo_graph_core::GraphError;
+use anureo_graph_core::Next;
+use anureo_graph_core::Node;
+use anureo_llm::LlmProvider;
 use tool_core::ToolRegistryLocked;
 
 use super::state::DupState;

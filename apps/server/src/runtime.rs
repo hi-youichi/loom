@@ -27,7 +27,7 @@ pub struct ServerOptions {
     #[arg(long, value_name = "PATH")]
     pub pid_file: Option<PathBuf>,
 
-    /// Serve a built frontend (e.g. Loom Desk `packages/web/dist`) from this
+    /// Serve a built frontend (e.g. anureo Desk `packages/web/dist`) from this
     /// directory: static assets + SPA fallback on the same origin as the API.
     #[arg(long, value_name = "DIR")]
     pub static_dir: Option<PathBuf>,
@@ -60,7 +60,7 @@ pub async fn run(
     let pid_path = pid_file::resolve_path(options.pid_file.as_deref());
     let _pid_guard = pid_file::PidFileGuard::acquire(&pid_path).map_err(|error| {
         format!(
-            "cannot acquire server PID lock '{}': another Loom server may already be running ({error})",
+            "cannot acquire server PID lock '{}': another anureo server may already be running ({error})",
             pid_path.display()
         )
     })?;
@@ -69,7 +69,7 @@ pub async fn run(
     let address: SocketAddr = format!("{}:{}", options.host, options.port).parse()?;
     let listener = TcpListener::bind(address).await?;
     let bound = listener.local_addr()?;
-    println!("loom server listening on http://{bound}");
+    println!("anureo server listening on http://{bound}");
 
     if let Some(dir) = &options.static_dir {
         if dir.is_dir() {
@@ -89,7 +89,7 @@ pub async fn run(
         };
         while sighup.recv().await.is_some() {
             tracing::info!("SIGHUP received — reloading config.toml");
-            match config::load_full_config("loom") {
+            match config::load_full_config("anureo") {
                 Ok(cfg) => tracing::info!(
                     providers = cfg.providers.len(),
                     default = cfg.default_provider.as_deref().unwrap_or("(none)"),

@@ -1,8 +1,8 @@
 [package]
-name = "loom-graph-core"
+name = "anureo-graph-core"
 version.workspace = true
 edition.workspace = true
-description = "StateGraph, channels, and graph execution primitives for Loom"
+description = "StateGraph, channels, and graph execution primitives for anureo"
 license.workspace = true
 authors.workspace = true
 

@@ -8,7 +8,7 @@
 //! `RunContext` provides methods to create a `StreamWriter` and emit events directly:
 //!
 //! ```rust,ignore
-//! use loom_graph_core::RunContext;
+//! use anureo_graph_core::RunContext;
 //!
 //! async fn run_with_context(&self, state: S, ctx: &RunContext<S>) -> Result<(S, crate::next::Next), crate::error::GraphError> {
 //!     // Method 1: Use stream_writer() to get a StreamWriter
@@ -50,7 +50,7 @@ use stream_event::{StreamEvent, StreamMode, StreamWriter};
 /// # Example
 ///
 /// ```rust,no_run
-/// use loom_graph_core::RunContext;
+/// use anureo_graph_core::RunContext;
 /// use checkpoint::RunnableConfig;
 ///
 /// let config = RunnableConfig::default();

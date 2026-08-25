@@ -14,7 +14,7 @@ pub async fn handle_stage_file(
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    loom_git::facade::stage_file(&repo_dir, &file_path)
+    anureo_git::facade::stage_file(&repo_dir, &file_path)
         .await
         .map_err(ext_err_from_git)?;
     Ok(serde_json::json!({"filePath": file_path, "staged": true}))
@@ -37,7 +37,7 @@ pub async fn handle_stage_files(
             failed.push(fp.clone());
             continue;
         }
-        match loom_git::facade::stage_file(&repo_dir, fp).await {
+        match anureo_git::facade::stage_file(&repo_dir, fp).await {
             Ok(_) => staged.push(fp.clone()),
             Err(_) => failed.push(fp.clone()),
         }
@@ -59,7 +59,7 @@ pub async fn handle_unstage_file(
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    loom_git::facade::unstage_file(&repo_dir, &file_path)
+    anureo_git::facade::unstage_file(&repo_dir, &file_path)
         .await
         .map_err(ext_err_from_git)?;
     Ok(serde_json::json!({"filePath": file_path, "unstaged": true}))
@@ -82,7 +82,7 @@ pub async fn handle_unstage_files(
             failed.push(fp.clone());
             continue;
         }
-        match loom_git::facade::unstage_file(&repo_dir, fp).await {
+        match anureo_git::facade::unstage_file(&repo_dir, fp).await {
             Ok(_) => unstaged.push(fp.clone()),
             Err(_) => failed.push(fp.clone()),
         }
@@ -176,12 +176,12 @@ pub async fn handle_commit(params: Value, ctx: &ExtensionContext) -> Result<Valu
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let req = loom_git::types::CommitRequest {
+    let req = anureo_git::types::CommitRequest {
         message,
         amend,
         signoff,
     };
-    let result = loom_git::facade::commit(&repo_dir, req)
+    let result = anureo_git::facade::commit(&repo_dir, req)
         .await
         .map_err(ext_err_from_git)?;
 

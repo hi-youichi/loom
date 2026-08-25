@@ -1,8 +1,8 @@
 //! Build a `ReactBuildConfig` from an agent profile.
 //!
-//! This function is in `loom-react-config` (not `loom`) to avoid circular
-//! dependencies: `loom` → `loom-agent` → `loom-agent-patterns`, and
-//! `loom-agent-patterns` needs this function.
+//! This function is in `anureo-react-config` (not `anureo`) to avoid circular
+//! dependencies: `anureo` → `anureo-agent` → `anureo-agent-patterns`, and
+//! `anureo-agent-patterns` needs this function.
 
 use std::path::PathBuf;
 use std::sync::Arc;

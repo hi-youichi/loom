@@ -1,7 +1,7 @@
-//! ACP Agent implementation: maps protocol requests to Loom execution.
+//! ACP Agent implementation: maps protocol requests to anureo execution.
 //!
-//! [`LoomAcpAgent`] implements `agent_client_protocol::Agent` and maps ACP requests
-//! to Loom sessions and execution. See [`crate::protocol`] for protocol and behavior details.
+//! [`AnureoAcpAgent`] implements `agent_client_protocol::Agent` and maps ACP requests
+//! to anureo sessions and execution. See [`crate::protocol`] for protocol and behavior details.
 
 use crate::agent_registry::AgentRegistry;
 use crate::client_capabilities::ClientCapabilitiesInfo;
@@ -37,7 +37,7 @@ use agent::run::TypedAnyStreamEvent;
 use agent::run::{build_react_config, run_agent_from_config, RunCmd, RunError, RunParams};
 use agent::run::{RunCompletion, RunOptions};
 use config::load_full_config;
-use loom_llm::message::{Message, UserContent};
+use anureo_llm::message::{Message, UserContent};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -62,10 +62,10 @@ fn canonicalize_existing_directory(
 }
 
 /// Tail size for the `session/load` history replay, from
-/// `LOOM_ACP_LOAD_HISTORY_TAIL` (message count; default 50; 0 = replay all).
-/// Earlier history is paged in through `_loomdesk.dev/session-history/page`.
+/// `ANUREO_ACP_LOAD_HISTORY_TAIL` (message count; default 50; 0 = replay all).
+/// Earlier history is paged in through `_anureo.dev/session-history/page`.
 fn load_history_tail_limit() -> usize {
-    std::env::var("LOOM_ACP_LOAD_HISTORY_TAIL")
+    std::env::var("ANUREO_ACP_LOAD_HISTORY_TAIL")
         .ok()
         .and_then(|value| value.trim().parse::<usize>().ok())
         .unwrap_or(50)
@@ -94,7 +94,7 @@ fn history_tail_start(messages: &[Message], tail: usize) -> usize {
     start
 }
 
-/// Read-only snapshot for `_loomdesk.dev/session-history/info`.
+/// Read-only snapshot for `_anureo.dev/session-history/info`.
 pub struct SessionHistoryInfo {
     pub session_id: String,
     pub total_messages: usize,
@@ -105,7 +105,7 @@ pub struct SessionHistoryInfo {
     pub has_more: bool,
 }
 
-/// One replayable message from `_loomdesk.dev/session-history/page`.
+/// One replayable message from `_anureo.dev/session-history/page`.
 pub struct SessionHistoryMessage {
     /// Raw index in the checkpoint message list (stable across pages).
     pub index: usize,
@@ -113,7 +113,7 @@ pub struct SessionHistoryMessage {
     pub updates: Vec<SessionUpdate>,
 }
 
-/// One backward page from `_loomdesk.dev/session-history/page`.
+/// One backward page from `_anureo.dev/session-history/page`.
 pub struct SessionHistoryPage {
     pub session_id: String,
     pub total_messages: usize,
@@ -138,7 +138,7 @@ impl ModelProvider for RealModelProvider {
 async fn fetch_available_models() -> Vec<ModelOption> {
     let registry = model_spec_core::ModelRegistry::global();
 
-    let providers: Vec<model_spec_core::ProviderConfig> = match load_full_config("loom") {
+    let providers: Vec<model_spec_core::ProviderConfig> = match load_full_config("anureo") {
         Ok(config) => config
             .providers
             .into_iter()
@@ -179,26 +179,26 @@ async fn fetch_available_models() -> Vec<ModelOption> {
     all_models
 }
 
-/// Handle for Loom as an ACP Agent. Implements [`Agent`], holds the session store.
+/// Handle for anureo as an ACP Agent. Implements [`Agent`], holds the session store.
 /// If [`session_update_tx`](Self::session_update_tx) is set, prompt execution sends
 /// session/update notifications through this channel.
-pub struct LoomAcpAgent {
+pub struct AnureoAcpAgent {
     pub(crate) sessions: SessionStore,
     pub(crate) agent_registry: AgentRegistry,
     pub(crate) config_store: SessionConfigStore,
     pub(crate) session_repository: SessionRepository,
     /// SQLite path used by both session metadata and checkpoint history.
     /// Keeping it on the agent lets embedded hosts and tests isolate agents
-    /// without mutating the process-wide `LOOM_HOME` environment variable.
+    /// without mutating the process-wide `ANUREO_HOME` environment variable.
     pub(crate) checkpoint_db_path: PathBuf,
     pub(crate) session_update_tx: Option<mpsc::Sender<SessionUpdateEnvelope>>,
     pub(crate) model_provider: Arc<dyn ModelProvider>,
     pub(crate) extension_registry: Arc<ExtensionRegistry>,
 }
 
-impl std::fmt::Debug for LoomAcpAgent {
+impl std::fmt::Debug for AnureoAcpAgent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LoomAcpAgent")
+        f.debug_struct("AnureoAcpAgent")
             .field("sessions", &"..")
             .field("agent_registry", &"..")
             .field("config_store", &"..")
@@ -207,7 +207,7 @@ impl std::fmt::Debug for LoomAcpAgent {
     }
 }
 
-impl LoomAcpAgent {
+impl AnureoAcpAgent {
     /// Construct a new Agent instance (no session/update sending).
     pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut extension_registry = ExtensionRegistry::new();
@@ -223,7 +223,7 @@ impl LoomAcpAgent {
     ///
     /// This is useful for embedded runtimes that host more than one agent in
     /// a process, and prevents tests from racing through the global
-    /// `LOOM_HOME` path when Rust runs them in parallel.
+    /// `ANUREO_HOME` path when Rust runs them in parallel.
     pub fn new_with_db_path(
         db_path: impl Into<PathBuf>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
@@ -257,7 +257,7 @@ impl LoomAcpAgent {
         db_path: PathBuf,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         if let Some(parent) = db_path.parent() {
-            // LOOM_HOME can be swapped by embedding hosts/tests while another
+            // ANUREO_HOME can be swapped by embedding hosts/tests while another
             // ACP agent is starting. Recreate the directory before opening
             // either SQLite store so a cleaned temporary home cannot turn
             // startup into an opaque "unable to open database file" error.
@@ -339,7 +339,7 @@ impl LoomAcpAgent {
         if model_id.is_empty() || model_id == "default" {
             return None;
         }
-        let full_config = load_full_config("loom").ok()?;
+        let full_config = load_full_config("anureo").ok()?;
         let (_, model_name) = model_spec_core::ModelEntry::parse_id(model_id)?;
         for p in &full_config.providers {
             for m in &p.models {
@@ -436,7 +436,7 @@ impl LoomAcpAgent {
             "No model or tier configuration, resolving from default provider config"
         );
 
-        if let Ok(full_config) = load_full_config("loom") {
+        if let Ok(full_config) = load_full_config("anureo") {
             if let Some(ref pname) = full_config.default_provider {
                 if let Some(p) = full_config.providers.iter().find(|p| p.name == *pname) {
                     if let Some(ref model_name) = p.model {
@@ -504,13 +504,13 @@ impl LoomAcpAgent {
     }
 }
 
-impl Default for LoomAcpAgent {
+impl Default for AnureoAcpAgent {
     fn default() -> Self {
-        Self::new().expect("LoomAcpAgent default init failed")
+        Self::new().expect("AnureoAcpAgent default init failed")
     }
 }
 
-impl LoomAcpAgent {
+impl AnureoAcpAgent {
     pub async fn initialize(
         &self,
         args: InitializeRequest,
@@ -552,14 +552,14 @@ impl LoomAcpAgent {
 
         let mut extension_meta = serde_json::Map::new();
         extension_meta.insert(
-            "loomdesk.dev".to_string(),
+            "anureo.dev".to_string(),
             self.extension_registry.build_capability_snapshot(),
         );
-        if let Some(loom) = extension_meta
-            .get_mut("loomdesk.dev")
+        if let Some(anureo) = extension_meta
+            .get_mut("anureo.dev")
             .and_then(serde_json::Value::as_object_mut)
         {
-            loom.insert(
+            anureo.insert(
                 "session-recovery".to_string(),
                 serde_json::json!({
                     "version": 1,
@@ -579,7 +579,7 @@ impl LoomAcpAgent {
         let protocol_version = ProtocolVersion::V1;
         let response = InitializeResponse::new(protocol_version)
             .agent_info(agent_client_protocol::schema::v1::Implementation::new(
-                "loom",
+                "anureo",
                 env!("CARGO_PKG_VERSION"),
             ))
             .agent_capabilities(agent_caps);
@@ -610,7 +610,7 @@ impl LoomAcpAgent {
     ) -> agent_client_protocol::Result<NewSessionResponse> {
         tracing::debug!(cwd = ?args.cwd, "new_session called");
         let canonical_cwd = canonicalize_existing_directory(&args.cwd)?;
-        let extension_meta = args.meta.as_ref().and_then(|meta| meta.get("loomdesk.dev"));
+        let extension_meta = args.meta.as_ref().and_then(|meta| meta.get("anureo.dev"));
         if let Some(metadata) = extension_meta.and_then(|meta| meta.get("metadata")) {
             if !metadata.is_object() {
                 return Err(agent_client_protocol::Error::invalid_params()
@@ -676,14 +676,14 @@ impl LoomAcpAgent {
 
         // Store MCP servers from ACP session/new request
         if !args.mcp_servers.is_empty() {
-            let loom_mcp = crate::mcp_convert::acp_mcp_to_loom(&args.mcp_servers);
+            let anureo_mcp = crate::mcp_convert::acp_mcp_to_anureo(&args.mcp_servers);
             tracing::info!(
                 session_id = %session_id,
                 acp_count = args.mcp_servers.len(),
-                loom_count = loom_mcp.len(),
+                anureo_count = anureo_mcp.len(),
                 "MCP servers from session/new"
             );
-            self.sessions.update_mcp_servers(&our_id, loom_mcp);
+            self.sessions.update_mcp_servers(&our_id, anureo_mcp);
         }
 
         let default_mode = self.agent_registry.default_mode_id();
@@ -729,12 +729,12 @@ impl LoomAcpAgent {
         // isn't blocked on the LLM round-trip.
         //
         // Tracked using `tracing::info!` so missing-runs show up in
-        // `loom-acp` logs; `maybe_run_curator` itself swallows errors
+        // `anureo-acp` logs; `maybe_run_curator` itself swallows errors
         // and returns `None`.
         let cwd_for_curator = args.cwd.clone();
         tokio::spawn(async move {
-            let skills_path = loom_curator::skill_registry::default_path();
-            let cfg = loom_curator::CuratorConfig::default();
+            let skills_path = anureo_curator::skill_registry::default_path();
+            let cfg = anureo_curator::CuratorConfig::default();
             let base_config = agent::ReactBuildConfig::from_env();
             let _ = cwd_for_curator; // reserved for future path resolution
                                      // Priority #17 (Hermes `agent/curator.py` #13): source the
@@ -743,9 +743,9 @@ impl LoomAcpAgent {
                                      // Round-2 left this as `default()` with no `idle_for_seconds`
                                      // threading — the curator ran regardless of recent
                                      // activity. We resolve the idle window from the
-                                     // `LOOM_CURATOR_IDLE_SECS` env var (default 300s) so
+                                     // `ANUREO_CURATOR_IDLE_SECS` env var (default 300s) so
                                      // operators can tune it without a recompile.
-            let idle_for_seconds = std::env::var("LOOM_CURATOR_IDLE_SECS")
+            let idle_for_seconds = std::env::var("ANUREO_CURATOR_IDLE_SECS")
                 .ok()
                 .and_then(|s| s.parse::<u64>().ok())
                 .unwrap_or(300);
@@ -753,7 +753,7 @@ impl LoomAcpAgent {
                 "session/new — opportunistically running curator (idle_for_seconds={})",
                 idle_for_seconds
             );
-            loom_curator::workflow::maybe_run_curator(
+            anureo_curator::workflow::maybe_run_curator(
                 &skills_path,
                 &cfg,
                 base_config,
@@ -789,7 +789,7 @@ impl LoomAcpAgent {
                 })
                 .collect::<Vec<_>>();
             meta.insert(
-                "loomdesk.dev".into(),
+                "anureo.dev".into(),
                 serde_json::json!({
                     "session": {
                         "sessionId": canonical.session_id,
@@ -1124,7 +1124,7 @@ impl LoomAcpAgent {
 
         self.seed_session_title_from_prompt(&args.session_id, &user_content);
 
-        if let loom_llm::message::UserContent::Text(ref text) = user_content {
+        if let anureo_llm::message::UserContent::Text(ref text) = user_content {
             if let Some(cmd) = agent::commands::parse(text) {
                 match cmd {
                     agent::commands::Command::ResetContext => {
@@ -1229,14 +1229,14 @@ impl LoomAcpAgent {
         }
 
         let content_type = match &user_content {
-            loom_llm::message::UserContent::Text(_) => "text",
-            loom_llm::message::UserContent::Multimodal(parts) => {
+            anureo_llm::message::UserContent::Text(_) => "text",
+            anureo_llm::message::UserContent::Multimodal(parts) => {
                 let has_image = parts
                     .iter()
-                    .any(|p| matches!(p, loom_llm::message::ContentPart::ImageBase64 { .. }));
+                    .any(|p| matches!(p, anureo_llm::message::ContentPart::ImageBase64 { .. }));
                 let has_audio = parts
                     .iter()
-                    .any(|p| matches!(p, loom_llm::message::ContentPart::AudioBase64 { .. }));
+                    .any(|p| matches!(p, anureo_llm::message::ContentPart::AudioBase64 { .. }));
                 if has_image && has_audio {
                     "multimodal(image+audio)"
                 } else if has_image {
@@ -1367,7 +1367,7 @@ impl LoomAcpAgent {
                                 .iter()
                                 .map(|p| {
                                     match p {
-                                        loom_llm::message::ContentPart::Text { text } => {
+                                        anureo_llm::message::ContentPart::Text { text } => {
                                             text.len() / 4
                                         }
                                         _ => 0, // Non-text parts estimated as 0 tokens
@@ -1471,7 +1471,7 @@ impl LoomAcpAgent {
         let recovery_meta = request_value
             .as_ref()
             .and_then(|value| value.get("_meta"))
-            .and_then(|value| value.get("loomdesk.dev"))
+            .and_then(|value| value.get("anureo.dev"))
             .and_then(|value| value.get("sessionRecovery"));
         let recovery_delta = recovery_meta
             .and_then(|value| value.get("cursor"))
@@ -1610,22 +1610,22 @@ impl LoomAcpAgent {
                     let user_count = state
                         .messages
                         .iter()
-                        .filter(|m| matches!(m, loom_llm::message::Message::User(_)))
+                        .filter(|m| matches!(m, anureo_llm::message::Message::User(_)))
                         .count();
                     let assistant_count = state
                         .messages
                         .iter()
-                        .filter(|m| matches!(m, loom_llm::message::Message::Assistant(_)))
+                        .filter(|m| matches!(m, anureo_llm::message::Message::Assistant(_)))
                         .count();
                     let tool_count = state
                         .messages
                         .iter()
-                        .filter(|m| matches!(m, loom_llm::message::Message::Tool { .. }))
+                        .filter(|m| matches!(m, anureo_llm::message::Message::Tool { .. }))
                         .count();
                     let system_count = state
                         .messages
                         .iter()
-                        .filter(|m| matches!(m, loom_llm::message::Message::System(_)))
+                        .filter(|m| matches!(m, anureo_llm::message::Message::System(_)))
                         .count();
 
                     tracing::info!(
@@ -1647,7 +1647,7 @@ impl LoomAcpAgent {
                             thread_id = %entry.thread_id,
                             total = state.messages.len(),
                             replay_start,
-                            "Tail-truncating history replay; earlier pages via _loomdesk.dev/session-history/page"
+                            "Tail-truncating history replay; earlier pages via _anureo.dev/session-history/page"
                         );
                     }
                     entry.history_cursor.store(replay_start, Ordering::Release);
@@ -1694,14 +1694,14 @@ impl LoomAcpAgent {
 
         // Convert and store MCP servers from the load request
         if !args.mcp_servers.is_empty() {
-            let loom_mcp = crate::mcp_convert::acp_mcp_to_loom(&args.mcp_servers);
+            let anureo_mcp = crate::mcp_convert::acp_mcp_to_anureo(&args.mcp_servers);
             tracing::info!(
                 session_id = %session_id,
                 acp_count = args.mcp_servers.len(),
-                loom_count = loom_mcp.len(),
+                anureo_count = anureo_mcp.len(),
                 "MCP servers from session/load"
             );
-            self.sessions.update_mcp_servers(&our_session_id, loom_mcp);
+            self.sessions.update_mcp_servers(&our_session_id, anureo_mcp);
         }
 
         // Return LoadSessionResponse with config_options and modes
@@ -1783,7 +1783,7 @@ impl LoomAcpAgent {
     }
 
     // -----------------------------------------------------------------
-    // Session history paging (`_loomdesk.dev/session-history/*`)
+    // Session history paging (`_anureo.dev/session-history/*`)
     // -----------------------------------------------------------------
 
     async fn read_checkpoint_messages(&self, thread_id: &str) -> Result<Vec<Message>, String> {
@@ -1874,7 +1874,7 @@ impl LoomAcpAgent {
         }
 
         let mut owned = messages[start..cursor].to_vec();
-        loom_llm::message::strip_background_review_in_messages(&mut owned);
+        anureo_llm::message::strip_background_review_in_messages(&mut owned);
         let mut page: Vec<SessionHistoryMessage> = Vec::with_capacity(owned.len());
         for (offset, message) in owned.iter().enumerate() {
             let Some(updates) =
@@ -1927,7 +1927,7 @@ impl LoomAcpAgent {
         }
         if !args.mcp_servers.is_empty() {
             self.sessions
-                .update_mcp_servers(&key, crate::mcp_convert::acp_mcp_to_loom(&args.mcp_servers));
+                .update_mcp_servers(&key, crate::mcp_convert::acp_mcp_to_anureo(&args.mcp_servers));
         }
         self.sessions.reopen(&key);
         self.session_repository
@@ -1986,7 +1986,7 @@ impl LoomAcpAgent {
             let mut meta = serde_json::Map::new();
             if let Some(tombstone) = tombstone {
                 meta.insert(
-                    "loomdesk.dev".into(),
+                    "anureo.dev".into(),
                     serde_json::json!({
                         "tombstone": {
                             "sessionId": tombstone.session_id,
@@ -2047,7 +2047,7 @@ impl LoomAcpAgent {
                 })
                 .collect::<Vec<_>>();
             meta.insert(
-                "loomdesk.dev".into(),
+                "anureo.dev".into(),
                 serde_json::json!({
                     "tombstone": {
                         "sessionId": tombstone.session_id,
@@ -2074,7 +2074,7 @@ impl LoomAcpAgent {
     fn seed_session_title_from_prompt(
         &self,
         session_id: &agent_client_protocol::schema::v1::SessionId,
-        content: &loom_llm::message::UserContent,
+        content: &anureo_llm::message::UserContent,
     ) {
         let Some(title) = seed_title_text(content) else {
             return;
@@ -2214,7 +2214,7 @@ impl LoomAcpAgent {
             })
     }
 
-    /// Replace Loom Desk-owned metadata for a session after checking the ACP
+    /// Replace anureo Desk-owned metadata for a session after checking the ACP
     /// principal. This is the ACP equivalent of the old session metadata
     /// PATCH endpoint used by goals, reviews, and client-side annotations.
     pub async fn update_session_metadata_for_owner(
@@ -2265,7 +2265,7 @@ impl LoomAcpAgent {
             })
     }
 
-    /// Read Loom Desk-owned metadata for a session after checking ownership.
+    /// Read anureo Desk-owned metadata for a session after checking ownership.
     pub async fn session_metadata_for_owner(
         &self,
         owner_principal: &str,
@@ -2376,13 +2376,13 @@ pub(crate) struct TurnUsage {
 /// Derive a fallback title from the first user prompt: skips slash
 /// commands, normalizes whitespace (including newlines) to a single line,
 /// and clamps to the same 50-char budget as LLM-generated titles.
-fn seed_title_text(content: &loom_llm::message::UserContent) -> Option<String> {
+fn seed_title_text(content: &anureo_llm::message::UserContent) -> Option<String> {
     let joined = match content {
-        loom_llm::message::UserContent::Text(text) => text.clone(),
-        loom_llm::message::UserContent::Multimodal(parts) => parts
+        anureo_llm::message::UserContent::Text(text) => text.clone(),
+        anureo_llm::message::UserContent::Multimodal(parts) => parts
             .iter()
             .filter_map(|part| match part {
-                loom_llm::message::ContentPart::Text { text } => Some(text.as_str()),
+                anureo_llm::message::ContentPart::Text { text } => Some(text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()
@@ -2653,7 +2653,7 @@ async fn resolve_context_window_size(model: Option<&str>) -> u64 {
         return agent::compress::CompactionConfig::default().max_context_tokens as u64;
     };
 
-    let providers: Vec<ConfigProviderEntry> = config::load_full_config("loom")
+    let providers: Vec<ConfigProviderEntry> = config::load_full_config("anureo")
         .ok()
         .map(|f| {
             f.providers
@@ -2700,7 +2700,7 @@ mod tests {
 
     #[test]
     fn seed_title_text_normalizes_and_skips_commands() {
-        use loom_llm::message::UserContent;
+        use anureo_llm::message::UserContent;
 
         let multiline = UserContent::Text("  fix the\nlogin   bug please ".to_string());
         assert_eq!(
@@ -2724,7 +2724,7 @@ mod tests {
 
     #[test]
     fn seed_title_text_joins_multimodal_text_parts() {
-        use loom_llm::message::{ContentPart, UserContent};
+        use anureo_llm::message::{ContentPart, UserContent};
 
         let content = UserContent::Multimodal(vec![
             ContentPart::Text {
@@ -3117,7 +3117,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_initialize_returns_mcp_capabilities() {
-        let agent = LoomAcpAgent::new().expect("agent");
+        let agent = AnureoAcpAgent::new().expect("agent");
         let req = InitializeRequest::new(1.into());
         let resp = agent.initialize(req).await.expect("initialize");
         assert!(resp.protocol_version >= 1.into());
@@ -3126,7 +3126,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_initialize_returns_prompt_capabilities() {
-        let agent = LoomAcpAgent::new().expect("agent");
+        let agent = AnureoAcpAgent::new().expect("agent");
         let req = InitializeRequest::new(1.into());
         let resp = agent.initialize(req).await.expect("initialize");
         assert_prompt_caps(&resp);
@@ -3134,7 +3134,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_initialize_accepts_client_mcp_capabilities() {
-        let agent = LoomAcpAgent::new().expect("agent");
+        let agent = AnureoAcpAgent::new().expect("agent");
         let req = InitializeRequest::new(1.into()).client_info(
             agent_client_protocol::schema::v1::Implementation::new(
                 "test-client".to_string(),
@@ -3147,7 +3147,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_initialize_accepts_client_prompt_capabilities() {
-        let agent = LoomAcpAgent::new().expect("agent");
+        let agent = AnureoAcpAgent::new().expect("agent");
         let req = InitializeRequest::new(1.into()).client_info(
             agent_client_protocol::schema::v1::Implementation::new(
                 "test-client".to_string(),
@@ -3160,7 +3160,7 @@ mod tests {
 
     #[tokio::test]
     async fn initialize_advertises_registered_session_lifecycle_methods() {
-        let agent = LoomAcpAgent::new().expect("agent");
+        let agent = AnureoAcpAgent::new().expect("agent");
         let resp = agent
             .initialize(InitializeRequest::new(1.into()))
             .await
@@ -3205,7 +3205,7 @@ mod tests {
             Message::user("q0"),
             Message::assistant_with_tool_calls(
                 String::new(),
-                vec![loom_llm::message::AssistantToolCall {
+                vec![anureo_llm::message::AssistantToolCall {
                     id: "tc-1".to_string(),
                     name: "read".to_string(),
                     arguments: "{}".to_string(),

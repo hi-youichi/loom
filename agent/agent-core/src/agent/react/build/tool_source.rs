@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::tools::{AgentCancelTool, AgentGetTool, AgentTool, GitWorktreeTool, ThreadGetTool};
-use loom_graph_core::GraphError;
+use anureo_graph_core::GraphError;
 use lsp::LspManager;
 use memory_v2::MemoryStore;
 use skill::SkillUsageStore;
@@ -234,12 +234,12 @@ pub(crate) async fn build_tool_source(
             wf,
             config.allow_paths_outside_workdir,
             config.skill_registry.clone(),
-            Some(SkillUsageStore::new(&wf.join(".loom/skills"))),
+            Some(SkillUsageStore::new(&wf.join(".anureo/skills"))),
             config.is_background_review,
         )
         .map_err(to_agent_error)?;
 
-        let db_path = env_config::home::loom_home().join("tasks").join("tasks.db");
+        let db_path = env_config::home::anureo_home().join("tasks").join("tasks.db");
         let db_dir = db_path.parent().unwrap();
         let _ = std::fs::create_dir_all(db_dir);
         if config.goal_mode {
@@ -372,7 +372,7 @@ pub(crate) async fn build_tool_source(
     aggregate
         .register_async(Box::new(GitWorktreeTool::new(Arc::new(config.clone()))))
         .await;
-    // ListAgentsTool is not available in this build (depends on loom's profile system)
+    // ListAgentsTool is not available in this build (depends on anureo's profile system)
 
     apply_registry_config(&aggregate, config)
         .await

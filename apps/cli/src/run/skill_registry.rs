@@ -1,2 +1,2 @@
-//! Re-export from loom crate.
-pub use loom_curator::skill_registry::*;
+//! Re-export from anureo crate.
+pub use anureo_curator::skill_registry::*;

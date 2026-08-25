@@ -1,4 +1,4 @@
-//! Low-level HTTP transport primitives for loom-server.
+//! Low-level HTTP transport primitives for anureo-server.
 //!
 //! Provides:
 //! - [`HttpTransport`] — base URL + authorization context, builds and
@@ -8,7 +8,7 @@
 //!
 //! # Authorization
 //!
-//! loom-server uses a simple bearer-token scheme. Set the token via
+//! anureo-server uses a simple bearer-token scheme. Set the token via
 //! [`HttpTransportBuilder::with_auth_token`] and it will be injected as
 //! `Authorization: Bearer <token>` on every request.
 //!
@@ -43,7 +43,7 @@ pub const DEFAULT_MAX_BODY_BYTES: usize = 64 * 1024;
 /// Default request timeout (30 seconds).
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Low-level HTTP transport for loom-server.
+/// Low-level HTTP transport for anureo-server.
 ///
 /// Construct via [`HttpTransport::builder`].
 ///
@@ -171,7 +171,7 @@ impl HttpTransport {
 
     /// Performs a DELETE request.
     ///
-    /// loom-server returns 204 No Content on success. Use this method for
+    /// anureo-server returns 204 No Content on success. Use this method for
     /// endpoints that return no body.
     ///
     /// # Errors

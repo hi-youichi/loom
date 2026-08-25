@@ -1,4 +1,4 @@
-//! `_loomdesk.dev/*` extension framework.
+//! `_anureo.dev/*` extension framework.
 //!
 //! Provides registry, dispatch, and shared utilities for all custom
 //! JSON-RPC extension domains.
@@ -67,7 +67,7 @@ use crate::client_capabilities::ClientCapabilitiesInfo;
 // Extension prefix
 // ---------------------------------------------------------------------------
 
-pub const EXTENSION_PREFIX: &str = "_loomdesk.dev/";
+pub const EXTENSION_PREFIX: &str = "_anureo.dev/";
 
 // ---------------------------------------------------------------------------
 // Error

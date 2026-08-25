@@ -328,7 +328,7 @@ impl SessionUpdateLog {
             };
         let mut meta = Meta::new();
         meta.insert(
-            "loomdesk.dev".to_string(),
+            "anureo.dev".to_string(),
             serde_json::json!({
                 "sessionEvent": {
                     "streamId": event.stream_id.clone(),

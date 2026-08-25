@@ -1,4 +1,4 @@
-//! Persist the last-used model to `{loom_home}/last-model`.
+//! Persist the last-used model to `{anureo_home}/last-model`.
 //!
 //! Written when the user selects a model via `set_session_config_option("model")`.
 //! Read as fallback when `new_session` has no `MODEL` / `OPENAI_MODEL` env var.
@@ -9,7 +9,7 @@ use std::path::PathBuf;
 const FILE_NAME: &str = "last-model";
 
 fn file_path() -> PathBuf {
-    config::home::loom_home().join(FILE_NAME)
+    config::home::anureo_home().join(FILE_NAME)
 }
 
 pub fn save(model: &str) {

@@ -9,12 +9,12 @@
  */
 
 import { test as base, createBdd } from "playwright-bdd";
-import { mockLoom } from "../../fixtures/mock-loom";
+import { mockanureo } from "../../fixtures/mock-anureo";
 import { auth } from "../../fixtures/auth";
 import { diagnostics } from "../../fixtures/diagnostics";
 
 export const test = base.extend({
-  ...mockLoom,
+  ...mockanureo,
   ...auth,
   ...diagnostics,
 });

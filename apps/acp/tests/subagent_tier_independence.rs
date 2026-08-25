@@ -13,14 +13,14 @@ async fn test_subagent_tier_independence() {
     let mock_server = MultiTierMockServer::new().await;
 
     // 2. 配置子代理使用 low tier
-    create_subagent_config(&test_env.loom_home, "product-manager", "low");
+    create_subagent_config(&test_env.anureo_home, "product-manager", "low");
 
     // 3. 配置 ACP 代理使用 medium tier
-    create_agent_config(&test_env.loom_home, "medium");
+    create_agent_config(&test_env.anureo_home, "medium");
 
     // 4. ACP 选择 high tier 模型（模拟用户选择）
     let acp_model_selection = "gpt-4-high";
-    write_last_model_file(&test_env.loom_home, acp_model_selection);
+    write_last_model_file(&test_env.anureo_home, acp_model_selection);
 
     // 5. 验证 ACP 使用 high tier
     let acp_tier = mock_server.get_tier_from_model(acp_model_selection);
@@ -32,8 +32,8 @@ async fn test_subagent_tier_independence() {
 
     // 6. 验证子代理配置保持为 low tier
     let subagent_config_path = test_env
-        .loom_home
-        .join(".loom/agents/product-manager/config.yaml");
+        .anureo_home
+        .join(".anureo/agents/product-manager/config.yaml");
     assert!(
         subagent_config_path.exists(),
         "Subagent config should exist"
@@ -71,13 +71,13 @@ async fn test_multiple_subagents_different_tiers() {
     let mock_server = MultiTierMockServer::new().await;
 
     // 配置不同子代理使用不同tier
-    create_subagent_config(&test_env.loom_home, "product-manager", "low");
-    create_subagent_config(&test_env.loom_home, "test-engineer", "medium");
-    create_subagent_config(&test_env.loom_home, "rust-architect", "high");
+    create_subagent_config(&test_env.anureo_home, "product-manager", "low");
+    create_subagent_config(&test_env.anureo_home, "test-engineer", "medium");
+    create_subagent_config(&test_env.anureo_home, "rust-architect", "high");
 
     // ACP 使用 high tier
     let acp_model = "gpt-4-high";
-    write_last_model_file(&test_env.loom_home, acp_model);
+    write_last_model_file(&test_env.anureo_home, acp_model);
 
     // 验证每个子代理的配置
     let tiers = vec![
@@ -88,8 +88,8 @@ async fn test_multiple_subagents_different_tiers() {
 
     for (agent_name, expected_tier, expected_model) in tiers {
         let config_path = test_env
-            .loom_home
-            .join(format!(".loom/agents/{}/config.yaml", agent_name));
+            .anureo_home
+            .join(format!(".anureo/agents/{}/config.yaml", agent_name));
         let config = std::fs::read_to_string(&config_path)
             .unwrap_or_else(|_| panic!("Should be able to read {} config", agent_name));
         assert!(
@@ -118,24 +118,24 @@ async fn test_acp_selection_doesnt_affect_subagent_configs() {
     let test_env = TestEnvironment::new();
 
     // 创建子代理配置
-    create_subagent_config(&test_env.loom_home, "product-manager", "low");
+    create_subagent_config(&test_env.anureo_home, "product-manager", "low");
 
     // 读取原始配置
     let original_config = std::fs::read_to_string(
         test_env
-            .loom_home
-            .join(".loom/agents/product-manager/config.yaml"),
+            .anureo_home
+            .join(".anureo/agents/product-manager/config.yaml"),
     )
     .expect("Should be able to read original config");
 
     // 模拟ACP选择不同的模型
-    write_last_model_file(&test_env.loom_home, "gpt-4-high");
+    write_last_model_file(&test_env.anureo_home, "gpt-4-high");
 
     // 验证子代理配置文件未被修改
     let current_config = std::fs::read_to_string(
         test_env
-            .loom_home
-            .join(".loom/agents/product-manager/config.yaml"),
+            .anureo_home
+            .join(".anureo/agents/product-manager/config.yaml"),
     )
     .expect("Should be able to read current config");
 

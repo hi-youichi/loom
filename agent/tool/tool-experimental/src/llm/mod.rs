@@ -21,8 +21,8 @@ use async_trait::async_trait;
 use model_spec_core::Model;
 use serde_json::{json, Value};
 
-use loom_llm::message::{ContentPart, Message, UserContent};
-use loom_llm::{ChatOpenAICompat, LlmClient, ToolCallContent, ToolSourceError, ToolSpec};
+use anureo_llm::message::{ContentPart, Message, UserContent};
+use anureo_llm::{ChatOpenAICompat, LlmClient, ToolCallContent, ToolSourceError, ToolSpec};
 use tool_core::tool_name::TOOL_LLM;
 use tool_core::{Tool, ToolCallContext};
 

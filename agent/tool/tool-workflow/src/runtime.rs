@@ -2,7 +2,7 @@
 //! checkpoint-driven status inference.
 //!
 //! All six specialized workflow tools hold an `Arc<WorkflowRuntime>`; this
-//! is the single place that knows about the on-disk `.loom` / `.luft`
+//! is the single place that knows about the on-disk `.anureo` / `.luft`
 //! layout, terminal checkpoint detection, instance finalization, and
 //! in-memory summary rebuilds.
 
@@ -118,7 +118,7 @@ impl WorkflowRuntime {
     }
 
     pub(crate) fn instances_root(&self) -> PathBuf {
-        self.working_folder().join(".loom").join("instances")
+        self.working_folder().join(".anureo").join("instances")
     }
 
     pub(crate) fn runs_root(&self) -> PathBuf {
@@ -127,10 +127,10 @@ impl WorkflowRuntime {
 
     #[allow(dead_code)]
     pub(crate) fn workflows_dir(&self) -> PathBuf {
-        self.working_folder().join(".loom").join("workflows")
+        self.working_folder().join(".anureo").join("workflows")
     }
 
-    pub(crate) fn loom_instance_dir(&self, run_dir_name: &str) -> PathBuf {
+    pub(crate) fn anureo_instance_dir(&self, run_dir_name: &str) -> PathBuf {
         self.instances_root().join(run_dir_name)
     }
 
@@ -166,7 +166,7 @@ impl WorkflowRuntime {
         is_inline_script: bool,
         workflow_arg: Option<&str>,
     ) -> Result<(), ToolSourceError> {
-        let instance_dir = self.loom_instance_dir(run_dir_name);
+        let instance_dir = self.anureo_instance_dir(run_dir_name);
         let base_dir = self.instances_root();
 
         tracing::debug!(
@@ -303,7 +303,7 @@ impl WorkflowRuntime {
             error = error_msg,
             "writing minimal failed instance",
         );
-        let instance_dir = self.loom_instance_dir(run_dir_name);
+        let instance_dir = self.anureo_instance_dir(run_dir_name);
         if std::fs::create_dir_all(&instance_dir).is_err() {
             tracing::error!(
                 target: "workflow::runtime",
@@ -367,7 +367,7 @@ impl WorkflowRuntime {
                 .map_err(|e| ToolSourceError::ToolError(format!("events query join error: {e}")))?
                 .unwrap_or_default();
 
-        let resolved = self.loom_instance_dir(instance_dir);
+        let resolved = self.anureo_instance_dir(instance_dir);
         let workflow_src = std::fs::read_to_string(resolved.join("workflow.lua")).ok();
         let workflow_ref = WorkflowRef {
             kind: "legacy",

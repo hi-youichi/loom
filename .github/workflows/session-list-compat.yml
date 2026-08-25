@@ -26,22 +26,22 @@ jobs:
         with:
           shared-key: session-list-compat-${{ matrix.os }}
 
-      - name: Build Loom binary (Unix)
+      - name: Build anureo binary (Unix)
         if: runner.os != 'Windows'
         shell: bash
-        run: cargo build -p cli
+        run: cargo build -p anureo-cli
 
-      - name: Build Loom binary (Windows)
+      - name: Build anureo binary (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: cargo build -p cli
+        run: cargo build -p anureo-cli
 
       - name: Run model-free session-list wire regression (Unix)
         if: runner.os != 'Windows'
         shell: pwsh
         run: >-
           ./scripts/run-session-list-compat.ps1
-          -NewLoomBinary "$PWD/target/debug/loom"
+          -NewanureoBinary "$PWD/target/debug/anureo"
           -OutputDir "$PWD/session-list-compat-results"
 
       - name: Run model-free session-list wire regression (Windows)
@@ -49,7 +49,7 @@ jobs:
         shell: pwsh
         run: >-
           ./scripts/run-session-list-compat.ps1
-          -NewLoomBinary "$PWD/target/debug/loom.exe"
+          -NewanureoBinary "$PWD/target/debug/anureo.exe"
           -OutputDir "$PWD/session-list-compat-results"
 
       - name: Validate compatibility manifest

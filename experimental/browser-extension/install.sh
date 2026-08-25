@@ -30,7 +30,7 @@ EXTENSION_IDS=("$@")
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOST_DIR="$SCRIPT_DIR/host"
 NATIVE_HOST_PATH="$HOST_DIR/native-host-wrapper.sh"
-HOST_NAME="com.loom.browser"
+HOST_NAME="com.anureo.browser"
 
 # Verify node is available
 if ! command -v node &> /dev/null; then
@@ -68,7 +68,7 @@ generate_manifest() {
   cat << EOF
 {
   "name": "$HOST_NAME",
-  "description": "Loom Browser Extension Native Messaging Host",
+  "description": "anureo Browser Extension Native Messaging Host",
   "path": "$NATIVE_HOST_PATH",
   "type": "stdio",
   "allowed_origins": [$ORIGINS
@@ -126,7 +126,7 @@ echo ""
 echo "  1. Restart your browser (close all windows and reopen)"
 echo "  2. Add the MCP server to Claude Code:"
 echo ""
-  echo "     claude mcp add loom-browser -- node $HOST_DIR/mcp-server.js"
+  echo "     claude mcp add anureo-browser -- node $HOST_DIR/mcp-server.js"
 echo ""
 echo "  3. Start a new Claude Code session and test:"
 echo ""

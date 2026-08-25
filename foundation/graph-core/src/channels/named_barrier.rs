@@ -8,7 +8,7 @@
 //! # Example
 //!
 //! ```rust
-//! use loom_graph_core::channels::{NamedBarrierValue, NamedBarrierUpdate, Channel};
+//! use anureo_graph_core::channels::{NamedBarrierValue, NamedBarrierUpdate, Channel};
 //! use std::collections::HashSet;
 //!
 //! // Create a barrier waiting for "step1" and "step2"

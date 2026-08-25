@@ -82,9 +82,9 @@ fn workflow_list_walks_both_current_and_legacy_instance_dirs() {
 
     rt.block_on(async {
         let temp = tempfile::tempdir().expect("tempdir");
-        let workflows_dir = temp.path().join(".loom").join("workflows");
-        let instances_dir = temp.path().join(".loom").join("instances");
-        let current_instance = instances_dir.join("loom-instance_current");
+        let workflows_dir = temp.path().join(".anureo").join("workflows");
+        let instances_dir = temp.path().join(".anureo").join("instances");
+        let current_instance = instances_dir.join("anureo-instance_current");
         let old_instance = temp
             .path()
             .join(".luft")
@@ -123,7 +123,7 @@ fn workflow_list_walks_both_current_and_legacy_instance_dirs() {
         let v: serde_json::Value = serde_json::from_str(&text).expect("workflow_list returns JSON");
 
         assert_eq!(v["count"], 2);
-        assert_eq!(v["instances"][0]["instance_dir"], "loom-instance_current");
+        assert_eq!(v["instances"][0]["instance_dir"], "anureo-instance_current");
         assert_eq!(v["instances"][0]["instance_id"], "current");
         assert_eq!(v["instances"][1]["instance_dir"], "luft-workflow_old");
         assert_eq!(v["instances"][1]["instance_id"], "old");

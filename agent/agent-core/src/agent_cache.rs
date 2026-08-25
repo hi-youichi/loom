@@ -2,7 +2,7 @@
 //!
 //! Hermes' `_enforce_agent_cache_cap` + `_session_expiry_watcher` keep a
 //! bounded LRU of agent handles and evict entries idle longer than an
-//! expiry threshold. Loom today rebuilds the agent handle per turn in
+//! expiry threshold. anureo today rebuilds the agent handle per turn in
 //! `agent_core::run::config_builder::build_agent`, which pays the
 //! cold-start cost (skill registry load, config evaluation, MCP
 //! discovery) every time. Under load, that dominates.

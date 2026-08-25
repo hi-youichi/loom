@@ -15,7 +15,7 @@ pub enum WorktreeManagerError {
     Git(#[from] git_ops::GitWorktreeError),
     #[error("not a git repository (or git not installed): {path}")]
     NotGitRepo { path: PathBuf },
-    #[error("worktree nesting detected — already inside a Loom worktree")]
+    #[error("worktree nesting detected — already inside a anureo worktree")]
     NestedWorktree,
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -139,7 +139,7 @@ impl WorktreeManager {
         })
     }
 
-    /// List all active worktrees under `.loom/worktrees/`.
+    /// List all active worktrees under `.anureo/worktrees/`.
     pub fn list_active(&self) -> Result<Vec<WorktreeHandle>> {
         let storage = self.storage_path();
         if !storage.exists() {

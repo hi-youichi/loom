@@ -246,21 +246,21 @@ impl ExtensionHandler for GitHandler {
 }
 
 // ── Shared types and helpers ───────────────────────────────────────────
-// Typed structs live in foundation/git (`loom_git::types`), matching this
+// Typed structs live in foundation/git (`anureo_git::types`), matching this
 // extension's JSON contract byte-for-byte; re-exported so handlers keep
 // `use super::*` imports unchanged.
 
-pub use loom_git::types::{
+pub use anureo_git::types::{
     classify_remote_url, sanitize_remote_url, ConflictFile, ConflictHunk, ConflictLine,
     ConflictLineKind, FetchedRef, GitBranch, GitCommitInfo, GitDiffHunk, GitDiffLine,
     GitDiffLineKind, GitDiffStat, GitDiffSummary, GitFileStatus, GitIdentity, GitInProgress,
     GitOperation, GitRemote, GitStashEntry, GitStatus, GitStatusFile, IdentityScope, RemoteUrlType,
 };
 
-pub(crate) use loom_git::cli::parsers::{parse_diff_output, parse_porcelain_status_v2};
+pub(crate) use anureo_git::cli::parsers::{parse_diff_output, parse_porcelain_status_v2};
 
-pub(crate) fn ext_err_from_git(e: loom_git::GitError) -> ExtensionError {
-    use loom_git::GitErrorKind as K;
+pub(crate) fn ext_err_from_git(e: anureo_git::GitError) -> ExtensionError {
+    use anureo_git::GitErrorKind as K;
     match e.kind() {
         K::NotFound => ExtensionError::not_found(e.message().to_string()),
         K::InvalidParams => ExtensionError::invalid_params(e.message().to_string()),
@@ -285,7 +285,7 @@ pub(crate) async fn run_git_apply(
     args: &[&str],
     patch: &str,
 ) -> Result<(), ExtensionError> {
-    loom_git::facade::run_apply_raw(ctx.working_directory.as_deref(), args, patch)
+    anureo_git::facade::run_apply_raw(ctx.working_directory.as_deref(), args, patch)
         .await
         .map_err(ext_err_from_git)
 }
@@ -294,7 +294,7 @@ pub(crate) async fn run_git(
     ctx: &ExtensionContext,
     args: &[&str],
 ) -> Result<String, ExtensionError> {
-    loom_git::facade::run_raw(ctx.working_directory.as_deref(), args)
+    anureo_git::facade::run_raw(ctx.working_directory.as_deref(), args)
         .await
         .map_err(ext_err_from_git)
 }

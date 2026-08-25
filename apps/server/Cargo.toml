@@ -1,13 +1,13 @@
 [package]
-name = "loom-server-core"
+name = "anureo-server-core"
 version.workspace = true
 edition.workspace = true
-description = "Loom HTTP+SSE server: serves loom as an loom-compatible kernel (External mode)"
+description = "anureo HTTP+SSE server: serves anureo as an anureo-compatible kernel (External mode)"
 license.workspace = true
 authors.workspace = true
 
 [lib]
-name = "loom_server"
+name = "anureo_server"
 path = "src/lib.rs"
 
 [[bin]]
@@ -18,16 +18,16 @@ required-features = ["test-support"]
 [features]
 # Exposes deterministic LLM injection for the server's black-box integration
 # suite. Production routes never select this path.
-test-support = ["loom-acp/test-support"]
+test-support = ["anureo-acp/test-support"]
 
 [dependencies]
 agent = { path = "../../agent/agent-core" }
-loom-llm = { path = "../../foundation/llm" }
+anureo-llm = { path = "../../foundation/llm" }
 tool-core = { path = "../../agent/tool/tool-core" }
 stream-event = { path = "../../foundation/stream-event" }
 config = { path = "../../foundation/config", features = ["tracing-init"] }
 model-spec-core = { path = "../../foundation/model-spec-core" }
-loom-acp = { package = "loom-acp", path = "../acp" }
+anureo-acp = { package = "anureo-acp", path = "../acp" }
 agent-client-protocol = "0.15.1"
 
 axum = { version = "0.7", features = ["macros", "ws"] }
@@ -50,7 +50,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
 
 # PTY wire-protocol helpers (foundation/pty-protocol crate — filled in by W1).
-loom-pty-protocol = { path = "../../foundation/pty-protocol" }
+anureo-pty-protocol = { path = "../../foundation/pty-protocol" }
 
 # HTTP middleware (task P0.7)
 tower = { version = "0.5", features = ["util"] }

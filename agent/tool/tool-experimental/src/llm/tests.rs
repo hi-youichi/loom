@@ -42,7 +42,7 @@ fn make_tool() -> LlmTool {
 }
 
 /// Extract the JSON payload from a ToolCallContent::Text.
-fn result_json(result: &loom_llm::ToolCallContent) -> Value {
+fn result_json(result: &anureo_llm::ToolCallContent) -> Value {
     let text = result.as_text().expect("expected Text content");
     serde_json::from_str(text).unwrap_or_else(|e| panic!("invalid JSON in result: {e}\n{text}"))
 }
@@ -243,7 +243,7 @@ async fn test_default_config_limits() {
 mod path_tests {
     use super::*;
     use crate::llm::content::resolve_content_part;
-    use loom_llm::message::ContentPart;
+    use anureo_llm::message::ContentPart;
     use std::io::Write;
 
     fn make_tool_with_wf(wf: &std::path::Path) -> LlmTool {

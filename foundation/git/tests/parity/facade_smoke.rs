@@ -3,8 +3,8 @@
 //! (the parity tests drive the backend trait methods directly, so the facade
 //! stayed at ~14% line coverage without this file).
 
-use loom_git::backend::LogQuery;
-use loom_git::types::{CommitRequest, MergeOptions, StashPushOptions};
+use anureo_git::backend::LogQuery;
+use anureo_git::types::{CommitRequest, MergeOptions, StashPushOptions};
 
 fn rt() -> tokio::runtime::Runtime {
     tokio::runtime::Runtime::new().unwrap()
@@ -39,7 +39,7 @@ fn extract_first_hunk(diff: &str) -> String {
 }
 
 fn run_all(backend: &str) {
-    std::env::set_var("LOOM_GIT_BACKEND", backend);
+    std::env::set_var("ANUREO_GIT_BACKEND", backend);
     let r = rt();
     let repo = crate::common::FixtureRepo::new("facadesmoke");
     repo.commit_file("a.txt", "one\ntwo\nthree\n", "first");
@@ -57,8 +57,8 @@ fn run_all(backend: &str) {
     let p = repo.path().to_path_buf();
 
     // ── read path ────────────────────────────────────────────────────────
-    r.block_on(loom_git::facade::status(&p)).expect("status");
-    r.block_on(loom_git::facade::log(
+    r.block_on(anureo_git::facade::status(&p)).expect("status");
+    r.block_on(anureo_git::facade::log(
         &p,
         &LogQuery {
             limit: 5,
@@ -68,40 +68,40 @@ fn run_all(backend: &str) {
         },
     ))
     .expect("log");
-    r.block_on(loom_git::facade::branches(&p, true))
+    r.block_on(anureo_git::facade::branches(&p, true))
         .expect("branches");
-    r.block_on(loom_git::facade::diff(&p, false, None, 3))
+    r.block_on(anureo_git::facade::diff(&p, false, None, 3))
         .expect("diff");
-    r.block_on(loom_git::facade::remotes(&p)).expect("remotes");
-    r.block_on(loom_git::facade::in_progress(&p))
+    r.block_on(anureo_git::facade::remotes(&p)).expect("remotes");
+    r.block_on(anureo_git::facade::in_progress(&p))
         .expect("in_progress");
-    r.block_on(loom_git::facade::commit_files(&p, "HEAD"))
+    r.block_on(anureo_git::facade::commit_files(&p, "HEAD"))
         .expect("commit_files");
-    r.block_on(loom_git::facade::commit_file_diff(&p, "HEAD", "a.txt", 3))
+    r.block_on(anureo_git::facade::commit_file_diff(&p, "HEAD", "a.txt", 3))
         .expect("commit_file_diff");
     let url = r
-        .block_on(loom_git::facade::remote_url(&p, "origin"))
+        .block_on(anureo_git::facade::remote_url(&p, "origin"))
         .expect("remote_url");
     assert!(url.contains("origin.git"), "remote_url={url}");
-    r.block_on(loom_git::facade::config_get(&p, "user.name"))
+    r.block_on(anureo_git::facade::config_get(&p, "user.name"))
         .expect("config_get");
-    r.block_on(loom_git::facade::config_set(&p, "smoke.test", "1", false))
+    r.block_on(anureo_git::facade::config_set(&p, "smoke.test", "1", false))
         .expect("config_set");
-    r.block_on(loom_git::facade::checkout_branch(&p, "main"))
+    r.block_on(anureo_git::facade::checkout_branch(&p, "main"))
         .expect("checkout_branch");
     assert!(!r
-        .block_on(loom_git::facade::is_dirty(&p))
+        .block_on(anureo_git::facade::is_dirty(&p))
         .expect("is_dirty"));
     assert!(!r
-        .block_on(loom_git::facade::is_linked_worktree(&p))
+        .block_on(anureo_git::facade::is_linked_worktree(&p))
         .expect("is_linked_worktree"));
     let wts = r
-        .block_on(loom_git::facade::worktree_list(&p))
+        .block_on(anureo_git::facade::worktree_list(&p))
         .expect("worktree_list");
     assert_eq!(wts.len(), 1, "main worktree only");
 
     // escape hatches
-    r.block_on(loom_git::facade::run_raw(
+    r.block_on(anureo_git::facade::run_raw(
         Some(&p),
         &["rev-parse", "--show-toplevel"],
     ))
@@ -109,14 +109,14 @@ fn run_all(backend: &str) {
 
     // ── staging / commit ─────────────────────────────────────────────────
     std::fs::write(repo.dir.join("a.txt"), "one\nTWO\nthree\nfour\n").unwrap();
-    r.block_on(loom_git::facade::diff(&p, false, None, 3))
+    r.block_on(anureo_git::facade::diff(&p, false, None, 3))
         .expect("diff dirty");
-    r.block_on(loom_git::facade::stage_file(&p, "a.txt"))
+    r.block_on(anureo_git::facade::stage_file(&p, "a.txt"))
         .expect("stage_file");
-    r.block_on(loom_git::facade::diff(&p, true, None, 3))
+    r.block_on(anureo_git::facade::diff(&p, true, None, 3))
         .expect("diff staged");
     let cr = r
-        .block_on(loom_git::facade::commit(
+        .block_on(anureo_git::facade::commit(
             &p,
             CommitRequest {
                 message: "third".into(),
@@ -128,9 +128,9 @@ fn run_all(backend: &str) {
     assert_eq!(cr.files_changed, 1);
 
     std::fs::write(repo.dir.join("b.txt"), "bee\nchanged\n").unwrap();
-    r.block_on(loom_git::facade::stage_file(&p, "b.txt"))
+    r.block_on(anureo_git::facade::stage_file(&p, "b.txt"))
         .expect("stage b");
-    r.block_on(loom_git::facade::unstage_file(&p, "b.txt"))
+    r.block_on(anureo_git::facade::unstage_file(&p, "b.txt"))
         .expect("unstage_file");
 
     // ── hunk ops ─────────────────────────────────────────────────────────
@@ -138,13 +138,13 @@ fn run_all(backend: &str) {
     let diff_text = repo.git(&["diff", "-U3", "--", "a.txt"]);
     let patch = extract_first_hunk(&diff_text);
     assert!(!patch.is_empty(), "patch must extract: {diff_text}");
-    r.block_on(loom_git::facade::stage_hunk(&p, &patch))
+    r.block_on(anureo_git::facade::stage_hunk(&p, &patch))
         .unwrap_or_else(|e| panic!("stage_hunk failed: {e}\npatch:\n{patch}"));
-    r.block_on(loom_git::facade::unstage_hunk(&p, &patch))
+    r.block_on(anureo_git::facade::unstage_hunk(&p, &patch))
         .expect("unstage_hunk");
-    r.block_on(loom_git::facade::revert_hunk(&p, &patch))
+    r.block_on(anureo_git::facade::revert_hunk(&p, &patch))
         .expect("revert_hunk");
-    r.block_on(loom_git::facade::run_apply_raw(
+    r.block_on(anureo_git::facade::run_apply_raw(
         Some(&p),
         &["apply", "--cached"],
         &patch,
@@ -157,7 +157,7 @@ fn run_all(backend: &str) {
     std::fs::write(repo.dir.join("a.txt"), "one\ntwo\nthree\nfour\nfive\nsix\n").unwrap();
     std::fs::write(repo.dir.join("u.txt"), "untracked\n").unwrap();
     let pushed = r
-        .block_on(loom_git::facade::stash_push(
+        .block_on(anureo_git::facade::stash_push(
             &p,
             StashPushOptions {
                 message: Some("wip".into()),
@@ -168,29 +168,29 @@ fn run_all(backend: &str) {
         .expect("stash_push");
     assert!(pushed);
     let list = r
-        .block_on(loom_git::facade::stash_list(&p))
+        .block_on(anureo_git::facade::stash_list(&p))
         .expect("stash_list");
     assert_eq!(list.len(), 1);
-    r.block_on(loom_git::facade::stash_count(&p))
+    r.block_on(anureo_git::facade::stash_count(&p))
         .expect("stash_count");
-    r.block_on(loom_git::facade::stash_show(&p, 0))
+    r.block_on(anureo_git::facade::stash_show(&p, 0))
         .expect("stash_show");
-    r.block_on(loom_git::facade::stash_apply(&p, 0))
+    r.block_on(anureo_git::facade::stash_apply(&p, 0))
         .expect("stash_apply");
-    r.block_on(loom_git::facade::stash_drop(&p, 0))
+    r.block_on(anureo_git::facade::stash_drop(&p, 0))
         .expect("stash_drop");
-    r.block_on(loom_git::facade::stash_push(
+    r.block_on(anureo_git::facade::stash_push(
         &p,
         StashPushOptions::default(),
     ))
     .expect("stash_push 2");
-    r.block_on(loom_git::facade::stash_pop(&p, 0))
+    r.block_on(anureo_git::facade::stash_pop(&p, 0))
         .expect("stash_pop");
     repo.git(&["reset", "--hard", "HEAD"]);
     repo.git(&["clean", "-fd"]);
 
     // ── reset ────────────────────────────────────────────────────────────
-    r.block_on(loom_git::facade::reset_to_commit(&p, "HEAD", "hard"))
+    r.block_on(anureo_git::facade::reset_to_commit(&p, "HEAD", "hard"))
         .expect("reset_to_commit");
 
     // ── rebase state machine ─────────────────────────────────────────────
@@ -204,12 +204,12 @@ fn run_all(backend: &str) {
     repo.git(&["commit", "-m", "main change"]);
 
     let res = r
-        .block_on(loom_git::facade::rebase(&p, "topic"))
+        .block_on(anureo_git::facade::rebase(&p, "topic"))
         .expect("rebase");
     if res.conflicted {
         // skip this conflict
         let s = r
-            .block_on(loom_git::facade::rebase_skip(&p))
+            .block_on(anureo_git::facade::rebase_skip(&p))
             .expect("rebase_skip");
         assert!(s.completed || s.conflicted);
     }
@@ -220,10 +220,10 @@ fn run_all(backend: &str) {
     repo.git(&["add", "."]);
     repo.git(&["commit", "-m", "abort prep"]);
     let res = r
-        .block_on(loom_git::facade::rebase(&p, "topic"))
+        .block_on(anureo_git::facade::rebase(&p, "topic"))
         .expect("rebase 2");
     if res.conflicted {
-        r.block_on(loom_git::facade::rebase_abort(&p))
+        r.block_on(anureo_git::facade::rebase_abort(&p))
             .expect("rebase_abort");
     }
 
@@ -239,13 +239,13 @@ fn run_all(backend: &str) {
     repo.git(&["add", "."]);
     repo.git(&["commit", "-m", "main2"]);
     let res = r
-        .block_on(loom_git::facade::rebase(&p, "topic2"))
+        .block_on(anureo_git::facade::rebase(&p, "topic2"))
         .expect("rebase 3");
     if res.conflicted {
         std::fs::write(repo.dir.join("a.txt"), "resolved\n").unwrap();
         repo.git(&["add", "."]);
         let c = r
-            .block_on(loom_git::facade::rebase_continue(&p, Some("resolved")))
+            .block_on(anureo_git::facade::rebase_continue(&p, Some("resolved")))
             .expect("rebase_continue");
         assert!(c.completed || c.conflicted);
     }
@@ -259,7 +259,7 @@ fn run_all(backend: &str) {
     repo.git(&["commit", "-m", "side"]);
     repo.git(&["checkout", "main"]);
     let m = r
-        .block_on(loom_git::facade::merge(
+        .block_on(anureo_git::facade::merge(
             &p,
             "side",
             MergeOptions {
@@ -271,10 +271,10 @@ fn run_all(backend: &str) {
         .expect("merge");
     if m.conflicted {
         let c = r
-            .block_on(loom_git::facade::merge_continue(&p, Some("merged")))
+            .block_on(anureo_git::facade::merge_continue(&p, Some("merged")))
             .expect("merge_continue");
         assert!(c.merge_commit.is_some() || c.conflicted);
-        r.block_on(loom_git::facade::merge_abort(&p))
+        r.block_on(anureo_git::facade::merge_abort(&p))
             .expect("merge_abort");
     }
     repo.git_raw(&["merge", "--abort"]);
@@ -286,7 +286,7 @@ fn run_all(backend: &str) {
     repo.git(&["commit", "-m", "side2"]);
     repo.git(&["checkout", "main"]);
     let m = r
-        .block_on(loom_git::facade::merge(
+        .block_on(anureo_git::facade::merge(
             &p,
             "side2",
             MergeOptions {
@@ -299,7 +299,7 @@ fn run_all(backend: &str) {
     assert!(m.fast_forward || !m.conflicted);
     repo.git(&["reset", "--hard", "HEAD~1"]);
     let m = r
-        .block_on(loom_git::facade::merge(
+        .block_on(anureo_git::facade::merge(
             &p,
             "side2",
             MergeOptions {
@@ -314,11 +314,11 @@ fn run_all(backend: &str) {
 
     // ── cherry-pick / revert ─────────────────────────────────────────────
     let cp = r
-        .block_on(loom_git::facade::cherry_pick(&p, "side2", false))
+        .block_on(anureo_git::facade::cherry_pick(&p, "side2", false))
         .expect("cherry_pick");
     assert!(!cp.conflicted);
     let rv = r
-        .block_on(loom_git::facade::revert_commit(&p, "HEAD"))
+        .block_on(anureo_git::facade::revert_commit(&p, "HEAD"))
         .expect("revert_commit");
     assert!(!rv.conflicted);
 
@@ -337,15 +337,15 @@ fn run_all(backend: &str) {
     repo.git_at(&other, &["push", "origin", "main"]);
 
     let f = r
-        .block_on(loom_git::facade::fetch(&p, "origin", Some("main"), true))
+        .block_on(anureo_git::facade::fetch(&p, "origin", Some("main"), true))
         .expect("fetch");
     assert!(!f.fetched_refs.is_empty());
     let pl = r
-        .block_on(loom_git::facade::pull(&p, "origin", Some("main")))
+        .block_on(anureo_git::facade::pull(&p, "origin", Some("main")))
         .expect("pull");
     assert!(pl.fast_forward || pl.merge_commit.is_some() || !pl.conflicts.is_empty());
     let psh = r
-        .block_on(loom_git::facade::push(&p, "origin", "main", false, true))
+        .block_on(anureo_git::facade::push(&p, "origin", "main", false, true))
         .expect("push");
     assert!(!psh.remote_sha.is_empty());
 
@@ -354,12 +354,12 @@ fn run_all(backend: &str) {
         "{}-wt",
         repo.dir.file_name().unwrap().to_string_lossy()
     ));
-    r.block_on(loom_git::facade::worktree_add(
+    r.block_on(anureo_git::facade::worktree_add(
         &p, "wt-smoke", &wt_path, true,
     ))
     .expect("worktree_add");
     let wts = r
-        .block_on(loom_git::facade::worktree_list(&p))
+        .block_on(anureo_git::facade::worktree_list(&p))
         .expect("worktree_list 2");
     assert!(wts.len() >= 2, "main + added worktree");
     std::fs::remove_dir_all(&wt_path).ok();

@@ -1,2 +1,2 @@
-//! Re-export from loom crate.
-pub use loom_curator::curator::*;
+//! Re-export from anureo crate.
+pub use anureo_curator::curator::*;

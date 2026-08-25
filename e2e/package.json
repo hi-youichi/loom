@@ -9,7 +9,7 @@
     "test:bdd:watch": "bddgen --watch",
     "test:bdd:gen": "bddgen",
     "test:bdd:dev": "bddgen && cross-env E2E_BASE_URL=http://127.0.0.1:5180 E2E_NO_AUTOSTART=1 playwright test --project=\"Web BDD\"",
-    "test:bdd:acp": "cargo build --manifest-path ../Cargo.toml -p cli && cargo build --manifest-path ../Cargo.toml -p loom-server-core --features test-support --bin acp-test-server && node --test tests/acp-bdd/loom-acp-stdio.test.mjs tests/acp-bdd/cli-acp-client.test.mjs tests/acp-bdd/loom-acp-multi-session.test.mjs",
+    "test:bdd:acp": "cargo build --manifest-path ../Cargo.toml -p anureo-cli && cargo build --manifest-path ../Cargo.toml -p anureo-server-core --features test-support --bin acp-test-server && node --test tests/acp-bdd/anureo-acp-stdio.test.mjs tests/acp-bdd/cli-acp-client.test.mjs tests/acp-bdd/anureo-acp-multi-session.test.mjs",
     "report": "npx playwright show-report",
     "ui": "npx playwright test --ui"
   },

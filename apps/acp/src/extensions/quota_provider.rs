@@ -81,7 +81,7 @@ fn providers() -> Vec<ProviderDef> {
 
 fn quota_store_path() -> Result<PathBuf, ExtensionError> {
     let home = super::config_store::user_home().map_err(|e| internal(e.message))?;
-    Ok(home.join(".config").join("loomdesk").join("quota"))
+    Ok(home.join(".config").join("anureo").join("quota"))
 }
 
 fn load_credentials() -> Result<HashMap<String, Value>, ExtensionError> {
@@ -177,7 +177,7 @@ impl QuotaProviderHandler {
         let response = client
             .get("https://api.ollama.com/v1/quota")
             .bearer_auth(token)
-            .header("User-Agent", "loom-acp")
+            .header("User-Agent", "anureo-acp")
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -192,7 +192,7 @@ impl QuotaProviderHandler {
         let response = client
             .post("https://api2.cursor.sh/aiserver.v1.AiService/GetUsage")
             .header("Cookie", format!("WorkosCursorSessionToken={cookie}"))
-            .header("User-Agent", "loom-acp")
+            .header("User-Agent", "anureo-acp")
             .header("Content-Type", "application/json")
             .body("{}")
             .send()

@@ -60,7 +60,7 @@ impl DetectedCapabilities {
         let meta = agent_caps
             .get("_meta")
             .and_then(|v| v.as_object())
-            .and_then(|v| v.get("loomdesk.dev"))
+            .and_then(|v| v.get("anureo.dev"))
             .and_then(|v| v.as_object())
             .cloned()
             .unwrap_or_default();

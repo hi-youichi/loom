@@ -1,8 +1,8 @@
 //! 跨 provider 统一的 LLM 错误模型（类型层）。
 //!
 //! 本模块只包含纯数据类型与 trait，无 HTTP 类型依赖（`status` 用 `u16`，
-//! header 用 `(String, String)`），因此可被 `agent-core` / `loom-llm`
-//! 等多个 crate 共享。运行时解析器实现在 `loom-llm::error::provider`。
+//! header 用 `(String, String)`），因此可被 `agent-core` / `anureo-llm`
+//! 等多个 crate 共享。运行时解析器实现在 `anureo-llm::error::provider`。
 
 pub mod kind;
 pub mod parse;
@@ -58,7 +58,7 @@ pub enum RetryPolicy {
     Retry,
     /// 尊重 `Retry-After` 头，等待指定时长后重试。
     ///
-    /// 单位为**毫秒**（`u64`），由 [`crate::error::decide`](loom_llm::error::decide)
+    /// 单位为**毫秒**（`u64`），由 [`crate::error::decide`](anureo_llm::error::decide)
     /// 从 `Retry-After` header 解析后写入。
     RetryAfter(u64),
     /// 重试无效，给用户明确动作。

@@ -221,8 +221,8 @@ impl ChatOpenAI {
         let mut headers = std::collections::HashMap::new();
 
         if let Some(config) = &self.headers {
-            // Fixed X-App-Id header as "loom"
-            headers.insert("X-App-Id".to_string(), "loom".to_string());
+            // Fixed X-App-Id header as "anureo"
+            headers.insert("X-App-Id".to_string(), "anureo".to_string());
 
             if let Some(thread_id) = &config.thread_id {
                 headers.insert("X-Thread-Id".to_string(), thread_id.clone());

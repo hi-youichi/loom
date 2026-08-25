@@ -24,10 +24,10 @@ pub async fn handle(
 fn profiles_path() -> std::path::PathBuf {
     if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
         std::path::Path::new(&home)
-            .join(".loom")
+            .join(".anureo")
             .join("identity-profiles.json")
     } else {
-        std::path::PathBuf::from(".loom/identity-profiles.json")
+        std::path::PathBuf::from(".anureo/identity-profiles.json")
     }
 }
 
@@ -92,12 +92,12 @@ pub async fn handle_identity_list(
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let repo_name = loom_git::facade::config_get(&repo_dir, "user.name")
+    let repo_name = anureo_git::facade::config_get(&repo_dir, "user.name")
         .await
         .ok()
         .flatten()
         .map(|s| s.trim().to_string());
-    let repo_email = loom_git::facade::config_get(&repo_dir, "user.email")
+    let repo_email = anureo_git::facade::config_get(&repo_dir, "user.email")
         .await
         .ok()
         .flatten()
@@ -142,11 +142,11 @@ pub async fn handle_identity_get(
         .working_directory
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let name = loom_git::facade::config_get(&repo_dir, "user.name")
+    let name = anureo_git::facade::config_get(&repo_dir, "user.name")
         .await
         .unwrap_or_default()
         .unwrap_or_default();
-    let email = loom_git::facade::config_get(&repo_dir, "user.email")
+    let email = anureo_git::facade::config_get(&repo_dir, "user.email")
         .await
         .unwrap_or_default()
         .unwrap_or_default();

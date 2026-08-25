@@ -1,6 +1,6 @@
 //! Integration tests for `workflow_list`.
 //!
-//! Each test seeds `.luft/runs/` or `.loom/instances/` directly on disk
+//! Each test seeds `.luft/runs/` or `.anureo/instances/` directly on disk
 //! under a temporary `working_folder`, then invokes the tool through its
 //! public `call()` interface and parses the JSON returned in
 //! `ToolCallContent::Text`. The schema and error contract are pinned by
@@ -75,7 +75,7 @@ fn write_instance(
         "workflow": {
             "kind": workflow_kind,
             "name": workflow_name,
-            "path": "/some/where/.loom/workflows/example.lua",
+            "path": "/some/where/.anureo/workflows/example.lua",
         },
         "status": status,
         "created_at": created_at,
@@ -296,9 +296,9 @@ async fn list_legacy_luft_runs_without_internal_source_field() {
 #[tokio::test(flavor = "multi_thread")]
 async fn list_current_instances_without_internal_source_field() {
     let tmp = tempdir().unwrap();
-    let current = tmp.path().join(".loom").join("instances");
+    let current = tmp.path().join(".anureo").join("instances");
     write_instance(
-        &current.join("loom-instance_42"),
+        &current.join("anureo-instance_42"),
         "inst-42",
         "completed",
         1_700_000_000,

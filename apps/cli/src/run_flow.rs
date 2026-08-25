@@ -9,7 +9,7 @@ use crate::args::{Args, Command};
 use crate::display_limits::{generate_session_id, max_message_len};
 use crate::output::{emit_run_output, make_stream_out, OutputConfig};
 use crate::repl::{run_one_turn, run_repl_loop};
-use loom_llm::message::UserContent;
+use anureo_llm::message::UserContent;
 
 use config::default_model as config_default_model;
 
@@ -155,7 +155,7 @@ mod tier_tests {
 /// `--image` routing (priority #16 gap, Hermes parity `cli.py`).
 ///
 /// Round-2 only declared the `image: Vec<PathBuf>` flag without
-/// implementing routing; calling `loom --image foo.png "describe this"`
+/// implementing routing; calling `anureo --image foo.png "describe this"`
 /// was a no-op (the image was silently dropped). This function:
 ///   1. If `args.image` is empty, returns `UserContent::Text(message)`.
 ///   2. Otherwise probes the resolved model via
@@ -243,7 +243,7 @@ pub(crate) fn decide_image_input_mode(model_id: &Option<String>) -> ImageInputMo
 /// user can retry with a smaller crop.
 fn build_multimodal(images: &[std::path::PathBuf], message: String) -> UserContent {
     use base64::Engine as _;
-    use loom_llm::message::ContentPart;
+    use anureo_llm::message::ContentPart;
     const MAX_BYTES: u64 = 8 * 1024 * 1024;
     let mut parts: Vec<ContentPart> = Vec::new();
     if !message.is_empty() {
@@ -321,7 +321,7 @@ fn print_session_status(session_id: Option<&str>, ended: bool, json: bool) {
         if ended {
             eprintln!("Session ended: {}", session_id);
             eprintln!(
-                "  Hint: loom session cat {}  |  loom session list",
+                "  Hint: anureo session cat {}  |  anureo session list",
                 session_id
             );
         } else {
@@ -385,11 +385,11 @@ pub(crate) async fn run_interactive_mode(
                 // a Kanban orchestrator, surface a transient rate-limit
                 // or billing error as EX_TEMPFAIL (75) so the
                 // supervisor can re-enqueue the task instead of
-                // marking it failed. Default UX (no `LOOM_KANBAN_TASK`)
+                // marking it failed. Default UX (no `ANUREO_KANBAN_TASK`)
                 // keeps the existing exit-1 behaviour so end users
                 // aren't surprised by a different exit code in
                 // scripts.
-                if std::env::var_os("LOOM_KANBAN_TASK").is_some() {
+                if std::env::var_os("ANUREO_KANBAN_TASK").is_some() {
                     let msg = err.to_string().to_ascii_lowercase();
                     let is_transient = msg.contains("rate")
                         || msg.contains("429")
@@ -421,7 +421,7 @@ mod tests {
     /// into `RunOptions.effort` so the LLM client receives the value downstream.
     #[test]
     fn build_run_options_propagates_effort_flag() {
-        let args = Args::parse_from(["loom", "--effort", "high", "hello"]);
+        let args = Args::parse_from(["anureo", "--effort", "high", "hello"]);
         let opts = build_run_options(&args, "hello".to_string(), false);
         assert_eq!(opts.effort.as_deref(), Some("high"));
     }
@@ -430,7 +430,7 @@ mod tests {
     /// the string flows through unchanged.
     #[test]
     fn build_run_options_propagates_effort_auto() {
-        let args = Args::parse_from(["loom", "--effort", "auto", "hi"]);
+        let args = Args::parse_from(["anureo", "--effort", "auto", "hi"]);
         let opts = build_run_options(&args, "hi".to_string(), false);
         assert_eq!(opts.effort.as_deref(), Some("auto"));
     }
@@ -439,7 +439,7 @@ mod tests {
     /// `reasoning_effort` parameter to the API at all).
     #[test]
     fn build_run_options_default_effort_is_none() {
-        let args = Args::parse_from(["loom", "hi"]);
+        let args = Args::parse_from(["anureo", "hi"]);
         let opts = build_run_options(&args, "hi".to_string(), false);
         assert!(opts.effort.is_none());
     }
@@ -448,7 +448,7 @@ mod tests {
     /// into `RunOptions.tier` so the model tier resolution works correctly.
     #[test]
     fn build_run_options_propagates_tier_flag() {
-        let args = Args::parse_from(["loom", "--tier", "light", "hello"]);
+        let args = Args::parse_from(["anureo", "--tier", "light", "hello"]);
         let opts = build_run_options(&args, "hello".to_string(), false);
         assert_eq!(opts.tier.as_deref(), Some("light"));
     }
@@ -456,7 +456,7 @@ mod tests {
     /// `--tier strong` variant test.
     #[test]
     fn build_run_options_propagates_tier_strong() {
-        let args = Args::parse_from(["loom", "--tier", "strong", "hi"]);
+        let args = Args::parse_from(["anureo", "--tier", "strong", "hi"]);
         let opts = build_run_options(&args, "hi".to_string(), false);
         assert_eq!(opts.tier.as_deref(), Some("strong"));
     }
@@ -464,7 +464,7 @@ mod tests {
     /// No `--tier` flag → `None` (default behaviour).
     #[test]
     fn build_run_options_default_tier_is_none() {
-        let args = Args::parse_from(["loom", "hi"]);
+        let args = Args::parse_from(["anureo", "hi"]);
         let opts = build_run_options(&args, "hi".to_string(), false);
         assert!(opts.tier.is_none());
     }

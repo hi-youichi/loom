@@ -3,9 +3,9 @@
 //! `create_llm_client` and `create_llm_provider` create concrete LLM clients
 //! (ChatOpenAI / ChatOpenAICompat) from a `ModelEntry`.
 //!
-//! These functions live here (rather than in `loom-tier` or `loom`) because they
-//! only depend on `loom_llm` types + `model_spec_core` + `loom_graph_core`, and both
-//! `agent-core` and `loom` need to call them without creating a circular dependency.
+//! These functions live here (rather than in `anureo-tier` or `anureo`) because they
+//! only depend on `anureo_llm` types + `model_spec_core` + `anureo_graph_core`, and both
+//! `agent-core` and `anureo` need to call them without creating a circular dependency.
 
 use std::sync::Arc;
 
@@ -13,7 +13,7 @@ use async_openai::config::OpenAIConfig;
 
 use crate::traits::{LlmClient, LlmHeaders, LlmProvider};
 use crate::{ChatOpenAI, ChatOpenAICompat, OpenAICompatProvider, OpenAIProvider};
-use loom_graph_core::GraphError;
+use anureo_graph_core::GraphError;
 use model_spec_core::registry::ModelEntry;
 
 /// Creates an LLM client from a ModelEntry with provider configuration.

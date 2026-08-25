@@ -1,4 +1,4 @@
-//! Loom CLI binary: run agentic workflows from the command line.
+//! anureo CLI binary: run agentic workflows from the command line.
 //!
 //! Subcommands: `react` (default), `dup`, `tot`, `got`, `tool` (list/show tools), `models` (list models), `mcp` (manage MCP servers).
 //! Dispatch lives here; see `args`, `bootstrap`, `display_limits`, `run_flow`, and `subcommands` for implementation.
@@ -54,7 +54,7 @@ use tool_core::active_operation::RunCancellation;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    // Apply the home override before anything else reads loom_home() —
+    // Apply the home override before anything else reads anureo_home() —
     // including the ACP branch below, which runs before config reporting.
     if let Some(home) = &args.home {
         config::home::set_override(Some(home.clone()));
@@ -62,20 +62,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Validate tier argument before proceeding
     if let Err(e) = run_flow::validate_tier_arg(&args.tier) {
-        eprintln!("loom: {}", e);
+        eprintln!("anureo: {}", e);
         std::process::exit(1);
     }
 
     // Check for model/tier conflict
     if let Err(e) = run_flow::check_model_tier_conflict(&args) {
-        eprintln!("loom: {}", e);
+        eprintln!("anureo: {}", e);
         std::process::exit(1);
     }
 
     // ACP path: must branch before any stdout output (config report, logging).
     // The ACP protocol uses stdout for JSON-RPC; any extra output corrupts it.
     if let Some(Cmd::Acp(acp_args)) = &args.cmd {
-        let log_config = loom_acp::logging::LogConfig {
+        let log_config = anureo_acp::logging::LogConfig {
             level: args
                 .log_level
                 .clone()
@@ -84,12 +84,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             rotate: config::tracing_init::LogRotate::from_str_or_daily(&args.log_rotate),
             format: args.log_format.parse().unwrap_or_default(),
         };
-        loom_acp::set_log_config(log_config);
+        anureo_acp::set_log_config(log_config);
         if let Err(e) =
-            loom_acp::ws_bridge::run_ws_bridge(acp_args.url.clone(), acp_args.pid_file.clone())
+            anureo_acp::ws_bridge::run_ws_bridge(acp_args.url.clone(), acp_args.pid_file.clone())
                 .await
         {
-            eprintln!("loom acp: {e}");
+            eprintln!("anureo acp: {e}");
             std::process::exit(1);
         }
         return Ok(());
@@ -98,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.acp {
         if args.cmd.is_some() {
             eprintln!(
-                "loom: --acp cannot be combined with a subcommand; pass the prompt as a message"
+                "anureo: --acp cannot be combined with a subcommand; pass the prompt as a message"
             );
             std::process::exit(2);
         }
@@ -107,7 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .working_folder
             .clone()
             .unwrap_or(std::env::current_dir()?);
-        let options = loom_acp::cli_client::CliAcpOptions {
+        let options = anureo_acp::cli_client::CliAcpOptions {
             url: args.acp_url.clone(),
             cwd,
             session_id: args.session_id.clone(),
@@ -115,15 +115,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             json_output: args.json,
             pretty: args.pretty,
         };
-        if let Err(error) = loom_acp::cli_client::run(options).await {
-            eprintln!("loom --acp: {error}");
+        if let Err(error) = anureo_acp::cli_client::run(options).await {
+            eprintln!("anureo --acp: {error}");
             std::process::exit(1);
         }
         return Ok(());
     }
 
     if let Some(Cmd::Server(server_options)) = &args.cmd {
-        let log_config = loom_server::logging::LogConfig {
+        let log_config = anureo_server::logging::LogConfig {
             level: args
                 .log_level
                 .clone()
@@ -132,7 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             rotate: config::tracing_init::LogRotate::from_str_or_daily(&args.log_rotate),
             format: args.log_format.parse().unwrap_or_default(),
         };
-        loom_server::runtime::run(server_options.clone(), Some(log_config)).await?;
+        anureo_server::runtime::run(server_options.clone(), Some(log_config)).await?;
         return Ok(());
     }
 
@@ -202,7 +202,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     if let Some(Cmd::Evolve) = &args.cmd {
-        eprintln!("evolve: not yet implemented (loom-evolution crate removed)");
+        eprintln!("evolve: not yet implemented (anureo-evolution crate removed)");
         std::process::exit(1);
     }
     if let Some(Cmd::Curator(ca)) = &args.cmd {
@@ -243,7 +243,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let message = resolve_user_message(&args);
     if !args.interactive && message.is_none() {
-        eprintln!("loom: provide a message via -m/--message or positional args");
+        eprintln!("anureo: provide a message via -m/--message or positional args");
         std::process::exit(1);
     }
 

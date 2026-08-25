@@ -22,7 +22,7 @@ pub(crate) fn parse_session_load_meta(
         .map_err(|error| agent_client_protocol::Error::internal_error().data(error.to_string()))?;
     let Some(raw) = value
         .get("_meta")
-        .and_then(|meta| meta.get("loomdesk.dev"))
+        .and_then(|meta| meta.get("anureo.dev"))
         .and_then(|meta| meta.get("sessionRecovery"))
     else {
         return Ok(None);
@@ -46,7 +46,7 @@ pub(crate) fn add_session_load_response_meta(
     let mut value = serde_json::to_value(response)
         .map_err(|error| agent_client_protocol::Error::internal_error().data(error.to_string()))?;
     value["_meta"] = serde_json::json!({
-        "loomdesk.dev": {
+        "anureo.dev": {
             "sessionRecovery": {
                 "version": 1,
                 "mode": mode,
@@ -79,7 +79,7 @@ pub(crate) fn session_event_notification(
         })?;
     let mut meta = Meta::new();
     meta.insert(
-        "loomdesk.dev".to_string(),
+        "anureo.dev".to_string(),
         serde_json::json!({
             "sessionEvent": {
                 "streamId": event.stream_id.clone(),

@@ -1,7 +1,7 @@
 /**
  * e2e/fixtures/auth.ts
  *
- * Playwright test fixture for OpenChamber UI authentication.
+ * Playwright test fixture for anureo UI authentication.
  *
  * 使用方式：
  * ```

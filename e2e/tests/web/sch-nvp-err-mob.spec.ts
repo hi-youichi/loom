@@ -1,23 +1,23 @@
 /**
  * e2e/tests/web/sch-nvp-err-mob.spec.ts
  *
- * OpenChamber Web Scheduled + Notifications + More Errors + Mobile Tests
+ * anureo Web Scheduled + Notifications + More Errors + Mobile Tests
  * 覆盖：SCH-001~003, NVP-001~002, NVP-004~005, ERR-002, ERR-004, MOB-002~004（共 12 用例）
  *
  * 使用 fixtures:
  * - app: 提供 baseURL
- * - mock-loom: 拦截 HTTP API
+ * - mock-anureo: 拦截 HTTP API
  *
- * 参考 docs/references/openchamber-text-acceptance-test-cases.md §13, §14, §15, §16
+ * 参考 docs/references/anureo-text-acceptance-test-cases.md §13, §14, §15, §16
  */
 
 import { test as base, expect } from "@playwright/test";
 import { app } from "../../fixtures/app";
-import { mockLoom } from "../../fixtures/mock-loom";
+import { mockanureo } from "../../fixtures/mock-anureo";
 
 const test = base.extend({
   ...app,
-  ...mockLoom,
+  ...mockanureo,
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

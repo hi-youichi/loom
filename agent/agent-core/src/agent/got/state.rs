@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use loom_llm::ToolCall;
+use anureo_llm::ToolCall;
 
 /// Execution status of a single task node in the DAG.
 ///

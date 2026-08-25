@@ -116,7 +116,7 @@ pub fn register_file_tools(
         aggregate.register_sync(Box::new(view_tool));
     }
 
-    let skills_dir = path.join(".loom/skills");
+    let skills_dir = path.join(".anureo/skills");
     let storage = Arc::new(::skill::storage::SkillStorageRegistry::new(&skills_dir));
     let usage = Arc::new(::skill::SkillUsageStore::new(&skills_dir));
     // 011-02: route SkillManagerTool factory based on write origin.
