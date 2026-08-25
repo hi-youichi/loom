@@ -1,33 +1,29 @@
-//! Ordered, resumable session-update streams for Loom Desk clients.
+//! Persistent, ordered session-update log for `session/load` delta replay.
 
-use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use agent_client_protocol::schema::v1::SessionNotification;
+use agent_client_protocol::schema::v1::{Meta, SessionNotification};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::connection::ConnectionOutbound;
 use crate::connection_registry::ConnectionRegistry;
 use crate::session::SessionId;
 use crate::session_bindings::SessionBindings;
 
-pub const UPDATE_METHOD: &str = "_loomdesk.dev/session-sync/update";
-
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SessionSyncCursor {
+pub struct SessionUpdateCursor {
     pub stream_id: String,
     pub seq: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SessionSyncEvent {
+pub struct SessionUpdateEvent {
     pub stream_id: String,
     pub seq: u64,
     pub event_id: String,
@@ -37,44 +33,39 @@ pub struct SessionSyncEvent {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SessionSyncOpenResult {
-    pub mode: SessionSyncMode,
+pub struct SessionReplayResult {
+    pub mode: SessionReplayMode,
     pub session_id: String,
     pub stream_id: String,
     pub through_seq: u64,
     pub min_replay_seq: u64,
-    pub prompt_state: SessionSyncPromptState,
-    pub events: Vec<SessionSyncEvent>,
+    pub prompt_state: SessionLoadPromptState,
+    pub events: Vec<SessionUpdateEvent>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reset_reason: Option<SessionSyncResetReason>,
+    pub reset_reason: Option<CursorResetReason>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum SessionSyncPromptState {
+pub enum SessionLoadPromptState {
     Idle,
     Running,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum SessionSyncMode {
+pub enum SessionReplayMode {
     Delta,
     ResetRequired,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum SessionSyncResetReason {
+pub enum CursorResetReason {
     MissingCursor,
     StreamChanged,
     CursorAhead,
     ReplayWindowExceeded,
-}
-
-#[derive(Debug, Default)]
-struct SessionSyncState {
-    subscribers: HashMap<SessionId, HashSet<String>>,
 }
 
 #[derive(Debug)]
@@ -82,15 +73,15 @@ struct PersistedStream {
     stream_id: String,
     through_seq: u64,
     min_replay_seq: u64,
-    events: Vec<SessionSyncEvent>,
+    events: Vec<SessionUpdateEvent>,
 }
 
 #[derive(Debug)]
-struct SessionSyncRepository {
+struct UpdateLogRepository {
     connection: Mutex<Connection>,
 }
 
-impl SessionSyncRepository {
+impl UpdateLogRepository {
     fn open(path: &Path) -> rusqlite::Result<Self> {
         Self::from_connection(Connection::open(path)?)
     }
@@ -154,7 +145,7 @@ impl SessionSyncRepository {
         payload: Value,
         max_events: usize,
         max_bytes: usize,
-    ) -> rusqlite::Result<Option<SessionSyncEvent>> {
+    ) -> rusqlite::Result<Option<SessionUpdateEvent>> {
         let mut connection = self
             .connection
             .lock()
@@ -170,7 +161,7 @@ impl SessionSyncRepository {
         else {
             return Ok(None);
         };
-        let event = SessionSyncEvent {
+        let event = SessionUpdateEvent {
             stream_id: stream_id.clone(),
             seq: next_seq,
             event_id: Uuid::new_v4().to_string(),
@@ -227,7 +218,7 @@ impl SessionSyncRepository {
                     )
                 })
             })
-            .collect::<rusqlite::Result<Vec<SessionSyncEvent>>>()?;
+            .collect::<rusqlite::Result<Vec<SessionUpdateEvent>>>()?;
         transaction.commit()?;
         Ok(PersistedStream {
             stream_id,
@@ -240,25 +231,24 @@ impl SessionSyncRepository {
 
 /// Assigns a stable sequence to every live ACP session notification and keeps
 /// a bounded replay window persisted beside the checkpoint database.
-pub struct SessionSyncService {
-    state: Mutex<SessionSyncState>,
-    repository: SessionSyncRepository,
+pub struct SessionUpdateLog {
+    repository: UpdateLogRepository,
     connections: Arc<ConnectionRegistry>,
     bindings: Arc<SessionBindings>,
     max_events: usize,
     max_bytes: usize,
 }
 
-impl std::fmt::Debug for SessionSyncService {
+impl std::fmt::Debug for SessionUpdateLog {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SessionSyncService")
+        f.debug_struct("SessionUpdateLog")
             .field("max_events", &self.max_events)
             .field("max_bytes", &self.max_bytes)
             .finish_non_exhaustive()
     }
 }
 
-impl SessionSyncService {
+impl SessionUpdateLog {
     pub fn new(
         connections: Arc<ConnectionRegistry>,
         bindings: Arc<SessionBindings>,
@@ -267,10 +257,22 @@ impl SessionSyncService {
         Ok(Self::with_repository(
             connections,
             bindings,
-            SessionSyncRepository::open(db_path)?,
+            UpdateLogRepository::open(db_path)?,
             4_096,
             8 * 1024 * 1024,
         ))
+    }
+
+    #[cfg(test)]
+    async fn open(
+        &self,
+        session_id: SessionId,
+        connection_id: String,
+        cursor: Option<SessionUpdateCursor>,
+        prompt_state: SessionLoadPromptState,
+    ) -> rusqlite::Result<SessionReplayResult> {
+        self.read_after_cursor(session_id, connection_id, cursor, prompt_state)
+            .await
     }
 
     #[cfg(test)]
@@ -283,7 +285,7 @@ impl SessionSyncService {
         Self::with_repository(
             connections,
             bindings,
-            SessionSyncRepository::in_memory().expect("in-memory session sync repository"),
+            UpdateLogRepository::in_memory().expect("in-memory session update log repository"),
             max_events,
             max_bytes,
         )
@@ -292,12 +294,11 @@ impl SessionSyncService {
     fn with_repository(
         connections: Arc<ConnectionRegistry>,
         bindings: Arc<SessionBindings>,
-        repository: SessionSyncRepository,
+        repository: UpdateLogRepository,
         max_events: usize,
         max_bytes: usize,
     ) -> Self {
         Self {
-            state: Mutex::new(SessionSyncState::default()),
             repository,
             connections,
             bindings,
@@ -306,124 +307,112 @@ impl SessionSyncService {
         }
     }
 
-    /// Record one canonical live update, then fan it out to attached sync
-    /// subscribers. History replay must not call this method.
-    pub async fn record(&self, notification: &SessionNotification) {
+    /// Record one canonical live update. History replay must not call this method.
+    pub async fn record(&self, notification: &SessionNotification) -> Option<SessionNotification> {
         let session_id = SessionId::new(notification.session_id.to_string());
         let payload = serde_json::json!({
             "type": "session_update",
             "update": notification.update,
         });
-        let (event, subscribers) = {
-            let state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-            let event = match self.repository.append(
-                &session_id,
-                payload,
-                self.max_events,
-                self.max_bytes,
-            ) {
+        let event =
+            match self
+                .repository
+                .append(&session_id, payload, self.max_events, self.max_bytes)
+            {
                 Ok(Some(event)) => event,
-                Ok(None) => return,
+                Ok(None) => return None,
                 Err(error) => {
-                    tracing::error!(%error, %session_id, "failed to persist session sync event");
-                    return;
+                    tracing::error!(%error, %session_id, "failed to persist session update event");
+                    return None;
                 }
             };
-            let subscribers = state
-                .subscribers
-                .get(&session_id)
-                .cloned()
-                .unwrap_or_default();
-            (event, subscribers)
-        };
-
-        let params = serde_json::json!({
-            "sessionId": session_id.to_string(),
-            "streamId": event.stream_id,
-            "events": [event],
-        });
-        for connection_id in subscribers {
-            let Some(connection) = self.connections.get(&connection_id) else {
-                continue;
-            };
-            if connection
-                .outbound_tx
-                .send(ConnectionOutbound::ExtensionNotification {
-                    method: UPDATE_METHOD.to_string(),
-                    params: params.clone(),
-                })
-                .await
-                .is_err()
-            {
-                tracing::debug!(%connection_id, "session sync subscriber is no longer available");
-            }
-        }
+        let mut meta = Meta::new();
+        meta.insert(
+            "loomdesk.dev".to_string(),
+            serde_json::json!({
+                "sessionEvent": {
+                    "streamId": event.stream_id.clone(),
+                    "seq": event.seq,
+                    "eventId": event.event_id.clone(),
+                    "emittedAt": event.emitted_at,
+                }
+            }),
+        );
+        Some(notification.clone().meta(meta))
     }
 
-    /// Atomically captures the current high-water mark and subscribes the
-    /// connection. Notifications may reach the transport before this request's
-    /// response, so clients must buffer them until the open result is applied.
-    pub async fn open(
+    /// Read the update log after a cursor and bind the connection to the session.
+    pub async fn read_after_cursor(
         &self,
         session_id: SessionId,
         connection_id: String,
-        cursor: Option<SessionSyncCursor>,
-        prompt_state: SessionSyncPromptState,
-    ) -> rusqlite::Result<SessionSyncOpenResult> {
-        let result = {
-            let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-            let stream = self.repository.read_or_create(&session_id)?;
-            let stream_id = stream.stream_id.clone();
-            let through_seq = stream.through_seq;
-            let min_replay_seq = stream.min_replay_seq;
-            let (mode, events, reset_reason) = match cursor {
-                None => (
-                    SessionSyncMode::ResetRequired,
-                    Vec::new(),
-                    Some(SessionSyncResetReason::MissingCursor),
-                ),
-                Some(cursor) if cursor.stream_id != stream_id => (
-                    SessionSyncMode::ResetRequired,
-                    Vec::new(),
-                    Some(SessionSyncResetReason::StreamChanged),
-                ),
-                Some(cursor) if cursor.seq > through_seq => (
-                    SessionSyncMode::ResetRequired,
-                    Vec::new(),
-                    Some(SessionSyncResetReason::CursorAhead),
-                ),
-                Some(cursor) if cursor.seq.saturating_add(1) < min_replay_seq => (
-                    SessionSyncMode::ResetRequired,
-                    Vec::new(),
-                    Some(SessionSyncResetReason::ReplayWindowExceeded),
-                ),
-                Some(cursor) => (
-                    SessionSyncMode::Delta,
-                    stream
-                        .events
-                        .iter()
-                        .filter(|event| event.seq > cursor.seq)
-                        .cloned()
-                        .collect(),
-                    None,
-                ),
-            };
-            let result = SessionSyncOpenResult {
-                mode,
-                session_id: session_id.to_string(),
-                stream_id,
-                through_seq,
-                min_replay_seq,
-                prompt_state,
-                events,
-                reset_reason,
-            };
-            state
-                .subscribers
-                .entry(session_id.clone())
-                .or_default()
-                .insert(connection_id.clone());
-            result
+        cursor: Option<SessionUpdateCursor>,
+        prompt_state: SessionLoadPromptState,
+    ) -> rusqlite::Result<SessionReplayResult> {
+        self.open_internal(session_id, connection_id, cursor, prompt_state)
+            .await
+    }
+
+    pub fn head(&self, session_id: &SessionId) -> rusqlite::Result<SessionUpdateCursor> {
+        let stream = self.repository.read_or_create(session_id)?;
+        Ok(SessionUpdateCursor {
+            stream_id: stream.stream_id,
+            seq: stream.through_seq,
+        })
+    }
+
+    async fn open_internal(
+        &self,
+        session_id: SessionId,
+        connection_id: String,
+        cursor: Option<SessionUpdateCursor>,
+        prompt_state: SessionLoadPromptState,
+    ) -> rusqlite::Result<SessionReplayResult> {
+        let stream = self.repository.read_or_create(&session_id)?;
+        let stream_id = stream.stream_id.clone();
+        let through_seq = stream.through_seq;
+        let min_replay_seq = stream.min_replay_seq;
+        let (mode, events, reset_reason) = match cursor {
+            None => (
+                SessionReplayMode::ResetRequired,
+                Vec::new(),
+                Some(CursorResetReason::MissingCursor),
+            ),
+            Some(cursor) if cursor.stream_id != stream_id => (
+                SessionReplayMode::ResetRequired,
+                Vec::new(),
+                Some(CursorResetReason::StreamChanged),
+            ),
+            Some(cursor) if cursor.seq > through_seq => (
+                SessionReplayMode::ResetRequired,
+                Vec::new(),
+                Some(CursorResetReason::CursorAhead),
+            ),
+            Some(cursor) if cursor.seq.saturating_add(1) < min_replay_seq => (
+                SessionReplayMode::ResetRequired,
+                Vec::new(),
+                Some(CursorResetReason::ReplayWindowExceeded),
+            ),
+            Some(cursor) => (
+                SessionReplayMode::Delta,
+                stream
+                    .events
+                    .iter()
+                    .filter(|event| event.seq > cursor.seq)
+                    .cloned()
+                    .collect(),
+                None,
+            ),
+        };
+        let result = SessionReplayResult {
+            mode,
+            session_id: session_id.to_string(),
+            stream_id,
+            through_seq,
+            min_replay_seq,
+            prompt_state,
+            events,
+            reset_reason,
         };
 
         self.bindings
@@ -432,24 +421,6 @@ impl SessionSyncService {
             connection.note_session(&session_id.to_string()).await;
         }
         Ok(result)
-    }
-
-    pub fn close_session(&self, session_id: &SessionId, connection_id: &str) {
-        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-        if let Some(subscribers) = state.subscribers.get_mut(session_id) {
-            subscribers.remove(connection_id);
-            if subscribers.is_empty() {
-                state.subscribers.remove(session_id);
-            }
-        }
-    }
-
-    pub fn close_connection(&self, connection_id: &str) {
-        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-        state.subscribers.retain(|_, subscribers| {
-            subscribers.remove(connection_id);
-            !subscribers.is_empty()
-        });
     }
 }
 
@@ -466,18 +437,17 @@ fn now_millis() -> u64 {
 mod tests {
     use super::*;
     use agent_client_protocol::schema::v1::{SessionId as AcpSessionId, SessionUpdate};
-    use tokio::sync::mpsc;
 
-    fn fixture(
-        max_events: usize,
-    ) -> (
-        SessionSyncService,
-        Arc<crate::connection::AcpConnection>,
-        mpsc::Receiver<ConnectionOutbound>,
-    ) {
+    type SessionSyncCursor = SessionUpdateCursor;
+    type SessionSyncPromptState = SessionLoadPromptState;
+    type SessionSyncMode = SessionReplayMode;
+    type SessionSyncResetReason = CursorResetReason;
+    type SessionSyncRepository = UpdateLogRepository;
+
+    fn fixture(max_events: usize) -> (SessionUpdateLog, Arc<crate::connection::AcpConnection>) {
         let connections = Arc::new(ConnectionRegistry::default());
         let bindings = Arc::new(SessionBindings::new());
-        let (tx, rx) = mpsc::channel(8);
+        let (tx, _rx) = tokio::sync::mpsc::channel(8);
         let connection = Arc::new(crate::connection::AcpConnection::shell(
             "connection-a".into(),
             "owner-a".into(),
@@ -485,9 +455,8 @@ mod tests {
         ));
         connections.insert(connection.clone());
         (
-            SessionSyncService::with_limits(connections, bindings, max_events, usize::MAX),
+            SessionUpdateLog::with_limits(connections, bindings, max_events, usize::MAX),
             connection,
-            rx,
         )
     }
 
@@ -502,7 +471,7 @@ mod tests {
 
     #[tokio::test]
     async fn reconnect_replays_only_events_after_cursor() {
-        let (service, connection, mut rx) = fixture(8);
+        let (service, connection) = fixture(8);
         let session_id = SessionId::new("session-a");
         let initial = service
             .open(
@@ -516,13 +485,7 @@ mod tests {
         assert_eq!(initial.mode, SessionSyncMode::ResetRequired);
 
         service.record(&notification("session-a")).await;
-        let first = rx.recv().await.expect("live event");
-        let ConnectionOutbound::ExtensionNotification { params, .. } = first else {
-            panic!("expected extension notification");
-        };
-        assert_eq!(params["events"][0]["seq"], 1);
         service.record(&notification("session-a")).await;
-        let _ = rx.recv().await.expect("second live event");
 
         let replay = service
             .open(
@@ -543,7 +506,7 @@ mod tests {
 
     #[tokio::test]
     async fn disconnected_window_is_recorded_for_a_replacement_connection() {
-        let (service, first, mut first_rx) = fixture(8);
+        let (service, first) = fixture(8);
         let session_id = SessionId::new("session-disconnected");
         let initial = service
             .open(
@@ -555,11 +518,9 @@ mod tests {
             .await
             .expect("initial open");
         service.record(&notification("session-disconnected")).await;
-        let _ = first_rx.recv().await.expect("first live event");
-        service.close_connection(&first.id);
 
         service.record(&notification("session-disconnected")).await;
-        let (tx, _rx) = mpsc::channel(8);
+        let (tx, _rx) = tokio::sync::mpsc::channel(8);
         let second = Arc::new(crate::connection::AcpConnection::shell(
             "connection-b".into(),
             "owner-a".into(),
@@ -586,7 +547,7 @@ mod tests {
 
     #[tokio::test]
     async fn evicted_cursor_requires_reset() {
-        let (service, connection, _rx) = fixture(2);
+        let (service, connection) = fixture(2);
         let session_id = SessionId::new("session-a");
         let initial = service
             .open(
@@ -629,7 +590,7 @@ mod tests {
             let connections = Arc::new(ConnectionRegistry::default());
             let bindings = Arc::new(SessionBindings::new());
             let service =
-                SessionSyncService::new(connections, bindings, &db_path).expect("first service");
+                SessionUpdateLog::new(connections, bindings, &db_path).expect("first service");
             let initial = service
                 .open(
                     session_id.clone(),
@@ -646,7 +607,7 @@ mod tests {
         let connections = Arc::new(ConnectionRegistry::default());
         let bindings = Arc::new(SessionBindings::new());
         let service =
-            SessionSyncService::new(connections, bindings, &db_path).expect("restarted service");
+            SessionUpdateLog::new(connections, bindings, &db_path).expect("restarted service");
         let replay = service
             .open(
                 session_id,

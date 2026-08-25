@@ -20,9 +20,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .map(std::path::PathBuf::from);
     let executor = Arc::new(loom_acp::prompt_executor::DeterministicPromptExecutor);
     let runtime = match db_path {
-        Some(path) => loom_acp::runtime::AcpRuntime::with_prompt_executor_and_db_path(
-            executor, path,
-        )?,
+        Some(path) => {
+            loom_acp::runtime::AcpRuntime::with_prompt_executor_and_db_path(executor, path)?
+        }
         None => loom_acp::runtime::AcpRuntime::with_prompt_executor(executor)?,
     };
     let hub = Arc::new(loom_server::acp_hub::AcpHub::with_runtime(

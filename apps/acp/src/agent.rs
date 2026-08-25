@@ -555,6 +555,20 @@ impl LoomAcpAgent {
             "loomdesk.dev".to_string(),
             self.extension_registry.build_capability_snapshot(),
         );
+        if let Some(loom) = extension_meta
+            .get_mut("loomdesk.dev")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            loom.insert(
+                "session-recovery".to_string(),
+                serde_json::json!({
+                    "version": 1,
+                    "cursor": true,
+                    "orderedUpdates": true,
+                    "promptState": true,
+                }),
+            );
+        }
         let agent_caps = AgentCapabilities::new()
             .load_session(true)
             .mcp_capabilities(mcp)
@@ -1453,11 +1467,22 @@ impl LoomAcpAgent {
         owner_principal: &str,
     ) -> agent_client_protocol::Result<LoadSessionResponse> {
         tracing::info!(session_id = %args.session_id, cwd = ?args.cwd, "load_session started");
+        let request_value = serde_json::to_value(&args).ok();
+        let recovery_meta = request_value
+            .as_ref()
+            .and_then(|value| value.get("_meta"))
+            .and_then(|value| value.get("loomdesk.dev"))
+            .and_then(|value| value.get("sessionRecovery"));
+        let recovery_delta = recovery_meta
+            .and_then(|value| value.get("cursor"))
+            .is_some();
+        let recovery_requested = recovery_meta.is_some();
         let canonical_cwd = canonicalize_existing_directory(&args.cwd)?;
         // Logging is initialized at startup; this is a no-op if already initialized
         crate::logging::init_logging(Some(&canonical_cwd));
         let session_id = args.session_id.clone();
         let our_session_id = OurSessionId::new(session_id.to_string());
+        let entry_was_created = self.sessions.get(&our_session_id).is_none();
         let entry = if let Some(existing) = self.sessions.get(&our_session_id) {
             if existing.owner_principal != owner_principal {
                 return Err(agent_client_protocol::Error::new(
@@ -1578,85 +1603,92 @@ impl LoomAcpAgent {
             }
         };
 
-        match checkpoint {
-            Ok(Some((checkpoint, _metadata))) => {
-                let state: ReActState = checkpoint.channel_values;
-                let user_count = state
-                    .messages
-                    .iter()
-                    .filter(|m| matches!(m, loom_llm::message::Message::User(_)))
-                    .count();
-                let assistant_count = state
-                    .messages
-                    .iter()
-                    .filter(|m| matches!(m, loom_llm::message::Message::Assistant(_)))
-                    .count();
-                let tool_count = state
-                    .messages
-                    .iter()
-                    .filter(|m| matches!(m, loom_llm::message::Message::Tool { .. }))
-                    .count();
-                let system_count = state
-                    .messages
-                    .iter()
-                    .filter(|m| matches!(m, loom_llm::message::Message::System(_)))
-                    .count();
+        if !recovery_delta {
+            match checkpoint {
+                Ok(Some((checkpoint, _metadata))) => {
+                    let state: ReActState = checkpoint.channel_values;
+                    let user_count = state
+                        .messages
+                        .iter()
+                        .filter(|m| matches!(m, loom_llm::message::Message::User(_)))
+                        .count();
+                    let assistant_count = state
+                        .messages
+                        .iter()
+                        .filter(|m| matches!(m, loom_llm::message::Message::Assistant(_)))
+                        .count();
+                    let tool_count = state
+                        .messages
+                        .iter()
+                        .filter(|m| matches!(m, loom_llm::message::Message::Tool { .. }))
+                        .count();
+                    let system_count = state
+                        .messages
+                        .iter()
+                        .filter(|m| matches!(m, loom_llm::message::Message::System(_)))
+                        .count();
 
-                tracing::info!(
-                    session_id = %session_id,
-                    thread_id = %entry.thread_id,
-                    total = state.messages.len(),
-                    user = user_count,
-                    assistant = assistant_count,
-                    tool = tool_count,
-                    system = system_count,
-                    "Checkpoint found, replaying session history"
-                );
-
-                let replay_start = history_tail_start(&state.messages, load_history_tail_limit());
-                if replay_start > 0 {
                     tracing::info!(
                         session_id = %session_id,
                         thread_id = %entry.thread_id,
                         total = state.messages.len(),
-                        replay_start,
-                        "Tail-truncating history replay; earlier pages via _loomdesk.dev/session-history/page"
+                        user = user_count,
+                        assistant = assistant_count,
+                        tool = tool_count,
+                        system = system_count,
+                        "Checkpoint found, replaying session history"
+                    );
+
+                    let replay_start =
+                        history_tail_start(&state.messages, load_history_tail_limit());
+                    if replay_start > 0 {
+                        tracing::info!(
+                            session_id = %session_id,
+                            thread_id = %entry.thread_id,
+                            total = state.messages.len(),
+                            replay_start,
+                            "Tail-truncating history replay; earlier pages via _loomdesk.dev/session-history/page"
+                        );
+                    }
+                    entry.history_cursor.store(replay_start, Ordering::Release);
+
+                    if let Some(ref tx) = self.session_update_tx {
+                        let notifier = SessionNotifier::new(tx.clone(), session_id.clone());
+                        notifier
+                            .send_history(
+                                &state.messages[replay_start..],
+                                replay_start,
+                                recovery_requested,
+                            )
+                            .await;
+                    } else {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            "No session_update_tx available, history not sent to client"
+                        );
+                    }
+
+                    tracing::info!(
+                        session_id = %session_id,
+                        message_count = state.messages.len(),
+                        "Session history replay completed"
                     );
                 }
-                entry.history_cursor.store(replay_start, Ordering::Release);
-
-                if let Some(ref tx) = self.session_update_tx {
-                    let notifier = SessionNotifier::new(tx.clone(), session_id.clone());
-                    notifier
-                        .send_history(&state.messages[replay_start..], replay_start)
-                        .await;
-                } else {
+                Ok(None) => {
+                    tracing::info!(
+                        session_id = %session_id,
+                        thread_id = %entry.thread_id,
+                        "No checkpoint found for session, starting fresh"
+                    );
+                }
+                Err(e) => {
                     tracing::warn!(
                         session_id = %session_id,
-                        "No session_update_tx available, history not sent to client"
+                        thread_id = %entry.thread_id,
+                        error = %e,
+                        "Failed to load checkpoint, starting fresh"
                     );
                 }
-
-                tracing::info!(
-                    session_id = %session_id,
-                    message_count = state.messages.len(),
-                    "Session history replay completed"
-                );
-            }
-            Ok(None) => {
-                tracing::info!(
-                    session_id = %session_id,
-                    thread_id = %entry.thread_id,
-                    "No checkpoint found for session, starting fresh"
-                );
-            }
-            Err(e) => {
-                tracing::warn!(
-                    session_id = %session_id,
-                    thread_id = %entry.thread_id,
-                    error = %e,
-                    "Failed to load checkpoint, starting fresh"
-                );
             }
         }
 
@@ -1735,9 +1767,10 @@ impl LoomAcpAgent {
         });
         let response: LoadSessionResponse = serde_json::from_value(json)
             .map_err(|e| agent_client_protocol::Error::internal_error().data(e.to_string()))?;
-        if self
-            .sessions
-            .finish_restore(&our_session_id, SessionLifecycle::Idle)
+        if (!recovery_delta || entry_was_created)
+            && self
+                .sessions
+                .finish_restore(&our_session_id, SessionLifecycle::Idle)
         {
             self.session_repository
                 .set_lifecycle(our_session_id.as_str(), "idle")

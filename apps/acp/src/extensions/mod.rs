@@ -44,7 +44,6 @@ pub mod session_folder;
 pub mod session_history;
 pub mod session_list;
 pub mod session_metrics;
-pub mod session_sync;
 pub mod settings;
 pub mod skills;
 pub mod small_model;

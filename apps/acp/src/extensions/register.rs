@@ -5,7 +5,6 @@ use crate::global_events::GlobalEventBus;
 
 use super::session_history::SessionHistoryHandler;
 use super::session_list::SessionListHandler;
-use super::session_sync::SessionSyncHandler;
 use super::ExtensionRegistry;
 
 /// Handlers produced by [`register_default_extensions`] that need
@@ -14,7 +13,6 @@ use super::ExtensionRegistry;
 pub struct ExtensionRegistryHandles {
     pub session_history: Arc<SessionHistoryHandler>,
     pub session_list: Arc<SessionListHandler>,
-    pub session_sync: Arc<SessionSyncHandler>,
     pub question: Arc<super::question::QuestionHandler>,
 }
 
@@ -155,13 +153,9 @@ pub fn register_default_extensions(
 
     let session_history = Arc::new(SessionHistoryHandler::new());
     registry.register("session-history", session_history.clone());
-    let session_sync = Arc::new(SessionSyncHandler::new());
-    registry.register("session-sync", session_sync.clone());
-
     ExtensionRegistryHandles {
         session_history,
         session_list,
-        session_sync,
         question: question_handler,
     }
 }

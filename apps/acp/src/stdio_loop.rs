@@ -14,7 +14,7 @@ use crate::extensions::session_list::{
     tombstone_event_payload,
 };
 use crate::runtime::AcpRuntime;
-use crate::session::{SessionId as LoomSessionId, SessionLifecycle};
+use crate::session::SessionId as LoomSessionId;
 use agent_client_protocol::schema::v1::{
     AuthenticateRequest, AuthenticateResponse, CancelNotification, CloseSessionRequest,
     CloseSessionResponse, DeleteSessionRequest, DeleteSessionResponse, ForkSessionRequest,
@@ -323,7 +323,7 @@ where
                 // A prompt belongs to the server runtime, not to the transient
                 // JSON-RPC connection. Detach it from the SDK connection task
                 // set so a WebSocket close only drops the old response path;
-                // the run keeps producing checkpointed/session-sync events and
+                // the run keeps producing checkpointed/session-update events and
                 // a replacement connection can attach immediately.
                 tokio::spawn(async move {
                     let session_id = LoomSessionId::new(req.session_id.to_string());
@@ -407,79 +407,18 @@ where
                   conn: ConnectionTo<Client>| {
                 let runtime = r_load.clone();
                 let connection = conn_for_load.clone();
-                // The handler runs on its own task: history replay is slow
-                // (full thread read from SQLite) and must not head-of-line
-                // block other requests, including reverse-RPC replies from
-                // the client. Ordering is still preserved end to end:
-                // begin_restore/rebind run before any await, so pipelined
-                // prompts on this session see the new binding immediately
-                // and conflict on the Loading lifecycle; history
-                // notifications stay ahead of the response because both
-                // travel through the connection's outbound message queue in
-                // FIFO order (flush_notifications awaits the barrier ack).
-                let _ = conn
-                    .clone()
-                    .spawn(async move {
-                        if !connection.is_initialized() {
-                            let _ = responder.respond_with_result(Err(
-                                agent_client_protocol::Error::invalid_request()
-                                    .data("initialize must complete before session/load"),
-                            ));
-                            return Ok(());
-                        }
-                        let session_id = LoomSessionId::new(req.session_id.to_string());
-                        let previous_lifecycle =
-                            match runtime.agent.sessions().begin_restore(&session_id) {
-                                Ok(lifecycle) => lifecycle,
-                                Err(()) => {
-                                    let _ = responder.respond_with_result(Err(
-                                        agent_client_protocol::Error::new(
-                                            -32010,
-                                            "a prompt is already in progress for this session",
-                                        ),
-                                    ));
-                                    return Ok(());
-                                }
-                            };
-                        runtime.bindings.add_connection_to_session(&session_id, connection.id.clone());
-                        connection.note_session(session_id.as_str()).await;
-                        let result = runtime
-                            .agent
-                            .load_session_for_owner(req, &connection.principal)
-                            .await;
-                        let result = match result {
-                            Ok(response) => {
-                                match runtime.flush_notifications(&session_id).await {
-                                    Ok(()) => Ok(response),
-                                    Err(error) => {
-                                        Err(agent_client_protocol::Error::internal_error()
-                                            .data(format!("failed to flush session history: {error}")))
-                                    }
-                                }
-                            }
-                            Err(error) => Err(error),
-                        };
-                        if result.is_ok() {
-                            runtime.record_session_rebind();
-                        }
-                        if result.is_err() {
-                            // Guarded rollback: if the session was closed
-                            // while this load was in flight, keep it closed
-                            // instead of resurrecting the previous lifecycle.
-                            runtime.agent.sessions().finish_restore(
-                                &session_id,
-                                previous_lifecycle
-                                    .unwrap_or(SessionLifecycle::Idle),
-                            );
-                            runtime.bindings.remove_connection_from_session(&session_id, &connection.id);
-                        }
-                        let _ = responder.respond_with_result(result);
-                        Ok(())
-                    })
-                    .map_err(|e| {
-                        tracing::error!(error = ?e, "Failed to spawn session/load task — client will not receive a response");
-                        e
-                    });
+                // Load/replay state transitions live in SessionLoadCoordinator;
+                // this transport layer only owns task isolation and response delivery.
+                let _ = conn.clone().spawn(async move {
+                    let result = if !connection.is_initialized() {
+                        Err(agent_client_protocol::Error::invalid_request()
+                            .data("initialize must complete before session/load"))
+                    } else {
+                        crate::session_load::load_session(runtime, connection, req).await
+                    };
+                    let _ = responder.respond_with_result(result);
+                    Ok(())
+                });
                 async { Ok(()) }
             },
             on_receive_request!(),

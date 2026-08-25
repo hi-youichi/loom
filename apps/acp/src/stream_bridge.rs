@@ -75,6 +75,13 @@ pub const HISTORY_BATCH_METHOD: &str = "_loomdesk.dev/session-history/batch";
 #[derive(Debug, Clone, serde::Serialize)]
 pub enum SessionUpdateEnvelope {
     Session(SessionNotification),
+    /// A history replay update for the session-recovery extension. It uses the
+    /// canonical session/update route, but is marked so the runtime can assign
+    /// a durable stream cursor without treating legacy replay as a mutation.
+    SessionReplay {
+        notification: SessionNotification,
+        recovery: bool,
+    },
     HistoryBatch {
         session_id: SessionId,
         updates: Vec<SessionUpdate>,
@@ -95,6 +102,7 @@ impl SessionUpdateEnvelope {
     pub fn session_id(&self) -> &SessionId {
         match self {
             Self::Session(notification) => &notification.session_id,
+            Self::SessionReplay { notification, .. } => &notification.session_id,
             Self::HistoryBatch { session_id, .. } => session_id,
         }
     }
@@ -678,9 +686,12 @@ impl SessionNotifier {
         }
 
         // 处理工具调用顺序控制
-        let has_text_content = updates.iter().any(|u| matches!(u, 
-            StreamUpdate::AgentMessageChunk { .. } | StreamUpdate::AgentThoughtChunk { .. }
-        ));
+        let has_text_content = updates.iter().any(|u| {
+            matches!(
+                u,
+                StreamUpdate::AgentMessageChunk { .. } | StreamUpdate::AgentThoughtChunk { .. }
+            )
+        });
 
         // 如果当前事件包含文本内容，先发送缓冲的工具调用
         if has_text_content {
@@ -689,13 +700,13 @@ impl SessionNotifier {
 
         for u in updates {
             let u = self.inject_message_id(u);
-            
+
             // 缓冲工具调用事件，延迟发送
             if matches!(u, StreamUpdate::ToolCallStarted { .. }) {
                 self.buffer_tool_call(u);
                 continue;
             }
-            
+
             if let Some(notif) = stream_update_to_session_notification(&self.session_id, &u) {
                 if let Err(e) = self.tx.send(SessionUpdateEnvelope::Session(notif)).await {
                     tracing::error!(session_id = %self.session_id, error = %e, "Failed to send stream event notification");
@@ -895,7 +906,12 @@ impl SessionNotifier {
         }
     }
 
-    pub async fn send_history(&self, messages: &[Message], start_index: usize) {
+    pub async fn send_history(
+        &self,
+        messages: &[Message],
+        start_index: usize,
+        recovery_replay: bool,
+    ) {
         tracing::debug!(
             session_id = %self.session_id,
             total_messages = messages.len(),
@@ -962,7 +978,7 @@ impl SessionNotifier {
             replay_updates.extend(updates);
         }
 
-        if history_batch_enabled() {
+        if !recovery_replay && history_batch_enabled() {
             // One envelope → one `_loomdesk.dev/session-history/batch`
             // JSON-RPC notification on the wire. The client applies the
             // whole tail in a single commit instead of N frames.
@@ -986,7 +1002,11 @@ impl SessionNotifier {
         } else {
             for update in replay_updates {
                 let notif = SessionNotification::new(self.session_id.clone(), update);
-                if let Err(e) = self.tx.send(SessionUpdateEnvelope::Session(notif)).await {
+                let envelope = SessionUpdateEnvelope::SessionReplay {
+                    notification: notif,
+                    recovery: recovery_replay,
+                };
+                if let Err(e) = self.tx.send(envelope).await {
                     tracing::error!(session_id = %self.session_id, error = %e, "Failed to send session update during history replay");
                 } else {
                     sent_count += 1;

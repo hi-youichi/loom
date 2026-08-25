@@ -20,7 +20,7 @@ use crate::extensions::{register::register_default_extensions, ExtensionRegistry
 use crate::notification_router::NotificationRouter;
 use crate::prompt_executor::{AcpPromptExecutor, LoomPromptExecutor};
 use crate::session_bindings::SessionBindings;
-use crate::session_sync::SessionSyncService;
+use crate::session_update_log::SessionUpdateLog;
 use crate::tools::ClientBridgeTrait;
 use crate::LoomAcpAgent;
 
@@ -59,7 +59,7 @@ pub struct AcpRuntime {
     pub extensions: Arc<ExtensionRegistry>,
     pub question_handler: Arc<crate::extensions::question::QuestionHandler>,
     pub global_bus: Arc<crate::global_events::GlobalEventBus>,
-    pub session_sync: Arc<SessionSyncService>,
+    pub session_update_log: Arc<SessionUpdateLog>,
     prompt_executor: Arc<dyn AcpPromptExecutor>,
     prompt_capacity: Arc<Semaphore>,
     metrics: Arc<AcpRuntimeMetrics>,
@@ -93,7 +93,7 @@ impl AcpRuntime {
     }
 
     /// Construct an embedded runtime whose session metadata, checkpoints and
-    /// session-sync event stream share an explicit SQLite database.
+    /// The session update log and checkpoint store share an explicit SQLite database.
     pub fn with_prompt_executor_and_db_path(
         prompt_executor: Arc<dyn AcpPromptExecutor>,
         db_path: impl Into<PathBuf>,
@@ -114,7 +114,7 @@ impl AcpRuntime {
             Some(updates_tx.clone()),
             db_path.into(),
         )?);
-        let session_sync = Arc::new(SessionSyncService::new(
+        let session_update_log = Arc::new(SessionUpdateLog::new(
             connections.clone(),
             bindings.clone(),
             &agent.checkpoint_db_path,
@@ -122,9 +122,6 @@ impl AcpRuntime {
         extension_handles.session_history.bind(&agent);
         let session_list_handler = extension_handles.session_list.clone();
         session_list_handler.bind(&agent);
-        extension_handles
-            .session_sync
-            .bind(&agent, &session_sync, &extension_handles.question);
         global_bus.bind_registry(connections.clone());
         let notification_router = Arc::new(NotificationRouter::new(
             bindings.clone(),
@@ -141,7 +138,7 @@ impl AcpRuntime {
             extensions,
             question_handler: extension_handles.question,
             global_bus,
-            session_sync: session_sync.clone(),
+            session_update_log: session_update_log.clone(),
             prompt_executor,
             prompt_capacity: Arc::new(Semaphore::new(
                 std::env::var("LOOM_ACP_MAX_CONCURRENT_PROMPTS")
@@ -158,21 +155,18 @@ impl AcpRuntime {
         });
 
         let router = runtime.notification_router.clone();
-        let session_sync_for_router = session_sync;
+        let session_update_log_for_router = session_update_log.clone();
         let metrics_for_router = metrics;
         tokio::spawn(async move {
-            // Sessions whose history is currently being replayed via
-            // `send_history`. While a session is in this set, its
-            // notifications are routed to subscribers as usual, but the
-            // cross-connection SessionIndex broadcasts are not emitted from
-            // this high-frequency notification path.
-            let mut replaying_sessions: std::collections::HashSet<String> =
-                std::collections::HashSet::new();
             while let Some(envelope) = updates_rx.recv().await {
-                let update = match envelope {
+                let (update, recovery_replay) = match envelope {
                     crate::stream_bridge::SessionUpdateEnvelope::Session(notification) => {
-                        notification
+                        (notification, false)
                     }
+                    crate::stream_bridge::SessionUpdateEnvelope::SessionReplay {
+                        notification,
+                        recovery,
+                    } => (notification, recovery),
                     crate::stream_bridge::SessionUpdateEnvelope::HistoryBatch {
                         session_id,
                         updates,
@@ -197,16 +191,9 @@ impl AcpRuntime {
                     }
                     continue;
                 }
-                if let Some(session_id) =
-                    update_session_id.strip_prefix(crate::stream_bridge::REPLAY_BEGIN_MARKER_PREFIX)
+                if update_session_id.starts_with(crate::stream_bridge::REPLAY_BEGIN_MARKER_PREFIX)
+                    || update_session_id.starts_with(crate::stream_bridge::REPLAY_END_MARKER_PREFIX)
                 {
-                    replaying_sessions.insert(session_id.to_string());
-                    continue;
-                }
-                if let Some(session_id) =
-                    update_session_id.strip_prefix(crate::stream_bridge::REPLAY_END_MARKER_PREFIX)
-                {
-                    replaying_sessions.remove(session_id);
                     continue;
                 }
                 // Session content notifications are routed to the bound ACP
@@ -214,10 +201,19 @@ impl AcpRuntime {
                 // SessionIndex mutations: the canonical list event is
                 // published by the mutation boundary with revision/index
                 // metadata, while dropped events are recovered by resync.
-                if !replaying_sessions.contains(&update_session_id) {
-                    session_sync_for_router.record(&update).await;
-                }
-                if let Err(error) = router.send(update).await {
+                let routed_update = if recovery_replay {
+                    // Extended full-load history is canonical ACP replay, but
+                    // it is not a new event. The response baseline advances
+                    // over the existing log; recording it here would append
+                    // duplicate history on every load.
+                    update
+                } else {
+                    session_update_log_for_router
+                        .record(&update)
+                        .await
+                        .unwrap_or(update)
+                };
+                if let Err(error) = router.send(routed_update).await {
                     metrics_for_router
                         .route_failures
                         .fetch_add(1, Ordering::Relaxed);
@@ -357,7 +353,6 @@ impl AcpRuntime {
         if let Some(connection) = self.connections.remove(connection_id) {
             connection.deactivate();
         }
-        self.session_sync.close_connection(connection_id);
         let sessions = self.bindings.unbind_connection(connection_id);
         for session_id in &sessions {
             if cancel_bound_turns {

@@ -91,7 +91,9 @@ impl AcpPromptExecutor for DeterministicPromptExecutor {
         );
         if let Some(sender) = &agent.session_update_tx {
             sender
-                .send(crate::stream_bridge::SessionUpdateEnvelope::Session(notification))
+                .send(crate::stream_bridge::SessionUpdateEnvelope::Session(
+                    notification,
+                ))
                 .await
                 .map_err(|error| {
                     agent_client_protocol::Error::internal_error().data(error.to_string())

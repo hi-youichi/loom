@@ -1182,13 +1182,25 @@ impl FilesHandler {
         #[cfg(not(target_os = "windows"))]
         let reveal_result = {
             use tokio::io::AsyncWriteExt;
-            let mut child = if cfg!(target_os = "macos") {
+            let child = if cfg!(target_os = "macos") {
                 tokio::process::Command::new("open").arg(&resolved).spawn()
             } else {
                 tokio::process::Command::new("xdg-open")
                     .arg(&resolved)
                     .spawn()
-            }?;
+            };
+            let mut child = match child {
+                Ok(child) => child,
+                Err(error) => {
+                    return Err(ExtensionError {
+                        code: -32603,
+                        message: "internal_error".into(),
+                        data: Some(Value::String(format!(
+                            "failed to open system file manager: {error}"
+                        ))),
+                    });
+                }
+            };
             if let Some(mut stdin) = child.stdin.take() {
                 let _ = stdin.write_all(b"").await;
             }

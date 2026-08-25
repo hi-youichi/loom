@@ -75,10 +75,8 @@ impl NotificationRouter {
         &self,
         session_id: &SessionId,
     ) -> Result<(), NotificationRouteError> {
-        let connection_ids = self
-            .bindings
-            .connections_for(session_id);
-        
+        let connection_ids = self.bindings.connections_for(session_id);
+
         if connection_ids.is_empty() {
             return Err(NotificationRouteError::Unbound(session_id.clone()));
         }
@@ -91,7 +89,7 @@ impl NotificationRouter {
                 .connections
                 .get(&connection_id)
                 .filter(|connection| connection.is_active());
-            
+
             if let Some(connection) = connection {
                 let (ack_tx, ack_rx) = oneshot::channel();
                 match connection
@@ -100,7 +98,11 @@ impl NotificationRouter {
                     .await
                 {
                     Ok(()) => {
-                        if ack_rx.await.map_err(|_| NotificationRouteError::FlushDropped).is_ok() {
+                        if ack_rx
+                            .await
+                            .map_err(|_| NotificationRouteError::FlushDropped)
+                            .is_ok()
+                        {
                             success_count += 1;
                         } else {
                             last_error = Some(Err(NotificationRouteError::FlushDropped));
@@ -112,7 +114,7 @@ impl NotificationRouter {
                 }
             } else {
                 last_error = Some(Err(NotificationRouteError::ConnectionUnavailable(
-                    connection_id.clone()
+                    connection_id.clone(),
                 )));
             }
         }
@@ -130,10 +132,8 @@ impl NotificationRouter {
         mut enqueued: Option<oneshot::Sender<()>>,
     ) -> Result<(), NotificationRouteError> {
         let session_id = SessionId::new(notification.session_id.to_string());
-        let connection_ids = self
-            .bindings
-            .connections_for(&session_id);
-        
+        let connection_ids = self.bindings.connections_for(&session_id);
+
         if connection_ids.is_empty() {
             return Err(NotificationRouteError::Unbound(session_id.clone()));
         }
@@ -146,23 +146,24 @@ impl NotificationRouter {
                 .connections
                 .get(connection_id)
                 .filter(|connection| connection.is_active());
-            
+
             if let Some(connection) = connection {
                 if !connection.is_initialized() {
                     last_error = Some(Err(NotificationRouteError::ConnectionState(
-                        ConnectionStateError::NotInitialized
+                        ConnectionStateError::NotInitialized,
                     )));
                     continue;
                 }
-                
+
                 // Create notification clone for each connection
                 let notification_clone = notification.clone();
-                let enqueued_for_connection = if index == connection_ids.len() - 1 && enqueued.is_some() {
-                    enqueued.take() // Take the sender for the last connection only
-                } else {
-                    None
-                };
-                
+                let enqueued_for_connection =
+                    if index == connection_ids.len() - 1 && enqueued.is_some() {
+                        enqueued.take() // Take the sender for the last connection only
+                    } else {
+                        None
+                    };
+
                 match connection
                     .outbound_tx
                     .send(ConnectionOutbound::Notification {
@@ -178,7 +179,7 @@ impl NotificationRouter {
                 }
             } else {
                 last_error = Some(Err(NotificationRouteError::ConnectionUnavailable(
-                    connection_id.clone()
+                    connection_id.clone(),
                 )));
             }
         }
@@ -200,10 +201,8 @@ impl NotificationRouter {
         updates: Vec<agent_client_protocol::schema::v1::SessionUpdate>,
     ) -> Result<(), NotificationRouteError> {
         let session_id = SessionId::new(session_id.to_string());
-        let connection_ids = self
-            .bindings
-            .connections_for(&session_id);
-        
+        let connection_ids = self.bindings.connections_for(&session_id);
+
         if connection_ids.is_empty() {
             return Err(NotificationRouteError::Unbound(session_id.clone()));
         }
@@ -231,15 +230,15 @@ impl NotificationRouter {
                 .connections
                 .get(&connection_id)
                 .filter(|connection| connection.is_active());
-            
+
             if let Some(connection) = connection {
                 if !connection.is_initialized() {
                     last_error = Some(Err(NotificationRouteError::ConnectionState(
-                        ConnectionStateError::NotInitialized
+                        ConnectionStateError::NotInitialized,
                     )));
                     continue;
                 }
-                
+
                 match connection
                     .outbound_tx
                     .send(ConnectionOutbound::GlobalNotification {
@@ -258,7 +257,7 @@ impl NotificationRouter {
                 }
             } else {
                 last_error = Some(Err(NotificationRouteError::ConnectionUnavailable(
-                    connection_id.clone()
+                    connection_id.clone(),
                 )));
             }
         }
