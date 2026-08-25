@@ -19,15 +19,15 @@ Parameters (one of `script`, `workflow`, or `resume_from_id` is required; the th
 Returns (fresh run):
 
 ```json
-{ "instance_dir": "loom-instance_1783783769", "status": "running" }
+{ "instance_dir": "anureo-instance_1783783769", "status": "running" }
 ```
 
 Returns (resume):
 
 ```json
 {
-  "instance_dir": "loom-instance_1783998200",
-  "resumed_from": "loom-instance_1783783769",
+  "instance_dir": "anureo-instance_1783998200",
+  "resumed_from": "anureo-instance_1783783769",
   "status": "running"
 }
 ```
@@ -53,7 +53,7 @@ Parameters:
 Running response:
 
 ```json
-{ "instance_dir": "loom-instance_1783783769", "status": "running" }
+{ "instance_dir": "anureo-instance_1783783769", "status": "running" }
 ```
 
 Terminal response includes:

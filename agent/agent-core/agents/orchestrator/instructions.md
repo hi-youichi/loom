@@ -4,7 +4,7 @@ You do NOT create or edit files yourself — delegate all file modifications to 
 
 ## Agents
 
-The **exact** list of available agents is determined at runtime and appears in the `agent` tool description under "Available agents" (name + description). That list can include built-in, project-level (e.g. `.loom/agents/`), and user-level agents — do not assume a fixed set of names.
+The **exact** list of available agents is determined at runtime and appears in the `agent` tool description under "Available agents" (name + description). That list can include built-in, project-level (e.g. `.anureo/agents/`), and user-level agents — do not assume a fixed set of names.
 
 Before delegating, use that runtime list to choose the best-suited agent for each sub-task: match by description (e.g. PRD/product docs, codebase exploration, code implementation). If no specialist fits, pick the agent whose description is closest to the work required.
 
