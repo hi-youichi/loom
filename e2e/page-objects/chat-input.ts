@@ -20,6 +20,9 @@ export class ChatInput {
   readonly newSessionButton: Locator;
   readonly input: Locator;
   readonly sendButton: Locator;
+  readonly userMessages: Locator;
+  readonly assistantMessages: Locator;
+  readonly stopGeneratingButton: Locator;
 
   constructor(private readonly page: Page) {
     this.newSessionButton = page
@@ -32,10 +35,22 @@ export class ChatInput {
     this.sendButton = page
       .getByRole("button", { name: /send message/i })
       .first();
+    this.userMessages = page.locator(
+      '[data-testid="chat-message"][data-message-role="user"]',
+    );
+    this.assistantMessages = page.locator(
+      '[data-testid="chat-message"][data-message-role="assistant"]',
+    );
+    this.stopGeneratingButton = page.getByRole("button", {
+      name: /stop generating/i,
+    });
   }
 
   /** 点击侧栏顶部 "New session" 按钮 */
   async clickNewSession(): Promise<void> {
+    // The web shell may reopen its command palette while ACP bootstrap calls
+    // settle; ensure it cannot intercept the session button click.
+    await this.page.keyboard.press("Escape");
     await this.newSessionButton.waitFor({ state: "visible", timeout: 15_000 });
     await this.newSessionButton.click();
   }
@@ -62,6 +77,16 @@ export class ChatInput {
     }
   }
 
+  /** 选择当前会话第一个可用模型，避免测试依赖本地持久化选择。 */
+  async selectFirstAvailableModel(): Promise<void> {
+    const selector = this.page.getByRole("button", { name: /select model/i }).first();
+    if (!(await selector.isVisible({ timeout: 2_000 }).catch(() => false))) return;
+    await selector.click();
+    const option = this.page.locator('[role="option"]').first();
+    await expect(option).toBeVisible({ timeout: 15_000 });
+    await option.click();
+  }
+
   /** 输入框是否已清空（消息已发出的信号） */
   async isInputCleared(): Promise<boolean> {
     return (await this.input.inputValue()) === "";
@@ -74,6 +99,41 @@ export class ChatInput {
       .first()
       .isVisible({ timeout })
       .catch(() => false);
+  }
+
+  /** 等待指定发送操作产生新的助手消息。 */
+  async waitForNewAssistantMessage(
+    previousCount: number,
+    timeout = 90_000,
+  ): Promise<Locator> {
+    await expect
+      .poll(() => this.assistantMessages.count(), { timeout })
+      .toBeGreaterThan(previousCount);
+    return this.assistantMessages.last();
+  }
+
+  /** 等待助手完成生成；优先使用消息状态，兼容旧 UI 则观察停止按钮。 */
+  async waitForReplyComplete(timeout = 90_000): Promise<void> {
+    const latest = this.assistantMessages.last();
+    const hasMessage = await latest.count();
+    if (hasMessage > 0) {
+      const status = latest.getAttribute("data-message-status");
+      if ((await status) !== null) {
+        await expect(latest).toHaveAttribute("data-message-status", "complete", {
+          timeout,
+        });
+        return;
+      }
+    }
+
+    await this.stopGeneratingButton
+      .waitFor({ state: "visible", timeout: 15_000 })
+      .catch(() => undefined);
+    await this.stopGeneratingButton.waitFor({ state: "hidden", timeout });
+  }
+
+  async lastAssistantText(): Promise<string> {
+    return (await this.assistantMessages.last().innerText()).trim();
   }
 
   /** 是否出现友好错误提示（多语言文案匹配） */

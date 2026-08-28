@@ -58,51 +58,66 @@ const MOCK_MODELS = loadMockModels();
  * });
  * ```
  */
+/** 安装 REST mock；供普通 spec 和 Mock ACP chat fixture 复用。 */
+export async function installMockHttpRoutes(page: import("@playwright/test").Page): Promise<void> {
+  // 拦截 GET /api/sessions（会话列表）
+  await page.route("**/api/sessions**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  // 拦截 GET /api/models（模型列表）
+  await page.route("**/api/models**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(MOCK_MODELS),
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  // Legacy web bootstrap endpoints used while the ACP runtime is probing.
+  // Keep them consistent with the ACP model response so startup can select a
+  // provider/model before the first prompt.
+  const providerConfig = {
+    providers: [{
+      id: "mock-provider",
+      name: "Mock Provider",
+      models: { "mock-model": { id: "mock-model", name: "Mock Model" } },
+    }],
+    default: { "mock-provider": "mock-model" },
+  };
+  await page.route("**/api/config/providers**", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(providerConfig) });
+  });
+
+  // 拦截 POST /api/sessions（创建会话）
+  await page.route("**/api/sessions", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ id: "mock-session-id", title: "New Session" }),
+      });
+      return;
+    }
+    await route.continue();
+  });
+}
+
 export const mockanureo: Record<string, unknown> = {
-  /**
-   * 自动挂载 mock 到每个新 page。
-   * 使用 page.route() 在浏览器进程中拦截请求（零网络开销）。
-   */
   page: async ({ page }, use) => {
-    // 拦截 GET /api/sessions（会话列表）
-    await page.route("**/api/sessions**", async (route) => {
-      if (route.request().method() === "GET") {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([]),
-        });
-        return;
-      }
-      await route.continue();
-    });
-
-    // 拦截 GET /api/models（模型列表）
-    await page.route("**/api/models**", async (route) => {
-      if (route.request().method() === "GET") {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify(MOCK_MODELS),
-        });
-        return;
-      }
-      await route.continue();
-    });
-
-    // 拦截 POST /api/sessions（创建会话）
-    await page.route("**/api/sessions", async (route) => {
-      if (route.request().method() === "POST") {
-        await route.fulfill({
-          status: 201,
-          contentType: "application/json",
-          body: JSON.stringify({ id: "mock-session-id", title: "New Session" }),
-        });
-        return;
-      }
-      await route.continue();
-    });
-
+    await installMockHttpRoutes(page);
     await use(page);
   },
 };

@@ -15,11 +15,18 @@ Feature: 首页
     And 无网络请求失败
     And 网络无异常响应
 
+  @chat-contract
   Scenario: SMK-004 新建会话并发送消息
     When 我点击新建会话按钮
-    And 我在输入框输入消息 "Hello, what can you do?"
-    And 我发送消息
-    Then 消息 "Hello, what can you do?" 出现在聊天区或输入框已清空
+    And 我发送消息 "Hello, what can you do?"
+    Then 用户消息 "Hello, what can you do?" 出现在聊天区
+    And 我等待助手回复完成
+    And 助手回复出现在聊天区
+    And 助手回复内容不为空
+    When 我刷新页面
+    Then 用户消息 "Hello, what can you do?" 出现在聊天区
+    And 聊天区包含助手消息
+    And 助手回复内容不为空
     And 无 JavaScript 报错
 
   Scenario: SMK-005 刷新页面后会话列表正确恢复

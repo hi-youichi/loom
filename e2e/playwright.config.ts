@@ -71,6 +71,38 @@ export default defineConfig({
       },
     },
 
+    // Chat contract against a deterministic ACP peer. Only scenarios tagged
+    // @chat-contract/@mock-only are selected so existing BDD remains unchanged.
+    {
+      name: "Web BDD Chat Mock",
+      testDir: bddWeb.testDir,
+      grep: /@chat-contract|@mock-only/,
+      grepInvert: /@real-acp/,
+      timeout: 120_000,
+      use: {
+        ...devices["Desktop Chrome"],
+        headless: process.env.E2E_HEADLESS !== "false",
+        baseURL: process.env.E2E_MOCK_BASE_URL ?? getBaseUrl(),
+        chatBackendMode: "mock",
+      } as any,
+    },
+
+    // Chat contract against the real anureo ACP endpoint. This project does
+    // not install REST or WebSocket routes; the server must already be running.
+    {
+      name: "Web BDD Chat ACP",
+      testDir: bddWeb.testDir,
+      grep: /@chat-contract|@real-acp/,
+      grepInvert: /@mock-only/,
+      timeout: 120_000,
+      use: {
+        ...devices["Desktop Chrome"],
+        headless: process.env.E2E_HEADLESS !== "false",
+        baseURL: process.env.E2E_ACP_BASE_URL ?? "http://127.0.0.1:3031",
+        chatBackendMode: "acp",
+      } as any,
+    },
+
     // P1 — Mobile viewport（复用 Web Server，仅切换视口 / UA）
     {
       name: "Mobile Chrome",

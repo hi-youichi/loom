@@ -9,14 +9,17 @@
  */
 
 import { test as base, createBdd } from "playwright-bdd";
-import { mockanureo } from "../../fixtures/mock-anureo";
+import { chatBackend } from "../../fixtures/chat-backend";
 import { auth } from "../../fixtures/auth";
 import { diagnostics } from "../../fixtures/diagnostics";
 
 export const test = base.extend({
-  ...mockanureo,
+  ...chatBackend,
   ...auth,
   ...diagnostics,
+  chatState: async ({}, use) => {
+    await use({ assistantCountBeforeSend: 0, sentText: undefined });
+  },
 });
 
 export const { Given, When, Then } = createBdd(test);
