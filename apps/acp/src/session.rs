@@ -5,7 +5,7 @@
 //!
 //! ## NewSessionRequest -> SessionStore
 //!
-//! - **session_id**: Generated uniquely by Agent in new_session (e.g. `session-{nanos}` or UUID); all later prompt/cancel/load use this ID.
+//! - **session_id**: Generated uniquely by Agent in new_session as a UUID; all later prompt/cancel/load use this ID.
 //! - **thread_id**: Same as anureo's `RunOptions::thread_id`, usually the string form of session_id for checkpointer and multi-turn consistency.
 //! - **working_directory**: From `NewSessionRequest::working_directory` (protocol requires **absolute path**), maps to `RunOptions::working_folder`; if absent the caller may use process cwd or a temp dir.
 //! - **mcp_servers**: Stored in the session and connected lazily on the first
@@ -368,7 +368,7 @@ impl SessionStore {
         working_directory: Option<PathBuf>,
         owner_principal: impl Into<String>,
     ) -> SessionId {
-        let session_id = SessionId(format!("session-{}", Uuid::new_v4()));
+        let session_id = SessionId(Uuid::new_v4().to_string());
         self.create_with_owner(
             session_id.clone(),
             working_directory,
@@ -760,6 +760,15 @@ impl Drop for PromptGuard<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn newly_created_session_id_is_an_unprefixed_uuid() {
+        let store = SessionStore::new();
+        let id = store.create(None);
+
+        assert!(!id.as_str().starts_with("session-"));
+        assert!(Uuid::parse_str(id.as_str()).is_ok());
+    }
 
     #[test]
     fn session_config_model_updated_by_update_session_config() {

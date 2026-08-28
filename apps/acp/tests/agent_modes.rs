@@ -185,10 +185,14 @@ async fn test_load_session_new_entry_defaults_to_dev() {
 #[tokio::test]
 async fn test_load_session_modes_list_contains_builtins() {
     let agent = create_test_agent();
-    let fake_session_id = "session-load-test-002";
+    let session_id = agent
+        .new_session(make_new_session_request())
+        .await
+        .unwrap()
+        .session_id;
 
     let load_request: LoadSessionRequest = serde_json::from_value(serde_json::json!({
-        "sessionId": fake_session_id,
+        "sessionId": session_id.to_string(),
         "cwd": std::env::current_dir().unwrap().to_str().unwrap(),
         "mcpServers": []
     }))

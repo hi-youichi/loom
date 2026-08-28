@@ -139,6 +139,14 @@ async fn test_acp_new_session_over_ws() {
         resp.contains("sessionId"),
         "session/new response missing sessionId: {resp}"
     );
+    let response: serde_json::Value = serde_json::from_str(&resp).expect("valid JSON-RPC response");
+    let session_id = response["result"]["sessionId"]
+        .as_str()
+        .expect("session/new result.sessionId");
+    assert!(
+        !session_id.starts_with("session-"),
+        "new session id must not use the legacy session- prefix: {session_id}"
+    );
 
     ws.close(None).await.ok();
 }
