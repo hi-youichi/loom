@@ -15,6 +15,15 @@ const t0 = Date.now();
 const now = () => ((Date.now() - t0) / 1000).toFixed(2);
 const browser = await chromium.launch();
 const page = await browser.newPage();
+await page.addInitScript(() => {
+  for (const method of ["pushState", "replaceState"]) {
+    const original = history[method].bind(history);
+    history[method] = (...args) => {
+      console.debug(`[ws-audit] history.${method}`, String(args[2] ?? ""));
+      return original(...args);
+    };
+  }
+});
 
 const conns = [];
 const frames = [];
@@ -63,8 +72,16 @@ page.on("console", (m) => {
   }
 });
 page.on("pageerror", (e) => console.log(`[${now()}] [pageerror] ${String(e).slice(0, 400)}`));
+page.on("framenavigated", (frame) => {
+  if (frame === page.mainFrame()) console.log(`[${now()}] NAV ${frame.url()}`);
+});
 page.on("requestfailed", (r) => {
   if (/api|acp|ws/i.test(r.url())) console.log(`[${now()}] [reqfailed] ${r.method()} ${r.url()} ${r.failure()?.errorText}`);
+});
+page.on("request", (r) => {
+  if (r.isNavigationRequest() && r.frame() === page.mainFrame()) {
+    console.log(`[${now()}] DOC ${r.method()} ${r.url()}`);
+  }
 });
 page.on("response", (r) => {
   if (r.status() >= 400 && /api|acp/i.test(r.url())) console.log(`[${now()}] [http${r.status()}] ${r.url()}`);
@@ -79,6 +96,11 @@ await page.screenshot({ path: "ws-trace-session-shot.png" });
 
 console.log(`waiting ${args.wait}ms ...`);
 await page.waitForTimeout(args.wait);
+const startupTrace = await page.evaluate(() => window.__ANUREO_STARTUP_TRACE__ ?? []);
+if (startupTrace.length > 0) {
+  console.log("\n=== STARTUP TRACE ===");
+  console.log(JSON.stringify(startupTrace, null, 2));
+}
 
 console.log(`\n=== SUMMARY ===`);
 for (const e of conns) {
@@ -103,6 +125,6 @@ console.log("\n=== ANOMALIES ===");
 console.log(anomalies.length ? anomalies.join("\n") : "none");
 
 const fs = await import("node:fs");
-fs.writeFileSync(args.out, JSON.stringify({ conns, frames }, null, 2));
+fs.writeFileSync(args.out, JSON.stringify({ conns, frames, startupTrace }, null, 2));
 console.log(`\nfull frames (${frames.length}) -> ${args.out}`);
 await browser.close();

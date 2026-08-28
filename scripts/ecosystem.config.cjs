@@ -1,47 +1,67 @@
-// pm2 process definitions for the anureo + anureo dev environment.
-//
-// Usage (from the repo root):
-//   pm2 start scripts/ecosystem.config.cjs
-//   cargo build -p anureo-cli; pm2 restart anureo-dev     # after Rust changes
-//   pm2 logs anureo-dev --lines 100
-//
-// Notes:
-// - Requires `cargo build -p anureo-cli` first: pm2 runs target/debug/anureo.exe
-//   directly (no `cargo run` wrapper, so signals reach the server).
-// - The 3030 default instance (~/.anureo) is NOT managed here; only the
-//   isolated 3031 dev instance.
-// - LLM creds (OPENAI_API_KEY / OPENAI_BASE_URL) are snapshotted from the
-//   shell at `pm2 start`; refresh with `pm2 restart anureo-dev --update-env`.
-// - `watch` is intentionally disabled: target/ churn would cause endless
-//   restarts. Restart manually after rebuilding.
+// Unified PM2 configuration for anureo development environments.
+// Set ANUREO_PM2_PROFILE to dev (default) or local before start.
 
 const path = require("path");
 
-const ANUREO_ROOT = path.resolve(__dirname, "..");
-const CHAMBER_ROOT = process.env.ANUREO_FRONTEND_ROOT
+const root = path.resolve(__dirname, "..");
+const frontend = process.env.ANUREO_FRONTEND_ROOT
   ? path.resolve(process.env.ANUREO_FRONTEND_ROOT)
-  : path.resolve(__dirname, "..", "..", "openchamber-feat-dev");
+  : path.resolve(root, "..", "openchamber-feat-dev");
+const userHome = process.env.USERPROFILE || process.env.HOME || "";
+const bun = path.join(userHome, ".bun", "bin", "bun.exe");
+const common = { time: true, autorestart: true, watch: false };
 
-const HOME = process.env.USERPROFILE || process.env.HOME;
-
-module.exports = {
-  apps: [
+const profiles = {
+  dev: [
     {
+      ...common,
       name: "anureo-dev",
-      script: ANUREO_ROOT + "/target/debug/anureo.exe",
+      script: path.join(root, "target", "debug", "anureo.exe"),
       args: "server --port 3031 --home .anureo-home --pid-file .anureo-home/anureo-server.pid --log-level trace --log-file .anureo-home/anureo-dev.log",
-      cwd: ANUREO_ROOT,
-      time: true,
+      cwd: root,
       max_restarts: 10,
       min_uptime: "10s",
     },
     {
-      name: "chamber-dev",
-      // npm's bun.cmd shim cannot be forked by pm2 on Windows; use the real exe.
-      script: HOME + "\\.bun\\bin\\bun.exe",
+      ...common,
+      name: "anureo-desk",
+      script: bun,
       args: "run dev",
-      cwd: CHAMBER_ROOT,
-      time: true,
+      cwd: frontend,
+      env: { ANUREO_ACP_BASE_URL: "http://127.0.0.1:3031" },
+    },
+  ],
+  local: [
+    {
+      ...common,
+      name: "anureo-local",
+      script: path.join(root, "target", "debug", "anureo.exe"),
+      args: "server --port 3051 --home .anureo-home-local --pid-file .anureo-home-local/anureo-server.pid",
+      cwd: root,
+      env: { LOOMDESK_DATA_DIR: path.join(root, ".anureo-home-local", "loomdesk-data") },
+      max_memory_restart: "1G",
+    },
+    {
+      ...common,
+      name: "anureo-desk-local",
+      script: process.execPath,
+      args: "packages/web/server/index.js --port 3151",
+      cwd: frontend,
+      env: {
+        PORT: "3151",
+        NODE_ENV: "production",
+        OPENCODE_SKIP_START: "true",
+        ANUREO_ACP_BASE_URL: "http://127.0.0.1:3051",
+        LOOMDESK_DATA_DIR: path.join(root, ".anureo-home-local", "loomdesk-data"),
+      },
+      max_memory_restart: "1G",
     },
   ],
 };
+
+const profile = process.env.ANUREO_PM2_PROFILE || "dev";
+if (!profiles[profile]) {
+  throw new Error(`Unknown ANUREO_PM2_PROFILE=${profile}; expected dev or local`);
+}
+
+module.exports = { apps: profiles[profile] };
