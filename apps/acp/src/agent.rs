@@ -2536,7 +2536,13 @@ fn normalize_current_model_for_acp(current_model: &str, options: &[ModelOption])
     if matches.len() == 1 {
         return matches[0].id.clone();
     }
-    current_model.to_string()
+    if options.iter().any(|m| m.id == "default") {
+        return "default".to_string();
+    }
+    options
+        .first()
+        .map(|option| option.id.clone())
+        .unwrap_or_else(|| "default".to_string())
 }
 
 /// Build config_options array with "mode" and "model" options (protocol types are non_exhaustive, so we construct via serde).
@@ -2828,7 +2834,7 @@ mod tests {
         ];
         assert_eq!(
             normalize_current_model_for_acp("gpt-4o", &model_options),
-            "gpt-4o"
+            "openai/gpt-4o"
         );
         assert_eq!(
             normalize_current_model_for_acp("openai/gpt-4o", &model_options),
@@ -2949,6 +2955,26 @@ mod tests {
         assert_eq!(
             normalize_current_model_for_acp("openai/gpt-4o", &options),
             "openai/gpt-4o"
+        );
+    }
+
+    #[test]
+    fn test_normalize_current_model_for_acp_invalid_value_falls_back_to_default() {
+        let options = vec![
+            ModelOption {
+                id: "default".to_string(),
+                name: "(default)".to_string(),
+                provider: String::new(),
+            },
+            ModelOption {
+                id: "openai/gpt-4o".to_string(),
+                name: "openai/gpt-4o".to_string(),
+                provider: "openai".to_string(),
+            },
+        ];
+        assert_eq!(
+            normalize_current_model_for_acp("stale-provider/stale-model", &options),
+            "default"
         );
     }
 

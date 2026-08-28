@@ -114,6 +114,7 @@ impl ExtensionHandler for GitHandler {
             return stash::handle(params, flat, ctx).await;
         }
         match method {
+            "check" => status::handle_check(params, ctx).await,
             "status" => status::handle_status(params, ctx).await,
             "diff" => diff::handle_diff(params, ctx).await,
             "file_diff" => diff::handle_file_diff(params, ctx).await,
@@ -181,6 +182,7 @@ impl ExtensionHandler for GitHandler {
     fn capabilities(&self) -> Value {
         let mut caps = serde_json::Map::new();
         for method in [
+            "check",
             "status",
             "diff",
             "file_diff",

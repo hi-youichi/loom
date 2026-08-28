@@ -22,6 +22,7 @@ pub fn register_default_extensions(
     global_bus: Arc<GlobalEventBus>,
     connections: Option<Arc<ConnectionRegistry>>,
 ) -> ExtensionRegistryHandles {
+    registry.register("auth", Arc::new(super::auth::AuthHandler));
     registry.register("files", Arc::new(super::files::FilesHandler));
     registry.register(
         "git",
@@ -94,7 +95,9 @@ pub fn register_default_extensions(
     );
     registry.register(
         "settings",
-        Arc::new(super::settings::SettingsHandler::default().with_global_bus(global_bus.clone())),
+        Arc::new(
+            super::settings::SettingsHandler::persistent().with_global_bus(global_bus.clone()),
+        ),
     );
     registry.register(
         "session-assist",

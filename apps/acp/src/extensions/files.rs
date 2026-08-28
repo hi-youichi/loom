@@ -10,10 +10,11 @@ use super::auth;
 use super::pagination::PaginatedResult;
 use super::{ExtensionContext, ExtensionError, ExtensionHandler};
 
-const FORBIDDEN_METHODS: &[&str] = &["read", "read_text_file"];
+const FORBIDDEN_METHODS: &[&str] = &["read"];
 
 const MAX_BINARY_READ_SIZE: u64 = 10 * 1024 * 1024;
 const MAX_DOWNLOAD_SIZE: u64 = 10 * 1024 * 1024;
+const MAX_TEXT_READ_SIZE: u64 = 1024 * 1024;
 const DEFAULT_LIMIT: usize = 200;
 const MAX_LIMIT: usize = 1000;
 const DEFAULT_EXEC_TIMEOUT_MS: u64 = 120_000;
@@ -399,6 +400,27 @@ struct ReadBinaryParams {
     mime_type: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReadTextParams {
+    path: String,
+    optional: Option<bool>,
+    // Kept so an optional read can distinguish a missing anchor directory
+    // from an ordinary unbound workspace request. ExtensionContext remains
+    // the authoritative resolved/canonicalized directory.
+    directory: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReadTextResult {
+    path: String,
+    content: String,
+    encoding: &'static str,
+    size: u64,
+    found: bool,
+}
+
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ReadBinaryResult {
@@ -588,6 +610,7 @@ impl ExtensionHandler for FilesHandler {
             "search" => self.handle_search(params, ctx).await,
             "stat" => self.handle_stat(params, ctx).await,
             "create_directory" => self.handle_create_directory(params, ctx).await,
+            "read_text_file" => self.handle_read_text_file(params, ctx).await,
             "read_file_binary" => self.handle_read_file_binary(params, ctx).await,
             "write_file" => self.handle_write_file(params, ctx).await,
             "delete" => self.handle_delete(params, ctx).await,
@@ -606,6 +629,7 @@ impl ExtensionHandler for FilesHandler {
             "search": true,
             "stat": true,
             "create_directory": true,
+            "read_text_file": true,
             "read_file_binary": true,
             "write_file": true,
             "delete": true,
@@ -619,6 +643,83 @@ impl ExtensionHandler for FilesHandler {
 }
 
 impl FilesHandler {
+    async fn handle_read_text_file(
+        &self,
+        params: Value,
+        ctx: &ExtensionContext,
+    ) -> Result<Value, ExtensionError> {
+        let p: ReadTextParams = serde_json::from_value(params)
+            .map_err(|e| ExtensionError::invalid_params(format!("{e}")))?;
+        let optional = p.optional.unwrap_or(false);
+        if ctx.working_directory.is_none() && optional {
+            // Optional project config reads may point at a config directory
+            // that has not been created yet. No filesystem access is needed
+            // to report that expected absence, and it must not become a
+            // normal-startup JSON-RPC error frame.
+            if p.directory
+                .as_deref()
+                .is_some_and(|directory| !Path::new(directory).is_dir())
+            {
+                return serde_json::to_value(ReadTextResult {
+                    path: p.path,
+                    content: String::new(),
+                    encoding: "utf-8",
+                    size: 0,
+                    found: false,
+                })
+                .map_err(|e| ExtensionError::invalid_params(format!("serialization failed: {e}")));
+            }
+        }
+        let resolved = resolve_path(&p.path, ctx.working_directory.as_deref())?;
+        let metadata = match std::fs::metadata(&resolved) {
+            Ok(metadata) => metadata,
+            Err(error) if optional && error.kind() == std::io::ErrorKind::NotFound => {
+                return serde_json::to_value(ReadTextResult {
+                    path: p.path,
+                    content: String::new(),
+                    encoding: "utf-8",
+                    size: 0,
+                    found: false,
+                })
+                .map_err(|e| ExtensionError::invalid_params(format!("serialization failed: {e}")));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(ExtensionError::not_found(format!(
+                    "file not found: {}",
+                    p.path
+                )));
+            }
+            Err(error) => {
+                return Err(ExtensionError::invalid_params(format!(
+                    "stat failed: {error}"
+                )));
+            }
+        };
+        if metadata.is_dir() {
+            return Err(ExtensionError::invalid_params("path is a directory"));
+        }
+        if metadata.len() > MAX_TEXT_READ_SIZE {
+            return Err(ExtensionError::invalid_params(format!(
+                "file exceeds maximum text size of {MAX_TEXT_READ_SIZE} bytes"
+            )));
+        }
+        let content = std::fs::read_to_string(&resolved).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::InvalidData {
+                ExtensionError::invalid_params("file is not valid UTF-8")
+            } else {
+                ExtensionError::invalid_params(format!("read failed: {e}"))
+            }
+        })?;
+        serde_json::to_value(ReadTextResult {
+            path: p.path,
+            content,
+            encoding: "utf-8",
+            size: metadata.len(),
+            found: true,
+        })
+        .map_err(|e| ExtensionError::invalid_params(format!("serialization failed: {e}")))
+    }
+
     async fn handle_home(&self) -> Result<Value, ExtensionError> {
         let home = std::env::var("USERPROFILE")
             .or_else(|_| std::env::var("HOME"))
@@ -1456,7 +1557,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_forbidden_method_read_text_file() {
+    async fn test_read_text_file() {
         let tmp = setup_workdir();
         let ctx = make_ctx(tmp.path());
         let handler = FilesHandler::new();
@@ -1467,8 +1568,46 @@ mod tests {
                 &ctx,
             )
             .await;
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, -32601);
+        let result = result.expect("text read should succeed");
+        assert_eq!(result["content"], "fn main() {}");
+        assert_eq!(result["encoding"], "utf-8");
+        assert_eq!(result["size"], 12);
+        assert_eq!(result["found"], true);
+    }
+
+    #[tokio::test]
+    async fn test_optional_read_text_file_returns_found_false_for_missing_file() {
+        let tmp = setup_workdir();
+        let ctx = make_ctx(tmp.path());
+        let result = FilesHandler::new()
+            .handle(
+                "read_text_file",
+                serde_json::json!({"path": "missing.json", "optional": true}),
+                &ctx,
+            )
+            .await
+            .expect("optional missing file should be a successful absence");
+        assert_eq!(result["found"], false);
+        assert_eq!(result["content"], "");
+    }
+
+    #[tokio::test]
+    async fn test_optional_read_text_file_returns_found_false_for_missing_anchor() {
+        let ctx = make_ctx_no_dir();
+        let missing = tempfile::tempdir().unwrap().path().join("not-created");
+        let result = FilesHandler::new()
+            .handle(
+                "read_text_file",
+                serde_json::json!({
+                    "path": "project.json",
+                    "directory": missing.to_string_lossy(),
+                    "optional": true
+                }),
+                &ctx,
+            )
+            .await
+            .expect("optional missing anchor should be a successful absence");
+        assert_eq!(result["found"], false);
     }
 
     // ── unknown method ───────────────────────────────────

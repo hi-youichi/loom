@@ -80,7 +80,6 @@ pub struct SettingsStoreState {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct SettingsScope {
     pub principal: String,
-    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -337,6 +336,38 @@ impl SettingsHandler {
         )
     }
 
+    /// Construct the production settings handler backed by the durable
+    /// database in the active anureo home. Tests should continue to use
+    /// [`Self::new`] so they remain isolated and deterministic.
+    pub fn persistent() -> Self {
+        let path = config::home::anureo_home().join("settings.db");
+        if let Some(parent) = path.parent() {
+            if let Err(error) = std::fs::create_dir_all(parent) {
+                tracing::warn!(
+                    path = %parent.display(),
+                    error = %error,
+                    "failed to create settings database directory"
+                );
+            }
+        }
+        match SqliteSettingsStore::new(path.to_string_lossy().as_ref()) {
+            Ok(store) => Self::with_dependencies(
+                Arc::new(store),
+                Arc::new(DefaultAuthorizer),
+                Arc::new(DefaultNotifier),
+                Arc::new(DefaultScheduler::new()),
+            ),
+            Err(error) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %error,
+                    "falling back to in-memory settings store"
+                );
+                Self::new()
+            }
+        }
+    }
+
     pub fn with_dependencies(
         store: Arc<dyn SettingsStore>,
         authorizer: Arc<dyn SettingsAuthorizer>,
@@ -367,7 +398,6 @@ impl SettingsHandler {
         }
         Ok(SettingsScope {
             principal: ctx.principal.clone(),
-            session_id: ctx.session_id.clone(),
         })
     }
 
